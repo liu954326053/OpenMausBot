@@ -176,7 +176,7 @@ describe("the phone-app link `openmausbot pair --phone android` scans", () => {
   it("builds the invite for --public-url from the server's credential and name, and never prints it as text", async () => {
     pairingResponse({ url: null, inviteUrl: null });
     expect(await runPair({ ...options, phone: "android", publicUrl: explicitOrigin })).toBe(0);
-    expect(printed()).not.toContain("openmausbot://");
+    expect(printed()).not.toContain("magicbot://");
     expect(printed()).not.toContain(credential);
     expect(printed()).toContain("scan this with the MagicBot app");
   });

@@ -1,4 +1,4 @@
-// The one `openmausbot://pair` link builder, read by the Android and iOS
+// The one `magicbot://pair` link builder, read by the Android and iOS
 // scanners (`PairingInvite.parse`), which accept only that scheme and host.
 // Every value is written with encodeURIComponent, so a space is `%20`.
 
@@ -194,5 +194,5 @@ export function phonePairingLink({
   const descriptor = encodePairingE2E(e2e);
   if (descriptor) fields.push(["e2e", descriptor]);
 
-  return `openmausbot://pair?${fields.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&")}`;
+  return `magicbot://pair?${fields.map(([key, value]) => `${key}=${encodeURIComponent(value)}`).join("&")}`;
 }

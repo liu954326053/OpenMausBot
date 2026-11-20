@@ -241,7 +241,7 @@ export function encodeResponse(
 export interface ServiceInfo {
   /** what a picker on the phone shows */
   name: string;
-  /** e.g. "_openmausbot._tcp" */
+  /** e.g. "_magicbot._tcp" */
   type: string;
   port: number;
   /** the name our A records claim, e.g. "openmausbot-1a2b3c4d.local" */
@@ -353,7 +353,7 @@ export function clampBytes(text: string, limit: number): string {
 }
 
 /** The DNS-SD type the phone apps browse for. */
-export const COMPANION_SERVICE_TYPE = "_openmausbot._tcp";
+export const COMPANION_SERVICE_TYPE = "_magicbot._tcp";
 
 /** Not `<hostname>.local`: on macOS mDNSResponder owns and defends that name. */
 export function defaultHostName(machine = hostname()): string {

@@ -35,8 +35,8 @@ const service: ServiceInfo = {
   txt: ["v=1", "name=Milind's computer"],
 };
 
-const INSTANCE = "Milind's computer._openmausbot._tcp.local";
-const SERVICE_NAME = "_openmausbot._tcp.local";
+const INSTANCE = "Milind's computer._magicbot._tcp.local";
+const SERVICE_NAME = "_magicbot._tcp.local";
 
 function query(name: string, type: number, opts: { id?: number; unicast?: boolean } = {}): Buffer {
   const header = Buffer.alloc(12);

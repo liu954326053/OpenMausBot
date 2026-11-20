@@ -47,7 +47,7 @@ reveals nothing about `psk`: the two are separate HMAC outputs under different l
 
 ## 3. Pairing payload (QR link) and descriptors
 
-- **The QR link** (`openmausbot://pair?...`, built by `shared/pairing-link.ts`) keeps every field it has today and gains one query parameter:
+- **The QR link** (`magicbot://pair?...`, built by `shared/pairing-link.ts`) keeps every field it has today and gains one query parameter:
   `e2e=<b64u(JSON)>`, where the JSON is:
 
 ```json

@@ -11,7 +11,7 @@ import { removeTempDir } from "./testing/cleanup.ts";
 import { startControlPlaneStub } from "./testing/control-plane-stub.ts";
 
 const status = (over: Partial<PhoneRelayStatus> = {}): PhoneRelayStatus => ({ relay: "connected", node: "relay1.openmausbot.com", grant: "ok", phones: 1, maxPhones: 20, ...over });
-const invite = "openmausbot://pair?address=relay-only.invalid%3A443&token=omb_pair_x&e2e=eyJ2IjoxfQ";
+const invite = "magicbot://pair?address=relay-only.invalid%3A443&token=omb_pair_x&e2e=eyJ2IjoxfQ";
 
 describe("openmausbot serve --relay", () => {
   it("is off unless asked for, joins any way in but --tunnel, and never a local start", () => {
@@ -32,7 +32,7 @@ describe("openmausbot serve --relay", () => {
     expect(block).toContain("Paired phones: 1 of 20. Remove one: openmausbot devices revoke ID");
     expect(relayPairingBlock(body, false, "openmausbot")).toBeNull();
     expect(relayPairingBlock({ ...body, relay: undefined }, true, "openmausbot")).toBeNull();
-    expect(relayPairingBlock({ ...body, inviteUrl: "openmausbot://pair?address=https%3A%2F%2Fmaus.example.com&token=omb_pair_x" }, true, "openmausbot")).toBeNull();
+    expect(relayPairingBlock({ ...body, inviteUrl: "magicbot://pair?address=https%3A%2F%2Fmaus.example.com&token=omb_pair_x" }, true, "openmausbot")).toBeNull();
   });
 
   it("says why a phone cannot pair yet, in the person's terms", () => {

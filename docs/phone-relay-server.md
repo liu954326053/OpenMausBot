@@ -69,7 +69,7 @@ same code, imported from `companion/src/e2e/`) and hands each stream to its own
 request handler. It adds the `e2e` descriptor to the `/api/pair` answer and
 answers `/api/companion/endpoints` itself, as the sidecar does.
 
-The QR is the desktop's: an `openmausbot://pair` link with the one-time pairing
+The QR is the desktop's: a `magicbot://pair` link with the one-time pairing
 credential and `e2e={v:1,k,h,r}` (the server's connection key, its relay host
 id and the relay nodes). With a public HTTPS address it has the shape of the
 desktop's default QR: that address as the hosted endpoint, which a phone

@@ -123,7 +123,7 @@ function decoded(value) {
   }
 }
 
-/** `{ address, secret }` from a pairing link (`openmausbot://pair`, the phone apps' scheme, or `magicbot://pair`); only
+/** `{ address, secret }` from a pairing link, `magicbot://pair` or an OpenMausBot server's `openmausbot://pair`; only
  * one naming a server's own http(s) origin. */
 function appLink(url) {
   const address = url.searchParams.get("address") ?? "";
