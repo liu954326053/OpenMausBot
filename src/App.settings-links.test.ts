@@ -12,7 +12,7 @@ vi.mock("./state/store", async (original) => ({
   StoreProvider: ({ children }: { children: unknown }) => children,
   useStore: () => ({ state, dispatch: (action: Action) => { dispatched.push(action); }, flushBotPatches: async () => null, refreshInstances: async () => {}, refreshModels: async () => {} }),
 }));
-vi.mock("./lib/analytics", () => ({ initAnalytics: () => {}, track: () => {}, emailGateDone: () => true }));
+vi.mock("./lib/analytics", () => ({ track: () => {}, emailGateDone: () => true }));
 const { default: App } = await import("./App");
 
 let fromMain: ((section?: string) => void) | null = null;

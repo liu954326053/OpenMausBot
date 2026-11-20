@@ -11,7 +11,7 @@ vi.mock("./state/store", async (original) => ({
   StoreProvider: ({ children }: { children: ReactNode }) => children,
   useStore: () => ({ state, dispatch: () => {}, flushBotPatches: async () => null, refreshInstances: async () => {}, refreshModels: async () => {} }),
 }));
-vi.mock("./lib/analytics", () => ({ initAnalytics: () => {}, track: () => {}, emailGateDone: () => true }));
+vi.mock("./lib/analytics", () => ({ track: () => {}, emailGateDone: () => true }));
 const { default: App } = await import("./App");
 
 afterEach(() => { vi.unstubAllGlobals(); });

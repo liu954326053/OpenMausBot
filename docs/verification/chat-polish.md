@@ -26,7 +26,7 @@ No personal provider account, real credentials, or user workspace is used.
 4. The video is initially unloaded. Load it explicitly, use the native play
    control, verify playback, then close the preview. No autoplay. This is a
    message-authorized local file, not a direct filesystem URL in the browser.
-5. Open Settings: search has focus. General uses aligned language/analytics
+5. Open Settings: search has focus. General uses aligned language
    rows; Appearance retains the existing skins and flattens simple switches.
    Search for Appearance, press Escape to clear search, then Escape to close.
    New or share displays the actual platform shortcut next to New bot.

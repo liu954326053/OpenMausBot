@@ -95,7 +95,7 @@ function seed() {
   return seeded;
 }
 
-const STORAGE = { "omb-analytics-opt-out": "1", "omb-email-gate": "skipped", "omb-simple-mode-prompt": "1", "grok-move-2026-11": "1", "teams-2026-11b": "1", "omb-advanced-mode": "0" };
+const STORAGE = { "omb-email-gate": "skipped", "omb-simple-mode-prompt": "1", "grok-move-2026-11": "1", "teams-2026-11b": "1", "omb-advanced-mode": "0" };
 const electron = require("electron");
 const DEV_PAGE_PORT = BENCH_PORTS[0] - 3600;
 const fixtureEnv = () => ({
@@ -116,7 +116,7 @@ async function startDevServers() {
 }
 const stopDevServers = () => { for (const child of devChildren) child.kill("SIGTERM"); };
 const staged = stage();
-if (!existsSync(join(paths.userData, "desktop-prefs.json"))) writeFileSync(join(paths.userData, "desktop-prefs.json"), JSON.stringify({ seen: [], analytics: false }));
+if (!existsSync(join(paths.userData, "desktop-prefs.json"))) writeFileSync(join(paths.userData, "desktop-prefs.json"), JSON.stringify({ seen: [] }));
 const seeded = seed();
 
 let logRead = 0;

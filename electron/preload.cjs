@@ -102,10 +102,6 @@ function homePage() {
 function reloadedForUpdate() {
   try { return ipcRenderer.sendSync("home:updating") === true; } catch { return false; }
 }
-function savedAnalyticsChoice() {
-  try { const saved = ipcRenderer.sendSync("desktop-analytics:read"); return typeof saved === "boolean" ? saved : null; } catch { return null; }
-}
-let analyticsChoice;
 function savedLanguageChoice() {
   try { const saved = ipcRenderer.sendSync("desktop-language:read"); return typeof saved === "string" ? saved : null; } catch { return null; }
 }
@@ -763,13 +759,8 @@ const bridge = {
       return () => notificationOpenListeners.delete(cb);
     },
   },
-  desktopAnalytics: {
-    enabled: () => {
-      if (analyticsChoice === undefined) analyticsChoice = savedAnalyticsChoice();
-      return analyticsChoice;
-    },
-    ...(isLocalPage ? { set: enabled => { analyticsChoice = enabled === true; return ipcRenderer.invoke("desktop-analytics:set", analyticsChoice); } } : {}),
-  },
+  // Privacy: MagicBot sends no usage analytics; a Cloud or server page of an earlier release reads this as its switch off.
+  desktopAnalytics: { enabled: () => false, ...(isLocalPage ? { set: async () => {} } : {}) },
   desktopLanguage: {
     choice: () => {
       if (languageChoice === undefined) languageChoice = savedLanguageChoice();

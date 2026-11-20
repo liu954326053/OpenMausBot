@@ -28,8 +28,8 @@ change to it on `main` and every install that runs this version or later picks i
 One plain GET of that public file, from the server: no cookie, no account, no install id, no version, no query string.
 GitHub sees the server's IP address, as for any download. When a card has a picture, the person's browser loads it from
 the same place, with no cookie and no referrer. Clicking a card's link opens its address exactly as the file has it,
-in the system browser on the desktop (a new tab with no opener or referrer in a browser), with nothing added. With
-analytics on, the app counts the card (see [Counting](#counting)).
+in the system browser on the desktop (a new tab with no opener or referrer in a browser), with nothing added. Nothing
+counts the card: MagicBot sends no usage analytics ([Usage analytics](analytics.md)).
 
 Older versions of the app know nothing of this file and never download it.
 
@@ -204,14 +204,7 @@ with the cards). Give a card `starts` when its date matters.
   pages, the bundled ones included. For a self-hosted server or an open-source build that should never show them. The
   desktop app's own server inherits the app's environment, so it holds there when the app is started with it set.
 - **No in-app switch governs these cards.** The app has no setting for promotional popups: the product-updates question is
-  about email, and the usage-analytics switch only stops the counting. A person closes a card with Not now or the X, and
-  never sees that card again.
-
-## Counting
-
-With usage analytics on, and only then (the same switch as every other event), each card sends one `announcement` event
-per step: `{ id, kind, action }`, `action` being `shown`, `primary`, `secondary` or `close` (the X, Escape or Not now).
-The `id` is the card's own id from this public file, the same for everyone. See [Usage analytics](analytics.md).
+  about email. A person closes a card with Not now or the X, and never sees that card again.
 
 ## Tests and previews
 

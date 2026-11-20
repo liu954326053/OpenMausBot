@@ -211,8 +211,7 @@ export function cardsForPerson(list: readonly AnnouncementCard[], context: Omit<
 
 export type AnnouncementAction = "shown" | "primary" | "secondary" | "close";
 
-/** One event per card and step, under the same analytics switch as every other event. The id is the card's own, from
- * the public file, the same for everyone. */
+/** One event per card and step. The id is the card's own, from the public file, the same for everyone. */
 export function reportAnnouncement(card: { id: string; kind: AnnouncementKind }, action: AnnouncementAction): void {
   track("announcement", { id: card.id, kind: card.kind, action });
 }

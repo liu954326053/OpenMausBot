@@ -4,38 +4,14 @@ import { connectAiStep } from "./connect-ai-events";
 import { loadWaitingFor } from "./app-load";
 import { signInGateShown } from "./sign-in-gate";
 
-const ph = vi.hoisted(() => ({
-  captured: [] as Array<{ event: string; props: unknown }>,
-  module: () => ({
-    default: {
-      init: () => {},
-      has_opted_out_capturing: () => false,
-      opt_in_capturing: () => {},
-      opt_out_capturing: () => {},
-      register: () => {},
-      unregister: () => {},
-      capture: (event: string, props?: unknown) => void ph.captured.push({ event, props }),
-      identify: () => {},
-    },
-  }),
-}));
-vi.mock("posthog-js", () => ph.module());
-
-const store = new Map<string, string>();
-vi.stubGlobal("localStorage", {
-  getItem: (key: string) => store.get(key) ?? null,
-  setItem: (key: string, value: string) => void store.set(key, value),
-  removeItem: (key: string) => void store.delete(key),
-});
+const captured = vi.hoisted(() => [] as Array<{ event: string; props: unknown }>);
+vi.mock("./analytics", () => ({ track: (event: string, props?: unknown) => void captured.push({ event, props }) }));
 
 const HOSTILE = "Claude isn't signed in for ada@example.com with sk-ant-api03-SECRET0123456789";
-const sent = (event: string) => ph.captured.filter((entry) => entry.event === event).map((entry) => entry.props);
+const sent = (event: string) => captured.filter((entry) => entry.event === event).map((entry) => entry.props);
 
-beforeEach(async () => {
-  store.clear();
-  ph.captured = [];
-  const { initAnalytics } = await import("./analytics");
-  await initAnalytics();
+beforeEach(() => {
+  captured.length = 0;
 });
 
 describe("Connect an AI steps", () => {
@@ -50,7 +26,7 @@ describe("Connect an AI steps", () => {
       { step: "chosen", place: "cloud_welcome", engine: "codex" },
       { step: "opened", place: "meet", ai_ready: false },
     ]);
-    expect(JSON.stringify(ph.captured)).not.toMatch(/ada@|sk-ant|Ada's/);
+    expect(JSON.stringify(captured)).not.toMatch(/ada@|sk-ant|Ada's/);
   });
 
   it("sends a step or a place it does not know as other", () => {
@@ -69,17 +45,9 @@ describe("the app's load", () => {
 });
 
 describe("the sign-in gate", () => {
-  it("is counted on the desktop app's own page only", () => {
-    signInGateShown("signed_out");
-    expect(sent("sign_in_gate")).toEqual([]);
-    vi.stubGlobal("window", { ...globalThis.window, ogb: { environments: {} } });
-    try {
-      signInGateShown("service_trust");
-      signInGateShown("/pair?code=SECRET" as never);
-    } finally {
-      vi.unstubAllGlobals();
-      vi.stubGlobal("localStorage", { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value), removeItem: (key: string) => void store.delete(key) });
-    }
+  it("names the reason by a word from its list", () => {
+    signInGateShown("service_trust");
+    signInGateShown("/pair?code=SECRET" as never);
     expect(sent("sign_in_gate")).toEqual([{ reason: "service_trust" }, { reason: "other" }]);
   });
 });

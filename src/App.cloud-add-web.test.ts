@@ -13,7 +13,7 @@ vi.mock("./state/store", async (original) => ({
   StoreProvider: ({ children }: { children: unknown }) => children,
   useStore: () => ({ state, dispatch: (action: Action) => { dispatched.push(action); }, flushBotPatches: async () => null, refreshInstances: async () => {}, refreshModels: async () => {} }),
 }));
-vi.mock("./lib/analytics", () => ({ initAnalytics: () => {}, track: (...args: unknown[]) => track(...args), emailGateDone: () => true }));
+vi.mock("./lib/analytics", () => ({ track: (...args: unknown[]) => track(...args), emailGateDone: () => true }));
 const { default: App } = await import("./App");
 
 function render(cloudAdd: AppState["cloudAdd"], ogb?: unknown, config: AppState["config"] = null): { opened: ReturnType<typeof vi.fn>; done: () => void } {

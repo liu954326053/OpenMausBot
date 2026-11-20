@@ -6,7 +6,7 @@ import { userError } from "./user-errors.ts";
 import type { ServerErrorBody } from "../shared/server-text.ts";
 import type { AiTestReason } from "../shared/ai-ranking.ts";
 
-/** `reason`: the failure's kind, for the welcome's usage analytics; `error` stays the words people read. */
+/** `reason`: the failure's kind; `error` stays the words people read. */
 export type EngineCheck = { ok: true } | ({ ok: false; reason?: AiTestReason } & ServerErrorBody) | { ok: null };
 
 const PROMPT = "This is a connection check. Reply with the single word OK.";

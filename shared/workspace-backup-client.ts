@@ -15,6 +15,7 @@ export const WORKSPACE_BACKUP_CLIENT_KEYS = [
   "openmausbot.sidebarToolsLayout",
   "openmausbot.sidebarCollapsedSections.v1",
   "openmausbot.sidebarSectionOrder.v1",
+  // Earlier backups carry it, and a restore refuses any key outside this list.
   "omb-analytics-opt-out",
   "openmausbot.remote-voice.v1",
 ] as const;

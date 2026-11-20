@@ -40,8 +40,6 @@ export function windowEntries(windowPref: WindowPref): SettingEntry[] {
       "Show a system notification when a bot finishes or needs you", "Stop system notifications from bots"),
     flag("general.notificationFeed", "Notification feed", "Keep a feed of what bots did in the notifications panel.", "notifications", ["feed", "notification feed", "inbox"],
       "Keep a feed of bot updates", "Turn off the feed of bot updates"),
-    flag("general.analytics", "Usage analytics", "Send anonymous usage data to MagicBot (PostHog) to improve the app.", "analytics", ["analytics", "telemetry", "privacy", "tracking"],
-      "Send anonymous usage data from this app to MagicBot's analytics (PostHog), off this computer", "Stop sending usage analytics"),
     flag("general.openAtLogin", "Open at login", "Start MagicBot when you log in to this computer (desktop app).", "startup", ["startup", "launch", "login", "open at login"],
       "Open MagicBot when you log in", "Don't open MagicBot at login"),
     windowPref("general.talkShortcut", "Talk shortcut", "A key held anywhere on this Mac to talk to MagicBot (desktop app).", "talk", ["talk", "voice", "dictation", "microphone", "hotkey"],
