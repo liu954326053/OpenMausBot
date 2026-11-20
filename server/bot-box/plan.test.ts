@@ -5,7 +5,7 @@ import { engineInstallRoots } from "../engine-roots.ts";
 import { BOX_MUTATIONS, CPU_LIST_FILES, argvPaths, bwrapArgs, planBox, taskWorkspaceIds, under, visibleInBox, type BoxAudience, type BoxMutation, type BoxRequest, type BoxSetup } from "./plan.ts";
 
 const home = "/data";
-const dataDir = "/data/.openmausbot";
+const dataDir = "/data/.magicbot";
 const setup = (mutate?: BoxMutation[]): BoxSetup => ({
   dataDir, home, codeRoots: ["/app"], engineRoots: engineInstallRoots(dataDir), seccompFd: 3,
   bridges: [{ name: "egress", port: 3128, socket: `${dataDir}/box/egress.sock` }, { name: "harness", port: 8799, socket: `${dataDir}/box/harness.sock` }],
@@ -91,7 +91,7 @@ linuxBox("the box plan", () => {
     expect(text).not.toContain("--new-session");
   });
 
-  it("puts the engines OpenMausBot installed back whole and read-only, whatever else the turn may write", () => {
+  it("puts the engines MagicBot installed back whole and read-only, whatever else the turn may write", () => {
     // npm's bin entries are relative links into the prefix: `bin/opencode -> ../lib/node_modules/opencode-ai/bin/opencode.exe`.
     const prefix = join(dataDir, "tools", "npm");
     const engineFiles = [`${prefix}/bin/opencode`, `${prefix}/lib/node_modules/opencode-ai/bin/opencode.exe`, `${prefix}/bin/codex`,
@@ -133,12 +133,12 @@ linuxBox("the box plan", () => {
   });
 
   it("a shared-network box (a browser) has no bridges and no network namespace", () => {
-    const plan = planBox(setup(), { command: "/opt/chrome", args: [], env: {}, net: "shared", rw: ["/data/.openmausbot/browser/profiles/p1"] });
+    const plan = planBox(setup(), { command: "/opt/chrome", args: [], env: {}, net: "shared", rw: ["/data/.magicbot/browser/profiles/p1"] });
     expect(plan.net).toBe("shared");
     expect(bwrapArgs(plan).join(" ")).not.toContain("--unshare-net");
     expect(bwrapArgs(plan).join(" ")).not.toContain("/run/omb");
-    expect(visibleInBox(plan, "/data/.openmausbot/browser/profiles/p1/Default")).toBe("rw");
-    expect(visibleInBox(plan, "/data/.openmausbot/messages.db")).toBe("none");
+    expect(visibleInBox(plan, "/data/.magicbot/browser/profiles/p1/Default")).toBe("rw");
+    expect(visibleInBox(plan, "/data/.magicbot/messages.db")).toBe("none");
   });
 
   it("a relay socket goes in at /run/omb/relay.sock only for a box with its own network", () => {
@@ -220,7 +220,7 @@ linuxBox("the box plan", () => {
   });
 
   it("shows no path on the command line that is in the data folder or holds it, unless the caller named it", () => {
-    for (const { dataDir, home } of [{ dataDir: "/data/.openmausbot", home: "/data" }, { dataDir: "/srv/omb", home: "/home/maus" }]) {
+    for (const { dataDir, home } of [{ dataDir: "/data/.magicbot", home: "/data" }, { dataDir: "/srv/omb", home: "/home/maus" }]) {
       const server = ["config.json", "sessions.json", "messages.db", "workspaces/other/MEMORY.md"].map((file) => join(dataDir, file));
       const ask = (args: string[], ro: string[] = []) => planBox({ ...setup(), dataDir, home }, { command: "/bin/sh", args, cwd: join(dataDir, "task-workspaces", "b", "t"), env: {}, botId: "b", ro });
       for (const args of [server, [dataDir], [`--model=${server[0]}`], [`@${server[0]}`], [join(dataDir, "..")], [join(dataDir, "workspaces", "..")], ["/srv", "/var"]]) {
@@ -245,7 +245,7 @@ linuxBox("the box plan", () => {
   });
 
   it("makes nothing of the data folder writable for a configured server's environment, but the bot's own folders", () => {
-    const dataDir = "/data/.openmausbot";
+    const dataDir = "/data/.magicbot";
     const ask = (env: Record<string, string>, configured: boolean) => planBox({ ...setup(), dataDir, home: "/data" }, { command: "sh", args: [], cwd: join(dataDir, "task-workspaces", "b", "t"), env, botId: "b", configured });
     for (const value of [join(dataDir, "config.json"), join(dataDir, "box"), dataDir, join(dataDir, "workspaces", "other"), "/"]) {
       for (const name of ["XDG_CACHE_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "TMPDIR"]) {
@@ -254,7 +254,7 @@ linuxBox("the box plan", () => {
       }
     }
     expect(visibleInBox(ask({ XDG_CACHE_HOME: join(dataDir, "workspaces", "b", "cache") }, true), join(dataDir, "workspaces", "b", "cache", "x"))).toBe("rw");
-    // An engine OpenMausBot starts keeps the home it was given there.
+    // An engine MagicBot starts keeps the home it was given there.
     expect(visibleInBox(ask({ CODEX_HOME: join(dataDir, "providers", "codex-1") }, false), join(dataDir, "providers", "codex-1", "auth.json"))).toBe("rw");
   });
 
@@ -353,6 +353,56 @@ linuxBox("the box plan", () => {
       expect(at(shared, "workspaces/bot-a/MEMORY.md")).toBe("rw");
       // Ids that are not a conversation's are never put back.
       expect(at(threads(["thread-1", "../bot-b"], ["../../config"]), "task-workspaces/bot-b/thread-9/x")).toBe("none");
+    });
+  });
+
+  describe("for a bot whose own folder is in a project folder", () => {
+    const project = "/mnt/work/drama", inProject = join(project, ".magic-team", "bots", "writer"), teammate = join(project, ".magic-team", "bots", "editor");
+    const projectSetup = (): BoxSetup => ({ ...setup(), projectBotFolder: (botId) => (botId === "bot-a" ? inProject : null) });
+    const ask = (more: Partial<BoxRequest> = {}) => planBox(projectSetup(), { command: "/usr/local/bin/claude", args: [], cwd, env: { HOME: home }, ...more });
+
+    it("a turn in a conversation's own folder reaches its folder in the project, and nothing else there", () => {
+      const plan = ask();
+      expect(visibleInBox(plan, join(inProject, "MEMORY.md"))).toBe("rw");
+      expect(visibleInBox(plan, join(inProject, "skills", "report", "SKILL.md"))).toBe("rw");
+      expect(plan.writable).toContain(inProject);
+      expect(visibleInBox(plan, join(teammate, "MEMORY.md")), "a teammate's memory").toBe("none");
+      expect(visibleInBox(plan, join(project, "script.md")), "the project's files").toBe("none");
+      expect(visibleInBox(plan, join(dataDir, "workspaces", "bot-a", ".magicbot-secrets", "thread-1", "card")), "its secret files stay in the data folder").toBe("rw");
+      // A folder that is away never stops the box from starting.
+      const args = bwrapArgs(plan);
+      expect(args.slice(args.indexOf(inProject) - 1, args.indexOf(inProject) + 2)).toEqual(["--bind-try", inProject, inProject]);
+    });
+
+    it("a turn that works in the project folder has all of it, through that one line", () => {
+      const plan = ask({ cwd: project, botId: "bot-a" });
+      expect(visibleInBox(plan, join(project, "script.md"))).toBe("rw");
+      expect(visibleInBox(plan, join(inProject, "MEMORY.md"))).toBe("rw");
+      expect(bwrapArgs(plan)).not.toContain(inProject);
+    });
+
+    it("changes nothing for a bot in no project", () => {
+      const other = join(dataDir, "task-workspaces", "bot-b", "thread-9");
+      const request: BoxRequest = { command: "/usr/local/bin/claude", args: [], cwd: other, env: { HOME: home } };
+      expect(planBox(projectSetup(), request)).toEqual(planBox(setup(), request));
+      expect(visibleInBox(planBox(projectSetup(), request), join(inProject, "MEMORY.md"))).toBe("none");
+      const noBot: BoxRequest = { command: "chrome", args: [], env: {}, net: "shared" };
+      expect(planBox(projectSetup(), noBot)).toEqual(planBox(setup(), noBot));
+    });
+
+    it("on a Team Cloud, a turn that is not the team's reads that folder and never writes it, wherever it works", () => {
+      expect(ask({ audience: { teamReadOnly: true } }).writable).not.toContain(inProject);
+      // Read-only after every read-write line, so neither the working folder nor anything lent makes it writable again.
+      for (const more of [{}, { cwd: project, botId: "bot-a" }, { rw: [inProject, project] }] as Partial<BoxRequest>[]) {
+        const plan = ask({ audience: { teamReadOnly: true }, ...more });
+        expect(visibleInBox(plan, join(inProject, "MEMORY.md"))).toBe("ro");
+        const args = bwrapArgs(plan);
+        const readOnly = args.findIndex((arg, i) => arg === "--ro-bind-try" && args[i + 1] === inProject && args[i + 2] === inProject);
+        const lastWritable = args.reduce((last, arg, i) => (arg === "--bind" || arg === "--bind-try") && !args[i + 2]!.startsWith("/run/omb/") ? i : last, -1);
+        expect(readOnly).toBeGreaterThan(lastWritable);
+      }
+      expect(visibleInBox(ask({ audience: { teamReadOnly: true }, cwd: project, botId: "bot-a" }), join(project, "script.md"))).toBe("rw");
+      expect(visibleInBox(ask({ audience: { teamReadOnly: false } }), join(inProject, "MEMORY.md"))).toBe("rw");
     });
   });
 

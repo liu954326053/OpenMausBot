@@ -16,8 +16,8 @@ Stop that server (or quit the app if it runs the server), back up the file, merg
 only the keys you want into its existing `features` object, then start it again.
 Keep the other configuration, including engine instances and credentials.
 
-For example, this enables the shared skills library while leaving automatic
-skill review off:
+For example, this keeps the shared skills library on, asks before a learned
+skill is shared through it, and leaves automatic skill review off:
 
 ```json
 {
@@ -52,7 +52,7 @@ text and extra work can increase token usage.
 | `claudeUserSkills` | Off | Claude bots also load the personal skills in `~/.claude/skills`. | Adds skill instructions/files to the engine's available context; does not control Codex native skills. |
 | `smartSetupChoices` | On | Offers model-written setup choices for a new bot when enough information is available. | Background model calls, subject to the bot's engine capabilities and the budget. If that engine has no one-off text call, an eligible configured [helper](memory.md#the-helper-model) may write the choices using its own provider and model. |
 | `autoRecall` | On | Recalls matching memory passages into turns. | Recalled text uses context. Disabling this does not disable memory storage or upkeep; see [Memory](memory.md). |
-| `skillsLibrary` | Off | Enables the shared skills store and its Skills settings. | Enables the library, not automatic conversation review. Skill use follows assignments and permissions. |
+| `skillsLibrary` | On | The shared skills store: the Skills library page under Tools and the Skills settings. Set to `false` to switch it off. | A skill a person added and switched on is offered to every bot, which reads it when a task needs it; assigning it, or turning on Every bot, keeps it in a bot's list. A skill a bot learned and shared reaches only the bots it is assigned to. The library does not turn on automatic conversation review. |
 | `roomMemoryCapture` | Off | Lets memory upkeep also read a member bot's room turns. | Extends the material processed by memory upkeep. |
 | `parallelRoomJobs` | On | Runs jobs assigned to several room members side by side, each in its own thread. Set to `false` to run them one at a time in the room's thread. | Allows concurrent engine work rather than sequential jobs. |
 | `acpPlanLines` | Off | Shows an ACP agent's plan as activity lines. | Each emitted line counts as a tool call wherever tool calls are counted; environment override below. |

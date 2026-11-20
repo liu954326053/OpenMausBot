@@ -173,7 +173,7 @@ describe("a department's Share", () => {
       button("Your GitHub repo…")!.click();
       await vi.waitFor(() => expect(document.body.textContent).toContain("Connect GitHub in Apps first."));
       button("Open Apps")!.click();
-      expect(dispatch).toHaveBeenCalledWith({ type: "togglePlugins", open: true });
+      expect(dispatch).toHaveBeenCalledWith({ type: "togglePlugins", open: true, surface: "apps" });
       await vi.waitFor(() => expect(document.querySelector("[data-template-repo=tpl2]")).toBeNull());
       connected = true;
       button("Your GitHub repo…")!.click();

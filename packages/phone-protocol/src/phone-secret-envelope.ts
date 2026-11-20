@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 export const PHONE_SECRET_PROTOCOL_VERSION = 1 as const;
+/** The HPKE `info` the phone apps seal with: an envelope sealed under any other string cannot be opened. */
 export const PHONE_SECRET_INFO = "OpenMausBot phone credential v1";
 export const PHONE_SECRET_MAX_BYTES = 4_096;
 

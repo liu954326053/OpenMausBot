@@ -147,6 +147,42 @@ describe("sidebar footer places", () => {
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "showTeamMap" });
   });
 
+  it("lists the skills library and MCP servers after Published apps, and opens each", () => {
+    fixture.advanced = true;
+    const { nodes: tree, html } = render("comfortable");
+    const at = (id: string) => html.indexOf(`data-sidebar-nav="${id}"`);
+    expect(at("published-apps")).toBeGreaterThan(-1);
+    expect(at("skills-library")).toBeGreaterThan(at("published-apps"));
+    expect(at("mcp")).toBeGreaterThan(at("skills-library"));
+    expect(html).toContain(">Skills library</span>");
+    expect(html).toContain(">MCP servers</span>");
+    const press = (id: string) => (tree.find((node) => node.props.id === id && typeof node.props.onClick === "function")!.props.onClick as () => void)();
+    press("skills-library");
+    expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "showSkillsLibrary" });
+    press("mcp");
+    expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "togglePlugins", open: true, surface: "mcp" });
+  });
+
+  it("marks the skills library current on its page, and MCP servers while the panel shows them", () => {
+    fixture.advanced = true;
+    fixture.state = { ...fixture.state, activeView: "skills-library", pluginsOpen: true, pluginsSurface: "apps" };
+    const library = render("comfortable").html;
+    expect(library).toMatch(/data-sidebar-nav="skills-library"[^>]*aria-current="page"/);
+    expect(library).not.toMatch(/data-sidebar-nav="mcp"[^>]*aria-current="page"/);
+    fixture.state = { ...fixture.state, activeView: "chat", pluginsSurface: "mcp" };
+    const servers = render("comfortable").html;
+    expect(servers).toMatch(/data-sidebar-nav="mcp"[^>]*aria-current="page"/);
+    expect(servers).not.toMatch(/data-sidebar-nav="skills-library"[^>]*aria-current="page"/);
+  });
+
+  it("leaves the skills library out while it is switched off", () => {
+    fixture.advanced = true;
+    fixture.state = { ...fixture.state, config: { features: { skillsLibrary: false } } };
+    const { html } = render("comfortable");
+    expect(html).not.toContain('data-sidebar-nav="skills-library"');
+    expect(html).toContain('data-sidebar-nav="mcp"');
+  });
+
   it("draws icons with tooltips in the avatars-only density", () => {
     fixture.advanced = true;
     const { html } = render("icons");
@@ -239,7 +275,16 @@ describe("Apps beside the profile", () => {
     expect(html).toMatch(/data-tour="nav-apps" data-sidebar-nav="apps"/);
     expect(html).toContain('aria-label="Apps"');
     (tree.props.onClick as () => void)();
-    expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "togglePlugins", open: true });
+    expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "togglePlugins", open: true, surface: "apps" });
+  });
+
+  it("is lit while the panel shows Apps, not while it shows MCP servers", () => {
+    const pressed = () => renderToStaticMarkup(createElement(SidebarAppsButton)).includes('aria-pressed="true"');
+    expect(pressed()).toBe(false);
+    fixture.state = { ...fixture.state, pluginsOpen: true, pluginsSurface: "apps" };
+    expect(pressed()).toBe(true);
+    fixture.state = { ...fixture.state, pluginsSurface: "mcp" };
+    expect(pressed()).toBe(false);
   });
 });
 
@@ -281,9 +326,9 @@ describe("toolbar tools layout", () => {
     expect(render("comfortable", { toolsLayout: "toolbar" }).html).not.toContain('data-testid="routines-attention"');
   });
 
-  it("toolbar applies to Advanced mode's three places; Simple mode keeps them in the bottom bar instead", () => {
+  it("toolbar applies to Advanced mode's five places; Simple mode keeps them in the bottom bar instead", () => {
     fixture.advanced = true;
-    expect(render("comfortable", { toolsLayout: "toolbar" }).html.match(/data-sidebar-nav="/g)).toHaveLength(3);
+    expect(render("comfortable", { toolsLayout: "toolbar" }).html.match(/data-sidebar-nav="/g)).toHaveLength(5);
     fixture.advanced = false;
     expect(render("comfortable", { toolsLayout: "toolbar" }).html).toBe("");
   });

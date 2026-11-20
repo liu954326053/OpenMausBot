@@ -77,7 +77,8 @@ export function createBotLinkHost(deps: BotLinkHostDeps) {
     personName: deps.personName, line: deps.roomLine, window: deps.roomWindow, log: deps.log, ...(deps.roomOpener ? { opener: deps.roomOpener } : {}), ...(deps.roomFollow ? { follow: deps.roomFollow } : {}) });
   const link = createBotLink({
     dataDir: deps.dataDir, coordinator: deps.coordinator, kick: deps.kick, log: deps.log, rooms, directoryChanged: () => { syncStandIns(); }, revoke: (sessionId) => { deps.sessions.revoke(sessionId); },
-    bots: () => store.bots, bot: (id) => store.bot(id),
+    // Security invariant: a team project's bots are no part of the link, so the person's other place neither lists them nor hands them work.
+    bots: () => store.bots.filter((bot) => !bot.teamProject), bot: (id) => { const bot = store.bot(id); return bot?.teamProject ? null : bot; },
     refusal: (bot) => deps.refusal(bot as BotRecord),
     model: (bot) => (bot as BotRecord).modelSelection.model,
     level: (bot) => deps.level(bot as BotRecord),

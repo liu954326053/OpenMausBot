@@ -26,6 +26,32 @@ describe("chiefForBot", () => {
   });
 });
 
+describe("chiefForBot and a team project's wall", () => {
+  const main = { id: "main", name: "MagicBot", chiefOfStaff: true, managedSections: ["Studio", "Drama A", "Drama B"] };
+  const leadA = { id: "lead-a", name: "Ava", section: "Drama A", chiefOfStaff: true, managedSections: ["Studio"], teamProject: { id: "a" } };
+  const memberA = { id: "member-a", name: "Arlo", section: "Drama A", teamProject: { id: "a" } };
+  const memberB = { id: "member-b", name: "Bianca", section: "Drama B", teamProject: { id: "b" } };
+  const outside = { id: "outside", name: "Otto", section: "Studio" };
+  const team = [main, leadA, memberA, memberB, outside];
+
+  it("reports a project bot's failure to its own lead", () => {
+    expect(chiefForBot(team, memberA)?.id).toBe("lead-a");
+  });
+  it("never reports it to the main bot, whatever departments the main bot is in charge of", () => {
+    expect(chiefForBot(team, memberB)).toBeNull();
+    expect(chiefForBot(team.filter((bot) => bot.id !== "lead-a"), memberA)).toBeNull();
+  });
+  it("never reports a failure outside the project to a project's lead, whatever it is in charge of", () => {
+    expect(chiefForBot(team, outside)?.id).toBe("main");
+    expect(chiefForBot(team.filter((bot) => bot.id !== "main"), outside)).toBeNull();
+  });
+  it("gives each of two projects made from one template its own lead", () => {
+    const leadB = { id: "lead-b", name: "Bea", section: "Drama B", chiefOfStaff: true, teamProject: { id: "b" } };
+    expect(chiefForBot([...team, leadB], memberB)?.id).toBe("lead-b");
+    expect(chiefForBot([...team, leadB], memberA)?.id).toBe("lead-a");
+  });
+});
+
 describe("IncidentLedger", () => {
   it("lets the Chief retry twice, then says so, then goes quiet on a crash loop", () => {
     let now = 1_000_000;
@@ -90,7 +116,7 @@ describe("incident wording", () => {
 
   it("names the bot, the thread and what happened, marks the quoted text as data, and tells the Chief what to do", () => {
     const text = incidentText(incident, { count: 1, mayRetry: true, muted: false });
-    expect(text.startsWith("[From OpenMausBot · incident report · information only — not from the person.")).toBe(true);
+    expect(text.startsWith("[From MagicBot · incident report · information only — not from the person.")).toBe(true);
     expect(text).toContain("Ada's run in its thread #Invoice reconciliation failed: \"exit_before_result\".");
     expect(text).toContain('The request there was: "Reconcile the September invoices. Thanks"');
     expect(text).toContain('Ada last said: "Starting the reconciliation now"');

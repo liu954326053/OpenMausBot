@@ -54,3 +54,22 @@ export interface SkillImportSummary {
   skipped: SkippedSkillFile[];
   skippedCount: number;
 }
+
+/** What one upload to the skills library may hold: how many files, their bytes together, and the bytes of one. */
+export const SKILL_UPLOAD_LIMITS = { files: 5_000, bytes: 32 * 1024 * 1024, fileBytes: 2 * 1024 * 1024 } as const;
+
+/** One skill an upload put in the library. */
+export interface UploadedSkill extends SkillImportSummary {
+  /** It took the place of a skill of the same name. */
+  replaced: boolean;
+}
+
+/** What became of each skill in an uploaded package. */
+export interface SkillUploadResult {
+  installed: UploadedSkill[];
+  /** Already in the library with exactly these files. */
+  unchanged: string[];
+  /** In the library with other files: left as they are until the person asks to replace them. */
+  conflicts: string[];
+  errors: string[];
+}

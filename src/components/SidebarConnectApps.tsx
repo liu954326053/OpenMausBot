@@ -1,6 +1,7 @@
 import { Puzzle } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { appsOpen } from "@/lib/apps-panel";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useStore } from "@/state/store";
@@ -75,10 +76,10 @@ export function SidebarConnectApps({ circle = false }: { circle?: boolean }) {
       type="button"
       data-tour="nav-apps"
       data-sidebar-nav="apps"
-      aria-pressed={state.pluginsOpen}
+      aria-pressed={appsOpen(state)}
       aria-label={circle ? label : undefined}
       title={circle ? label : undefined}
-      onClick={() => dispatch({ type: "togglePlugins", open: true })}
+      onClick={() => dispatch({ type: "togglePlugins", open: true, surface: "apps" })}
       className={circle ? SIMPLE_TOP_BUTTON : cn("group/apps flex h-9 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full pl-4 pr-3 text-[14px] font-medium leading-5 text-ink", ELEVATED_CONTROL, ELEVATED_HOVER)}
     >
       {circle ? <Puzzle size={18} strokeWidth={1.5} aria-hidden="true" /> : <>

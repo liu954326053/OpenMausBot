@@ -37,11 +37,11 @@ describe("the built-in announcements", () => {
       .toEqual([MODELGO_OFFER_NOTICE, BOAT_OFFER_NOTICE]);
     expect(ids({ ...desktopHere, organization: null }), "while that is read, nothing else").toEqual([MODELGO_OFFER_NOTICE, BOAT_OFFER_NOTICE]);
     const browser: HistoryFacts = { ...desktopHere, cloudSale: false, cloudCards: false };
-    expect(ids(browser), "a browser: no Cloud sales").toEqual([TEAMS_NOTICE, MODELGO_OFFER_NOTICE, GROK_MOVE_NOTICE, BOAT_OFFER_NOTICE]);
+    expect(ids(browser), "a browser: no Cloud sales").toEqual([MODELGO_OFFER_NOTICE, GROK_MOVE_NOTICE, BOAT_OFFER_NOTICE]);
     const member: HistoryFacts = { ...browser, team: true, canSave: false, sponsors: false };
-    expect(ids(member), "a Team Cloud's member: Teams alone").toEqual([TEAMS_NOTICE]);
+    expect(ids(member), "a Team Cloud's member: nothing").toEqual([]);
     expect(ids({ ...member, canSave: true, sponsors: true }), "its admin: the sponsor offers too, never the Grok Bot move")
-      .toEqual([TEAMS_NOTICE, MODELGO_OFFER_NOTICE, BOAT_OFFER_NOTICE]);
+      .toEqual([MODELGO_OFFER_NOTICE, BOAT_OFFER_NOTICE]);
   });
 
   it("an offer whose time is over is Ended; one still running is not", () => {

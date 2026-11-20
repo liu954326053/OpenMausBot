@@ -1,6 +1,6 @@
 import { isLinkedId } from "../bot-link/protocol.ts";
 import type { HandoffView, RoomAddress } from "../coordinator.ts";
-import { peerAllowed, reachRefusal, type LookedAfterBy } from "../peer-roster.ts";
+import { peerAllowed, reachRefusal, sameTeamProject, type LookedAfterBy } from "../peer-roster.ts";
 import type { BotRecord, GroupRecord, Store } from "../store.ts";
 import type { PersonalReach } from "./personal-reach.ts";
 
@@ -9,7 +9,7 @@ export interface RoomAccessDeps {
   /** The person a conversation is private to on a Team Cloud; null elsewhere. */
   privateTo?(threadId: string): string | null;
   lookedAfterBy?: LookedAfterBy;
-  /** A person's own MausBot reaching the bots they may chat with (personal-reach.ts). */
+  /** A person's own MagicBot reaching the bots they may chat with (personal-reach.ts). */
   personalReach?(): Pick<PersonalReach, "carries" | "refusal">;
 }
 
@@ -27,6 +27,7 @@ export type RoomTalksVerdict =
 
 const NOT_A_MEMBER = "The addressed agent isn't a member of this room; work sent to it again goes to it directly, in a thread of its own";
 const LEFT_THE_ROOM = "The addressed agent is no longer a member of this room, so its room job stopped; work sent to it again goes to it directly, in a thread of its own";
+const NO_SUCH_ROOM = "No such room; use list_room_targets.";
 
 export function createRoomAccess({ store, privateTo = () => null, lookedAfterBy, personalReach }: RoomAccessDeps) {
   function reachProblem(from: BotRecord, bot: BotRecord, parent: Pick<HandoffView, "threadId">, node: Pick<HandoffView, "threadId"> & Partial<Pick<HandoffView, "id" | "origin">>): string | undefined {
@@ -34,6 +35,15 @@ export function createRoomAccess({ store, privateTo = () => null, lookedAfterBy,
     const personal = personalReach?.();
     if (personal?.carries(from, bot, parent.threadId, node)) return undefined;
     return personal?.refusal(from, bot, parent.threadId) ?? reachRefusal(from, bot, lookedAfterBy)!;
+  }
+  /** Security invariant: every member reads a room's transcript, so a bot's work goes only into a room all of whose
+   *  members share its team project, the main bot's into no project's room. Any other room is answered as no room at
+   *  all. A member of the person's other place is outside every project; a bot that is gone reads nothing. */
+  function roomBehindWall(from: BotRecord, group: GroupRecord): boolean {
+    return group.memberIds.some((id) => {
+      const member = store.bot(id) ?? (isLinkedId(id) ? {} : null);
+      return member !== null && !sameTeamProject(from, member);
+    });
   }
   function roomRootProblem(node: Pick<HandoffView, "groupId" | "threadId" | "botId">): string | undefined {
     const group = node.groupId ? store.group(node.groupId) : undefined;
@@ -49,6 +59,8 @@ export function createRoomAccess({ store, privateTo = () => null, lookedAfterBy,
     const group = node.groupId ? store.group(node.groupId) : undefined;
     const bot = store.bot(node.botId);
     if (!bot || bot.hidden) return "The addressed agent no longer exists";
+    const sender = parent && !isLinkedId(parent.botId) ? store.bot(parent.botId) : null;
+    if (group && sender && roomBehindWall(sender, group)) return NO_SUCH_ROOM;
     if (node.groupId && (!group || group.dm || !store.groupTaskByThread(group.id, node.threadId))) return "Destination room task no longer exists";
     if (!node.groupId && !store.taskByThread(bot.id, node.threadId)) return "Destination bot task no longer exists";
     if (group && parent && privateTo(parent.threadId)) return PRIVATE_CHAT_ROOM_WRITE;
@@ -110,5 +122,5 @@ export function createRoomAccess({ store, privateTo = () => null, lookedAfterBy,
     );
   }
 
-  return { roomRootProblem, roomHandoffProblem, roomHandoffTarget, roomSetupPending, roomTalks, laneRoomThread };
+  return { roomRootProblem, roomHandoffProblem, roomHandoffTarget, roomSetupPending, roomTalks, laneRoomThread, roomBehindWall };
 }

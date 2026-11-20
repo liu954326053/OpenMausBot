@@ -1,7 +1,7 @@
 {
   "id": "skill-assignment-visibility",
   "title": "Assigning a library skill changes what the next turn sees",
-  "behavior": "With features.skillsLibrary on, a turn before assignment omits the library skill from its system prompt; after the Skills surface's assignment PUT, the next turn's system prompt carries the skill.",
+  "behavior": "With features.skillsLibrary on, a turn before assignment lists the library skill only among the skills on offer to every bot; after the Skills surface's assignment PUT, the next turn's system prompt carries it as the bot's own skill and no longer as an offer.",
   "issue": 1803,
   "world": "coordination",
   "gates": [],
@@ -30,7 +30,9 @@
     { "kind": "waitForTurns", "bot": "shop", "count": 2, "timeoutMs": 20000 }
   ],
   "assertions": [
-    { "kind": "systemPromptOmits", "bot": "shop", "turn": 0, "omits": "order-audit" },
-    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 1, "includes": "order-audit" }
+    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 0, "includes": "Skills from the skills library:\n- order-audit:" },
+    { "kind": "systemPromptOmits", "bot": "shop", "turn": 0, "omits": "Imported skills:" },
+    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 1, "includes": "Imported skills:\n- order-audit:" },
+    { "kind": "systemPromptOmits", "bot": "shop", "turn": 1, "omits": "Skills from the skills library:" }
   ]
 }

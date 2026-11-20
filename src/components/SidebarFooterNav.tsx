@@ -1,10 +1,12 @@
-import { AppWindow, FolderOpen, FolderTree, Globe, Puzzle, Rocket, UsersRound, Zap } from "lucide-react";
+import { AppWindow, BookOpen, FolderOpen, FolderTree, Globe, Puzzle, Rocket, Server, UsersRound, Zap } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 
 import { useAppTriggers } from "@/lib/app-triggers";
+import { appsOpen, mcpOpen } from "@/lib/apps-panel";
 import { automationsFrom, hasUnseenProblemRun } from "@/lib/automations";
 import { cn } from "@/lib/cn";
 import { useCloudFilesReady } from "@/lib/cloud-files";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useWebPanels } from "@/lib/web-panel-preferences";
@@ -71,13 +73,13 @@ export function SidebarAppsButton() {
       type="button"
       data-tour="nav-apps"
       data-sidebar-nav="apps"
-      onClick={() => dispatch({ type: "togglePlugins", open: true })}
+      onClick={() => dispatch({ type: "togglePlugins", open: true, surface: "apps" })}
       aria-label={label}
       title={label}
-      aria-pressed={state.pluginsOpen}
+      aria-pressed={appsOpen(state)}
       className={cn(
         "flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors",
-        state.pluginsOpen ? "bg-raised text-accent" : "text-ink-secondary hover:bg-raised/50 hover:text-ink",
+        appsOpen(state) ? "bg-raised text-accent" : "text-ink-secondary hover:bg-raised/50 hover:text-ink",
       )}
     >
       <Puzzle size={18} />
@@ -151,9 +153,9 @@ export function SidebarFooterNav({
     tourId="nav-apps"
     iconsOnly={iconsOnly}
     rail={rail}
-    active={state.pluginsOpen}
+    active={appsOpen(state)}
     icon={(active) => <Puzzle size={iconSize} className={tone(active)} />}
-    onClick={() => dispatch({ type: "togglePlugins", open: true })}
+    onClick={() => dispatch({ type: "togglePlugins", open: true, surface: "apps" })}
   />;
   if (rail) return <nav data-tour="tools" aria-label={t("sidebar.tools")} className="flex flex-col items-center gap-0.5">{appsRow}</nav>;
 
@@ -180,6 +182,24 @@ export function SidebarFooterNav({
         active={state.activeView === "published-apps"}
         icon={(active) => <Rocket size={iconSize} className={tone(active)} />}
         onClick={() => dispatch({ type: "showPublishedApps" })}
+      />
+      {skillsLibraryEnabled(state.config) && (
+        <NavRow
+          id="skills-library"
+          label={t("skills.library.title")}
+          iconsOnly={iconsOnly || toolbar}
+          active={state.activeView === "skills-library"}
+          icon={(active) => <BookOpen size={iconSize} className={tone(active)} />}
+          onClick={() => dispatch({ type: "showSkillsLibrary" })}
+        />
+      )}
+      <NavRow
+        id="mcp"
+        label={t("connectors.tab.mcp")}
+        iconsOnly={iconsOnly || toolbar}
+        active={mcpOpen(state)}
+        icon={(active) => <Server size={iconSize} className={tone(active)} />}
+        onClick={() => dispatch({ type: "togglePlugins", open: true, surface: "mcp" })}
       />
       {state.config?.team && (
         <NavRow

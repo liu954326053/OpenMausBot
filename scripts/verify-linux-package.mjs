@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { parse } from "yaml";
 import { LICENSE_FILES } from "./cua-linux-release.mjs";
 import {
   CLOUDFLARED_ASSETS,
@@ -27,6 +28,7 @@ const { validateDriverCandidate } = require("../electron/cua-linux.cjs");
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const releaseDir = path.resolve(process.argv[2] ?? path.join(root, "release"));
+const [published] = parse(readFileSync(path.join(root, "electron-builder.yml"), "utf8")).publish;
 
 function fail(message) {
   throw new Error(`[verify-linux-package] ${message}`);
@@ -71,9 +73,9 @@ function requirePackageType(resources, label, expected) {
 function requireUpdaterTarget(resources, label) {
   const updateFile = path.join(resources, "app-update.yml");
   requireFile(updateFile);
-  const update = readFileSync(updateFile, "utf8");
-  if (!/^owner: milind-soni$/m.test(update) || !/^repo: OpenMausBot$/m.test(update)) {
-    fail(`${label} app-update.yml does not point at milind-soni/OpenMausBot`);
+  const update = parse(readFileSync(updateFile, "utf8"));
+  if (update.owner !== published.owner || update.repo !== published.repo) {
+    fail(`${label} app-update.yml does not point at ${published.owner}/${published.repo}`);
   }
 }
 
@@ -434,7 +436,7 @@ for (const expected of [
 const extracted = mkdtempSync(path.join(tmpdir(), "omb-deb-verify-"));
 try {
   execFileSync("dpkg-deb", ["--extract", deb, extracted]);
-  const debAppRoot = path.join(extracted, "opt", "OpenMausBot");
+  const debAppRoot = path.join(extracted, "opt", "MagicBot");
   requireDirectoryMode(debAppRoot, 0o755);
   const debResources = path.join(debAppRoot, "resources");
   // Routes the in-app updater to the package-manager hand-off.
@@ -454,7 +456,7 @@ try {
     "usr",
     "share",
     "applications",
-    "com.openmausbot.app.desktop",
+    "com.magicbot.app.desktop",
   );
   const scalableIcon = path.join(
     extracted,
@@ -470,10 +472,10 @@ try {
   requireFile(scalableIcon);
   const desktop = readFileSync(desktopFile, "utf8");
   for (const expected of [
-    "Name=OpenMausBot",
-    "Exec=/opt/OpenMausBot/openmausbot %U",
+    "Name=MagicBot",
+    "Exec=/opt/MagicBot/openmausbot %U",
     "Icon=openmausbot",
-    "StartupWMClass=com.openmausbot.app",
+    "StartupWMClass=com.magicbot.app",
     "Categories=Utility;",
   ]) {
     if (!desktop.includes(expected)) fail(`desktop entry is missing ${JSON.stringify(expected)}`);

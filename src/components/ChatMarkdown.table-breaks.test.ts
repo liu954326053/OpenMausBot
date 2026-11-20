@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, expect, it, vi } from "vitest";
 import { setLocale } from "@/lib/i18n";
+import { setAdvancedMode } from "@/lib/interface-mode";
 import { ChatMarkdown } from "./ChatMarkdown";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,6 +70,7 @@ it.each([
   ["**First<br />Second**", "First\nSecond"],
 ])("copies the visible line breaks from %s without extra blank lines", async (source, copied) => {
   setLocale("en");
+  setAdvancedMode(false);
   const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
   const host = document.createElement("div");
   document.body.append(host);

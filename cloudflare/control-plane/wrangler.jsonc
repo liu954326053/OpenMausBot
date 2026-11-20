@@ -67,7 +67,7 @@
     // Cleanup rows per five-minute cron run. 20 needs Workers Paid; use 4 on
     // Workers Free (50 subrequests per invocation).
     "OMB_CLEANUP_SWEEP_LIMIT": "20",
-    // MausBot Relay (README "MausBot Relay"). Host tokens are signed with RELAY_TOKEN_SIGNING_KEY (b64u of a 32-byte
+    // MagicBot Relay (README "MagicBot Relay"). Host tokens are signed with RELAY_TOKEN_SIGNING_KEY (b64u of a 32-byte
     // Ed25519 seed, `wrangler secret put`). It is in secrets.required so a deploy can't drop it: set it before the
     // first deploy that lists it. The relay holds only the matching public key. RELAY_NODES lists only nodes that
     // exist; add relay2 when its box and DNS are up.

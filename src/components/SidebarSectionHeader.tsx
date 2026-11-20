@@ -25,6 +25,7 @@ export function SidebarSectionHeader({
   onContextMenu,
   line = false,
   onMenu,
+  menuLabel,
   reserveMenu = false,
   menuOpen = false,
   naming,
@@ -45,6 +46,8 @@ export function SidebarSectionHeader({
   onContextMenu?: (event: MouseEvent<HTMLDivElement>) => void;
   line?: boolean;
   onMenu?: (button: HTMLButtonElement) => void;
+  /** What the ⋯ button is called when the heading is not a department's. */
+  menuLabel?: string;
   /** Keep the ⋯ button's space when this line has none, so chevrons line up with lines that do (Simple). */
   reserveMenu?: boolean;
   menuOpen?: boolean;
@@ -75,6 +78,7 @@ export function SidebarSectionHeader({
       : t("sidebar.section.collapse", { name });
 
   const dropMark = dropInto ? "bg-accent/10 outline outline-2 -outline-offset-2 outline-accent/70" : undefined;
+  const menuName = menuLabel ?? t("team.actions", { name });
 
   if (line) {
     const tail = onToggle && (
@@ -116,8 +120,8 @@ export function SidebarSectionHeader({
         {onMenu && !naming && (
           <button
             type="button"
-            aria-label={t("team.actions", { name })}
-            title={t("team.actions", { name })}
+            aria-label={menuName}
+            title={menuName}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={(event) => onMenu(event.currentTarget)}
@@ -156,6 +160,19 @@ export function SidebarSectionHeader({
           </span>
           {attentionLabel && <span className="sr-only">{attentionLabel}</span>}
         </div>
+      )}
+      {onMenu && !naming && (
+        <button
+          type="button"
+          aria-label={menuName}
+          title={menuName}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={(event) => onMenu(event.currentTarget)}
+          className="flex size-6 shrink-0 items-center justify-center rounded text-ink-secondary hover:bg-raised hover:text-ink aria-expanded:bg-raised aria-expanded:text-ink"
+        >
+          <MoreHorizontal size={13} aria-hidden="true" />
+        </button>
       )}
       {onShare && !naming && (
         <button

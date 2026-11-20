@@ -266,6 +266,22 @@ test("no folder grant reaches a browser's saved passwords, the Windows credentia
   await assert.rejects(executeSharedOperation({ ...grant, folders: [lentHome] }, { folder_id: lentHome.id, action: "read_file", path: "token" }, new AbortController().signal), /Desktop credentials/);
 });
 
+test("no folder grant reaches the keys and sign-ins an OpenMausBot build on the same computer keeps", async t => {
+  const { personalSecretPaths } = await import("./shared-computer-access.mjs");
+  const home = await realpath(await mkdtemp(path.join(tmpdir(), "omb-former-home-")));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const kept = (relative) => path.join(home, ...relative.split("/"));
+  const folders = [".openmausbot", "Library/Application Support/OpenMausBot", "AppData/Roaming/OpenMausBot", ".config/OpenMausBot"];
+  for (const relative of folders) {
+    await mkdir(kept(relative), { recursive: true });
+    await writeFile(path.join(kept(relative), "config.json"), "{\"anthropicApiKey\":\"sk-kept\"}");
+  }
+  const lentHome = { id: randomUUID(), name: "Home", path: home, write: false };
+  const grant = { enabled: true, folders: [lentHome], terminal: false, computer: false, protectedPaths: personalSecretPaths(home) };
+  const run = (operation) => executeSharedOperation(grant, { folder_id: lentHome.id, ...operation }, new AbortController().signal);
+  for (const relative of folders) await assert.rejects(run({ action: "read_file", path: `${relative}/config.json` }), /Desktop credentials/, relative);
+});
+
 test("terminal and computer control are separately off, and revocation fails closed", async t => {
   const { grant, run } = await fixture(t);
   await assert.rejects(run({ action: "run_command", command: "echo no" }), /Terminal access/);
@@ -528,15 +544,15 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n'); });`
 test("a protected directory spelled in another case is still refused", async t => {
   const { dir, folder, grant, run } = await fixture(t);
   if (!(await spellings(dir)).case) return t.skip("this filesystem is case-sensitive, so no case variant names the same directory");
-  await mkdir(path.join(dir, "OpenMausBot"));
-  await writeFile(path.join(dir, "OpenMausBot", "credentials.bin"), "credential blob");
-  grant.protectedPaths = [path.join(dir, "OpenMausBot")];
+  await mkdir(path.join(dir, "MagicBot"));
+  await writeFile(path.join(dir, "MagicBot", "credentials.bin"), "credential blob");
+  grant.protectedPaths = [path.join(dir, "MagicBot")];
   folder.write = true;
-  await assert.rejects(run({ action: "read_file", path: "OpenMausBot/credentials.bin" }), /Desktop credentials/);
-  await assert.rejects(run({ action: "read_file", path: "openmausbot/credentials.bin" }), /Desktop credentials/);
-  await assert.rejects(run({ action: "read_file", path: "OPENMAUSBOT/credentials.bin" }), /Desktop credentials/);
-  await assert.rejects(run({ action: "list_files", path: "openmausbot" }), /Desktop credentials/);
-  await assert.rejects(run({ action: "write_file", path: "openmausbot/computer-sharing.json", content: "{}" }), /sharing settings/);
+  await assert.rejects(run({ action: "read_file", path: "MagicBot/credentials.bin" }), /Desktop credentials/);
+  await assert.rejects(run({ action: "read_file", path: "magicbot/credentials.bin" }), /Desktop credentials/);
+  await assert.rejects(run({ action: "read_file", path: "MAGICBOT/credentials.bin" }), /Desktop credentials/);
+  await assert.rejects(run({ action: "list_files", path: "magicbot" }), /Desktop credentials/);
+  await assert.rejects(run({ action: "write_file", path: "magicbot/computer-sharing.json", content: "{}" }), /sharing settings/);
 });
 
 test("a protected directory spelled in another Unicode normalization is still refused", async t => {
@@ -672,17 +688,17 @@ test("with the whole home folder lent, keys, a browser profile and this app's da
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, content);
     };
-    const secrets = [".ssh/id_ed25519", "Library/Application Support/Google/Chrome/Default/Cookies", ".openmausbot/config.json"];
+    const secrets = [".ssh/id_ed25519", "Library/Application Support/Google/Chrome/Default/Cookies", ".magicbot/config.json"];
     for (const relative of secrets) await put(relative, `fixture ${relative}`);
     await put("Documents/plan.txt", "an ordinary file");
     const stub = stubWorkspace();
     stub.state.work.push(...secrets.map(relative => ({ action: "read_file", path: relative })),
-      { action: "read_file", path: "Library/Application Support/OpenMausBot/computer-sharing.json" },
+      { action: "read_file", path: "Library/Application Support/MagicBot/computer-sharing.json" },
       { action: "read_file", path: "Documents/plan.txt" }, { action: "list_files" });
     // Wired as main wires it: the grants file under the app's own profile, and this app's data folder in protectedPaths.
     sharing = createComputerSharing({
-      file: path.join(home, "Library", "Application Support", "OpenMausBot", "computer-sharing.json"), fetch: stub.fetchImpl, home,
-      environments: () => [stub.env], enabled: async () => true, cuaConnection: async () => null, protectedPaths: [path.join(home, ".openmausbot")],
+      file: path.join(home, "Library", "Application Support", "MagicBot", "computer-sharing.json"), fetch: stub.fetchImpl, home,
+      environments: () => [stub.env], enabled: async () => true, cuaConnection: async () => null, protectedPaths: [path.join(home, ".magicbot")],
     });
     const info = await sharing.identity(stub.env);
     // Lent as the picker lends it after its warning: the home folder itself, read only even when edits are asked for.
@@ -697,7 +713,7 @@ test("with the whole home folder lent, keys, a browser profile and this app's da
     assert.equal(results[secrets.length + 1].isError, undefined);
     assert.equal(payload(results[secrets.length + 1]).content, "an ordinary file");
     const listed = Object.fromEntries(payload(results[secrets.length + 2]).entries.map(({ name, type }) => [name, type]));
-    assert.deepEqual([listed[".ssh"], listed[".openmausbot"], listed.Documents], ["protected", "protected", "directory"]);
+    assert.deepEqual([listed[".ssh"], listed[".magicbot"], listed.Documents], ["protected", "protected", "directory"]);
   } finally {
     sharing?.close();
     for (const [name, value] of Object.entries(saved)) if (value === undefined) delete process.env[name]; else process.env[name] = value;
@@ -708,11 +724,11 @@ test("with the whole home folder lent, keys, a browser profile and this app's da
 test("the harness data directory is protected through a broad share", async t => {
   const { dir } = await fixture(t);
   const shared = path.join(dir, "share");
-  const dataDir = path.join(shared, ".openmausbot");
+  const dataDir = path.join(shared, ".magicbot");
   await mkdir(dataDir, { recursive: true });
   await writeFile(path.join(dataDir, "config.json"), JSON.stringify({ anthropicApiKey: "sk-fixture" }));
   const stub = stubWorkspace();
-  stub.state.work.push({ action: "read_file", path: ".openmausbot/config.json" });
+  stub.state.work.push({ action: "read_file", path: ".magicbot/config.json" });
   const sharing = createComputerSharing({
     file: path.join(dir, "profile", "computer-sharing.json"), fetch: stub.fetchImpl,
     environments: () => [stub.env], enabled: async () => true, cuaConnection: async () => null, protectedPaths: [dataDir],
@@ -734,7 +750,7 @@ test("a harness data directory that does not exist yet still saves and connects"
   stub.state.work.push({ action: "read_file", path: "note.txt" });
   const sharing = createComputerSharing({
     file: path.join(dir, "profile", "computer-sharing.json"), fetch: stub.fetchImpl,
-    environments: () => [stub.env], enabled: async () => true, cuaConnection: async () => null, protectedPaths: [path.join(dir, "never-installed", ".openmausbot")],
+    environments: () => [stub.env], enabled: async () => true, cuaConnection: async () => null, protectedPaths: [path.join(dir, "never-installed", ".magicbot")],
   });
   t.after(() => sharing.close());
   const info = await sharing.identity(stub.env);

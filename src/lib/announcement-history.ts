@@ -20,7 +20,7 @@ export interface HistoryFacts {
   branded: boolean;
   /** An organization runs this desktop; null while that is read. */
   organization: boolean | null;
-  /** This desktop's own page, which sells MausBot Cloud (its Cloud sign-in). */
+  /** This desktop's own page, which sells MagicBot Cloud (its Cloud sign-in). */
   cloudSale: boolean;
   /** This page shows the Cloud's own cards: This computer's page with its sign-in, or a Cloud's page in the desktop. */
   cloudCards: boolean;
@@ -60,7 +60,7 @@ export interface BuiltInAnnouncement {
 const everywhere = (facts: HistoryFacts) => !facts.branded && facts.organization === false;
 
 export const BUILT_IN_ANNOUNCEMENTS: readonly BuiltInAnnouncement[] = [
-  { id: TEAMS_NOTICE, date: "2026-11-17", title: "teamsNew.title", body: "teamsNew.sharedBot", mark: "teams", for: everywhere, open: { modal: "teams" } },
+  { id: TEAMS_NOTICE, date: "2026-11-17", title: "teamsNew.title", body: "teamsNew.sharedBot", mark: "teams", for: facts => everywhere(facts) && facts.cloudSale, open: { modal: "teams" } },
   { id: MODELGO_OFFER_NOTICE, date: "2026-11-11", title: "modelgoOffer.title", body: "modelgoOffer.line", mark: "modelgo", for: facts => facts.sponsors && facts.modelgo && !facts.branded,
     open: { buttons: [{ label: "modelgoOffer.getKey", action: { open_url: MODELGO_URL } }] } },
   { id: GROK_MOVE_NOTICE, date: "2026-11-04", title: "settings.import.grokTitle", body: "grokMove.popup.body", mark: "grok",

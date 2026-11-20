@@ -3,6 +3,7 @@
 import type { ServerResponse } from "node:http";
 
 import type { json as sendJson } from "../harness/http.ts";
+import { teamProjectAllows } from "../peer-roster.ts";
 import { PASS } from "../routes/table.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import type { BotRecord, Store } from "../store.ts";
@@ -81,7 +82,7 @@ export function createCloudComputerResetAsks(deps: CloudComputerResetAsksDeps) {
   async function start(from: BotRecord, threadId: string, body: Record<string, unknown>): Promise<Reply> {
     const targetId = typeof body.targetBotId === "string" && body.targetBotId.trim() ? body.targetBotId.trim() : from.id;
     const target = store.bot(targetId);
-    if (!target) return { status: 404, body: { error: "No bot has that id. Use list_bots for teammate ids." } };
+    if (!target || !teamProjectAllows(from, target)) return { status: 404, body: { error: "No bot has that id. Use list_bots for teammate ids." } };
     const refused = deps.refusal(from, target);
     if (refused) return { status: 403, body: { error: refused } };
     const why = typeof body.why === "string" ? body.why.trim().slice(0, WHY_LIMIT) : "";

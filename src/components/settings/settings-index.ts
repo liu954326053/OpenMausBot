@@ -1,5 +1,5 @@
 import {
-  Archive, ArrowLeftRight, Bot, Coins, CreditCard, LockKeyhole, Monitor, Palette, Server, SlidersHorizontal, Smartphone, Sparkles, Users,
+  Archive, ArrowLeftRight, Bot, Coins, CreditCard, LayoutTemplate, LockKeyhole, Monitor, Palette, Server, SlidersHorizontal, Smartphone, Sparkles, Users,
   type LucideIcon,
 } from "lucide-react";
 import type { LocaleKey } from "@/locales";
@@ -17,7 +17,7 @@ export interface SettingsContext {
   /** main says this page is the app's home (home:page): This computer's page, or My Cloud's own page once it is home.
    * The one source for whether This app's rows (Open at login, Logs and diagnostics) and the account live here. */
   home: boolean;
-  /** a MausBot Cloud's page, personal or a team's */
+  /** a MagicBot Cloud's page, personal or a team's */
   cloud: boolean;
   team: boolean;
   /** this app drives another computer (paired-client mode) */
@@ -49,7 +49,7 @@ const notClient = (ctx: SettingsContext) => !ctx.client;
 const adminPage = (ctx: SettingsContext) => !ctx.client && !(ctx.team && !ctx.admin);
 /** A page Simple mode leaves out: its everyday rows show elsewhere in Simple (Overview, This app, Plan & billing). */
 const advancedOnly = (when: (ctx: SettingsContext) => boolean) => (ctx: SettingsContext) => ctx.advanced && when(ctx);
-/** Simple mode's ten entries: the place (Overview, Phone & devices, AI, Vault, Spending, Import & export), Your account
+/** Simple mode's eleven entries: the place (Overview, Phone & devices, AI, Templates, Vault, Spending, Import & export), Your account
  * (Plan & billing) and This app (Appearance). Advanced adds You and your bots, Desktops & browser, Data and General. */
 export const ADVANCED_PAGES: readonly SettingsPageId[] = ["bots", "desktops", "data", "general"];
 
@@ -61,6 +61,8 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
     synonyms: ["ai", "models", "model providers", "providers", "engines", "api keys", "keys", "key", "claude", "codex", "openai", "anthropic", "ollama", "lm studio", "local model"] },
   { id: "bots", owner: "place", labelKey: "settings.page.bots", icon: Bot, when: advancedOnly(notClient),
     synonyms: ["all bots", "bots", "about you", "about me", "profile", "new bots", "defaults", "effort", "limits", "rules"] },
+  { id: "templates", owner: "place", labelKey: "settings.page.templates", icon: LayoutTemplate, when: adminPage,
+    synonyms: ["templates", "template", "bot template", "team template", "roles", "role", "lead", "members", "genre", "drama", "short drama"] },
   { id: "desktops", owner: "place", labelKey: "settings.page.desktops", icon: Monitor, when: advancedOnly(adminPage),
     synonyms: ["bot desktops", "computer", "desktop", "desktops", "browser", "built-in browser", "proxy", "socks5", "private desktop", "sandbox", "docker", "podman", "container", "vps", "own server", "cloud desktops"] },
   { id: "vault", owner: "place", labelKey: "settings.section.vault", icon: LockKeyhole, when: notClient,
@@ -218,6 +220,8 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: "backup-export", page: "transfer", anchor: "take-out", labelKey: "backup.export", sectionKey: "settings.data.takeOut", topFor: ["backup", "backups", "export"], synonyms: ["full backup", "download"] },
   { id: "take-out", page: "transfer", anchor: "take-out", labelKey: "settings.data.takeOut", synonyms: ["export", "backup"] },
   { id: "move", page: "transfer", anchor: "move", labelKey: "settings.data.move", when: hereOnly, topFor: ["keep here", "move back", "bring back", "move to cloud"] },
+  { id: "projects-root", page: "data", anchor: "projects", labelKey: "teamProjects.settings.root", sectionKey: "teamProjects.settings.group", topFor: ["projects root", "project folder"], synonyms: ["project", "projects", "root", "new project"] },
+  { id: "archived-projects", page: "data", anchor: "archived-projects", labelKey: "teamProjects.settings.archived", synonyms: ["archive", "archived", "restore project"] },
   { id: "storage", page: "data", anchor: "storage", labelKey: "settings.data.storage", synonyms: ["attachments", "clear attachments", "event log", "cleanup", "retention"] },
   { id: "activity", page: "data", anchor: "activity", labelKey: "settings.section.activity", when: browserAdmin, topFor: ["activity", "audit", "audit log"], synonyms: ["history", "who did what"] },
   { id: "members", page: "people", anchor: "members", labelKey: "settings.people.members", synonyms: ["invite", "roles", "admins"] },

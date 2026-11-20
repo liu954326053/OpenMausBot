@@ -1,7 +1,7 @@
 // Learned-skill files on disk: SKILL.md plus at most MAX_SKILL_REFERENCES references/<topic>.md files,
 // published as one immutable reviewed revision and never read through a symlink.
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
@@ -129,9 +129,46 @@ function sameDirectoryIdentity(path: string, expected: { dev: number; ino: numbe
   return current?.dev === expected.dev && current.ino === expected.ino;
 }
 
+/** A project bot's skills can be on another volume than the app's data folder, where no rename reaches: the reviewed
+ * files are then written beside the target and published there as one rename. Known open risk: that copy is made where
+ * the agent can write; the caller's check of the published directory against the approval card catches a change to it. */
+function publishPrepared(prepared: string, target: string, files: ReadonlyArray<{ path: string; content: string }>, inProjectFolder: boolean): void {
+  try {
+    renameSync(prepared, target);
+    return;
+  } catch (error) {
+    if (!inProjectFolder || (error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+  }
+  const beside = join(dirname(target), `.publish-${randomUUID()}`);
+  try {
+    mkdirSync(beside, { mode: 0o700 });
+    for (const file of files) {
+      const path = join(beside, file.path);
+      if (directoryEntryState(dirname(path)) === "missing") mkdirSync(dirname(path), { mode: 0o700 });
+      writeFileAtomic(path, file.content, { mode: 0o600 });
+    }
+    renameSync(beside, target);
+  } catch (error) {
+    rmSync(beside, { recursive: true, force: true });
+    throw error;
+  }
+  rmSync(prepared, { recursive: true, force: true });
+}
+
+/** Removes a link on another volume than the app's data folder, where no rename into quarantine reaches. Known open
+ * risk: unlink takes whatever is at the path now; it removes a link or a file, never a folder. */
+export function unlinkInPlace(path: string): "removed" | "retry" {
+  try {
+    unlinkSync(path);
+    return "removed";
+  } catch {
+    return "retry";
+  }
+}
+
 /** The manifest selects this revision in a separate atomic write, so a crash never half-replaces a skill. */
 export function publishReviewedRevision(
-  dirs: { state: string; ensureSkillsRoot: () => string | null },
+  dirs: { state: string; ensureSkillsRoot: () => string | null; inProjectFolder?: boolean; rootProblem?: () => string | null },
   stageId: string,
   files: Array<{ path: string; content: string }>,
   sha256: string,
@@ -177,7 +214,7 @@ export function publishReviewedRevision(
   }
 
   const root = dirs.ensureSkillsRoot();
-  if (!root) throw new Error("the workspace skills path must be a real directory, not a symlink or file");
+  if (!root) throw new Error(dirs.rootProblem?.() ?? "the workspace skills path must be a real directory, not a symlink or file");
   const rootIdentity = directoryIdentity(root);
   if (!rootIdentity) throw new Error("the workspace skills path changed during update");
   const revisions = join(root, ".revisions");
@@ -201,7 +238,7 @@ export function publishReviewedRevision(
     throw new Error("the workspace skills path changed during update");
   }
 
-  renameSync(prepared, target);
+  publishPrepared(prepared, target, files, dirs.inProjectFolder === true);
   if (
     !sameDirectoryIdentity(root, rootIdentity) ||
     !sameDirectoryIdentity(revisions, revisionsIdentity) ||

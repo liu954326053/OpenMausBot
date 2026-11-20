@@ -21,6 +21,8 @@ import { computerAskWords } from "@/lib/computer-ask";
 import { mcpRequestActionLabel } from "@/lib/mcp-request-label";
 import { TriggerCard } from "./TriggerCard";
 import { CardHint } from "./CardHint";
+import { teamProjectProposalOutcome } from "./team-project-proposal/outcome";
+import { TeamProjectProposalDetails } from "./team-project-proposal/TeamProjectProposalDetails";
 
 interface ToolLabels {
   [tool: string]: LocaleKey;
@@ -82,15 +84,19 @@ const staleRoutineCard = (card: OptionCardData) => Boolean(card.routineRequest &
 
 /** Cards whose server-written title and first option say what approving does. */
 export const titledCard = (card: OptionCardData | undefined) =>
-  Boolean(card?.teamSetupRequest || card?.mcpRequest || card?.lendingLift || isSkillSwitchAction(card?.skillRequest?.action));
+  Boolean(card?.teamSetupRequest || card?.mcpRequest || card?.lendingLift || isSkillSwitchAction(card?.skillRequest?.action)
+    || card?.teamProjectProposal);
 
 export function titledCardAction(card: OptionCardData): string {
+  if (card.teamProjectProposal) return t("teamProjectProposal.create");
   if (card.mcpRequest) return mcpRequestActionLabel(card.mcpRequest.action);
   if (card.teamSetupRequest) return t(card.teamSetupRequest.deletion ? "approval.action.deleteBot" : "approval.action.applySetup");
   return card.options[0] ?? t("approval.action.confirm");
 }
 
 export function approvalCardOutcome(card: OptionCardData): string | undefined {
+  const project = teamProjectProposalOutcome(card);
+  if (project) return project;
   const isProposal = Boolean(card.routineRequest || card.skillRequest || card.profileRequest || card.modelRequest || titledCard(card));
   if (card.expired === true || staleRoutineCard(card)) return t(isProposal || !card.tool ? "approval.status.expired" : "approval.status.timedOut");
   if (!card.answered) return undefined;
@@ -536,7 +542,7 @@ export function ApprovalCard({
       data-tour={settled || expired ? undefined : "approval"}
       className={cn(
         "w-full max-w-[840px] rounded-2xl border bg-card p-4",
-        settled || expired ? "border-hairline/30 opacity-70" : "border-accent/40",
+        settled || expired ? cn("border-hairline/30", card.teamProjectProposal?.result?.state !== "created" && "opacity-70") : "border-accent/40",
       )}
     >
       <div className="flex items-baseline justify-between gap-3">
@@ -553,7 +559,7 @@ export function ApprovalCard({
       </div>
       {outbound?.summary && <div className="mt-0.5 text-[13px] text-ink-secondary">{outbound.summary}</div>}
 
-      <pre
+      {card.teamProjectProposal ? <TeamProjectProposalDetails proposal={card.teamProjectProposal} /> : <pre
         tabIndex={0}
         aria-label={
           isRoutineRequest
@@ -567,7 +573,7 @@ export function ApprovalCard({
         className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-inset px-3 py-2 font-mono text-[13px] leading-relaxed text-ink"
       >
         {approvalDetailText(card)}
-      </pre>
+      </pre>}
 
       {card.skillRequest && <SkillRequestPreview request={card.skillRequest} />}
 
@@ -586,7 +592,7 @@ export function ApprovalCard({
         ) : (
           <>
             <ShieldCheck size={14} className="text-accent" />
-            {isRoutineRequest || isSkillRequest || isProfileRequest || titled
+            {card.teamProjectProposal ? t("teamProjectProposal.waiting") : isRoutineRequest || isSkillRequest || isProfileRequest || titled
               ? t("approval.status.waitingConfirmation")
               : t("approval.status.waitingAnswer")}
           </>

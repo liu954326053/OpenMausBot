@@ -1,9 +1,9 @@
 ---
 name: openmausbot-docs
-description: "Answer how OpenMausBot itself works and how to change it: settings, the data folder, approval levels, routines, engines, skills, teams, memory and self-hosting. Use when the question is about the app, not about the person's own project."
+description: "Answer how MagicBot itself works and how to change it: settings, the data folder, approval levels, routines, engines, skills, teams, memory and self-hosting. Use when the question is about the app, not about the person's own project."
 ---
 
-# OpenMausBot, documented
+# MagicBot, documented
 
 Answer from this install and from the app's own docs, in that order. Never
 describe a setting from memory: read the setting, the file, or the page.
@@ -12,7 +12,7 @@ describe a setting from memory: read the setting, the file, or the page.
   setting's live value and where it is in Settings, and `set` changes it the
   way the app does (a key goes through its secure card). Use the files below
   only for what it does not cover.
-- **This install.** Every setting is a file under `~/.openmausbot/`, and
+- **This install.** Every setting is a file under `~/.magicbot/`, and
   `OMB_DATA_DIR` moves that folder. The file says what is set right now, unless
   an environment variable overrides it: the environment wins, because it is
   applied after `config.json` is read (`OPENAI_COMPAT_URL` over

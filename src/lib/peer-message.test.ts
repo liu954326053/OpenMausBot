@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { peerExchange, peerLine, peerPreview, peerRequest } from "./peer-message";
 
-const NOTE = (opening: string, name: string, rest: string) =>
-  `[${opening} @${name}, another bot in this OpenMausBot workspace${rest}]`;
+const NOTE = (opening: string, name: string, rest: string, product = "OpenMausBot") =>
+  `[${opening} @${name}, another bot in this ${product} workspace${rest}]`;
 
 describe("peerLine", () => {
   it("is null for the person's own line and for bot lines", () => {
@@ -31,6 +31,13 @@ describe("peerLine", () => {
     expect(peerLine({ role: "user", text: `${NOTE("Thread opened by", "Pam", " — x")}\n\nJob.` })?.delivery).toBe(
       "start_thread",
     );
+  });
+
+  it("reads a stored note under either product name", () => {
+    for (const product of ["OpenMausBot", "MagicBot"]) {
+      expect(peerLine({ role: "user", text: `${NOTE("Message from", "Chief", " — x", product)}\n\nHi.` })).toEqual({ name: "Chief", delivery: "ask_bot", body: "Hi." });
+    }
+    expect(peerLine({ role: "user", text: `${NOTE("Message from", "Chief", " — x", "Other")}\n\nHi.` })).toBeNull();
   });
 
   it("keeps the field's author when the text has no note, and carries unattended", () => {

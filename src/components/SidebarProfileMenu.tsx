@@ -4,6 +4,7 @@ import {
   Archive,
   ArrowDownToLine,
   ArrowLeftRight,
+  BookOpen,
   Check,
   CreditCard,
   Cloud,
@@ -21,6 +22,7 @@ import {
   FolderTree,
   RefreshCw,
   Rocket,
+  Server,
   Settings as SettingsIcon,
   Smartphone,
   UserRound,
@@ -43,7 +45,9 @@ import type { WorkspacePlace } from "./DesktopWorkspaceSwitcher";
 import { railShown, usePlaces } from "@/lib/places";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useAutomationsNeedYou } from "./SidebarFooterNav";
+import { mcpOpen } from "@/lib/apps-panel";
 import { useCloudFilesReady } from "@/lib/cloud-files";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
 import { api, useStore, type Action, type AppSettingsSection } from "@/state/store";
 import { serverCheckPhase, serverUpdateRow, type ServerUpdateCheck, type ServerUpdatePhase } from "@/lib/server-update";
@@ -310,7 +314,7 @@ export function phoneDevicesItem(state: PhonePlaceState, place: string, onSelect
   };
 }
 
-export function toolMenuItems({ activeView, automationsNeedYou, onAutomations, onTeamMap, onFiles, onPublishedApps, onTeamFiles, archived }: {
+export function toolMenuItems({ activeView, automationsNeedYou, onAutomations, onTeamMap, onFiles, onPublishedApps, onSkillsLibrary, mcp, onTeamFiles, archived }: {
   activeView: string;
   automationsNeedYou: boolean;
   onAutomations: () => void;
@@ -318,6 +322,9 @@ export function toolMenuItems({ activeView, automationsNeedYou, onAutomations, o
   /** set once My Cloud's files are ready to open */
   onFiles?: () => void;
   onPublishedApps?: () => void;
+  /** set while the skills library is on */
+  onSkillsLibrary?: () => void;
+  mcp?: { open: boolean; onSelect: () => void };
   /** set only on a Team Cloud: its shared folder */
   onTeamFiles?: () => void;
   archived?: ArchivedBots;
@@ -327,6 +334,8 @@ export function toolMenuItems({ activeView, automationsNeedYou, onAutomations, o
     { key: "team-map", label: t("sidebar.nav.teamMap"), icon: <UsersRound size={16} />, active: activeView === "team-map", onSelect: onTeamMap },
     ...(onFiles ? [{ key: "files", label: t("sidebar.nav.files"), icon: <FolderOpen size={16} />, active: activeView === "files", onSelect: onFiles }] : []),
     ...(onPublishedApps ? [{ key: "published-apps", label: t("sidebar.nav.publishedApps"), icon: <Rocket size={16} />, active: activeView === "published-apps", onSelect: onPublishedApps }] : []),
+    ...(onSkillsLibrary ? [{ key: "skills-library", label: t("skills.library.title"), icon: <BookOpen size={16} />, active: activeView === "skills-library", onSelect: onSkillsLibrary }] : []),
+    ...(mcp ? [{ key: "mcp", label: t("connectors.tab.mcp"), icon: <Server size={16} />, active: mcp.open, onSelect: mcp.onSelect }] : []),
     ...(onTeamFiles ? [{ key: "team-files", label: t("sidebar.nav.teamFiles"), icon: <FolderTree size={16} />, active: activeView === "team-files", onSelect: onTeamFiles }] : []),
     ...(archived?.count ? [{ key: "archived", label: t("sidebar.archived.title"), icon: <Archive size={16} />, value: String(archived.count), onSelect: archived.open }] : []),
   ];
@@ -609,6 +618,8 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
         onTeamMap: () => dispatch({ type: "showTeamMap" }),
         onFiles: filesReady ? () => dispatch({ type: "showFiles" }) : undefined,
         onPublishedApps: () => dispatch({ type: "showPublishedApps" }),
+        onSkillsLibrary: skillsLibraryEnabled(state.config) ? () => dispatch({ type: "showSkillsLibrary" }) : undefined,
+        mcp: { open: mcpOpen(state), onSelect: () => dispatch({ type: "togglePlugins", open: true, surface: "mcp" }) },
         onTeamFiles: state.config?.team ? () => dispatch({ type: "showTeamFiles" }) : undefined,
         archived: account?.archived,
       }),
@@ -623,7 +634,7 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
     onFeedback: () => void openExternalLink(FEEDBACK_URL),
     onWhatsNew: () => void openExternalLink(RELEASES_URL),
     announcements: { unread: news.unread, active: state.activeView === "announcements", onSelect: () => dispatch({ type: "showAnnouncements" }) },
-    // Every Sign out asks first: "Sign out of MausBot?" and what keeps running.
+    // Every Sign out asks first: "Sign out of MagicBot?" and what keeps running.
     signOut: accounts.view?.active ? null
       : !desktop && session?.kind === "session" ? () => setSigningOut("browser")
       : desktop && !remote && window.ogb?.cloudAccount && summary.signedIn ? () => setSigningOut("desktop")

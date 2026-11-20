@@ -48,9 +48,9 @@ describe("Windows path destinations", () => {
   });
 
   it("leaves other destinations, titles and prose to ordinary Markdown escaping", () => {
-    const result = parsed("[a](docs/\\_notes.md \"C:\\.title\") [b](/Users/maus/\\.x) C:\\Users\\Maus\\.openmausbot");
+    const result = parsed("[a](docs/\\_notes.md \"C:\\.title\") [b](/Users/maus/\\.x) C:\\Users\\Maus\\.magicbot");
     expect(result.urls).toEqual(["docs/_notes.md", "/Users/maus/.x"]);
     expect(result.titles).toEqual(["C:.title"]);
-    expect(result.text).toContain("C:\\Users\\Maus.openmausbot");
+    expect(result.text).toContain("C:\\Users\\Maus.magicbot");
   });
 });

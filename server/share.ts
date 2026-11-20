@@ -46,6 +46,8 @@ export class ShareError extends Error {
   }
 }
 
+export type ShareTarget = { scope: "bot"; bot: BotRecord } | { scope: "department"; section: string; bots: readonly BotRecord[] };
+
 export interface ShareHostDeps {
   dataDir: string;
   bots(): readonly BotRecord[];
@@ -62,6 +64,9 @@ export interface ShareHostDeps {
   picture(bot: BotRecord): string | undefined;
   /** The bot's own folder, where a template it makes is written for it to read and edit. */
   botFolder(botId: string): string;
+  /** Makes that folder ready before a template is written there; throws when it cannot be used now. Answers how to make
+   * a folder inside it when no level may be made with a recursive mkdir (a project bot's: its project folder can go away). */
+  prepareBotFolder?(botId: string): ((path: string) => void) | null;
   publisher: CommunityPublisher;
   /** Re-draws a template card already in a conversation. */
   patch(threadId: string, messageId: string, text: string, card: TemplateCard): void;
@@ -182,12 +187,16 @@ export function readFolderFromDisk(chosen: string): ShareFolderFiles {
   return files;
 }
 
-export function writeFolder(dir: string, files: Record<string, string | Uint8Array>): void {
-  mkdirSync(dir, { recursive: true });
+function makeEveryLevel(path: string): void {
+  mkdirSync(path, { recursive: true });
+}
+
+export function writeFolder(dir: string, files: Record<string, string | Uint8Array>, makeFolder = makeEveryLevel): void {
+  makeFolder(dir);
   for (const [path, value] of Object.entries(files)) {
     const target = join(dir, ...path.split("/"));
     if (!inside(dir, target)) continue;
-    mkdirSync(join(target, ".."), { recursive: true });
+    makeFolder(join(target, ".."));
     writeFileSync(target, value);
   }
 }
@@ -311,13 +320,14 @@ export function createShareHost(deps: ShareHostDeps) {
     return card;
   };
 
-  function build(target: { scope: "bot"; bot: BotRecord } | { scope: "department"; section: string; bots: readonly BotRecord[] }, routines: readonly Routine[]) {
+  function build(target: ShareTarget, routines: readonly Routine[], carries?: (bot: BotRecord, skill: string) => boolean) {
     const bots = target.scope === "bot"
       ? [{ ...target.bot, section: undefined, chiefOfStaff: false }]
       : target.bots.filter((bot) => !bot.hidden && (bot.section?.trim() ?? "") === target.section);
     if (!bots.length) throw new ShareError("This department has no bots to share.");
     const skills = deps.collectTeamSkills(bots, "all");
     if (!skills.ok) throw new ShareError(skills.error);
+    if (carries) for (const bot of bots) skills.skillsByBot.set(bot.id, (skills.skillsByBot.get(bot.id) ?? []).filter((skill) => carries(bot, skill.name)));
     const fileSkips = new Set<string>();
     for (const bot of bots) {
       for (const skill of skills.skillsByBot.get(bot.id) ?? []) {
@@ -373,13 +383,20 @@ export function createShareHost(deps: ShareHostDeps) {
         ...(agent.appearance.mascotBody ? { mascotBody: agent.appearance.mascotBody } : {}),
       };
     });
-    return { document, redacted: redacted + exported.redacted.length, skipped: [...exported.skipped.map(skipWords), ...fileSkips], avatars: avatarsShown };
+    return { document, redacted: redacted + exported.redacted.length, skipped: [...exported.skipped.map(skipWords), ...fileSkips], avatars: avatarsShown, keys: exported.published.keys.bots };
   }
 
   return {
+    /** What `export` would write, with nothing written or recorded, and each bot's key in it by the bot's id. `carries`
+     * picks the skills that travel as copies; without it every skill a bot uses does. */
+    document(target: ShareTarget, routines: readonly Routine[], carries?: (bot: BotRecord, skill: string) => boolean): { document: PackageDocument; keys: Readonly<Record<string, string>> } {
+      const { document, keys } = build(target, routines, carries);
+      return { document, keys };
+    },
+
     /** Makes (or makes again, in the same folder) the template of a bot or a department. `writer` is the bot whose own
      * folder receives it: the bot itself, or the Chief that shares its department; none for the department's Share. */
-    export(target: { scope: "bot"; bot: BotRecord } | { scope: "department"; section: string; bots: readonly BotRecord[] }, routines: readonly Routine[], writer?: BotRecord): { card: TemplateCard; dir: string; document: PackageDocument } {
+    export(target: ShareTarget, routines: readonly Routine[], writer?: BotRecord): { card: TemplateCard; dir: string; document: PackageDocument } {
       const built = build(target, routines);
       const botId = target.scope === "bot" ? target.bot.id : writer?.id;
       const section = target.scope === "department" ? target.section : undefined;
@@ -387,6 +404,7 @@ export function createShareHost(deps: ShareHostDeps) {
         (target.scope === "bot" ? record.botId === botId : record.section === section && record.botId === botId));
       const id = existing?.id ?? randomBytes(8).toString("hex");
       const slug = built.document.package.id;
+      const makeFolder = (botId && deps.prepareBotFolder?.(botId)) || undefined;
       const dir = botId ? join(deps.botFolder(botId), "templates", slug) : join(deps.dataDir, "share", id, slug);
       if (existing && existing.dir !== dir && ownFolder(existing)) rmSync(existing.dir, { recursive: true, force: true });
       if (botId) {
@@ -394,7 +412,7 @@ export function createShareHost(deps: ShareHostDeps) {
         if (existsSync(templates) && lstatSync(templates).isSymbolicLink()) rmSync(templates, { force: true });
       }
       rmSync(dir, { recursive: true, force: true });
-      writeFolder(dir, writeShareFolder(built.document, target.scope));
+      writeFolder(dir, writeShareFolder(built.document, target.scope), makeFolder);
       const record: TemplateRecord = existing ?? {
         id, scope: target.scope, ...(botId ? { botId } : {}), ...(section !== undefined ? { section } : {}), dir, slug, status: "draft",
         redacted: 0, skipped: [], avatars: [], cards: [], updatedAt: Date.now(),

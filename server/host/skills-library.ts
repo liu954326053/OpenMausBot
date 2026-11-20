@@ -16,6 +16,7 @@ import { nativeSkillListing, nativeSkills, projectSkillListing, projectSkills, p
 import { redactSecretsInText } from "../redact.ts";
 import { readSectionContext } from "../section-context.ts";
 import { librarySkillOptOuts, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, skillsLibraryEnabled } from "../skill-library.ts";
+import { libraryOfferPrompt, listedOffers, offeredSkillViews } from "../skill-library-offer.ts";
 import { librarySkillFiles, ownSkillFiles, type StoredSkillFiles } from "../skill-side-files.ts";
 import {
   conversationAssignedSkills,
@@ -143,10 +144,16 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
   const liveAssigned = (bot: BotRecord) => store.bot(bot.id)?.assignedSkills ?? bot.assignedSkills ?? [];
   const conversationSkills = (bot: BotRecord, threadId: string): string[] | undefined =>
     skillsLibraryEnabled(cfg) ? conversationAssignedSkills(bot.id, liveAssigned(bot), conversationStartedAt(threadId)) : undefined;
+  /** The library's skills on offer to the bot; none while the library is off (`assigned` undefined). */
+  const offersFor = (bot: BotRecord, assigned: readonly string[] | undefined): ImportedSkillView[] =>
+    assigned === undefined ? [] : offeredSkillViews(bot.id, assigned, new Set(listSkills(bot.id).map((skill) => skill.name)));
+  /** The ones of those the bot's prompt lists; it searches for the rest. */
+  const listedOffersFor = (bot: BotRecord, offers: readonly ImportedSkillView[]) => listedOffers(offers, aboutBot(bot));
   const turnSkillFiles = (bot: BotRecord, threadId: string, instance?: TurnInstance): string[] => {
     const assigned = skillsLibraryEnabled(cfg) ? liveAssigned(bot) : undefined;
     const names = resolveBotSkills(bot.id, assigned).filter((skill) => skill.enabled).map((skill) => skill.name);
     return [...new Set([...enabledSkillFiles(bot.id, names, assigned).values(),
+      ...listedOffersFor(bot, offersFor(bot, assigned)).map((skill) => skill.file),
       ...importsFor(bot, conversationSkills(bot, threadId), instance).map((skill) => skill.file),
       ...importsFor(bot, assigned, instance).map((skill) => skill.file)])];
   };
@@ -163,7 +170,7 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
   /** This computer's skills for one turn: after the bot's own and library skills (`assigned`), less what the turn's
    * engine already loads from the same folder. */
   const importsFor = (bot: BotRecord, assigned: readonly string[] | undefined, instance: TurnInstance | undefined): ImportedSkillView[] =>
-    importedSkillsFor(bot.id, new Set(resolveBotSkills(bot.id, assigned).map((skill) => skill.name)),
+    importedSkillsFor(bot.id, new Set([...resolveBotSkills(bot.id, assigned), ...offersFor(bot, assigned)].map((skill) => skill.name)),
       nativeSkillFolders(engineOf(instance), { claudeUserSkills: claudeUserSkillsEnabled(cfg) }));
   /** The ones of those the turn's prompt lists and links into its task folder; it searches for the rest. */
   const listedImports = (bot: BotRecord, available: readonly ImportedSkillView[]) => listedImportedSkills(bot.id, available, aboutBot(bot));
@@ -198,7 +205,7 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
   const projectInUse = (bot: BotRecord, threadId: string, cwd: string | null | undefined, instance: TurnInstance | undefined, assigned: readonly string[] | undefined): NativeSkill[] => {
     const folder = cwd === undefined ? threadFolder(bot, threadId) : cwd;
     const names = new Set([
-      ...resolveBotSkills(bot.id, assigned).map((skill) => skill.name), ...Object.keys(readImportedSkills()),
+      ...resolveBotSkills(bot.id, assigned).map((skill) => skill.name), ...offersFor(bot, assigned).map((skill) => skill.name), ...Object.keys(readImportedSkills()),
       ...nativesFor(bot, threadId, instance, folder).map((skill) => skill.name),
     ]);
     return projectFor(bot, threadId, folder, instance).filter((skill) => !names.has(skill.name));
@@ -206,6 +213,13 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
 
   const editable = (botId: string, name: string): boolean =>
     mode() !== "off" && sharedSkillEditable(botId, store.bot(botId)?.assignedSkills, name);
+
+  const harnessListing = (botId: string, skills: SkillListing[]): Array<SkillListing & { revision?: string }> => {
+    if (mode() === "off") return skills;
+    return skills.map((skill) => !skill.editable && editable(botId, skill.name)
+      ? { ...skill, editable: true, revision: skill.sha256.slice(0, SHARED_REVISION_CHARS) }
+      : skill);
+  };
 
   function summaryLine(share: SkillShareRecord): string {
     const mates = share.assigned.map((bot) => bot.name);
@@ -300,15 +314,18 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
 
     conversationSkills,
 
-    /** A turn's skills index, or the preview's without a thread: the bot's own and library skills, then the ones from
-     * this computer, then the ones the project in `cwd` ships, each with a budget of its own. */
+    /** A turn's skills index, or the preview's without a thread: the bot's own and library skills, then the library's
+     * skills on offer to every bot, then the ones from this computer, then the ones the project in `cwd` ships, each
+     * with a budget of its own. */
     skillsIndex(bot: BotRecord, threadId: string | undefined, instance?: TurnInstance, cwd?: string | null): string {
       const assigned = threadId === undefined ? (skillsLibraryEnabled(cfg) ? bot.assignedSkills ?? [] : undefined) : conversationSkills(bot, threadId);
       const available = importsFor(bot, assigned, instance);
       const listed = listedImports(bot, available);
       const thread = threadId ?? bot.threadId;
       const project = thread ? projectInUse(bot, thread, cwd, instance, assigned) : [];
+      const offers = offersFor(bot, assigned), listedOffer = listedOffersFor(bot, offers);
       return skillsSystemPrompt(bot.id, assigned, threadId === undefined ? undefined : conversationStartedAt(threadId)) +
+        libraryOfferPrompt(listedOffer, offers.length - listedOffer.length) +
         importedSkillsPrompt(listed, available.length - listed.length) + projectSkillsPrompt(project);
     },
 
@@ -339,6 +356,7 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
       const add = (skills: readonly ImportedSkillView[]) => {
         for (const skill of skills) if (mentioned.includes(skill.name) && !files.has(skill.name)) files.set(skill.name, skill.file);
       };
+      if (files.size < mentioned.length) add(offersFor(bot, assigned));
       if (files.size < mentioned.length) add(importsFor(bot, assigned, instance));
       const engine = files.size < mentioned.length ? engineOf(instance ?? deps.instanceOf?.(bot.modelSelection.instanceId)) : undefined;
       const cwd = engine ? threadFolder(bot, threadId, privateOnly) : null;
@@ -403,12 +421,17 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
       return [201, { state: "applied", name: updated.name, action: "update", summary: updated.summary, shared: updated.shared }];
     },
 
-    harnessListing(botId: string, skills: SkillListing[]): Array<SkillListing & { revision?: string }> {
-      if (mode() === "off") return skills;
-      return skills.map((skill) => !skill.editable && editable(botId, skill.name)
-        ? { ...skill, editable: true, revision: skill.sha256.slice(0, SHARED_REVISION_CHARS) }
-        : skill);
+    /** What skills_list reads: the bot's skills, then the library's skills on offer to it, each naming its SKILL.md. */
+    harnessSkills(bot: BotRecord): Array<{ name: string; enabled: boolean; editable: boolean; description?: string; listed?: boolean; file?: string; revision?: string }> {
+      const offers = offersFor(bot, skillsLibraryEnabled(cfg) ? liveAssigned(bot) : undefined);
+      const listed = new Set(listedOffersFor(bot, offers).map((skill) => skill.name));
+      return [
+        ...harnessListing(bot.id, listBotSkills(bot)),
+        ...offers.map((skill) => ({ name: skill.name, description: skill.description, enabled: true, editable: false, listed: listed.has(skill.name), file: skill.file })),
+      ];
     },
+
+    harnessListing,
 
     /** A settlement still pending keeps its stage bound to the private copy, so it waits for the receipt's Share button. */
     afterOwnApply<T extends { settlementPending?: boolean }>(botId: string, threadId: string, staged: { id: string; name: string }, applied: T):

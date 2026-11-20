@@ -1,5 +1,5 @@
 import { botOwner, nameFromEmail } from "../shared/bot-owner.ts";
-import { canManage, hasAuthority, inChargeOfEvery, peerName, renderRoster, reachablePeers, type RosterMember, type TeamPrompt } from "./peer-roster.ts"; import { chiefLevel } from "./chief-level.ts";
+import { canManage, hasAuthority, inChargeOfEvery, isTeamProjectLead, peerName, renderRoster, reachablePeers, type RosterMember, type TeamPrompt } from "./peer-roster.ts"; import { chiefLevel } from "./chief-level.ts";
 import type { TaskRecord } from "./store.ts";
 
 export type ChiefTeamMember = RosterMember;
@@ -26,6 +26,8 @@ const sectionKey = (section?: string): string => section?.trim() || "";
 /** The Team map sends an @everyone line to the Chief alone (src/lib/map-composer.ts): every bot taking a turn of its own cost
  * a fan-out of 13 bots about 13 model turns, most of them from bots the line did not concern. */
 export const EVERYONE_ON_THE_MAP = "When the person writes to @everyone on the Team map, it comes to you alone, so you decide who it concerns: hand it with coordinate_bots to the teammates whose work it touches, never to all of them by default, and do the part that is yours. If it concerns nobody else, answer it yourself.";
+
+const TEAM_PROJECT_LEADS = "A bot marked Project lead in your roster leads a team project: a team of bots working on one project of the person's, kept apart from every other project. Hand the lead whatever concerns its project with coordinate_bots; it arranges the work inside. You cannot reach a project's other bots, their threads or their setup, whatever departments you are responsible for. What one project needs from another goes through you: keep what you learn from one project out of what you send another, unless the person asks you to carry it across.";
 
 export function chiefOfStaffSystemPrompt(...args: Parameters<typeof chiefOfStaffPrompt>): string {
   const { rules, roster } = chiefOfStaffPrompt(...args);
@@ -65,9 +67,11 @@ export function chiefOfStaffPrompt(
     : "Your current engine cannot contact teammates. Be honest about that limitation and ask the user to choose a delegation-compatible engine before promising coordinated work.";
 
   const isChief = !chief?.defaultBot || chief.chiefOfStaff === true;
+  const inProject = Boolean(chief?.teamProject);
   const everywhere = Boolean(chief && departments && inChargeOfEvery(chief, departments));
+  const alsoManages = !inProject && Boolean(chief?.managedSections?.length);
   const responsibleFor = everywhere ? "every department, and each new department becomes yours as it is added"
-    : chief?.managedSections?.length ? `these departments: ${chief.managedSections.map(s => peerName(s) || "General").join(", ")}` : "";
+    : alsoManages ? `these departments: ${chief!.managedSections!.map(s => peerName(s) || "General").join(", ")}` : "";
   const rules = [
     isChief
       ? person
@@ -79,20 +83,23 @@ export function chiefOfStaffPrompt(
     responsibleFor
       ? `The owner also made you responsible for ${responsibleFor}. You supervise their bots and may propose setup changes there. You remain the user's single point of contact. This does not grant other bots your access, change their tool permissions, or expose unrelated conversation history.`
       : "",
-    canDelegate && `Every other bot on this team, in any department, is reachable too: consult it or hand it work with coordinate_bots whenever a job needs it, without asking anyone to set anything up. Reaching a bot${responsibleFor || person ? " outside your team" : ""} gives you no authority over it: its setup, its threads and its incidents stay with its own Chief, so ask rather than direct.`,
+    inProject
+      ? `You lead one team project, filed as the ${sectionName} department: its bots are your team, and you arrange the work inside it. Outside the project only the main bot, which belongs to no project, can be reached${canDelegate ? ": consult it, or hand it what crosses projects, with coordinate_bots" : ""}. It has no authority inside your project and you have none outside it.`
+      : canDelegate && `Every other bot on this team, in any department, is reachable too: consult it or hand it work with coordinate_bots whenever a job needs it, without asking anyone to set anything up. Reaching a bot${responsibleFor || person ? " outside your team" : ""} gives you no authority over it: its setup, its threads and its incidents stay with its own Chief, so ask rather than direct.`,
+    canDelegate && others.some(isTeamProjectLead) ? TEAM_PROJECT_LEADS : "",
     "Do the work yourself, bring in a teammate when one fits the job, and return one concise consolidated answer. Never invent a teammate's progress or result. Normal permission and approval rules still apply.",
     canDelegate && "A standing preference the person states for all their bots (where reminders go, how replies should sound) is one line you save yourself with memory_update action prefer: every bot reads it. Never send it to each bot with coordinate_bots.",
     canDelegate ? SPECIALISTS : "",
     canDelegate && isChief ? EVERYONE_ON_THE_MAP : "",
     canDelegate && isChief
-      ? "Incidents: when a teammate's run fails, stalls or cannot start, OpenMausBot reports it to you in your \"Problems to look at\" thread with a link to the thread. Read the report, then either call retry_thread to resume that thread where it stopped, coordinate_bots with a corrected brief when the request itself must change, or — when only the person can fix the cause (a sign-in, a missing credential, an unanswered question, a setting) — say so plainly and stop. Never retry the same thread more than twice; report what failed and what you did in one or two sentences."
+      ? "Incidents: when a teammate's run fails, stalls or cannot start, MagicBot reports it to you in your \"Problems to look at\" thread with a link to the thread. Read the report, then either call retry_thread to resume that thread where it stopped, coordinate_bots with a corrected brief when the request itself must change, or — when only the person can fix the cause (a sign-in, a missing credential, an unanswered question, a setting) — say so plainly and stop. Never retry the same thread more than twice; report what failed and what you did in one or two sentences."
       : "",
     delegation,
     canDelegate ? "Housekeeping: list_threads also shows threads one teammate opened on another (marked \"opened by\"), and you may close_thread those once they are idle and their work is done. Threads the person started are theirs: never close them." : "",
-    canDelegate ? "When the user asks you to assemble or configure a team, get the exact authorized teams, bot IDs and model catalog from list_team_setup, then call propose_team_setup once with all named specialists and their profile/model changes, new teams included: the plan covers their creation and your access. Existing thread models and other bots' execution permissions stay unchanged. The plan applies immediately at every access level and the person can undo it; after an applied result, continue already-requested work without another confirmation, using the coordination tools. Only if review is pending, end your turn: the user's decision resumes you once with a structured result. Report failed or cancelled results honestly; never ask for another yes, poll or repeat the proposal. For explicitly requested bot deletion, use propose_bot_deletion separately and follow its applied or pending result too." : "",
+    canDelegate ? `When the user asks you to assemble or configure a team, get the exact authorized teams, bot IDs and model catalog from list_team_setup, then call propose_team_setup once with all named specialists and their profile/model changes${inProject ? ": every bot stays in this project's department, and a plan that names another department or a new team is refused" : ", new teams included: the plan covers their creation and your access"}. Existing thread models and other bots' execution permissions stay unchanged. The plan applies immediately at every access level and the person can undo it; after an applied result, continue already-requested work without another confirmation, using the coordination tools. Only if review is pending, end your turn: the user's decision resumes you once with a structured result. Report failed or cancelled results honestly; never ask for another yes, poll or repeat the proposal. For explicitly requested bot deletion, use propose_bot_deletion separately and follow its applied or pending result too.` : "",
   ].filter(Boolean).join("\n");
   const listed = [
-    person ? `Bots that report to ${person} (your team):` : everywhere ? "Your team, in every department:" : chief?.managedSections?.length ? "Your team, in the departments you are responsible for:" : `Current ${sectionName} department (your team):`,
+    person ? `Bots that report to ${person} (your team):` : everywhere ? "Your team, in every department:" : alsoManages ? "Your team, in the departments you are responsible for:" : `Current ${sectionName} department (your team):`,
     roster,
     othersRoster && (person ? "Other bots you can reach (they report to someone else):" : "Other bots you can reach, in other departments:"),
     othersRoster,

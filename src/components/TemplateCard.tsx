@@ -381,7 +381,7 @@ export function TemplateRepoPublishDialog({ card, onClose }: { card: Pick<Templa
   };
 
   const openApps = () => {
-    dispatch({ type: "togglePlugins", open: true });
+    dispatch({ type: "togglePlugins", open: true, surface: "apps" });
     onClose();
   };
 

@@ -13,6 +13,7 @@ import { VaultSettings } from "../../VaultSettings";
 import { WorkspaceBackupSettings } from "../../WorkspaceBackupSettings";
 import { WorkspacesSection } from "../../WorkspacesSection";
 import { useSettingsShell } from "../settings-shell";
+import { TeamProjectsSettings } from "../TeamProjectsSettings";
 import { MoveSection } from "./PlacePages";
 
 export function VaultPage() {
@@ -41,6 +42,7 @@ export function ImportExportPage() {
 export function DataPage() {
   const { ctx } = useSettingsShell();
   return <>
+    <TeamProjectsSettings />
     <SettingsGroup label={t("settings.data.storage")} block="storage">
       <SettingsRows><AttachmentStorageSettings /></SettingsRows>
     </SettingsGroup>

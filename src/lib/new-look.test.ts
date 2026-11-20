@@ -187,7 +187,7 @@ describe("Advanced mode back, as shipped", () => {
   });
 
   it("is safe with no record of the move, an unknown one, or storage that cannot be read", async () => {
-    expect((await boot(false)).mode.readAdvancedMode(), "a new install").toBe(false);
+    expect((await boot(false)).mode.readAdvancedMode(), "a new install").toBe(true);
     expect(values.has("omb-advanced-back")).toBe(false);
 
     values.clear();

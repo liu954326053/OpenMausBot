@@ -133,10 +133,10 @@ describe("sharing learned skills with the team", () => {
   });
 
   it("asks by default and is off while the skills library is off", () => {
-    expect(share.shareLearnedSkillsMode({})).toBe("off");
-    expect(share.shareLearnedSkillsMode({ features: { shareLearnedSkills: "auto" } })).toBe("off");
-    expect(share.shareLearnedSkillsMode({ features: { skillsLibrary: true } })).toBe("ask");
-    expect(share.shareLearnedSkillsMode({ features: { skillsLibrary: true, shareLearnedSkills: "auto" } })).toBe("auto");
+    expect(share.shareLearnedSkillsMode({ features: { skillsLibrary: false } })).toBe("off");
+    expect(share.shareLearnedSkillsMode({ features: { skillsLibrary: false, shareLearnedSkills: "auto" } })).toBe("off");
+    expect(share.shareLearnedSkillsMode({})).toBe("ask");
+    expect(share.shareLearnedSkillsMode({ features: { shareLearnedSkills: "auto" } })).toBe("auto");
   });
 
   it("skips a teammate more people can see than could see where the skill was learned", () => {

@@ -9,6 +9,7 @@ import { AppIcon, PlaceBadge, YouAvatar, pageLabel } from "./SettingsNav";
 
 const INTRO: Partial<Record<SettingsPage["id"], Parameters<typeof t>[0]>> = {
   bots: "settings.bots.intro",
+  templates: "settings.templates.intro",
   desktops: "settings.desktops.intro",
   vault: "settings.vault.intro",
   app: "settings.app.intro",

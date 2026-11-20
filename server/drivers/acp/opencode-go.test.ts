@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,7 @@ import { cloudHomeConfigured } from "../../cloud-home.ts";
 import { DATA_DIR, OPENCODE_PROVIDER_ENV } from "../../config.ts";
 import * as quietStatus from "./quiet-status.ts";
 import { hostedWorkspaceConfigured } from "../../enterprise.ts";
+import { setTeamProjectLookup, setTeamProjectMemberships } from "../../team-project-folders.ts";
 import { TASK_WORKSPACES_DIR, workspaceDir } from "../../workspace.ts";
 import type { ModelCatalog, ProviderInstance, SendTurnInput } from "../../contracts.ts";
 
@@ -1289,6 +1290,35 @@ describe("OpenCode access to folders OpenMaus owns", () => {
     expect(openMausOwnsWorkingFolder(TASK_WORKSPACES_DIR)).toBe(false);
     expect(openMausOwnsWorkingFolder(join(tmpdir(), "project"))).toBe(false);
     expect(openMausOwnsWorkingFolder(`${TASK_WORKSPACES_DIR}-elsewhere`)).toBe(false);
+  });
+
+  it("counts a project bot's folder in its project as its own, and never through a link", () => {
+    const project = realpathSync(mkdtempSync(join(tmpdir(), "omb-opencode-project-")));
+    const inProject = join(project, ".magic-team", "bots", "writer");
+    setTeamProjectLookup((id) => (id === "p1" ? { folder: project } : undefined));
+    setTeamProjectMemberships((botId) => (botId === "bot-7" ? { id: "p1", role: "writer" } : undefined));
+    try {
+      expect(openCodeOwnedDirectories("bot-7"), "not made yet").toEqual([ATTACHMENTS_DIR, join(DATA_DIR, "workspaces", "bot-7")]);
+      mkdirSync(inProject, { recursive: true });
+      expect(openCodeOwnedDirectories("bot-7")).toEqual([ATTACHMENTS_DIR, join(DATA_DIR, "workspaces", "bot-7"), inProject]);
+      expect(openCodeOwnedDirectories("bot-7", project), "inside the working folder, never above it").toContain(inProject);
+      expect(openCodeOwnedDirectories("bot-7", inProject)).not.toContain(inProject);
+      expect(openCodeOwnedDirectories("bot-8")).toEqual([ATTACHMENTS_DIR, join(DATA_DIR, "workspaces", "bot-8")]);
+
+      expect(openMausOwnsWorkingFolder(inProject, "bot-7")).toBe(true);
+      expect(openMausOwnsWorkingFolder(join(inProject, "memory"), "bot-7")).toBe(true);
+      expect(openMausOwnsWorkingFolder(project, "bot-7"), "the project folder is the person's").toBe(false);
+      expect(openMausOwnsWorkingFolder(inProject, "bot-8")).toBe(false);
+      expect(openMausOwnsWorkingFolder(inProject)).toBe(false);
+
+      rmSync(inProject, { recursive: true });
+      symlinkSync(tmpdir(), inProject);
+      expect(openCodeOwnedDirectories("bot-7")).toEqual([ATTACHMENTS_DIR, join(DATA_DIR, "workspaces", "bot-7")]);
+    } finally {
+      setTeamProjectLookup(() => undefined);
+      setTeamProjectMemberships(() => undefined);
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   it("keeps the person's single folder rule ahead of OpenMaus's folders", () => {

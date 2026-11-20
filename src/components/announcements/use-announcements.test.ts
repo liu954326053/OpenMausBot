@@ -44,17 +44,11 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root?.unmount()); root = null; host?.remove(); vi.unstubAllGlobals(); });
 
-it("someone who used the app before has the dot for Teams alone, and opening Announcements clears it here and in their record", async () => {
+it("a page that sells no Cloud lists no Teams popup, and opening Announcements clears the dot", async () => {
   await mount();
-  expect(found.items[0]?.id).toBe(TEAMS_NOTICE);
-  expect(found.unread).toBe(true);
+  expect(found.items.map(item => item.id)).not.toContain(TEAMS_NOTICE);
   await act(async () => { found.markRead(); await Promise.resolve(); });
   expect(found.unread).toBe(false);
-  const put = vi.mocked(api).mock.calls.find(([path, init]) => path === "/api/config" && (init as RequestInit | undefined)?.method === "PUT");
-  expect(JSON.parse(String((put![1] as RequestInit).body)).onboarding.hintsSeen).toEqual([`announcements-read-${Date.parse("2026-11-18T10:00:00Z")}`]);
-  localStorage.clear();
-  await act(async () => { root!.render(createElement(Probe)); });
-  expect(found.unread, "the place's record keeps it for their other devices").toBe(false);
 });
 
 it("no dot once the Teams popup was seen, nor before the session is known", async () => {
@@ -68,14 +62,11 @@ it("no dot once the Teams popup was seen, nor before the session is known", asyn
   expect(found.unread, "waits for who is looking").toBe(false);
 });
 
-it("a Team Cloud's member: Teams is theirs, the dot too, and clearing it writes their own record", async () => {
+it("a Team Cloud's member: no Teams popup, nor the team's record written", async () => {
   f.session = { hosted: true, scopes: ["client"], team: { role: "member" } };
   f.state = { ...f.state, config: config([], { team: { id: "t", name: "Acme" }, cloudHome: true }) };
   await mount();
-  expect(found.items.map(item => item.id)).toEqual([TEAMS_NOTICE]);
-  expect(found.unread).toBe(true);
+  expect(found.items.map(item => item.id)).not.toContain(TEAMS_NOTICE);
   await act(async () => { found.markRead(); await Promise.resolve(); });
-  expect(vi.mocked(api).mock.calls.some(([path]) => path === "/api/me/welcome")).toBe(true);
   expect(vi.mocked(api).mock.calls.some(([path, init]) => path === "/api/config" && (init as RequestInit | undefined)?.method === "PUT"), "never the team's record").toBe(false);
-  expect(found.unread).toBe(false);
 });

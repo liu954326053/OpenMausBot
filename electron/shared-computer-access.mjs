@@ -41,6 +41,8 @@ const PERSONAL_SECRETS = [
   "Library/Application Support/BraveSoftware", "Library/Application Support/Microsoft Edge",
   "Library/Application Support/Firefox", "Library/Application Support/Arc",
   ".cua",
+  // Security: an OpenMausBot build on the same computer keeps provider API keys, sessions and its sharing settings here.
+  ".openmausbot", "Library/Application Support/OpenMausBot", "AppData/Roaming/OpenMausBot", ".config/OpenMausBot",
   // Windows: the browsers' saved passwords and cookies, the credential vault and its keys, and what runs at sign-in.
   "AppData/Local/Google/Chrome/User Data", "AppData/Local/Microsoft/Edge/User Data", "AppData/Local/BraveSoftware/Brave-Browser/User Data",
   "AppData/Roaming/Mozilla", "AppData/Local/Mozilla",

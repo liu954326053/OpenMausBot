@@ -295,6 +295,22 @@ describe("skills library boot sweep", () => {
     expect(patched.length).toBe(1);
   });
 
+  it("with migrate off it leaves a bot's own skills where they are, and still finishes pending assignments", () => {
+    skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("stays-private") }]);
+    skills.setSkillEnabled(botA, "stays-private", true);
+    migration.writePendingAssignments({ [botA]: ["shared-before-a-crash"] });
+    const patched: Array<[string, string[]]> = [];
+    const report = migration.runSkillsLibraryBootSweep({
+      bots: [{ id: botA }], migrate: false,
+      patch: (botId, assignedSkills) => patched.push([botId, assignedSkills]),
+    });
+    expect(report.outcomes).toEqual([]);
+    expect(skills.listSkills(botA).map((skill) => skill.name)).toEqual(["stays-private"]);
+    expect(library.readSkillLibraryIndex()["stays-private"]).toBeUndefined();
+    expect(patched).toEqual([[botA, ["shared-before-a-crash"]]]);
+    expect(migration.readPendingAssignments()).toEqual({});
+  });
+
   it("without a patch callback it reports only and leaves pending assignments alone", () => {
     migration.writePendingAssignments({ [botB]: ["held-skill"] });
     migration.runSkillsLibraryBootSweep({ bots: [{ id: botB }] });

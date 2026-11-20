@@ -11,7 +11,7 @@ import { UNDO_STALE, type DirectApply } from "./direct-apply.ts";
 import { harnessCapabilityLines, type DriverCapabilities } from "./harness-capabilities.ts";
 import { MAX_MCP_SERVERS, mcpServerNameError } from "./mcp-registry.ts";
 import { redactSecretsInText } from "./redact.ts"; import { chiefLevel } from "./chief-level.ts"; import { defaultBotRefusal } from "./default-bot.ts";
-import type { BotRecord, OptionCardData } from "./store.ts"; import { outsideDepartmentReason } from "./peer-roster.ts";
+import type { BotRecord, OptionCardData } from "./store.ts"; import { departmentOpenTo, outsideDepartmentReason, sameTeamProject, teamProjectSetupRefusal } from "./peer-roster.ts";
 import type { TeamSetupFields, TeamSetupOperation, TeamSetupRequest, TeamSetupResult, TeamSetupUndo } from "../shared/team-setup.ts";
 
 const section = (value?: string) => value?.trim() || "";
@@ -192,7 +192,7 @@ export class TeamSetupRequestService {
         if (target) throw new TeamSetupError("A proposed bot already exists. Review a new proposal.", 409);
         if (!operation.fields.name?.trim() || !operation.fields.title?.trim() || !operation.fields.soul?.trim() || !operation.fields.modelSelection) throw new TeamSetupError("Each new bot needs a name, title, soul instructions, and exact model selection");
       } else {
-        if (!target || target.hidden) throw new TeamSetupError("A target bot is outside this Chief's authorized team", 403);
+        if (!target || target.hidden || !sameTeamProject(chief, target)) throw new TeamSetupError("A target bot is outside this Chief's authorized team", 403);
         if (!this.options.hasTeamAuthority(chief, target.section)) throw new TeamSetupError(outsideDepartmentReason(chief, target), 403);
         if (teamSetupRevision(target, operation.fields) !== operation.expectedRevision) throw new TeamSetupError(`@${target.name} changed. This setup was cancelled; review a new proposal.`, 409);
         const sourceThreadId = immediate && target.id === chief.id ? request.threadId : undefined;
@@ -202,6 +202,7 @@ export class TeamSetupRequestService {
       if (fields.chiefOfStaff !== undefined && !chief.chiefOfStaff) throw new TeamSetupError(`Only the Chief of Staff changes who the Chief is; ${chief.name} doesn't.`, 403);
       if (confirming && target) this.options.validateChange?.(target, fields);
       const destination = fields.section ?? target?.section ?? chief.section;
+      if (!departmentOpenTo(this.options.store.bots, chief, destination)) throw new TeamSetupError(teamProjectSetupRefusal(chief, destination), 403);
       if (!allowed(destination)) throw new TeamSetupError(outsideDepartmentReason(chief, { section: destination }), 403);
       if (!request.newTeams.includes(section(destination)) && !existingTeams.has(section(destination))) throw new TeamSetupError("The destination team no longer exists", 409);
       const next = { id: operation.botId, name: fields.name ?? target!.name, section: section(destination), chiefOfStaff: fields.chiefOfStaff ?? target?.chiefOfStaff, hidden: false,
@@ -219,7 +220,7 @@ export class TeamSetupRequestService {
     }
     if (request.deletion) {
       const target = this.options.store.bot(request.deletion.botId);
-      if (!target || target.hidden || target.id === chief.id) throw new TeamSetupError("This deletion target is no longer an authorized teammate", 403);
+      if (!target || target.hidden || target.id === chief.id || !sameTeamProject(chief, target)) throw new TeamSetupError("This deletion target is no longer an authorized teammate", 403);
       if (!this.options.hasTeamAuthority(chief, target.section)) throw new TeamSetupError(outsideDepartmentReason(chief, target), 403);
       if (target.defaultBot) throw new TeamSetupError(defaultBotRefusal(target.name), 409);
       if (teamSetupRevision(target) !== request.deletion.expectedRevision || this.options.targetBusy(target.id)) throw new TeamSetupError("The deletion target changed or is working. Review a new deletion proposal.", 409);
@@ -242,7 +243,8 @@ export class TeamSetupRequestService {
     const entries = [...combined.values()];
     if (entries.filter((operation) => operation.action === "create").length > MAX_NEW_BOTS) throw new TeamSetupError(`Review at most ${MAX_NEW_BOTS} new bots in one setup`);
     const operations: TeamSetupOperation[] = entries.map((operation) => {
-      const target = operation.action === "update" ? this.options.store.bot(operation.botId) : undefined;
+      const found = operation.action === "update" ? this.options.store.bot(operation.botId) : undefined;
+      const target = found && sameTeamProject(chief, found) ? found : undefined;
       const { soulAppend, ...requested } = operation.fields;
       if (soulAppend !== undefined) {
         if (operation.action === "create") throw new TeamSetupError("soulAppend only adds to an existing bot's instructions; give a new bot its full soul");
@@ -276,7 +278,7 @@ export class TeamSetupRequestService {
   private prepareDeletion(args: DeletionArgs) {
     const chief = this.chief(args.botId);
     const target = this.options.store.bot(args.targetBotId);
-    if (!target) throw new TeamSetupError("That bot no longer exists", 404);
+    if (!target || !sameTeamProject(chief, target)) throw new TeamSetupError("That bot no longer exists", 404);
     if (!args.reason.trim() || args.reason.length > 500) throw new TeamSetupError("A deletion reason of at most 500 characters is required");
     const request: TeamSetupRequest = { version: 1, requestId: newId(), botId: args.botId, threadId: args.threadId,
       reason: redactSecretsInText(args.reason), createdAt: Date.now(), requesterRevision: teamSetupRevision(chief), newTeams: [], operations: [],

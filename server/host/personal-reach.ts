@@ -1,12 +1,13 @@
-// Security invariant: a Team Cloud person's own MausBot reaches past its audience (bot-visibility.ts sameAudience) only
+// Security invariant: a Team Cloud person's own MagicBot reaches past its audience (bot-visibility.ts sameAudience) only
 // to the team bots that person may chat with, only from a chat private to them, and only with their own request behind
 // the turn. The work opens in a thread private to that same person, so nothing of it reaches a shared chat, a room, the
 // team's notes, another member or an admin. It never widens what the person could do themselves: a bot they cannot see
-// is never named to it, a bot they can only view is refused, and reaching a bot grants no authority over it.
+// is never named to it, a bot they can only view is refused, and reaching a bot grants no authority over it. Nor does
+// it pass a team project's wall: of a project's bots it reaches the lead alone, as every main bot does.
 import { atLeast, type BotAccessLevel } from "../../shared/bot-access.ts";
 import { defaultBotPerson } from "../../shared/default-bot.ts";
 import type { HandoffView } from "../coordinator.ts";
-import { canReach, peerName, reachablePeers, type RosterMember } from "../peer-roster.ts";
+import { canReach, peerName, reachablePeers, teamProjectAllows, unknownBot, type RosterMember } from "../peer-roster.ts";
 
 export interface PersonalReachDeps {
   /** The person key a conversation is private to; null for a shared chat, a room and anywhere off a team. */
@@ -22,19 +23,17 @@ export interface PersonalReachDeps {
 
 type Placed = Pick<HandoffView, "threadId"> & Partial<Pick<HandoffView, "id" | "origin">>;
 
-export const unknownBot = (id: string) => `No bot with id "${peerName(id)}" — call list_bots and copy the exact id from the result`;
-
 export function createPersonalReach(deps: PersonalReachDeps) {
   const ownerOf = (from: RosterMember): string | null => defaultBotPerson(from) || null;
-  /** The MausBot's person, when this conversation is private to them. */
+  /** The MagicBot's person, when this conversation is private to them. */
   const chatPerson = (from: RosterMember, threadId: string): string | null => {
     const email = ownerOf(from);
     return email && deps.privateTo(threadId) === deps.personKey(email) ? email : null;
   };
   const usable = (from: RosterMember, target: RosterMember, email: string): boolean =>
-    from.id !== target.id && !target.hidden && !target.defaultBot && atLeast(deps.level(target, email), "chat");
+    from.id !== target.id && !target.hidden && !target.defaultBot && teamProjectAllows(from, target) && atLeast(deps.level(target, email), "chat");
 
-  /** A bot this MausBot's person cannot see, or another person's MausBot: never named to it, in any of its chats. */
+  /** A bot this MagicBot's person cannot see, or another person's MagicBot: never named to it, in any of its chats. */
   const hides = (from: RosterMember, target: RosterMember): boolean => {
     const email = ownerOf(from);
     return email !== null && from.id !== target.id && (Boolean(target.defaultBot) || deps.level(target, email) === "none");
@@ -72,10 +71,10 @@ export function createPersonalReach(deps: PersonalReachDeps) {
       if (node.id === undefined) return listed(from, target, fromThreadId);
       return reaches(from, target, fromThreadId) && deps.privateTo(node.threadId) === deps.privateTo(fromThreadId) && node.origin?.kind === "user";
     },
-    /** Why this MausBot cannot reach the bot, when its person decides it; null leaves the usual refusal. */
+    /** Why this MagicBot cannot reach the bot, when its person decides it; null leaves the usual refusal. */
     refusal(from: RosterMember, target: RosterMember, threadId: string): string | null {
       const email = ownerOf(from);
-      if (!email) return null;
+      if (!email || !teamProjectAllows(from, target)) return null;
       if (hides(from, target)) return unknownBot(target.id);
       const name = peerName(target.name);
       if (!atLeast(deps.level(target, email), "chat")) {
@@ -93,7 +92,7 @@ export function createPersonalReach(deps: PersonalReachDeps) {
         throw new Error("This stays in the person's own chats, and that is not one of them, so nothing was sent.");
       }
     },
-    /** For the system prompt, in a chat where this MausBot reaches beyond its audience. */
+    /** For the system prompt, in a chat where this MagicBot reaches beyond its audience. */
     prompt(from: RosterMember, threadId: string, peers: readonly RosterMember[]): string {
       if (!chatPerson(from, threadId) || !peers.some((peer) => reaches(from, peer, threadId))) return "";
       return " The team bots in your roster are the ones this person may chat with. Work you hand one runs in that bot's own private chat with this person, which only they can see, and its result comes back here. You have no say over those bots' setup. A bot that isn't listed is not one this person can use: say only that you can't reach it.";

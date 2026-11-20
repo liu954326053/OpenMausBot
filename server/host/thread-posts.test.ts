@@ -54,7 +54,7 @@ describe("thread posts", () => {
       const calls: unknown[] = [];
       return { calls, deps: {
         senderId: sender, fromThreadId: "from-run", waitsOn: () => false,
-        store: { botByThread: (id: string) => (id.startsWith("t-") ? { id: "bot-b", name: "Writer" } : undefined),
+        store: { bot: (id: string) => ({ id }), botByThread: (id: string) => (id.startsWith("t-") ? { id: "bot-b", name: "Writer" } : undefined),
           groupByThread: (id: string) => (rooms.includes(id) ? { id: "room" } : undefined), messagesFor: () => [] },
         coordinateBots: async (call: unknown) => { calls.push(call); return { status: 200, body: { receipts: [{ outcome: "delivered", requestId: "r1" }] } }; },
       } as unknown as Parameters<typeof postToThread>[1] };
@@ -97,6 +97,20 @@ describe("thread posts", () => {
       d.coordinateBots = async (call) => { calls.push(call); return ok; };
       expect((await postToThread({ toThreadId: "t-1", message: "hi", deliveryId: "fails" }, d)).status).toBe(200);
       expect(calls).toHaveLength(3);
+    });
+
+    it("answers for a thread of a bot behind a team project's wall exactly as for a thread nobody has", async () => {
+      const { calls, deps: d } = deps("sender-wall");
+      const walled = { id: "bot-w", name: "Screenwriter", teamProject: { id: "project-a", role: "writer" } };
+      d.store = { ...d.store, botByThread: (id: string) => (id === "t-walled" ? walled : undefined) } as typeof d.store;
+      const refused = await postToThread({ toThreadId: "t-walled", message: "hi" }, d);
+      expect(refused.status).toBe(404);
+      expect(refused.body).toEqual((await postToThread({ toThreadId: "t-nobody", message: "hi" }, d)).body);
+      expect(calls).toHaveLength(0);
+
+      d.store = { ...d.store, bot: (id: string) => ({ id, teamProject: { id: "project-a", role: "director" } }) } as typeof d.store;
+      expect((await postToThread({ toThreadId: "t-walled", message: "hi" }, d)).status).toBe(200);
+      expect(calls).toHaveLength(1);
     });
 
     it("refuses a call made from a room", async () => {

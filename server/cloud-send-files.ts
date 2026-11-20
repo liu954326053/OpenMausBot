@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { CloudOwner } from "./cloud-owner-lines.ts";
 import type { RequestAuth } from "./request-auth.ts";
 import type { RouteContext } from "./routes/table.ts";
+import { teamProjectBotFolderInPlace } from "./team-project-folders.ts";
 import { omittedFromWorkspaceBackup } from "./workspace-backup.ts";
 import { validRelative } from "./workspace-backup-paths.ts";
 
@@ -33,6 +34,8 @@ export interface MoveFilesDeps {
   dataDir: string;
   bots(): ReadonlyArray<{ id: string }>;
   owner(auth: RequestAuth): CloudOwner | null;
+  /** Overrides where project bots' own folders are, for tests. */
+  projectBotFolder?: ProjectBotFolder;
 }
 
 /** Whether a move carries the file at this data-folder path as a bot file. */
@@ -58,25 +61,35 @@ async function fileSha256(full: string, info: Stats): Promise<string> {
   return digest;
 }
 
-/** Every bot file on this server, links never followed. */
-export async function listBotFiles(dataDir: string, botIds: readonly string[]): Promise<BotFile[]> {
+/** Where a project bot's own folder is on this server, for a move that names its files `workspaces/<bot>/…` like every
+ * other bot's. */
+export type ProjectBotFolder = (botId: string) => string | null;
+
+/** Every bot file on this server, links never followed. A project bot's own files are in its project folder; a path
+ * both that folder and its folder in the data folder hold is the data folder's. */
+export async function listBotFiles(dataDir: string, botIds: readonly string[], inProject: ProjectBotFolder = teamProjectBotFolderInPlace): Promise<BotFile[]> {
   const out: BotFile[] = [];
-  const walk = async (relative: string): Promise<void> => {
+  const listed = new Set<string>();
+  const walk = async (folder: string, relative: string): Promise<void> => {
     let names: string[];
-    try { names = (await readdir(join(dataDir, relative))).sort(); } catch { return; }
+    try { names = (await readdir(folder)).sort(); } catch { return; }
     for (const name of names) {
       if (out.length >= MAX_FILES) return;
-      const path = `${relative}/${name}`;
-      const info = await lstat(join(dataDir, path)).catch(() => null);
+      const path = `${relative}/${name}`, full = join(folder, name);
+      const info = await lstat(full).catch(() => null);
       if (!info || name === "node_modules") continue;
-      if (info.isDirectory()) { if (!CARRIED_OTHERWISE.test(`${path}/`) && !omittedFromWorkspaceBackup(path)) await walk(path); continue; }
-      if (info.isFile() && movedFilePath(path)) out.push({ path, size: info.size, sha256: await fileSha256(join(dataDir, path), info) });
+      if (info.isDirectory()) { if (!CARRIED_OTHERWISE.test(`${path}/`) && !omittedFromWorkspaceBackup(path)) await walk(full, path); continue; }
+      if (!info.isFile() || !movedFilePath(path) || listed.has(path)) continue;
+      listed.add(path);
+      out.push({ path, size: info.size, sha256: await fileSha256(full, info) });
     }
   };
   for (const id of botIds) {
     if (!/^[\w-]{1,128}$/u.test(id)) continue;
-    await walk(`workspaces/${id}`);
-    await walk(`task-workspaces/${id}`);
+    await walk(join(dataDir, "workspaces", id), `workspaces/${id}`);
+    const own = inProject(id);
+    if (own) await walk(own, `workspaces/${id}`);
+    await walk(join(dataDir, "task-workspaces", id), `task-workspaces/${id}`);
   }
   return out;
 }
@@ -138,14 +151,23 @@ const putSchema = z.object({ path: z.string().max(4096), size: z.coerce.number()
 
 const partSchema = z.object({ path: z.string().max(4096), offset: z.coerce.number().int().min(0), length: z.coerce.number().int().min(1).max(FILE_PART_BYTES) });
 
-/** Up to `length` bytes of a bot file from `offset`, never through a link. */
-async function readPart(dataDir: string, { path, offset, length }: z.infer<typeof partSchema>): Promise<Buffer | null> {
-  let at = dataDir;
-  for (const part of path.split("/")) {
+/** The file below `root`, when no level on the way to it is a link. */
+async function unlinkedFile(root: string, parts: readonly string[]): Promise<string | null> {
+  let at = root;
+  for (const part of parts) {
     at = join(at, part);
     const info = await lstat(at).catch(() => null);
     if (!info || info.isSymbolicLink()) return null;
   }
+  return at;
+}
+
+/** Up to `length` bytes of a bot file from `offset`, never through a link. */
+async function readPart(dataDir: string, { path, offset, length }: z.infer<typeof partSchema>, inProject: ProjectBotFolder): Promise<Buffer | null> {
+  const [place, botId, ...below] = path.split("/");
+  const own = place === "workspaces" && botId ? inProject(botId) : null;
+  const at = await unlinkedFile(dataDir, path.split("/")) ?? (own ? await unlinkedFile(own, below) : null);
+  if (!at) return null;
   const handle = await open(at, "r").catch(() => null);
   if (!handle) return null;
   try {
@@ -203,7 +225,7 @@ export async function moveFilesRoute(deps: MoveFilesDeps, { req, res, path, meth
   res.setHeader("cache-control", "no-store");
   if (method === "GET" && url.searchParams.has("path")) {
     const part = partSchema.safeParse(Object.fromEntries(url.searchParams));
-    const bytes = part.success && movedFilePath(part.data.path) ? await readPart(deps.dataDir, part.data) : null;
+    const bytes = part.success && movedFilePath(part.data.path) ? await readPart(deps.dataDir, part.data, deps.projectBotFolder ?? teamProjectBotFolderInPlace) : null;
     if (!bytes) { json(res, 404, { error: "no such bot file" }); return true; }
     res.writeHead(200, { "content-type": "application/octet-stream", "content-length": String(bytes.length) });
     res.end(bytes);
@@ -211,7 +233,7 @@ export async function moveFilesRoute(deps: MoveFilesDeps, { req, res, path, meth
   }
   if (method === "GET") {
     await tidyPartials(deps.dataDir);
-    json(res, 200, { v: 1, files: await listBotFiles(deps.dataDir, deps.bots().map((bot) => bot.id)), space: space(deps.dataDir) });
+    json(res, 200, { v: 1, files: await listBotFiles(deps.dataDir, deps.bots().map((bot) => bot.id), deps.projectBotFolder), space: space(deps.dataDir) });
     return true;
   }
   if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }

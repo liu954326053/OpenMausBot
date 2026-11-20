@@ -15,6 +15,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+import { TEAM_PROJECT_FOLDER } from "../shared/team-projects.ts";
 import { DATA_DIR } from "./config.ts";
 import { execFileInGroup } from "./group-exec.ts";
 import { checkpointGitSlots } from "./job-slots.ts";
@@ -25,11 +26,13 @@ export const CHECKPOINTS_DIR = join(DATA_DIR, "checkpoints");
 const COMMIT_HASH = /^[0-9a-f]{40}$/;
 
 // What a checkpoint never carries, so a digest never lists it; categories follow Roo-Code's checkpoint excludes.
-const EXCLUDES = `# OpenMausBot checkpoint excludes — never snapshotted
+const EXCLUDES = `# MagicBot checkpoint excludes — never snapshotted
 .git/
 .svn/
 .hg/
+.magicbot-secrets/
 .openmausbot-secrets/
+${TEAM_PROJECT_FOLDER}/
 node_modules/
 bower_components/
 .pnpm-store/
@@ -220,9 +223,9 @@ function gitEnv(shadow: string, cwd: string): NodeJS.ProcessEnv {
   env.GIT_INDEX_FILE = join(shadow, ".git", indexName(shadow));
   env.GIT_CONFIG_GLOBAL = join(shadow, "gitconfig");
   env.GIT_CONFIG_SYSTEM = join(shadow, "gitconfig_empty");
-  env.GIT_AUTHOR_NAME = "OpenMausBot Checkpoint";
+  env.GIT_AUTHOR_NAME = "MagicBot Checkpoint";
   env.GIT_AUTHOR_EMAIL = "checkpoint@openmausbot.local";
-  env.GIT_COMMITTER_NAME = "OpenMausBot Checkpoint";
+  env.GIT_COMMITTER_NAME = "MagicBot Checkpoint";
   env.GIT_COMMITTER_EMAIL = "checkpoint@openmausbot.local";
   return env;
 }

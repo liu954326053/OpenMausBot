@@ -108,9 +108,9 @@ beforeAll(async () => {
   SIDECAR = `http://127.0.0.1:${SIDECAR_PORT}`;
 
   home = mkdtempSync(join(tmpdir(), "companion-test-"));
-  mkdirSync(join(home, ".openmausbot"), { recursive: true });
+  mkdirSync(join(home, ".magicbot"), { recursive: true });
   writeFileSync(
-    join(home, ".openmausbot", "config.json"),
+    join(home, ".magicbot", "config.json"),
     JSON.stringify({ instances: { ghost: { driver: "not-a-real-driver", displayName: "Ghost" } } }),
   );
 
@@ -784,7 +784,7 @@ describe("pairing, end to end", () => {
       devices: registry,
       controlToken: () => CONTROL_TOKEN,
       companionPort: port,
-      discovery: () => ({ advertising: false, name: "OpenMausBot" }),
+      discovery: () => ({ advertising: false, name: "MagicBot" }),
       connectedDeviceIds: connections.ids,
       disconnectDevice: connections.disconnect,
     });
@@ -900,7 +900,7 @@ describe("pairing, end to end", () => {
       devices: new DeviceRegistry(),
       controlToken: () => CONTROL_TOKEN,
       companionPort: 8800,
-      discovery: () => ({ advertising: false, name: "OpenMausBot" }),
+      discovery: () => ({ advertising: false, name: "MagicBot" }),
     });
     await new Promise<void>((r) => control.listen(0, "127.0.0.1", r));
     const port = (control.address() as { port: number }).port;
@@ -925,7 +925,7 @@ describe("pairing, end to end", () => {
       devices: new DeviceRegistry(),
       controlToken: () => CONTROL_TOKEN,
       companionPort: 8800,
-      discovery: () => ({ advertising: false, name: "OpenMausBot" }),
+      discovery: () => ({ advertising: false, name: "MagicBot" }),
     });
     await new Promise<void>((r) => control.listen(0, "127.0.0.1", r));
     const port = (control.address() as { port: number }).port;
@@ -949,7 +949,7 @@ describe("pairing, end to end", () => {
       devices: registry,
       controlToken: () => CONTROL_TOKEN,
       companionPort: 8800,
-      discovery: () => ({ advertising: false, name: "OpenMausBot" }),
+      discovery: () => ({ advertising: false, name: "MagicBot" }),
     });
     await new Promise<void>((r) => control.listen(0, "127.0.0.1", r));
     const port = (control.address() as { port: number }).port;
@@ -993,7 +993,7 @@ describe("pairing, end to end", () => {
       devices: registry,
       controlToken: () => CONTROL_TOKEN,
       companionPort: 8800,
-      discovery: () => ({ advertising: false, name: "OpenMausBot" }),
+      discovery: () => ({ advertising: false, name: "MagicBot" }),
     });
     await new Promise<void>((r) => control.listen(0, "127.0.0.1", r));
     const port = (control.address() as { port: number }).port;

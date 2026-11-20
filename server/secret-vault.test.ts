@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { FORMER_SECRET_FOLDER } from "./secret-folder.ts";
 import { NOT_A_REF_TEXT, SECRET_FILE_TTL_MS, SECRET_FOLDER, SECRET_REF_TTL_MS, SecretVault } from "./secret-vault.ts";
 
 const ATLAS = { botId: "atlas", threadId: "thread-1" };
@@ -170,6 +171,24 @@ posix("secret files", () => {
     now += 1;
     vault.sweep([join(root, "workspaces", "atlas")], noCard, () => true);
     expect(existsSync(file)).toBe(false);
+  });
+
+  it("gives a file an OpenMausBot build left in the same workspace the same day, and no longer", () => {
+    const vault = new SecretVault(clock);
+    const base = join(root, "workspaces", "atlas", FORMER_SECRET_FOLDER);
+    mkdirSync(join(base, "thread-1"), { recursive: true });
+    writeFileSync(join(base, "thread-1", "card-1"), "sk_left_behind");
+    mkdirSync(join(base, "thread-gone"), { recursive: true });
+    writeFileSync(join(base, "thread-gone", "card-9"), "sk_orphan");
+    const savedAt = () => now;
+    const exists = (thread: string) => thread === "thread-1";
+    vault.sweep([join(root, "workspaces", "atlas")], savedAt, exists);
+    expect(existsSync(join(base, "thread-1", "card-1"))).toBe(true);
+    expect(existsSync(join(base, "thread-gone"))).toBe(false);
+    const saved = now;
+    now += SECRET_FILE_TTL_MS;
+    vault.sweep([join(root, "workspaces", "atlas")], () => saved, exists);
+    expect(existsSync(join(base, "thread-1"))).toBe(false);
   });
 
   it("removes a link planted in the secrets folder without following it", () => {

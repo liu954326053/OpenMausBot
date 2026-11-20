@@ -24,10 +24,19 @@ export function pictureKind(head: Uint8Array): BannerKind | null {
   return null;
 }
 
-/** How far to shrink a picture so it is at most BANNER_MAX_SIDE across either way (never larger than it is). */
-export function bannerScale(width: number, height: number): number {
-  return Math.min(1, BANNER_MAX_SIDE / Math.max(1, width), BANNER_MAX_SIDE / Math.max(1, height));
+/** How far to shrink a picture so it is at most `side` across either way (never larger than it is). */
+export function bannerScale(width: number, height: number, side = BANNER_MAX_SIDE): number {
+  return Math.min(1, side / Math.max(1, width), side / Math.max(1, height));
 }
+
+export interface PictureLimits {
+  /** How large a prepared picture may be: across either way, and as a file. */
+  side: number; bytes: number;
+  /** A GIF is taken too. What is kept of it is still: createImageBitmap reads the first frame of an animation (HTML standard). */
+  stillGif?: boolean;
+}
+const isGif = (head: Uint8Array): boolean => /^GIF8[79]a/.test(String.fromCharCode(...head.subarray(0, 6)));
+const BANNER_LIMITS: PictureLimits = { side: BANNER_MAX_SIDE, bytes: BANNER_MAX_BYTES };
 
 interface Drawn { width: number; height: number; close?(): void }
 export interface BannerTools {
@@ -45,12 +54,13 @@ const browserTools: BannerTools = {
 };
 
 /** The picture ready to upload, or why it can't be. */
-export async function prepareBanner(file: Blob, tools: BannerTools = browserTools): Promise<{ ok: true; blob: Blob } | { ok: false; problem: BannerProblem }> {
-  if (!pictureKind(new Uint8Array(await file.slice(0, 16).arrayBuffer()))) return { ok: false, problem: "format" };
+export async function prepareBanner(file: Blob, tools: BannerTools = browserTools, limits: PictureLimits = BANNER_LIMITS): Promise<{ ok: true; blob: Blob } | { ok: false; problem: BannerProblem }> {
+  const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (!pictureKind(head) && !(limits.stillGif && isGif(head))) return { ok: false, problem: "format" };
   let picture: Drawn & CanvasImageSource;
   try { picture = await tools.read(file); } catch { return { ok: false, problem: "read" }; }
   try {
-    let scale = bannerScale(picture.width, picture.height);
+    let scale = bannerScale(picture.width, picture.height, limits.side);
     for (let shrink = 0; shrink < 4; shrink++, scale *= 0.75) {
       const width = Math.max(1, Math.round(picture.width * scale)), height = Math.max(1, Math.round(picture.height * scale));
       for (const quality of QUALITIES) {
@@ -68,7 +78,7 @@ export async function prepareBanner(file: Blob, tools: BannerTools = browserTool
           flat.context.drawImage(picture, 0, 0, width, height);
           blob = await flat.encode("image/jpeg", quality);
         }
-        if (blob && blob.size <= BANNER_MAX_BYTES && (blob.type === "image/webp" || blob.type === "image/jpeg")) return { ok: true, blob };
+        if (blob && blob.size <= limits.bytes && (blob.type === "image/webp" || blob.type === "image/jpeg")) return { ok: true, blob };
       }
     }
     return { ok: false, problem: "size" };

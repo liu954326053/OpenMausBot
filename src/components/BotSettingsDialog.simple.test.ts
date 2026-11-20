@@ -1249,13 +1249,14 @@ describe("the drill-in pages", () => {
     expect(fixture.api).toHaveBeenCalledWith("/api/bots/scout/skills", { method: "POST", body: JSON.stringify({ source: "owner/repo" }) });
 
     click(find(rendered, "data-panel-link", "browse-skills"));
-    expect(fixture.openExternal).toHaveBeenCalledWith("https://skills.sh");
-    fixture.storeState = { ...fixture.storeState, config: { features: { skillsLibrary: true } } };
-    click(find(body("skills"), "data-panel-link", "browse-skills"));
     expect((fixture.dispatch as ReturnType<typeof vi.fn>).mock.calls.slice(-2)).toEqual([
       [{ type: "toggleSettings", open: false }],
       [{ type: "toggleAppSettings", open: true, section: "skills" }],
     ]);
+    expect(fixture.openExternal).not.toHaveBeenCalled();
+    fixture.storeState = { ...fixture.storeState, config: { features: { skillsLibrary: false } } };
+    click(find(body("skills"), "data-panel-link", "browse-skills"));
+    expect(fixture.openExternal).toHaveBeenCalledWith("https://skills.sh");
     fixture.skills.working = "triage";
     expect(row(body("skills"), "skill:summarise").props.disabled).toBe(true);
     fixture.skills.skills = [];

@@ -96,10 +96,11 @@ function real(path: string): string | null {
   try { return realpathSync(path); } catch { return null; }
 }
 
-/** The bot's own folders and files, as they are on disk: its folder, its conversation folders and its SOUL.md. */
-export function ownReadRoots(dataDir: string, botId: string): string[] {
+/** The bot's own folders and files, as they are on disk: its folder, its conversation folders and its SOUL.md, and a
+ * project bot's folder in its project (`inProject`). */
+export function ownReadRoots(dataDir: string, botId: string, inProject?: string | null): string[] {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(botId)) return [];
-  return [join(dataDir, "workspaces", botId), join(dataDir, "task-workspaces", botId), join(dataDir, "bots", botId, "SOUL.md")]
+  return [join(dataDir, "workspaces", botId), join(dataDir, "task-workspaces", botId), join(dataDir, "bots", botId, "SOUL.md"), ...(inProject ? [inProject] : [])]
     .flatMap((root) => real(root) ?? []);
 }
 
@@ -113,8 +114,8 @@ export function readsOnly(paths: readonly string[], cwd: string, roots: readonly
 }
 
 /** Whether this ask only reads the bot's own files: a plain reading command in its shell, or a read tool's paths. */
-export function readsOwnFiles(dataDir: string, botId: string, ask: { command?: { command: string; cwd: string }; reads?: readonly string[] }): boolean {
-  const roots = ownReadRoots(dataDir, botId);
+export function readsOwnFiles(dataDir: string, botId: string, ask: { command?: { command: string; cwd: string }; reads?: readonly string[] }, inProject?: string | null): boolean {
+  const roots = ownReadRoots(dataDir, botId, inProject);
   if (ask.reads?.length) return readsOnly(ask.reads, "/", roots);
   const paths = ask.command ? readOnlyPaths(ask.command.command) : null;
   return Boolean(paths && ask.command && readsOnly(paths, ask.command.cwd, roots));

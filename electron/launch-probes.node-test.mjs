@@ -10,7 +10,7 @@ test("a started program is kept under a fixed name: never its folder, its argume
   assert.equal(programName("C:\\Windows\\System32\\reg.exe"), "reg");
   assert.equal(programName("scutil --proxy", { shell: true }), "scutil");
   assert.equal(programName("scutil --proxy"), "other");
-  assert.equal(programName("/Users/ada/Library/Application Support/OpenMausBot/bin/cua-driver"), "cua-driver");
+  assert.equal(programName("/Users/ada/Library/Application Support/MagicBot/bin/cua-driver"), "cua-driver");
   assert.equal(programName("/Users/ada/Library/Application Support/ioreg helper/tool", { shell: true }), "other");
   assert.equal(programName("/Users/ada/Projects/acme-merger/bin/lookup_customer"), "other");
   assert.equal(programName("/Users/ada/ioreg-secrets/tool"), "other");

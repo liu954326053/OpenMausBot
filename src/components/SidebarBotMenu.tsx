@@ -23,9 +23,10 @@ import { useAdvancedMode } from "@/lib/interface-mode";
 import { useMoveToMyCloud } from "./MoveToMyCloud";
 import { useMoveToTeam } from "./MoveToTeam";
 import type { MenuState } from "./Sidebar";
-import { departmentNames, moveBotsToSection, useMayMoveBots } from "./bot-sections";
+import { moveBotsToSection, useMayMoveBot, useOpenDepartments } from "./bot-sections";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { isArchived } from "./SidebarThreadRow";
+import { SaveBotAsTemplate } from "./template-library/SaveAsTemplate";
 
 type Flyout = "more" | "move";
 
@@ -73,11 +74,11 @@ export function BotContextMenu({
   const showThreads = useShowThreads();
   const admin = useOwnerOrAdmin();
   const member = admin === false;
-  const mayMove = useMayMoveBots();
+  const bot = shown ? state.bots.find((b) => b.id === shown.botId) : undefined;
+  const mayMove = useMayMoveBot(bot), departments = useOpenDepartments(state);
   const clearThreads = useDeleteAllThreads(simpleMenu), moveToTeam = useMoveToTeam({ blocked: (bot) => (bot.defaultBot ? t("teamMove.blockedDefault", { name: bot.name }) : bot.chiefOfStaff ? t("teamMove.blockedChief") : state.bots.filter((candidate) => !candidate.hidden).length <= 1 ? t("teamMove.blockedLast") : undefined) });
   const moveToCloud = useMoveToMyCloud();
   const remoteClient = window.ogb?.remoteClient?.active === true;
-  const bot = shown ? state.bots.find((b) => b.id === shown.botId) : undefined;
   const team = useTeamPeople();
   const menuRef = useRef<HTMLDivElement>(null);
   const latestMenu = useRef(menu);
@@ -224,7 +225,6 @@ export function BotContextMenu({
     };
     const copyId = item(<ClipboardCopy size={16} className="text-ink-secondary" />, t("sidebar.copyConversationId"), () => { void copyText(bot.threadId); });
     const current = bot.section?.trim() ?? "";
-    const departments = departmentNames(state);
     const moveItems = [
       ...departments.map((name) => item(
         <span className="flex size-4 shrink-0 items-center justify-center">{name === current && <Check size={15} className="text-accent" />}</span>,
@@ -279,6 +279,7 @@ export function BotContextMenu({
       pauseAll,
       team ? null : chiefItem(),
       member && !ownEdit ? null : item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), () => dispatch({ type: "duplicateBot", botId: bot.id })),
+      <SaveBotAsTemplate key="save-as-template" bot={bot} className={MENU_ITEM} onDone={onClose} />,
       owner,
       ...moveToTeam.items(bot, item),
       ...moveToCloud.items(bot, item),
@@ -438,6 +439,7 @@ export function BotContextMenu({
         (!member || ownEdit) && item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), () =>
           dispatch({ type: "duplicateBot", botId: bot.id }),
         ),
+        <SaveBotAsTemplate key="save-as-template" bot={bot} className={MENU_ITEM} onDone={onClose} />,
         pause,
         pauseAll,
         divider("d2"),

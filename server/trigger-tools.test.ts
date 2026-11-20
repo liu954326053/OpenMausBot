@@ -142,4 +142,23 @@ describe("triggerTarget", () => {
     expect(triggerTarget(bots.a, "bot-zzz", lookup)).toMatchObject({ status: 404 });
     expect(triggerTarget(bots.a, "  ", lookup)).toMatchObject({ status: 400 });
   });
+
+  it("answers for a bot behind a team project's wall exactly as for an id nobody has", () => {
+    const main = { id: "bot-main", name: "MagicBot", defaultBot: {}, chiefOfStaff: true, managedSections: ["Drama"] };
+    const lead = { id: "bot-lead", name: "Lead", section: "Drama", chiefOfStaff: true, managedSections: ["Ops"], teamProject: { id: "p1" } };
+    const member = { id: "bot-member", name: "Member", section: "Drama", teamProject: { id: "p1" } };
+    const other = { id: "bot-other", name: "Other", section: "Drama 2", teamProject: { id: "p2" } };
+    const all = [...Object.values(bots), main, lead, member, other];
+    const find = (id: string) => all.find((bot) => bot.id === id);
+    const unknown = triggerTarget(bots.a, "bot-zzz", find);
+    expect(unknown).toMatchObject({ status: 404 });
+    for (const [from, target] of [[bots.a, lead], [bots.a, member], [main, member], [member, other], [lead, bots.a], [member, bots.a]] as const) {
+      expect(triggerTarget(from, target.id, find)).toEqual(unknown);
+    }
+    expect(triggerTarget(lead, member.id, find)).toEqual({ forBot: { botId: "bot-member", name: "Member" } });
+    expect(triggerTarget(member, lead.id, find)).toEqual({ forBot: { botId: "bot-lead", name: "Lead" } });
+    // The main bot reaches a project's lead and has no say over it; a project's bot reaches the main bot likewise.
+    expect(triggerTarget(main, lead.id, find)).toMatchObject({ status: 403 });
+    expect(triggerTarget(member, main.id, find)).toMatchObject({ status: 403 });
+  });
 });

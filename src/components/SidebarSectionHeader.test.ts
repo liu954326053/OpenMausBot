@@ -222,4 +222,34 @@ describe("SidebarSectionHeader as a Simple-mode line", () => {
     expect(html).toContain('data-testid="section-alert"');
     expect(html).not.toContain("data-section-mark");
   });
+
+  it("names its ⋯ menu as the caller says, for a heading that is not a department", () => {
+    const html = renderToStaticMarkup(line({ onMenu: () => {}, menuLabel: "Actions for the project Bride" }));
+    expect(html).toContain('aria-label="Actions for the project Bride" title="Actions for the project Bride" aria-haspopup="menu"');
+    expect(html).not.toContain("department");
+  });
+});
+
+describe("SidebarSectionHeader in Advanced mode", () => {
+  const heading = (props: Partial<Parameters<typeof SidebarSectionHeader>[0]> = {}) => SidebarSectionHeader({
+    name: "Bride", collapsed: false, onToggle: () => {}, reorderable: false, dragging: false, ...props,
+  }) as ReactElement<Props>;
+
+  it("has no ⋯ menu button unless a menu is given", () => {
+    expect(renderToStaticMarkup(heading())).not.toContain('aria-haspopup="menu"');
+    expect(renderToStaticMarkup(heading({ onDelete: () => {}, onShare: () => {} }))).not.toContain('aria-haspopup="menu"');
+  });
+
+  it("opens the given menu from a ⋯ button after the name, named as the caller says", () => {
+    const onMenu = vi.fn();
+    const element = heading({ onMenu, menuLabel: "Actions for the project Bride" });
+    const html = renderToStaticMarkup(element);
+    expect(html).toContain('aria-label="Actions for the project Bride" title="Actions for the project Bride" aria-haspopup="menu" aria-expanded="false"');
+    expect(html.indexOf(">Bride</span>")).toBeLessThan(html.indexOf("Actions for the project Bride"));
+    const button = { id: "dots" };
+    const dots = nodes(element.props.children).find((node) => node.props["aria-haspopup"] === "menu")!;
+    (dots.props.onClick as (event: { currentTarget: unknown }) => void)({ currentTarget: button });
+    expect(onMenu).toHaveBeenCalledExactlyOnceWith(button);
+    expect(renderToStaticMarkup(heading({ onMenu, menuOpen: true }))).toContain('aria-haspopup="menu" aria-expanded="true"');
+  });
 });

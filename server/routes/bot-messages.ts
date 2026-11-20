@@ -144,6 +144,8 @@ export interface BotMessageRouteDeps {
   relayRefusal?(bot: BotRecord, email: string | undefined): string | null;
   /** The answer to someone's ask to chat with a team bot; null for any other card. */
   resolveAccessRequest?(threadId: string, requestId: string, behavior: string, message: unknown): { status: number; body: unknown } | null;
+  /** The answer to a project the main bot proposed; null for any other card. */
+  resolveTeamProjectProposal?(args: { threadId: string; requestId: string; behavior: string }, ownerReview: boolean): Promise<{ status: number; body: unknown } | null>;
 }
 
 /** External interfaces (the Slack worker) opt in. `onBehalfOf`, advertised by /api/health as
@@ -602,6 +604,8 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         const access = deps.resolveAccessRequest?.(bot.threadId, String(body.requestId), behavior, body.message);
         if (access) return json(res, access.status, access.body);
         if (resolveAndSendTrust(res, bot.threadId, String(body.requestId), behavior)) return;
+        const project = await deps.resolveTeamProjectProposal?.({ threadId: bot.threadId, requestId: String(body.requestId), behavior }, ownerReview(auth, req));
+        if (project) return json(res, project.status, project.body);
         const answer = { botId: bot.id, threadId: bot.threadId, requestId: String(body.requestId), behavior };
         if (await resolveAndSendTeamSetup(res, answer, ownerReview(auth, req))) return;
         if (await resolveAndSendMcp(res, answer, ownerReview(auth, req))) return;
@@ -673,6 +677,8 @@ export function createBotMessageRoutes(deps: BotMessageRouteDeps): RouteHandler 
         const access = deps.resolveAccessRequest?.(threadId, requestId, behavior, body.message);
         if (access) return json(res, access.status, access.body);
         if (resolveAndSendTrust(res, threadId, requestId, behavior)) return;
+        const project = await deps.resolveTeamProjectProposal?.({ threadId, requestId, behavior }, ownerReview(auth, req));
+        if (project) return json(res, project.status, project.body);
         const skillCard = store.messagesFor(threadId).find(
           (message) => message.card?.requestId === requestId && message.card.skillRequest,
         );

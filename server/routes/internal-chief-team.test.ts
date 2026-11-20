@@ -109,6 +109,19 @@ describe("what a Chief of Staff reads about its team", () => {
     });
   });
 
+  it("keeps a team project's department and bots out of what a Chief outside it plans with, whatever it is in charge of", async () => {
+    const main = bot("main", { defaultBot: {}, chiefOfStaff: true, managedSections: ["Work", "Drama"] });
+    const lead = bot("lead", { section: "Drama", chiefOfStaff: true, managedSections: ["Work"], teamProject: { id: "p1", role: "lead" } });
+    const writer = bot("writer", { section: "Drama", teamProject: { id: "p1", role: "writer" } });
+    const team = { teams: ["", "Work", "Drama"], bots: [main, bot("helper", { section: "Work" }), lead, writer] };
+    const outside = (await (await serve(main, async () => TEAMS, team)).get("/api/internal/team-setup-catalog")).body as { teams: string[]; bots: Array<{ id: string }> };
+    expect(outside.teams).toEqual(["", "Work"]);
+    expect(outside.bots.map((item) => item.id)).toEqual(["main", "helper"]);
+    const inside = (await (await serve(lead, async () => TEAMS, team)).get("/api/internal/team-setup-catalog")).body as { teams: string[]; bots: Array<{ id: string }> };
+    expect(inside.teams).toEqual(["Drama"]);
+    expect(inside.bots.map((item) => item.id)).toEqual(["lead", "writer"]);
+  });
+
   it("leaves every other route to the next handler", async () => {
     const { get } = await serve(bot("chief", { chiefOfStaff: true }), async () => TEAMS);
     expect(await get("/api/internal/team-setup-requests")).toEqual({ status: 404, body: { from: "next routes" } });

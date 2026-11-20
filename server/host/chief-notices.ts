@@ -1,4 +1,5 @@
 import { failedTurnTool } from "../../shared/failed-turn.ts";
+import { inThisBuildsWords } from "../../shared/former-name.ts";
 import { admit } from "../admission.ts";
 import { engineMemory, memoryStopped } from "../engine-memory.ts";
 import { outOfProcesses } from "../process-shortage.ts";
@@ -29,7 +30,7 @@ export interface ChiefNoticeDeps {
   threadSettling?(threadId: string): boolean;
   /** The thread waits for a free slot and starts on its own. */
   threadQueued?(botId: string, threadId: string): boolean;
-  /** Runs OpenMausBot's automatic retry after the failed turn's own handling is done; the host's next tick by default. */
+  /** Runs MagicBot's automatic retry after the failed turn's own handling is done; the host's next tick by default. */
   schedule?(run: () => void): void;
   /** Starts this thread's request again where it stopped: a continuation of the request the harness recorded, never a line
    * of the person's. Absent: a run stopped for memory with no Chief to retry it is only reported. */
@@ -65,14 +66,14 @@ export interface ChiefNoticeDeps {
 export const MEMORY_RETRY_MS = 30_000;
 /** The chats a Chief's line for the problems it was not started for names; its count covers the rest. */
 export const FOLDED_LISTED = 5;
-export const MEMORY_RETRY_TEXT = "[OpenMausBot started this again by itself, once: the last run was stopped to free memory on this Cloud. "
+export const MEMORY_RETRY_TEXT = "[MagicBot started this again by itself, once: the last run was stopped to free memory on this Cloud. "
   + "Continue the request above from where it stopped and finish it. If the same problem comes back, say exactly what is blocking and stop.]";
 
-export const SERVER_MEMORY_RETRY_TEXT = "[OpenMausBot started this again by itself, once: the last run was stopped to free memory on this server. "
+export const SERVER_MEMORY_RETRY_TEXT = "[MagicBot started this again by itself, once: the last run was stopped to free memory on this server. "
   + "Continue the request above from where it stopped and finish it. If the same problem comes back, say exactly what is blocking and stop.]";
 
 /** A run the server had no room to start is the server's shortage: it starts again by itself, and no AI is asked about it. */
-export const ROOM_RETRY_TEXT = "[OpenMausBot started this again by itself, once: the last run could not start because this server had no room for another program. "
+export const ROOM_RETRY_TEXT = "[MagicBot started this again by itself, once: the last run could not start because this server had no room for another program. "
   + "Continue the request above from where it stopped and finish it. If the same problem comes back, say exactly what is blocking and stop.]";
 
 export function createChiefNotices(deps: ChiefNoticeDeps) {
@@ -119,7 +120,7 @@ export function createChiefNotices(deps: ChiefNoticeDeps) {
     return null;
   }
 
-  /** The one way a teammate's stopped thread runs again: a Chief's retry_thread and OpenMausBot's automatic retry both
+  /** The one way a teammate's stopped thread runs again: a Chief's retry_thread and MagicBot's automatic retry both
    * start it here, after the same refusal checks. Throws the refusal, or why the start failed. */
   async function retryThread(input: { chief: BotRecord; bot: BotRecord; threadId: string; unattended: boolean; note?: string; automatic?: true }): Promise<void> {
     const refused = retryRefusal(input.bot.id, input.threadId);
@@ -226,7 +227,7 @@ export function createChiefNotices(deps: ChiefNoticeDeps) {
     return "chief";
   }
 
-  /** A failed teammate run gets one retry from OpenMausBot before its Chief hears; the Chief then hears how that retry ended.
+  /** A failed teammate run gets one retry from MagicBot before its Chief hears; the Chief then hears how that retry ended.
    * Never retried: a stall the turn watchdog stopped (kind "stalled"), a stop, a refusal or a cap (retriesTeammateThread,
    * from the failure's words and `facts`), a run that answered a retry, and a thread whose asks are not the Chief's person's. */
   /** `notified`: the person already heard of it another way (a usage limit's own notice), so only the Chief is told. */
@@ -266,7 +267,7 @@ export function createChiefNotices(deps: ChiefNoticeDeps) {
     }
     if (input.kind === "failed" && !group && !chiefRetries && memoryStopped(input.detail) && retryForRoom(bot, threadId, report)) return;
     if (!chief || !chiefRetries) return report();
-    const answered = store.activePath(threadId).findLast((line) => line.role === "user")?.text ?? "";
+    const answered = inThisBuildsWords(store.activePath(threadId).findLast((line) => line.role === "user")?.text ?? "");
     if (answered.startsWith(AUTO_RETRY_LEAD)) return report({ retried: true });
     if (input.kind !== "failed" || answered.startsWith(RETRY_LEAD) || !count.mayRetry || !retriesTeammateThread(input.detail, input.facts)) return report();
     const failedAt = Date.now();

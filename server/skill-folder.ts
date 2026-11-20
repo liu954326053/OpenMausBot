@@ -252,6 +252,16 @@ export function skillFolderDigest(dir: string, paths: readonly string[], options
   return sha256;
 }
 
+/** What skillFolderDigest gives for `files` once they are written, so an upload is compared with a stored folder
+ * without writing it. */
+export function skillFilesDigest(files: ReadonlyArray<{ path: string; content: string | Uint8Array; executable?: boolean }>): string {
+  const hash = createHash("sha256");
+  for (const file of [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    hash.update(`${file.path}\0${file.executable ? "x" : "-"}\0${createHash("sha256").update(file.content).digest("hex")}\n`);
+  }
+  return hash.digest("hex");
+}
+
 export const githubSkillOriginSchema = z.object({
   owner: z.string().min(1),
   repo: z.string().min(1),

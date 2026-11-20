@@ -14,7 +14,7 @@ import { listMcpServers } from "../mcp-registry.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { applyMcpChange, otherBotsGiven, showMcpActivity, type InternalMcpDeps } from "../routes/internal-mcp.ts";
 import type { BotRecord, Store } from "../store.ts";
-import { workspaceDir } from "../workspace.ts";
+import { privateBotFolder } from "../workspace.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import { McpRequestService } from "./mcp-requests.ts";
 import type { McpServersHost } from "./mcp-servers-host.ts";
@@ -104,7 +104,7 @@ export function createMcpChat(deps: McpChatDeps) {
       addToBotList: (name) => { const bot = store.bot(sender.id); if (bot?.mcpServers) store.patchBot(bot.id, { mcpServers: [...new Set([...bot.mcpServers, name])] }); },
       botAdd: (current, body) => mcpServersHost.botAdd(current, body, sender.id),
       botKeep: (server) => mcpServersHost.botKeep(server, sender.id),
-      ownCwd: () => (existsSync(workspaceDir(sender.id)) ? workspaceDir(sender.id) : DATA_DIR),
+      ownCwd: () => (existsSync(privateBotFolder(sender.id)) ? privateBotFolder(sender.id) : DATA_DIR),
       decide: (summary, applied) => appendDecision(DATA_DIR, { threadId, botId: sender.id, botName: sender.name, tool: "mcp_server", summary, decision: "auto-approved", source: applied }),
       activity: (label, call) => showMcpActivity(store, { threadId, turnId: liveTurnByThread.get(threadId), ...(from ? { from } : {}) }, call, label),
       language: () => threadLanguage(threadId),

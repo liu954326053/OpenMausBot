@@ -1,13 +1,15 @@
 // Security: local browse only, with no registry and no network fetch, so an import is exactly the bytes pasted here.
-import { Search, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { intlLocale, t } from "@/lib/i18n";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { useStore } from "@/state/store";
 import { Card, Switch } from "./SettingsPrimitives";
 import type { SkillsLibrarySkillWire } from "../../shared/wire";
+import { UndoToast } from "./bot-access/ShareBotButton";
 import { Layer } from "./Layer";
 import { Select } from "./Select";
+import { SkillPackageUpload } from "./SkillPackageUpload";
 
 export function filterLibrarySkills(
   skills: readonly SkillsLibrarySkillWire[],
@@ -49,6 +51,8 @@ export function SkillsSection() {
   const [importMessage, setImportMessage] = useState("");
   const [assignBot, setAssignBot] = useState("");
   const busy = useRef(false);
+  const [removed, setRemoved] = useState<{ name: string; undo: string } | null>(null);
+  const forgetRemoved = useCallback(() => setRemoved(null), []);
 
   const bots = state.bots.filter((bot) => !bot.hidden);
   const tags = useMemo(
@@ -166,6 +170,35 @@ export function SkillsSection() {
     }
   };
 
+  const remove = async (skill: SkillsLibrarySkillWire) => {
+    if (busy.current) return;
+    busy.current = true;
+    setWorking(skill.name);
+    setError("");
+    try {
+      const response = await fetch(`/api/skills-library/${encodeURIComponent(skill.name)}`, { method: "DELETE" });
+      const body = (await response.json()) as { undo?: string; error?: string };
+      if (!response.ok || !body.undo) throw new Error(body.error ?? t("skills.error.remove"));
+      setRemoved({ name: skill.name, undo: body.undo });
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("skills.error.remove"));
+    } finally {
+      busy.current = false;
+      setWorking("");
+    }
+  };
+
+  const restore = async (undo: string) => {
+    const response = await fetch("/api/skills-library/restore", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ undo }),
+    });
+    if (!response.ok) throw new Error(t("skills.library.undoFailed"));
+    await refresh();
+  };
+
   const view = async (skill: SkillsLibrarySkillWire, review = false) => {
     setError("");
     try {
@@ -208,6 +241,8 @@ export function SkillsSection() {
 
   return (
     <div className="flex flex-col gap-4">
+      <SkillPackageUpload disabled={Boolean(working || importing)} onAdded={() => void refresh()} />
+
       <Card title={t("skills.library.title")} subtitle={t("skills.library.subtitle")}>
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2">
@@ -271,6 +306,16 @@ export function SkillsSection() {
                       disabled={Boolean(working || importing)}
                       onClick={() => void toggle(skill)}
                     />
+                    <button
+                      type="button"
+                      aria-label={t("skills.removeName", { name: skill.name })}
+                      title={t("skills.remove")}
+                      disabled={Boolean(working || importing)}
+                      onClick={() => void remove(skill)}
+                      className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-secondary hover:bg-danger/10 hover:text-danger disabled:opacity-40"
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
+                    </button>
                   </div>
                   <LibrarySkillMeta skill={skill} />
                   <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-inset px-2.5 py-2">
@@ -290,7 +335,7 @@ export function SkillsSection() {
                   )}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-ink-secondary">
                     {skill.assignedBots.length === 0 ? (
-                      <span>{t("skills.library.notAssigned")}</span>
+                      <span>{t(skill.onOffer ? "skills.library.onOffer" : "skills.library.notAssigned")}</span>
                     ) : (
                       skill.assignedBots.map((bot) => (
                         <span key={bot.id} className="flex items-center gap-1 rounded-full bg-control px-2 py-0.5">
@@ -370,6 +415,8 @@ export function SkillsSection() {
         </form>
       </Card>
 
+      {removed && <UndoToast key={removed.undo} text={t("skills.library.removed", { skill: removed.name })} failedText={t("skills.library.undoFailed")}
+        onUndo={() => restore(removed.undo)} onDone={forgetRemoved} />}
       {viewing && <Layer modal><SkillSourceDialog viewing={viewing} error={error} working={Boolean(working)} onClose={() => { if (!working) setViewing(null); }} onEnable={() => void toggle(viewing.skill, true)} /></Layer>}
     </div>
   );

@@ -1,6 +1,8 @@
-import { FolderOpen, LayoutGrid, Puzzle, Rocket, Search, UsersRound, X, Zap } from "lucide-react";
+import { BookOpen, FolderOpen, LayoutGrid, Puzzle, Rocket, Search, Server, UsersRound, X, Zap } from "lucide-react";
 
+import { appsOpen, mcpOpen } from "@/lib/apps-panel";
 import { useCloudFilesReady } from "@/lib/cloud-files";
+import { skillsLibraryEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { useStore } from "@/state/store";
 
@@ -45,12 +47,26 @@ export function SidebarPhoneBar({ query, onQuery }: { query: string; onQuery: (q
       active: state.activeView === "published-apps",
       onSelect: () => dispatch({ type: "showPublishedApps" }),
     },
+    ...(skillsLibraryEnabled(state.config) ? [{
+      key: "skills-library",
+      label: t("skills.library.title"),
+      icon: <BookOpen size={18} />,
+      active: state.activeView === "skills-library",
+      onSelect: () => dispatch({ type: "showSkillsLibrary" }),
+    }] : []),
+    {
+      key: "mcp",
+      label: t("connectors.tab.mcp"),
+      icon: <Server size={18} />,
+      active: mcpOpen(state),
+      onSelect: () => dispatch({ type: "togglePlugins", open: true, surface: "mcp" }),
+    },
     {
       key: "apps",
       label: t("sidebar.nav.apps"),
       icon: <Puzzle size={18} />,
-      active: state.pluginsOpen,
-      onSelect: () => dispatch({ type: "togglePlugins", open: true }),
+      active: appsOpen(state),
+      onSelect: () => dispatch({ type: "togglePlugins", open: true, surface: "apps" }),
     },
   ];
   return (

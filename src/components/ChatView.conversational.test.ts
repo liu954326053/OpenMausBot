@@ -48,6 +48,7 @@ async function draw(bot: Bot) {
 const segments = () => [...document.querySelectorAll("[data-reply-segment]")].map((el) => el.textContent);
 
 beforeAll(() => {
+  setAdvancedMode(false);
   vi.stubGlobal("fetch", () => new Promise(() => {}));
   const container = document.createElement("div");
   document.body.append(container);

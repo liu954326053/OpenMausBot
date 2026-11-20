@@ -139,7 +139,7 @@ try {
 const fs = require('node:fs');
 let args = process.argv.slice(2);
 if (args[0] === '-H') args = args.slice(2);
-const labels = ${JSON.stringify({ "com.openmausbot.local-vm": "1", "com.openmausbot.cua-driver": CUA_DRIVER_VERSION, "com.openmausbot.cua-base": BASE_IMAGE_DIGEST, "com.openmausbot.image-layer": IMAGE_LAYER_VERSION, "com.openmausbot.workspace": "1" })};
+const labels = ${JSON.stringify({ "com.magicbot.local-vm": "1", "com.magicbot.cua-driver": CUA_DRIVER_VERSION, "com.magicbot.cua-base": BASE_IMAGE_DIGEST, "com.magicbot.image-layer": IMAGE_LAYER_VERSION, "com.magicbot.workspace": "1" })};
 const imageId = 'sha256:' + 'a'.repeat(64);
 const counter = ${JSON.stringify(join(scratch, "captures"))};
 const target = fs.existsSync(${JSON.stringify(fixtureTarget)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(fixtureTarget)}, 'utf8')) : null;

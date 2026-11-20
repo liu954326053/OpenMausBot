@@ -680,7 +680,7 @@ const mplSourceRows = EXPECTED_MPL_COMPONENTS.map((component) => {
 });
 const notices = `# Cua Driver ${RELEASE_VERSION} third-party notices
 
-OpenMausBot redistributes two executables from the official Cua Driver ${RELEASE_VERSION} Linux x64 release: \`cua-driver\` and \`cua-cursor-theme\`.
+MagicBot redistributes two executables from the official Cua Driver ${RELEASE_VERSION} Linux x64 release: \`cua-driver\` and \`cua-cursor-theme\`.
 
 - Upstream source commit: [\`${SOURCE_COMMIT}\`](https://github.com/trycua/cua/commit/${SOURCE_COMMIT})
 - Upstream \`Cargo.lock\` SHA-256: \`${CARGO_LOCK_SHA256}\`

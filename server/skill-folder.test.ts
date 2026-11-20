@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  planSkillFolder, prepareSkillFolder, skillFilePathProblem, skillFolderDigest, skillImportSummary, writeSkillFolder,
+  planSkillFolder, prepareSkillFolder, skillFilePathProblem, skillFilesDigest, skillFolderDigest, skillImportSummary, writeSkillFolder,
 } from "./skill-folder.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
@@ -138,6 +138,8 @@ describe("writing and checking a skill folder", () => {
     writeSkillFolder(folder, SKILL, files);
     const reviewed = skillFolderDigest(folder, paths)!;
     expect(reviewed).toMatch(/^[a-f0-9]{64}$/);
+    expect(skillFilesDigest(files), "the same hash from the files before they are written").toBe(reviewed);
+    expect(skillFilesDigest([...files].reverse())).toBe(reviewed);
     expect(skillFolderDigest(folder, [...paths].reverse())).toBe(reviewed);
 
     writeFileSync(join(folder, "SKILL.md"), `${SKILL}changed\n`);

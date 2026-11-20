@@ -7,6 +7,7 @@ import { ATTACHMENTS_DIR } from "../../attachments.ts";
 import { cloudHomeConfigured } from "../../cloud-home.ts";
 import { DATA_DIR, OPENCODE_PROVIDER_ENV } from "../../config.ts";
 import { hostedWorkspaceConfigured } from "../../enterprise.ts";
+import { teamProjectBotFolder, teamProjectBotFolderInPlace } from "../../team-project-folders.ts";
 import { decodeInjectId, hostApiKey, localHost, mergeLocalInject } from "../local-inject.ts";
 import { applyStandaloneSpawnEnv } from "../../engine-install.ts";
 import { OPENCODE_STANDALONE } from "./opencode-release.ts";
@@ -483,9 +484,11 @@ function withinFolder(path: string, folder: string): boolean {
   return rest === "" || (rest !== ".." && !rest.startsWith(`..${sep}`) && !isAbsolute(rest));
 }
 
-/** A bot's shared or private folder: bots wrote everything there, so none of it may become OpenCode configuration. */
-export function openMausOwnsWorkingFolder(cwd: string): boolean {
-  return [join(DATA_DIR, "workspaces"), join(DATA_DIR, "task-workspaces")].some((root) =>
+/** A bot's shared or private folder, or a project bot's folder in its project: bots wrote everything there, so none of
+ * it may become OpenCode configuration. */
+export function openMausOwnsWorkingFolder(cwd: string, botId?: string): boolean {
+  const inProject = botId ? teamProjectBotFolder(botId) : null;
+  return (inProject !== null && withinFolder(cwd, inProject)) || [join(DATA_DIR, "workspaces"), join(DATA_DIR, "task-workspaces")].some((root) =>
     withinFolder(cwd, root) && resolvePath(cwd) !== resolvePath(root));
 }
 
@@ -497,6 +500,8 @@ export function openCodeOwnedDirectories(botId?: string, cwd?: string): string[]
   const directories = [ATTACHMENTS_DIR];
   // One path segment only: a bot id never names a folder outside its own.
   if (botId && /^[\w-][\w.-]*$/u.test(botId) && botId !== "..") directories.push(join(DATA_DIR, "workspaces", botId));
+  const inProject = botId ? teamProjectBotFolderInPlace(botId) : null;
+  if (inProject) directories.push(inProject);
   return cwd ? directories.filter((directory) => !withinFolder(cwd, directory)) : directories;
 }
 
@@ -719,7 +724,7 @@ const support = (
     },
     spawnFingerprint: (env, config) => openCodeSpawnFingerprint(env, config.cli),
     applyTurnEnv: (env, { fullAuto, botId, cwd }) => {
-      if (openMausOwnsWorkingFolder(cwd)) env.OPENCODE_DISABLE_PROJECT_CONFIG = "1";
+      if (openMausOwnsWorkingFolder(cwd, botId)) env.OPENCODE_DISABLE_PROJECT_CONFIG = "1";
       if (!fullAuto) {
         allowOwnedDirectories(env, botId, cwd);
         return;

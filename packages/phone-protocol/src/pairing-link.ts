@@ -1,6 +1,6 @@
 // The one `openmausbot://pair` link builder, read by the Android and iOS
-// scanners (`PairingInvite.parse`). Every value is written with
-// encodeURIComponent, so a space is `%20`.
+// scanners (`PairingInvite.parse`), which accept only that scheme and host.
+// Every value is written with encodeURIComponent, so a space is `%20`.
 
 export type CompanionEndpointKind = "hosted" | "tailnet" | "lan" | "bonjour";
 

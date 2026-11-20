@@ -77,7 +77,7 @@ export function GuidedTour() {
           return;
         }
         case "openApps":
-          if (!press("nav-apps")) dispatch({ type: "togglePlugins", open: true });
+          if (!press("nav-apps")) dispatch({ type: "togglePlugins", open: true, surface: "apps" });
           return;
         case "closeApps":
           dispatch({ type: "togglePlugins", open: false });

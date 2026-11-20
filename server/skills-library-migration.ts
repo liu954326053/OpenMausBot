@@ -164,17 +164,19 @@ export function writePendingAssignments(assignments: Record<string, string[]>, r
   writeFileAtomic(pendingAssignmentsPath(root), `${JSON.stringify(assignments, null, 2)}\n`, { mode: 0o600 });
 }
 
+/** `migrate: false` leaves each bot's own skills where they are and only finishes assignments a share left pending. */
 export function runSkillsLibraryBootSweep(options: {
   bots: readonly { id: string; assignedSkills?: string[] }[];
   patch?: (botId: string, assignedSkills: string[]) => void;
   root?: string;
+  migrate?: boolean;
 }): SkillsMigrationReport {
   const root = options.root ?? skillsLibraryRoot();
   const outcomes: SkillMigrationOutcome[] = [];
   const assignments: Record<string, string[]> = {};
   const pending = options.patch ? readPendingAssignments(root) : {};
   for (const bot of options.bots) {
-    const report = migrateBotSkillsToLibrary(bot.id, root);
+    const report = options.migrate === false ? { outcomes: [], assignments: {} as Record<string, string[]> } : migrateBotSkillsToLibrary(bot.id, root);
     outcomes.push(...report.outcomes);
     const current = bot.assignedSkills ?? [];
     const merged = [...new Set([...(pending[bot.id] ?? []), ...(report.assignments[bot.id] ?? []), ...current])].sort();

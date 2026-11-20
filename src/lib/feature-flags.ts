@@ -73,7 +73,7 @@ export function claudeUserSkillsEnabled(config: FeatureFlagConfig | null | undef
 }
 
 export function skillsLibraryEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.skillsLibrary === true;
+  return config?.features?.skillsLibrary !== false;
 }
 
 export function shareLearnedSkillsMode(config: FeatureFlagConfig | null | undefined): "off" | "ask" | "auto" {

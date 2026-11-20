@@ -31,9 +31,9 @@ import { libraryDescriptionsAt, librarySkillFilePath, librarySkillsForBot, libra
 import { readManagedLinks, writeManagedLinks } from "./skill-link-registry.ts";
 import {
   directoryEntryState, entryExistsWithoutFollowing, formatKb, isSkillReferencePath, learnedSkillDirectoryMatches, publishReviewedRevision,
-  readReferenceFiles, referenceLimitError, referencePathError, REFERENCES_ADVICE, skillReferencesSha256, STAGED_SKILL_FILE_MAX_BYTES,
+  readReferenceFiles, referenceLimitError, referencePathError, REFERENCES_ADVICE, skillReferencesSha256, STAGED_SKILL_FILE_MAX_BYTES, unlinkInPlace,
 } from "./skill-storage.ts";
-import { workspaceDir } from "./workspace.ts";
+import { ensureWorkspaceFolder, teamProjectBotFolder, teamProjectFilesAway, teamProjectFolderProblem, workspaceDir } from "./workspace.ts";
 import { isSkillName, parseSkillMd, scanSkillText, SKILL_FILE_MAX_BYTES, type ParsedSkill } from "../shared/skill-md.ts";
 
 export {
@@ -127,7 +127,7 @@ function ensureSkillsRoot(botId: string): string | null {
   if (state === "unsafe") return null;
   if (state === "missing") {
     try {
-      mkdirSync(root, { recursive: true, mode: 0o700 });
+      ensureWorkspaceFolder(botId, "skills");
     } catch {
       return null;
     }
@@ -298,10 +298,9 @@ function removeOwnedNativeLink(
   beforeRemove?.(link);
   try {
     renameSync(link, quarantined);
-  } catch {
-    return nativeLinkDirectlyTargetsOwnedSkill(link, root, name, revisionWasManaged)
-      ? "retry"
-      : "preserved";
+  } catch (error) {
+    if (!nativeLinkDirectlyTargetsOwnedSkill(link, root, name, revisionWasManaged)) return "preserved";
+    return (error as NodeJS.ErrnoException).code === "EXDEV" && teamProjectBotFolder(botId) ? unlinkInPlace(link) : "retry";
   }
 
   if (nativeLinkDirectlyTargetsOwnedSkill(
@@ -385,6 +384,7 @@ export function syncSkillLinks(
 ): void {
   const root = workspaceDir(botId);
   const linkRoot = options.task?.folder ?? root, threadId = options.task?.threadId;
+  if (teamProjectFilesAway(botId)) return;
   const previouslyManaged = readManagedLinks(botId, threadId);
   // The bot can replace its skills root: never follow it, but still revoke existing app links.
   if (directoryEntryState(skillsDir(botId)) === "unsafe") {
@@ -494,7 +494,7 @@ function skillListing(botId: string, name: string, entry: SkillManifestEntry): S
     editable: entry.source.startsWith(LEARN_SOURCE_PREFIX) && Boolean(appliedStageId),
     warnings: intact
       ? visible.warnings
-      : [...visible.warnings, "stored skill files changed after review — enablement is blocked"],
+      : [...visible.warnings, teamProjectFolderProblem(botId) ?? "stored skill files changed after review — enablement is blocked"],
   };
 }
 
@@ -572,7 +572,7 @@ export function setSkillEnabled(botId: string, name: string, enabled: boolean): 
   const entry = manifest[name];
   if (!entry) return { error: `no imported skill named "${name}"` };
   if (enabled && !skillContentMatches(botId, name, entry)) {
-    return { error: "stored skill files changed after review — remove and import or learn it again" };
+    return { error: teamProjectFolderProblem(botId) ?? "stored skill files changed after review — remove and import or learn it again" };
   }
   entry.enabled = enabled;
   writeManifest(botId, manifest);
@@ -637,9 +637,9 @@ export function removeSkill(botId: string, name: string): { removed: true } | { 
   const manifest = readManifest(botId);
   const entry = manifest[name];
   if (!entry) return { error: `no imported skill named "${name}"` };
-  const root = skillsDir(botId);
-  if (directoryEntryState(root) === "unsafe") {
-    return { error: "the workspace skills path is a symlink or file; refusing to remove through it" };
+  const root = skillsDir(botId), away = teamProjectFolderProblem(botId);
+  if (away || directoryEntryState(root) === "unsafe") {
+    return { error: away ?? "the workspace skills path is a symlink or file; refusing to remove through it" };
   }
   const target = entry.storageRevision ? null : join(root, name);
   const targetState = target ? directoryEntryState(target) : "missing";
@@ -807,7 +807,7 @@ function commitNewSkillFiles(
   commitManifest: (filesSha256: string | null) => void,
 ): void {
   const root = ensureSkillsRoot(botId);
-  if (!root) throw new Error("the workspace skills path must be a real directory, not a symlink or file");
+  if (!root) throw new Error(teamProjectFolderProblem(botId) ?? "the workspace skills path must be a real directory, not a symlink or file");
   const target = join(root, name);
   const staged = join(root, `.install-${name}-${randomUUID()}`);
   if (entryExistsWithoutFollowing(target)) throw new Error(`skill path already exists: ${name}`);
@@ -870,7 +870,7 @@ function installPreparedSkill(
     ...(options.github ? { github: options.github } : {}),
   };
   const root = ensureSkillsRoot(botId);
-  if (!root) return { error: "the workspace skills path must be a real directory, not a symlink or file" };
+  if (!root) return { error: teamProjectFolderProblem(botId) ?? "the workspace skills path must be a real directory, not a symlink or file" };
   const target = join(root, name);
   if (entryExistsWithoutFollowing(target)) {
     if (directoryEntryState(target) !== "directory") {
@@ -936,7 +936,7 @@ function updatePreparedSkill(
     return { error: "the installed skill changed after this update was proposed — review a fresh update" };
   }
   try {
-    const dirs = { state: skillStateDir(botId), ensureSkillsRoot: () => ensureSkillsRoot(botId) };
+    const dirs = { state: skillStateDir(botId), ensureSkillsRoot: () => ensureSkillsRoot(botId), inProjectFolder: teamProjectBotFolder(botId) !== null, rootProblem: () => teamProjectFolderProblem(botId) };
     const storageRevision = publishReviewedRevision(dirs, options.appliedStageId, prepared.files, sha256, referencesSha256);
     // Re-read just before the swap: keeps unrelated manifest changes and the user's latest enabled choice.
     const latestManifest = readManifest(botId);
@@ -1040,7 +1040,7 @@ export function stageSkillWrite(
     return { error: `skill "${parsed.name}" predates reviewed updates — remove and learn it again first` };
   }
   if (input.action === "update" && existing && !skillContentMatches(botId, parsed.name, existing)) {
-    return { error: "stored SKILL.md changed after review — restore or remove it before proposing an update" };
+    return { error: teamProjectFolderProblem(botId) ?? "stored SKILL.md changed after review — restore or remove it before proposing an update" };
   }
   if (input.action === "update" && input.keepReferences !== false) {
     const installed = readSkillReferences(botId, parsed.name);

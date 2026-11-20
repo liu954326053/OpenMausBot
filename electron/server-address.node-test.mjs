@@ -69,12 +69,15 @@ test("the wrong kind of code says what it is, in either field", () => {
   assert.deepEqual(readPairingCode(`omb_pair_${"a".repeat(43)}`), { kind: "credential", credential: `omb_pair_${"a".repeat(43)}` });
 });
 
-test("app links naming a server are read; a phone's link to a computer is named", () => {
-  const parsed = parseServerInput(`openmausbot://pair?address=${encodeURIComponent("https://maus.example.com")}&code=${CODE}`);
-  assert.deepEqual(parsed, { ok: true, candidates: ["https://maus.example.com"], code: CODE, credential: null });
+test("app links naming a server are read under either scheme; a phone's link to a computer is named", () => {
   const token = `omb_pair_${"b".repeat(43)}`;
-  assert.equal(parseServerInput(`openmausbot://pair?address=${encodeURIComponent("http://192.168.1.20:8799")}&token=${token}`).credential, token);
-  assert.equal(parseServerInput("openmausbot://pair?address=192.168.1.20&port=8810&token=x").problem, "phoneLink");
+  for (const scheme of ["openmausbot", "magicbot", "OpenMausBot"]) {
+    const parsed = parseServerInput(`${scheme}://pair?address=${encodeURIComponent("https://maus.example.com")}&code=${CODE}`);
+    assert.deepEqual(parsed, { ok: true, candidates: ["https://maus.example.com"], code: CODE, credential: null });
+    assert.equal(parseServerInput(`${scheme}://pair?address=${encodeURIComponent("http://192.168.1.20:8799")}&token=${token}`).credential, token);
+    assert.equal(parseServerInput(`${scheme}://pair?address=192.168.1.20&port=8810&token=x`).problem, "phoneLink");
+  }
+  assert.equal(parseServerInput(`otherbot://pair?address=${encodeURIComponent("https://maus.example.com")}&code=${CODE}`).problem, "notAnAddress");
 });
 
 test("anything that is not a server address is refused", () => {

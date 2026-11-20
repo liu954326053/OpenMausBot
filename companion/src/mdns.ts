@@ -327,7 +327,7 @@ export function answersFor(
 
 
 /** No dots, no control characters, at most 63 bytes of UTF-8. */
-export function dnsLabel(text: string, fallback = "OpenMausBot"): string {
+export function dnsLabel(text: string, fallback = "MagicBot"): string {
   let label = text
     // oxlint-disable-next-line no-control-regex -- control characters are not valid in a DNS label
     .replace(/[\u0000-\u001f\u007f]/g, "")
@@ -351,6 +351,9 @@ export function clampBytes(text: string, limit: number): string {
   }
   return out;
 }
+
+/** The DNS-SD type the phone apps browse for. */
+export const COMPANION_SERVICE_TYPE = "_openmausbot._tcp";
 
 /** Not `<hostname>.local`: on macOS mDNSResponder owns and defends that name. */
 export function defaultHostName(machine = hostname()): string {

@@ -91,7 +91,7 @@ export function SettingsWindow() {
   };
   const openHit = (hit: SearchHit) => {
     const entry = hit.entry;
-    if (entry.jump === "apps") { close(); dispatch({ type: "togglePlugins", open: true }); return; }
+    if (entry.jump === "apps") { close(); dispatch({ type: "togglePlugins", open: true, surface: "apps" }); return; }
     if (entry.jump === "automations") { close(); dispatch({ type: "showRoutines", view: "list" }); return; }
     if (entry.jump === "shortcuts") { close(); dispatch({ type: "toggleShortcuts", open: true }); return; }
     if (entry.jump === "bot") { close(); return; }

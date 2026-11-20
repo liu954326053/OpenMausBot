@@ -45,13 +45,15 @@ vi.mock("@/state/store", async (importOriginal) => {
 });
 
 import { initialState } from "@/state/store";
-import { BOTS_SECTION_ID, CHANNELS_SECTION_ID, userSectionId } from "@/lib/sidebar-layout";
+import { setTeamProjects } from "@/state/team-projects";
+import { BOTS_SECTION_ID, CHANNELS_SECTION_ID, PINNED_SECTION_ID, userSectionId } from "@/lib/sidebar-layout";
 import { SIDEBAR_DENSITY_KEY } from "@/lib/sidebar-preferences";
 import { PHONE_LAYOUT } from "@/lib/use-media-query";
 import { BotContextMenu, BotListItem, Sidebar, TeamMenuItems } from "./Sidebar";
 const drawSidebar = (Sidebar as unknown as { type: (props: import("react").ComponentProps<typeof Sidebar>) => import("react").ReactNode }).type;
 import { NEW_DEPARTMENT } from "./SidebarBotDrag";
 import { SidebarSectionHeader } from "./SidebarSectionHeader";
+import { SidebarTeamProjects } from "./team-projects/SidebarTeamProjects";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { TeamDialog } from "./TeamDialog";
 
@@ -511,5 +513,94 @@ describe("deleting a Chief of Staff", () => {
     fixture.state = { ...fixture.state, bots: [chief] };
     askToDelete(chief);
     expect(openDialog()!.props.alternative).toBeUndefined();
+  });
+});
+
+describe("projects in the sidebar", () => {
+  type ProjectsProps = Parameters<typeof SidebarTeamProjects>[0];
+  const projects = () => render().find((node) => node.type === SidebarTeamProjects)!.props as unknown as ProjectsProps;
+  const work = {
+    id: "p1", name: "Work", folder: "/dramas/Work", section: "Work", template: { id: "urban", name: "Urban", version: 1 },
+    leadBotId: "dodo", createdAt: 1, folderState: "ready" as const, botIds: ["dodo", "echo"],
+  };
+  const withProject = (extra: Partial<typeof work> & { archivedAt?: number } = {}) => setTeamProjects({ root: "/dramas", projects: [{ ...work, ...extra }] });
+  afterEach(() => setTeamProjects(null));
+
+  it("changes nothing until the server lists projects", () => {
+    expect(projects().side.shown).toBe(false);
+    expect(sections()).toEqual([BOTS_SECTION_ID, CHANNELS_SECTION_ID, userSectionId("Work")]);
+    expect(headers().map((props) => props.name)).toEqual(["Group chats", "Work"]);
+  });
+
+  it("draws a project's department as the project, not a second time among the departments", () => {
+    withProject();
+    expect(sections()).toEqual([BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
+    expect(listed()).toEqual(["atlas", "bea", "cleo"]);
+    const { side, found, all } = projects();
+    expect(side.projects.map((project) => project.name)).toEqual(["Work"]);
+    expect(side.team(side.projects[0]!, found.bots).map((member) => member.id)).toEqual(["dodo", "echo"]);
+    expect(all.bots).toHaveLength(5);
+  });
+
+  it("comes right before the departments, in the list that scrolls", () => {
+    withProject();
+    const drawn = render();
+    const at = drawn.findIndex((node) => node.type === SidebarTeamProjects);
+    expect(at).toBeGreaterThan(-1);
+    expect(at).toBeLessThan(drawn.findIndex((node) => node.props["data-sidebar-section-id"] === BOTS_SECTION_ID));
+  });
+
+  it("hands the project the sidebar's own rows: a bot of a project opens like any other and cannot be dragged out", () => {
+    withProject();
+    const drawn = projects().botRow(fixture.state.bots[3]!) as ReactElement<RowProps>;
+    expect(drawn.type).toBe(BotListItem);
+    expect([drawn.props.bot.id, drawn.props.botDrag]).toEqual(["dodo", undefined]);
+  });
+
+  it("keeps a project's group chats with the project", () => {
+    withProject();
+    fixture.state = { ...fixture.state, groups: [room, { ...room, id: "set", name: "On set", section: "Work" }] };
+    expect(sections()).toEqual([BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
+    const { side, found } = projects();
+    expect(side.teamRooms(side.projects[0]!, found.groups).map((group) => group.id)).toEqual(["set"]);
+  });
+
+  it("names the bots outside projects once projects are listed above them", () => {
+    withProject();
+    expect(headers().map((props) => props.name)).toEqual(["Bots", "Group chats"]);
+  });
+
+  it("lists the department of an archived project nowhere", () => {
+    withProject({ archivedAt: 5 });
+    expect(sections()).toEqual([BOTS_SECTION_ID, CHANNELS_SECTION_ID]);
+    expect(listed()).toEqual(["atlas", "bea", "cleo"]);
+    expect(projects().side.projects).toEqual([]);
+  });
+
+  it("shows a pinned bot of a project with the pinned bots, and never its department", () => {
+    fixture.advanced = true;
+    withProject();
+    fixture.state = { ...fixture.state, bots: fixture.state.bots.map((one) => (one.id === "echo" ? { ...one, pinned: true } : one)) };
+    expect(sections()).toEqual([PINNED_SECTION_ID, CHANNELS_SECTION_ID, BOTS_SECTION_ID]);
+  });
+
+  it("tells the projects how the sidebar is drawn", () => {
+    withProject();
+    expect(projects().mode).toEqual({ density: "comfortable", advanced: false, tight: true, remote: false, followed: true });
+    fixture.advanced = true;
+    fixture.storage.set(SIDEBAR_DENSITY_KEY, "avatars");
+    expect(projects().mode).toEqual({ density: "icons", advanced: true, tight: true, remote: false, followed: true });
+  });
+
+  it("searches a project's bots with the rest, and never lists its department for a search by name", () => {
+    withProject();
+    fixture.phone = true;
+    const search = (text: string) => (render().find((node) => typeof node.props.onQuery === "function")!.props.onQuery as (query: string) => void)(text);
+    search("ECHO ");
+    expect([projects().query, projects().found.bots.map((one) => one.id), sections()]).toEqual(["echo", ["echo"], []]);
+    search("work");
+    expect([projects().found.bots, sections()]).toEqual([[], []]);
+    setTeamProjects(null);
+    expect(sections()).toEqual([userSectionId("Work")]);
   });
 });

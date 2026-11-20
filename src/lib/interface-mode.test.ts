@@ -44,27 +44,27 @@ describe("with Simple the only mode", () => {
     expect(local.getItem("omb-advanced-mode")).toBe("1");
   });
 
-  it("ships with the switch off: Advanced mode can be turned on, and stays on", async () => {
+  it("ships with the switch on: Advanced mode can be turned off, and stays off", async () => {
     vi.resetModules();
     expect((await vi.importActual<typeof import("./simple-only")>("./simple-only")).SIMPLE_ONLY).toBe(false);
     const { readAdvancedMode, setAdvancedMode } = await import("./interface-mode");
-    expect(readAdvancedMode()).toBe(false);
-    setAdvancedMode(true);
     expect(readAdvancedMode()).toBe(true);
-    expect(local.getItem("omb-advanced-mode")).toBe("1");
+    setAdvancedMode(false);
+    expect(readAdvancedMode()).toBe(false);
+    expect(local.getItem("omb-advanced-mode")).toBe("0");
     vi.resetModules();
-    expect((await import("./interface-mode")).readAdvancedMode(), "after a relaunch").toBe(true);
+    expect((await import("./interface-mode")).readAdvancedMode(), "after a relaunch").toBe(false);
   });
 });
 
 describe("with the switch back", () => {
-  it("defaults a fresh install to Simple and stores that once", async () => {
+  it("defaults a fresh install to Advanced and stores that once", async () => {
     const { readAdvancedMode, settleAdvancedModeDefault, ADVANCED_MODE_KEY } = await fresh();
-    expect(readAdvancedMode()).toBe(false);
+    expect(readAdvancedMode()).toBe(true);
     settleAdvancedModeDefault();
     local.setItem("omb-skin", "midnight");
-    expect(local.getItem(ADVANCED_MODE_KEY)).toBe("0");
-    expect((await fresh()).readAdvancedMode()).toBe(false);
+    expect(local.getItem(ADVANCED_MODE_KEY)).toBe("1");
+    expect((await fresh()).readAdvancedMode()).toBe(true);
   });
 
   it("defaults an existing install to Advanced so an update hides nothing", async () => {
@@ -90,12 +90,12 @@ describe("with the switch back", () => {
     expect(readAdvancedMode()).toBe(true);
   });
 
-  it("falls back to Simple when storage cannot be read at all", async () => {
+  it("falls back to Advanced when storage cannot be read at all", async () => {
     local.getItem.mockImplementation(() => {
       throw new Error("blocked");
     });
     const { readAdvancedMode, settleAdvancedModeDefault } = await fresh();
     expect(() => settleAdvancedModeDefault()).not.toThrow();
-    expect(readAdvancedMode()).toBe(false);
+    expect(readAdvancedMode()).toBe(true);
   });
 });

@@ -8,13 +8,14 @@ import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { DATA_DIR, type AppConfig } from "./config.ts";
 import { githubSkillOriginSchema, skillFolderDigest, skillFolderRecordSchema, writeSkillFolder } from "./skill-folder.ts";
+import { LEARN_SOURCE_PREFIX } from "./skill-learn.ts";
 import { entryExistsWithoutFollowing } from "./skill-storage.ts";
 import type { GitHubSkillOrigin } from "../shared/skill-import.ts";
 import { isSkillName, parseSkillMd, SKILL_FILE_MAX_BYTES } from "../shared/skill-md.ts";
 import type { SkillPackageStamp } from "./skills.ts";
 
 export function skillsLibraryEnabled(cfg: AppConfig): boolean {
-  return cfg.features?.skillsLibrary === true;
+  return cfg.features?.skillsLibrary !== false;
 }
 
 export interface SkillManifest {
@@ -364,6 +365,17 @@ export function librarySkillsToOffer(botId: string, assigned: ReadonlySet<string
   return listLibrarySkills().filter((entry) => !owned.has(entry.name) && !assigned.has(entry.name) && (!entry.everyBot || optedOut.has(entry.name)));
 }
 
+/** A switched-on skill the person added, not yet on for every bot: any bot reads it when a task needs it.
+ * Security: a skill a bot learned and shared reaches only the bots it was shared with, so it is never on offer. */
+export const librarySkillOnOffer = (skill: Pick<LibrarySkillListing, "enabled" | "everyBot" | "source">): boolean =>
+  skill.enabled && !skill.everyBot && !skill.source.startsWith(LEARN_SOURCE_PREFIX);
+
+/** The skills on offer that this bot has neither listed, taken under the same name nor switched off. */
+export function librarySkillsOnOffer(botId: string, assigned: ReadonlySet<string>, owned: ReadonlySet<string>): LibrarySkillListing[] {
+  const optedOut = librarySkillOptOuts(botId);
+  return listLibrarySkills().filter((skill) => librarySkillOnOffer(skill) && !owned.has(skill.name) && !assigned.has(skill.name) && !optedOut.has(skill.name));
+}
+
 /** Drops one bot's assignment. A skill on for every bot is opted out here so the others keep it. */
 export function unassignLibrarySkill(
   botId: string,
@@ -571,6 +583,79 @@ export function updateLibrarySkill(input: {
   writeSkillLibraryIndex(root, index);
   skillLibraryEvents.emit("invalidate", { kind: "update", name: input.name });
   return librarySkillListing(root, next);
+}
+
+const UNDO = /^[a-z0-9][a-z0-9-]{0,63}\.[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+
+function removedDirectory(root: string, undo: string): string {
+  return join(root, "archive", "removed", undo);
+}
+
+/** Takes a skill out of the library whatever state its files are in. Its bytes and its entry move to the archive, never
+ * deleted; `undo` names them for restoreLibrarySkill. */
+export function removeLibrarySkill(name: string, root: string = skillsLibraryRoot()): { removed: true; undo: string } | { error: string } {
+  if (!isSkillName(name)) return { error: "invalid skill name" };
+  const indexRead = readSkillLibraryIndexState(root);
+  if ("error" in indexRead) return indexRead;
+  const entry = indexRead.index[name];
+  if (!entry) return { error: `no library skill named "${name}"` };
+  const undo = `${name}.${randomUUID()}`;
+  const directory = librarySkillDirectory(root, name);
+  const destination = removedDirectory(root, undo);
+  try {
+    mkdirSync(join(root, "archive", "removed"), { recursive: true, mode: 0o700 });
+    if (entryExistsWithoutFollowing(directory)) renameSync(directory, destination);
+    else mkdirSync(destination, { mode: 0o700 });
+    writeFileAtomic(`${destination}.json`, `${JSON.stringify(entry, null, 2)}\n`, { mode: 0o600 });
+  } catch (error) {
+    return { error: `could not archive the library copy: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  delete indexRead.index[name];
+  try {
+    writeSkillLibraryIndex(root, indexRead.index);
+  } catch (error) {
+    try {
+      renameSync(destination, directory);
+    } catch {
+      // The index still lists the skill, which reads "changed after review" until restored from the archive.
+    }
+    return { error: `could not update the skills library index: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  skillLibraryEvents.emit("invalidate", { kind: "remove", name });
+  return { removed: true, undo };
+}
+
+/** Puts back what removeLibrarySkill took out, as it was. Refused once a skill of that name is in the library again. */
+export function restoreLibrarySkill(undo: string, root: string = skillsLibraryRoot()): LibrarySkillListing | { error: string } {
+  if (!UNDO.test(undo)) return { error: "nothing to undo" };
+  const destination = removedDirectory(root, undo);
+  let entry: SkillLibraryEntry;
+  try {
+    const parsed = skillLibraryEntrySchema.safeParse(JSON.parse(readFileSync(`${destination}.json`, "utf8")));
+    if (!parsed.success || `${parsed.data.name}.` !== undo.slice(0, parsed.data.name.length + 1)) return { error: "nothing to undo" };
+    entry = parsed.data;
+  } catch {
+    return { error: "nothing to undo" };
+  }
+  const indexRead = readSkillLibraryIndexState(root);
+  if ("error" in indexRead) return indexRead;
+  if (indexRead.index[entry.name]) return { error: `a skill named "${entry.name}" is in the library again` };
+  const directory = librarySkillDirectory(root, entry.name);
+  try {
+    mkdirSync(join(root, "skills"), { recursive: true, mode: 0o700 });
+    if (entryExistsWithoutFollowing(directory)) {
+      mkdirSync(join(root, "archive", "unreferenced"), { recursive: true, mode: 0o700 });
+      renameSync(directory, join(root, "archive", "unreferenced", `${entry.name}.${randomUUID()}`));
+    }
+    renameSync(destination, directory);
+  } catch (error) {
+    return { error: `the skill could not be put back: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  indexRead.index[entry.name] = entry;
+  writeSkillLibraryIndex(root, indexRead.index);
+  rmSync(`${destination}.json`, { force: true });
+  skillLibraryEvents.emit("invalidate", { kind: "restore", name: entry.name });
+  return librarySkillListing(root, entry);
 }
 
 /** Bytes move to the write-once archive before the index entry goes; they are never deleted. */

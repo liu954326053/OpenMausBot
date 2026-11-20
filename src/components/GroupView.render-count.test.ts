@@ -62,6 +62,7 @@ const answers: Record<string, unknown> = {
 const { StoreProvider, useStore } = await import("@/state/store");
 const { useStoreSelector } = await import("@/state/store-select");
 const { GroupView } = await import("./GroupView");
+const { setAdvancedMode } = await import("@/lib/interface-mode");
 const { noteLiveReplyEvent } = await import("@/state/live-reply");
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
 
@@ -88,6 +89,7 @@ const delta = (text: string) => flushSync(() => noteLiveReplyEvent({
 } as RuntimeEvent));
 
 beforeAll(async () => {
+  setAdvancedMode(false);
   vi.stubGlobal("EventSource", FixtureEventSource);
   vi.stubGlobal("fetch", (path: string) => path.startsWith("/api/bots?")
     ? json({ bots: [announced("a", "Ada"), announced("b", "Bea"), announced("c", "Cy")].map((bot) => ({ ...bot, messages: [] })), groups: [room] })

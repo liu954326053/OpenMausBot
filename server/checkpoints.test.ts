@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 
 // Shadow repos live under DATA_DIR, which server/testing/setup.ts points at a disposable home before config.ts loads.
 import { CHECKPOINTS_DIR, GC_EVERY_COMMITS, diffWorkingTree, prime, refusalReason, release, snapshot } from "./checkpoints.ts";
+import { SECRET_FOLDERS } from "./secret-folder.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
 const scratchDirs: string[] = [];
@@ -279,10 +280,25 @@ describe("snapshot", () => {
     writeFileSync(join(cwd, "node_modules", "x.txt"), "installed dependency");
     writeFileSync(join(cwd, ".env"), "API_KEY=hunter2");
     writeFileSync(join(cwd, "run.log"), "log line");
-    mkdirSync(join(cwd, ".openmausbot-secrets", "thread-1"), { recursive: true });
-    writeFileSync(join(cwd, ".openmausbot-secrets", "thread-1", "card-1"), "sk_secret_file");
+    for (const folder of SECRET_FOLDERS) {
+      mkdirSync(join(cwd, folder, "thread-1"), { recursive: true });
+      writeFileSync(join(cwd, folder, "thread-1", "card-1"), "sk_secret_file");
+    }
     const checkpoint = await snapshot(bot, cwd, "turn 1");
     expect(userGit(shadowOf(bot, cwd), "ls-tree", "-r", "--name-only", checkpoint!).trim().split("\n")).toEqual([".gitignore", "a.txt"]);
+  });
+
+  it("never snapshots what a project's bots keep under .magic-team, whoever works in the folder", async () => {
+    const { bot, cwd } = workspace();
+    writeFileSync(join(cwd, "script.md"), "episode one");
+    mkdirSync(join(cwd, ".magic-team", "bots", "writer", "memory"), { recursive: true });
+    writeFileSync(join(cwd, ".magic-team", "bots", "writer", "MEMORY.md"), "- the heroine is called Lin");
+    writeFileSync(join(cwd, ".magic-team", "project.json"), "{}");
+    const first = await snapshot(bot, cwd, "turn 1");
+    expect(userGit(shadowOf(bot, cwd), "ls-tree", "-r", "--name-only", first!).trim().split("\n")).toEqual(["script.md"]);
+
+    writeFileSync(join(cwd, ".magic-team", "bots", "writer", "memory", "style.md"), "short scenes");
+    expect(await snapshot(bot, cwd, "turn 2")).toBe(first);
   });
 
   it("compacts legacy history even when the workspace has not changed", async () => {

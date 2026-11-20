@@ -32,6 +32,64 @@ describe("which bot files a move carries", () => {
   });
 });
 
+describe("a project bot's own files, which are in its project folder", () => {
+  function projectBot() {
+    const data = mkdtempSync(join(tmpdir(), "omb-files-")), project = mkdtempSync(join(tmpdir(), "omb-files-project-"));
+    const own = join(project, ".magic-team", "bots", "writer");
+    mkdirSync(join(own, "memory"), { recursive: true });
+    mkdirSync(join(own, "skills", "report"), { recursive: true });
+    mkdirSync(join(own, "drafts"));
+    mkdirSync(join(project, ".magic-team", "bots", "editor"));
+    mkdirSync(join(data, "workspaces", "b1", "tools", "fetcher"), { recursive: true });
+    mkdirSync(join(data, "workspaces", "b2"), { recursive: true });
+    writeFileSync(join(own, "MEMORY.md"), "carried as memory");
+    writeFileSync(join(own, "skills", "report", "SKILL.md"), "carried as a skill");
+    writeFileSync(join(own, "drafts", "outline.md"), "outline");
+    writeFileSync(join(own, "both.md"), "the project's");
+    writeFileSync(join(project, ".magic-team", "bots", "editor", "notes.md"), "a teammate's");
+    writeFileSync(join(project, "script.md"), "the person's");
+    writeFileSync(join(data, "workspaces", "b1", "tools", "fetcher", "run.mjs"), "tool");
+    writeFileSync(join(data, "workspaces", "b1", "both.md"), "the data folder's");
+    writeFileSync(join(data, "workspaces", "b2", "notes.md"), "plain");
+    symlinkSync(join(project, "script.md"), join(own, "linked.md"));
+    return { data, own, inProject: (botId: string) => (botId === "b1" ? own : null) };
+  }
+
+  it("are listed as workspaces/<bot>/…, beside what it keeps in the data folder, and nothing else of the project", async () => {
+    const { data, inProject } = projectBot();
+    expect(await listBotFiles(data, ["b1", "b2"], inProject)).toEqual([
+      { path: "workspaces/b1/both.md", size: 17, sha256: sha("the data folder's") },
+      { path: "workspaces/b1/tools/fetcher/run.mjs", size: 4, sha256: sha("tool") },
+      { path: "workspaces/b1/drafts/outline.md", size: 7, sha256: sha("outline") },
+      { path: "workspaces/b2/notes.md", size: 5, sha256: sha("plain") },
+    ]);
+    expect(await listBotFiles(data, ["b1", "b2"], () => null)).toEqual([
+      { path: "workspaces/b1/both.md", size: 17, sha256: sha("the data folder's") },
+      { path: "workspaces/b1/tools/fetcher/run.mjs", size: 4, sha256: sha("tool") },
+      { path: "workspaces/b2/notes.md", size: 5, sha256: sha("plain") },
+    ]);
+  });
+
+  it("are read from there for a move, never through a link", async () => {
+    const { data, inProject } = projectBot();
+    const read = async (path: string) => {
+      let status = 0, bytes: Buffer = Buffer.alloc(0);
+      const url = new URL(`http://127.0.0.1/api/cloud-send/files?${new URLSearchParams({ path, offset: "0", length: "64" })}`);
+      await moveFilesRoute({ dataDir: data, bots: () => [{ id: "b1" }, { id: "b2" }], owner: () => null, projectBotFolder: inProject },
+        { path: "/api/cloud-send/files", method: "GET", url, auth: {} as never, req: {} as never,
+          res: { setHeader() {}, writeHead: (code: number) => { status = code; }, end: (body: Buffer) => { bytes = body; } } as never,
+          json: ((_res: unknown, code: number) => { status = code; }) as never, readBody: (async () => null) as never });
+      return { status, text: bytes.toString() };
+    };
+    expect(await read("workspaces/b1/drafts/outline.md")).toEqual({ status: 200, text: "outline" });
+    expect(await read("workspaces/b1/both.md")).toEqual({ status: 200, text: "the data folder's" });
+    expect(await read("workspaces/b1/tools/fetcher/run.mjs")).toEqual({ status: 200, text: "tool" });
+    expect((await read("workspaces/b1/linked.md")).status).toBe(404);
+    expect((await read("workspaces/b1/MEMORY.md")).status).toBe(404);
+    expect((await read("workspaces/b2/drafts/outline.md")).status, "another bot's path never reads this folder").toBe(404);
+  });
+});
+
 describe("bot-file digests after a timestamp-preserving edit", () => {
   it.each(["overwrite", "replace"])("rechecks a same-size file after %s with its old mtime", async (operation) => {
     const data = mkdtempSync(join(tmpdir(), "omb-files-digest-"));

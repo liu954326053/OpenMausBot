@@ -9,6 +9,7 @@ import { availableTools } from "./drivers/agents-catalog.ts";
 export const CATALOG_TOOL_NAMES: ReadonlySet<string> = new Set([...availableTools({
   skillAuthoring: true, sharedComputers: true, voiceNotes: true, xResearch: true, research: true, team: true,
   computerSelection: true, cloudHome: false, localVm: true, chief: true, mausbot: true, botId: WATCHER_OPTIONS_CARD_BOT_ID,
+  teamProjects: true,
 }).map((tool) => tool.name), ...Object.keys(AGENTS_TOOL_ALIASES)]);
 
 /** A call's name with a bridged call read as the tool it ran. With `serverNamed`, only a title that names

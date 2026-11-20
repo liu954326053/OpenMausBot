@@ -6,8 +6,8 @@ import { createPersonalReach } from "./personal-reach.ts";
 
 const MIRA = "mira@acme.test";
 const key = (email: string) => `p_${email.replace(/\W/g, "").padEnd(22, "x").slice(0, 22)}`;
-const mausbot: RosterMember = { id: "maus", name: "MausBot", defaultBot: { person: MIRA }, visibility: { people: [MIRA] } };
-const bensMausbot: RosterMember = { id: "ben-maus", name: "MausBot", defaultBot: { person: "ben@acme.test" }, visibility: { people: ["ben@acme.test"] } };
+const mausbot: RosterMember = { id: "maus", name: "MagicBot", defaultBot: { person: MIRA }, visibility: { people: [MIRA] } };
+const bensMausbot: RosterMember = { id: "ben-maus", name: "MagicBot", defaultBot: { person: "ben@acme.test" }, visibility: { people: ["ben@acme.test"] } };
 const sales: RosterMember = { id: "sales", name: "Sales" };
 const archive: RosterMember = { id: "archive", name: "Archive" };
 const payroll: RosterMember = { id: "payroll", name: "Payroll", visibility: { people: ["ben@acme.test"] } };
@@ -26,7 +26,7 @@ function world(acting: string | null = key(MIRA), behind = true) {
   });
 }
 
-describe("a person's own MausBot reaching the team's bots", () => {
+describe("a person's own MagicBot reaching the team's bots", () => {
   it("reaches only the bots its person may chat with, from a chat private to them", () => {
     expect(world().peers(bots, mausbot, "mine").map((bot) => bot.id)).toEqual(["sales"]);
     expect(world().reaches(mausbot, sales, "shared")).toBe(false);
@@ -40,7 +40,7 @@ describe("a person's own MausBot reaching the team's bots", () => {
     expect(world().handOnProblem(mausbot, sales, "mine", "turn")).toBeUndefined();
   });
 
-  it("never names a bot its person cannot see, nor another person's MausBot", () => {
+  it("never names a bot its person cannot see, nor another person's MagicBot", () => {
     for (const hidden of [payroll, bensMausbot]) {
       expect(world().hides(mausbot, hidden)).toBe(true);
       expect(world().refusal(mausbot, hidden, "mine")).toBe(`No bot with id "${hidden.id}" — call list_bots and copy the exact id from the result`);
@@ -76,6 +76,28 @@ describe("a person's own MausBot reaching the team's bots", () => {
     expect(() => world().checkHandOn(mausbot, sales, "mine", key(MIRA), {})).toThrow(/person's own chats/);
     expect(() => world().checkHandOn(mausbot, archive, "mine", key("ben@acme.test"))).not.toThrow();
     expect(() => world().checkHandOn(sales, archive, "mine", key("ben@acme.test"))).not.toThrow();
+  });
+
+  it("stops at a team project's wall: of a project's bots it reaches the lead alone, and never names a member", () => {
+    const lead: RosterMember = { id: "lead", name: "Showrunner", chiefOfStaff: true, teamProject: { id: "drama" } };
+    const writer: RosterMember = { id: "writer", name: "Writer", teamProject: { id: "drama" } };
+    const reach = createPersonalReach({
+      privateTo: (threadId) => privateTo[threadId] ?? null, personKey: key, level: () => "chat", personBehind: () => true, actingFor: () => key(MIRA),
+    });
+    const team = [mausbot, sales, lead, writer];
+    expect(reach.peers(team, mausbot, "mine").map((bot) => bot.id).sort()).toEqual(["lead", "sales"]);
+    expect(reach.reaches(mausbot, lead, "mine")).toBe(true);
+    expect(reach.reaches(mausbot, writer, "mine")).toBe(false);
+    expect(reach.listed(mausbot, writer, "mine")).toBe(false);
+    expect(reach.carries(mausbot, writer, "mine", { id: "as_1", threadId: "mine", origin: { kind: "user", request: "x" } })).toBe(false);
+    expect(reach.refusal(mausbot, writer, "mine"), "the usual refusal says the id is unknown").toBeNull();
+    expect(reach.handOnProblem(mausbot, writer, "mine", "turn")).toBeUndefined();
+    const wider = { reaches: (bot: RosterMember) => reach.listed(mausbot, bot, "mine"), hides: (bot: RosterMember) => reach.hides(mausbot, bot), refusal: (bot: RosterMember) => reach.refusal(mausbot, bot, "mine") };
+    const refused = resolveTeammate(team, mausbot, "writer", undefined, undefined, wider);
+    expect(refused).toMatchObject({ error: expect.stringContaining('No bot with id or name "writer"') });
+    expect(resolveTeammate(team, mausbot, "lead", undefined, undefined, wider)).toEqual({ id: "lead", byName: false });
+    const inProject: RosterMember = { ...mausbot, id: "inside", teamProject: { id: "drama" } };
+    expect(reach.reaches(inProject, sales, "mine"), "a default bot inside a project is no main bot").toBe(false);
   });
 
   it("answers a waiting question only in its person's own chats", () => {

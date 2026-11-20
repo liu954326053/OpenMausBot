@@ -1,19 +1,42 @@
 import { z } from "zod";
 
+import { SKILL_UPLOAD_LIMITS } from "../../shared/skill-import.ts";
 import type { SkillsLibrarySkillWire } from "../../shared/wire.ts";
 import type { AppConfig } from "../config.ts";
 import { setImportedSkillEnabled } from "../imported-skills.ts";
 import { setNativeSkillEnabled } from "../native-skill-choices.ts";
 import { botSkillTemplateSchema } from "../new-bot-defaults.ts";
+import { readSkillArchive } from "../skill-archive.ts";
 import { fetchSkillFromSource } from "../skill-fetch.ts";
 import { skillImportSummary } from "../skill-folder.ts";
-import { installLibrarySkill, librarySkillOptOuts, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, setLibrarySkillEveryBot, setLibrarySkillOptOut, setLibrarySkillReviewState, skillsLibraryEnabled, unassignLibrarySkill } from "../skill-library.ts";
+import {
+  installLibrarySkill, librarySkillOnOffer, librarySkillOptOuts, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, removeLibrarySkill, restoreLibrarySkill,
+  setLibrarySkillEveryBot, setLibrarySkillOptOut, setLibrarySkillReviewState, skillsLibraryEnabled, unassignLibrarySkill,
+} from "../skill-library.ts";
+import { installUploadedSkills, skillFoldersIn, UPLOAD_MAX_SKILLS, type UploadedFile } from "../skill-upload.ts";
 import {
   installSkill, listBotSkillsWithOrigin, listSkills, listStagedSkillWrites, parseSkillMd, removeSkill, scanSkillText, setSkillEnabled,
   type SkillListing, type StagedSkillWrite,
 } from "../skills.ts";
 import type { BotRecord, Store } from "../store.ts";
+import { userError } from "../user-errors.ts";
 import { PASS, type RouteHandler } from "./table.ts";
+
+/** The upload as base64 inside JSON, which is a third larger than its bytes, with room for the paths. */
+const UPLOAD_BODY_MAX = Math.ceil(SKILL_UPLOAD_LIMITS.bytes * 4 / 3) + 4 * 1024 * 1024;
+const uploadPath = z.string().min(1).max(1024);
+const uploadSchema = z.object({
+  archive: z.string().min(1).optional(),
+  files: z.array(z.object({ path: uploadPath, content: z.string() })).min(1).max(SKILL_UPLOAD_LIMITS.files).optional(),
+  /** Files of the folder that were too large to send. */
+  oversize: z.array(uploadPath).max(SKILL_UPLOAD_LIMITS.files).optional(),
+  /** The file or folder the person chose, shown as where the skill came from. */
+  label: z.string().max(200).optional(),
+  replace: z.array(z.string().min(1).max(64)).max(UPLOAD_MAX_SKILLS).optional(),
+}).refine((body) => (body.archive !== undefined) !== (body.files !== undefined));
+
+const uploadSource = (label: string | undefined) =>
+  `upload:${Array.from(label ?? "", (char) => (char < " " || char === "\u007f" ? " " : char)).join("").replace(/\s+/g, " ").trim().slice(0, 80) || "files"}`;
 
 export interface BotSkillsRouteDeps {
   store: Store;
@@ -147,6 +170,7 @@ export function createBotSkillsRoutes(deps: BotSkillsRouteDeps): RouteHandler {
           assignedBots: store.bots
             .filter((bot) => bot.assignedSkills?.includes(listing.name) || (index[listing.name]?.everyBot === true && !librarySkillOptOuts(bot.id).has(listing.name)))
             .map((bot) => ({ id: bot.id, name: bot.name })),
+          ...(librarySkillOnOffer(listing) ? { onOffer: true } : {}),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       return json(res, 200, { skills });
@@ -170,7 +194,41 @@ export function createBotSkillsRoutes(deps: BotSkillsRouteDeps): RouteHandler {
       if ("error" in installed) return json(res, 422, { error: installed.error });
       return json(res, 201, { skill: installed });
     }
+    if (path === "/api/skills-library/upload" && method === "POST") {
+      if (!skillsLibraryEnabled(cfg)) return json(res, 404, { error: "skills library is not enabled" });
+      const parsed = uploadSchema.safeParse(await readBody(req, UPLOAD_BODY_MAX));
+      if (!parsed.success) return json(res, 400, { error: "send a zip archive or a folder's files that hold a SKILL.md" });
+      let files: UploadedFile[];
+      let oversize = parsed.data.oversize ?? [];
+      if (parsed.data.archive !== undefined) {
+        const read = await readSkillArchive(Buffer.from(parsed.data.archive, "base64"));
+        if ("error" in read) return json(res, 422, read);
+        ({ files, oversize } = read);
+      } else {
+        files = parsed.data.files!.map((file) => ({ path: file.path.replace(/\\/g, "/"), content: Buffer.from(file.content, "base64") }));
+      }
+      if (!skillFoldersIn(files).length) return json(res, 422, userError("serverError.skillUpload.noSkill"));
+      const result = installUploadedSkills(files, { source: uploadSource(parsed.data.label), replace: new Set(parsed.data.replace ?? []), oversize });
+      if (result.installed.length) return json(res, 201, result);
+      if (result.conflicts.length) return json(res, 409, { ...result, error: `already in the library: ${result.conflicts.join(", ")}` });
+      if (result.unchanged.length) return json(res, 200, result);
+      return json(res, 422, { ...result, error: result.errors.join("; ") || "nothing importable found" });
+    }
+    if (path === "/api/skills-library/restore" && method === "POST") {
+      if (!skillsLibraryEnabled(cfg)) return json(res, 404, { error: "skills library is not enabled" });
+      const parsed = z.object({ undo: z.string().min(1).max(200) }).safeParse(await readBody(req));
+      if (!parsed.success) return json(res, 400, { error: "undo must name what was removed" });
+      const restored = restoreLibrarySkill(parsed.data.undo);
+      if ("error" in restored) return json(res, 409, { error: restored.error });
+      return json(res, 200, { skill: restored });
+    }
     m = path.match(/^\/api\/skills-library\/([a-z0-9-]+)$/);
+    if (m && method === "DELETE") {
+      if (!skillsLibraryEnabled(cfg)) return json(res, 404, { error: "skills library is not enabled" });
+      const removed = removeLibrarySkill(m[1]!);
+      if ("error" in removed) return json(res, 404, { error: removed.error });
+      return json(res, 200, { ok: true, undo: removed.undo });
+    }
     if (m && method === "GET") {
       if (!skillsLibraryEnabled(cfg)) return json(res, 404, { error: "skills library is not enabled" });
       const text = readLibrarySkillFile(m[1]!);

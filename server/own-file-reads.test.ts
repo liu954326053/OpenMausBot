@@ -78,6 +78,24 @@ describe("a bot's own files", () => {
     expect(readsOwnFiles(data, "paul", { reads: [join(own, "MEMORY.md")] })).toBe(false);
   });
 
+  it("count a project bot's folder in its project, and nothing else of the project folder", () => {
+    const { data } = dataFolder();
+    const project = mkdtempSync(join(tmpdir(), "omb-own-reads-project-"));
+    dirs.push(project);
+    const inProject = join(project, ".magic-team", "bots", "writer"), teammate = join(project, ".magic-team", "bots", "editor");
+    for (const dir of [inProject, teammate]) mkdirSync(dir, { recursive: true });
+    for (const file of [join(inProject, "MEMORY.md"), join(teammate, "MEMORY.md"), join(project, "script.md")]) writeFileSync(file, "notes\n");
+
+    expect(readsOwnFiles(data, "iris", { reads: [join(inProject, "MEMORY.md")] }, inProject)).toBe(true);
+    expect(readsOwnFiles(data, "iris", { reads: [join(data, "bots", "iris", "SOUL.md")] }, inProject)).toBe(true);
+    expect(readsOwnFiles(data, "iris", { reads: [join(teammate, "MEMORY.md")] }, inProject), "a teammate's memory").toBe(false);
+    expect(readsOwnFiles(data, "iris", { reads: [join(project, "script.md")] }, inProject), "the project's files").toBe(false);
+    expect(readsOwnFiles(data, "iris", { reads: [join(inProject, "MEMORY.md")] }), "a bot in no project").toBe(false);
+    expect(readsOwnFiles(data, "iris", { reads: [join(inProject, "MEMORY.md")] }, null)).toBe(false);
+    expect(ownReadRoots(data, "iris", inProject)).toHaveLength(4);
+    expect(ownReadRoots(data, "iris", join(project, "missing"))).toHaveLength(3);
+  });
+
   posix("are its folder, its conversation folders and its SOUL.md, and nothing else of the data folder", () => {
     const { data, own, conversation, revision } = dataFolder();
     const command = (line: string, cwd = conversation) => readsOwnFiles(data, "iris", { command: { command: line, cwd } });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { setLocale, t } from "@/lib/i18n";
+import { loadLocale, setLocale, t } from "@/lib/i18n";
 import { en } from "@/locales";
 import type { AppSettingsSection } from "@/state/store";
 import {
@@ -10,7 +10,7 @@ import {
 beforeEach(() => setLocale("en"));
 
 const ids = (ctx: SettingsContext) => visiblePages(ctx).map((page) => page.id);
-const PLACE_PAGES = ["overview", "phone", "ai", "bots", "desktops", "vault", "usage", "transfer", "data"];
+const PLACE_PAGES = ["overview", "phone", "ai", "bots", "templates", "desktops", "vault", "usage", "transfer", "data"];
 const find = (query: string, ctx: SettingsContext = fullContext()) => searchSettings(query, ctx, (entry) => t(entry.labelKey), (page) => t(page.labelKey));
 const first = (query: string, ctx?: SettingsContext) => find(query, ctx)[0]?.entry;
 
@@ -29,14 +29,14 @@ describe("the pages", () => {
   });
 
   it.each(Object.entries(PEOPLE))("keeps the same place pages, in the same order, for %s", (who, ctx) => {
-    // A team's member is offered none of the installation's admin pages (AI, Desktops, Spending, Import & export, Data).
-    const expected = who === "a team member" ? PLACE_PAGES.filter((id) => !["ai", "desktops", "usage", "transfer", "data"].includes(id)) : PLACE_PAGES;
+    // A team's member is offered none of the installation's admin pages (AI, Templates, Desktops, Spending, Import & export, Data).
+    const expected = who === "a team member" ? PLACE_PAGES.filter((id) => !["ai", "templates", "desktops", "usage", "transfer", "data"].includes(id)) : PLACE_PAGES;
     expect(ids(ctx).filter((id) => PLACE_PAGES.includes(id))).toEqual(expected);
   });
 
   it.each(["local only", "This computer, with My Cloud", "My Cloud's page in the desktop window", "My Cloud in a browser (owner)"] as const)(
-    "shows Simple's ten entries for %s", (who) => {
-      expect(ids({ ...PEOPLE[who], advanced: false })).toEqual(["overview", "phone", "ai", "vault", "usage", "transfer", "account", "plan", "app", "appearance"]);
+    "shows Simple's eleven entries for %s", (who) => {
+      expect(ids({ ...PEOPLE[who], advanced: false })).toEqual(["overview", "phone", "ai", "templates", "vault", "usage", "transfer", "account", "plan", "app", "appearance"]);
     });
 
   it("is shorter in Simple: the four Advanced pages come back in Advanced, in place", () => {
@@ -210,7 +210,34 @@ describe("search", () => {
 
   it("lists no import, export or backup row under Data", () => {
     const data = SETTINGS_INDEX.filter((entry) => entry.page === "data").map((entry) => entry.id);
-    expect(data).toEqual(["storage", "activity"]);
+    expect(data).toEqual(["projects-root", "archived-projects", "storage", "activity"]);
+  });
+
+  describe("projects", () => {
+    it("finds the folder for new projects and the archived projects, on Data", () => {
+      expect(first("projects root")).toMatchObject({ id: "projects-root", page: "data", anchor: "projects" });
+      expect(first("project folder")?.id).toBe("projects-root");
+      expect(find("project").map((hit) => hit.entry.id).slice(0, 2)).toEqual(["projects-root", "archived-projects"]);
+      expect(first("archived")).toMatchObject({ id: "archived-projects", page: "data", anchor: "archived-projects" });
+      expect(find("restore project")[0]?.entry.id).toBe("archived-projects");
+    });
+
+    it("finds them by their Chinese names", async () => {
+      await loadLocale("zh");
+      expect(first("项目")?.id).toBe("projects-root");
+      expect(first("根目录")?.id).toBe("projects-root");
+      expect(first("归档")?.id).toBe("archived-projects");
+    });
+
+    it("turns Advanced on from Simple, where Data is not shown", () => {
+      const simple = fullContext({ advanced: false });
+      expect(find("projects root", simple)[0]).toMatchObject({ entry: { id: "projects-root" }, advanced: true });
+      expect(resolveSettingsTarget("data", simple)).toEqual({ page: "data", advanced: true });
+    });
+
+    it("offers a team's member neither", () => {
+      for (const query of ["project", "archived"]) expect(find(query, PEOPLE["a team member"]).filter((hit) => hit.entry.page === "data"), query).toEqual([]);
+    });
   });
 
   it("finds Advanced rows from Simple too, so they can be used in place", () => {

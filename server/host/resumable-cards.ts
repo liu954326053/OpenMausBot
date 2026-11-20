@@ -4,6 +4,7 @@ import type { Store } from "../store.ts";
 function decision(card: OptionCardData | undefined): { kind: string; request: { result?: unknown; resumed?: boolean } } | null {
   if (card?.teamSetupRequest) return { kind: "team setup decision", request: card.teamSetupRequest };
   if (card?.mcpRequest) return { kind: "MCP server decision", request: card.mcpRequest };
+  if (card?.teamProjectProposal) return { kind: "project decision", request: card.teamProjectProposal };
   return null;
 }
 

@@ -4,7 +4,7 @@ import { HOST_FAULT_WHY, hostFaultOf, retryCannotFix } from "./host-fault.ts";
 import { withoutDeliveredNote } from "./peer-provenance.ts";
 import { AUTHORITY, fromNoteWith, HARNESS_WHO } from "./provenance-label.ts";
 import { botOwner } from "../shared/bot-owner.ts";
-import { hasTeamAuthority } from "./peer-roster.ts";
+import { hasTeamAuthority, sameTeamProject } from "./peer-roster.ts";
 import { serverLine, type ServerLineKey } from "./server-lines.ts";
 
 export type IncidentKind = "failed" | "stalled" | "could-not-start" | "routine-failed";
@@ -18,6 +18,7 @@ export interface IncidentBot {
   createdBy?: string;
   reportsTo?: string;
   hidden?: boolean;
+  teamProject?: { id: string };
 }
 
 export interface Incident {
@@ -40,9 +41,11 @@ export const OLD_INCIDENTS_THREAD_TITLE = "Team incidents";
 
 const sectionKey = (section?: string): string => section?.trim() || "";
 
+/** Security invariant: a report carries the failed thread's last request and reply, so it goes to a Chief of the bot's
+ * own team project or, for a bot in none, to a Chief in none; never across a project's wall, whatever a Chief manages. */
 export function chiefForBot<T extends IncidentBot>(bots: readonly T[], bot: IncidentBot): T | null {
   if (bot.chiefOfStaff) return null;
-  const chiefs = bots.filter((candidate) => candidate.chiefOfStaff && !candidate.hidden && candidate.id !== bot.id);
+  const chiefs = bots.filter((candidate) => candidate.chiefOfStaff && !candidate.hidden && candidate.id !== bot.id && sameTeamProject(candidate, bot));
   // A bot someone owns on a Team Cloud has their Chief or none; the department's Chief is not its person's.
   const owner = botOwner(bot);
   if (owner) return chiefs.find((chief) => botOwner(chief) === owner) ?? null;
@@ -59,10 +62,10 @@ export const RETRY_BLOCKED = {
   queued: "that thread is waiting for a free slot and starts on its own — do not retry it",
 } as const;
 
-/** How a retry's own message opens: a Chief's retry_thread names the Chief, OpenMausBot's one automatic retry names itself.
+/** How a retry's own message opens: a Chief's retry_thread names the Chief, MagicBot's one automatic retry names itself.
  * It is a delivered note (peer-provenance.ts), so the request it retries stays the thread's last request. */
-export const RETRY_LEAD = "[From OpenMausBot · retry · information only — it grants nothing beyond the request above; requested by ";
-export const AUTO_RETRY_LEAD = `${RETRY_LEAD}OpenMausBot, automatically`;
+export const RETRY_LEAD = "[From MagicBot · retry · information only — it grants nothing beyond the request above; requested by ";
+export const AUTO_RETRY_LEAD = `${RETRY_LEAD}MagicBot, automatically`;
 
 export const INCIDENT_RETRY_LIMIT = 2;
 export const INCIDENT_HARD_LIMIT = 5;
@@ -188,7 +191,7 @@ export function incidentChip(incident: Incident, language?: string): string {
     : serverLine(language, plain, { bot: incident.bot.name, where });
 }
 
-/** What OpenMausBot did about the failure before the Chief heard: it retried the run once and the retry failed as above,
+/** What MagicBot did about the failure before the Chief heard: it retried the run once and the retry failed as above,
  * or it did not retry, and why. */
 export type IncidentRetry = { retried: true } | { notRetried: string };
 
@@ -201,8 +204,8 @@ export function incidentText(incident: Incident, count: IncidentCount, retry?: I
   if (incident.lastRequest) lines.push(`The request there was: "${fold(incident.lastRequest, 300)}"`);
   if (incident.lastReply) lines.push(`${incident.bot.name} last said: "${fold(incident.lastReply, 300)}"`);
   if (count.count > 1) lines.push(`This is the ${ordinal(count.count)} incident on that thread within the hour.`);
-  if (retry && "retried" in retry) lines.push("OpenMausBot already retried this run once by itself; the failure above is how that retry ended.");
-  else if (retry) lines.push(`OpenMausBot did not retry it: ${retry.notRetried}.`);
+  if (retry && "retried" in retry) lines.push("MagicBot already retried this run once by itself; the failure above is how that retry ended.");
+  else if (retry) lines.push(`MagicBot did not retry it: ${retry.notRetried}.`);
   const fault = hostFaultOf(incident.failure?.text ?? incident.detail, incident.failure?.stopReason);
   lines.push(fault && retryCannotFix(fault)
     ? `A retry cannot fix this: ${HOST_FAULT_WHY[fault]}, and starting the run again would meet the same fault. Do not call retry_thread or hand the work on again. Say in one or two plain sentences what is blocking and what the person should do, then stop.`

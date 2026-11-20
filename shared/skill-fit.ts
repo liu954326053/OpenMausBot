@@ -14,13 +14,36 @@ const COMMON = new Set([
   "when", "which", "who", "will", "with", "you", "your",
 ]);
 
+const COMMON_PAIRS = new Set([
+  "一个", "什么", "以及", "你的", "使用", "可以", "如何", "帮助", "我们", "或者", "技能", "没有", "根据", "用于", "用户", "进行",
+  "这个", "通过", "需要",
+]);
+
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+/gu;
+
 /** Lowercased words of three letters or more, a plural "s" dropped and cut to six letters, so "invoices", "invoicing"
- * and "invoice" meet. */
+ * and "invoice" meet. Chinese and Japanese are written without spaces, so a run of their characters gives each pair of
+ * neighbours instead. */
 export function fitWords(text: string): string[] {
-  return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).flatMap((word) => {
-    if (word.length < 3 || COMMON.has(word)) return [];
-    const single = word.length > 3 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word;
-    return [single.slice(0, 6)];
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).flatMap((run) => {
+    const words: string[] = [];
+    let at = 0;
+    const spaced = (word: string) => {
+      if (word.length < 3 || COMMON.has(word)) return;
+      const single = word.length > 3 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word;
+      words.push(single.slice(0, 6));
+    };
+    for (const match of run.matchAll(UNSPACED)) {
+      spaced(run.slice(at, match.index));
+      at = match.index + match[0].length;
+      const characters = Array.from(match[0]);
+      for (let i = 0; i + 1 < characters.length; i++) {
+        const pair = characters[i]! + characters[i + 1]!;
+        if (!COMMON_PAIRS.has(pair)) words.push(pair);
+      }
+    }
+    spaced(run.slice(at));
+    return words;
   });
 }
 

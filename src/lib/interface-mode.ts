@@ -1,6 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-import { hasPriorRun } from "./prior-run";
 import { SIMPLE_ONLY } from "./simple-only";
 import { windowPrefChanged } from "./window-pref-changes";
 
@@ -23,11 +22,9 @@ export function readAdvancedMode(): boolean {
   try {
     const store = storage();
     const stored = store?.getItem(ADVANCED_MODE_KEY);
-    if (stored === "1") return true;
-    if (stored === "0") return false;
-    return hasPriorRun(store);
+    return stored !== "0";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -74,5 +71,5 @@ export function setAdvancedMode(enabled: boolean): void {
 }
 
 export function useAdvancedMode(): boolean {
-  return useSyncExternalStore(subscribe, readAdvancedMode, () => false);
+  return useSyncExternalStore(subscribe, readAdvancedMode, () => !SIMPLE_ONLY);
 }

@@ -120,6 +120,17 @@ describe("a bot resetting its stuck cloud computer", () => {
     expect((await call(chief, { targetBotId: "nobody" })).status).toBe(404);
   });
 
+  it("answers for a bot behind a team project's wall exactly as for an id nobody has", async () => {
+    const { call, line, reset, roster } = setup({ refusal: () => "not yours" });
+    roster.push({ ...bot("bot-w", "Screenwriter"), teamProject: { id: "project-a", role: "writer" } } as BotRecord);
+    const walled = await call(chief, { targetBotId: "bot-w" });
+    expect(walled.status).toBe(404);
+    expect(walled.body).toEqual((await call(chief, { targetBotId: "nobody" })).body);
+    expect((await call(chief, { targetBotId: "bot-b" })).body).toEqual({ error: "not yours" });
+    expect(line()).toBeUndefined();
+    expect(reset).not.toHaveBeenCalled();
+  });
+
   it("checks again on every retry whether the bot may still reset, and resets nothing once it may not", async () => {
     let allowed = true, busy = true;
     const { call, line, reset, timers, flush } = setup({

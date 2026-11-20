@@ -26,7 +26,7 @@ import type { QuestionRequestCardData } from "./ask-question.ts";
 import type { AutomationLine, RoutineRunCardData } from "./routine-run.ts";
 import type { WidgetPayload } from "./widget.ts";
 import type { AppFromRef, AppPayload, AppPointedRef } from "./app.ts";
-import type { GroupGoalRunCardData } from "./group-goal-run.ts"; import type { BurstCardData } from "./burst.ts";
+import type { GroupGoalRunCardData } from "./group-goal-run.ts"; import type { BurstCardData } from "./burst.ts"; import type { TeamProjectProposalCardField } from "./team-project-proposal.ts";
 import type { RuntimeEvent } from "./runtime-events.ts";
 import type { NotificationLogEntry } from "./notification.ts";
 import type { Routine, RoutineRun } from "./routines.ts";
@@ -632,7 +632,7 @@ export function nextOpenThread<T extends OpenThreadCandidate>(tasks: readonly T[
   return [listed, open, own].map((candidates) => orderedThreadList(candidates)[0]).find((task) => task !== undefined);
 }
 
-export interface OptionCardData extends WaitCardField, ComputerAskField, AccessRequestCardField, OutsideWriteCardField, AppSettingCardField {
+export interface OptionCardData extends WaitCardField, ComputerAskField, AccessRequestCardField, OutsideWriteCardField, AppSettingCardField, TeamProjectProposalCardField {
   /** The harness asks the owner to let this line of theirs use the lent computer (server/host/lending-lifts.ts). */ lendingLift?: { requestMessageId: string; memoryToken?: string; outside?: true; botOpened?: true; allowedAt?: number };
   /** calls: one per outbound call the card covers, in subtitle order. */
   outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }> };
@@ -725,7 +725,7 @@ export interface SecretRequestCardData {
   };
   placeholder: string;
   helpUrl: string;
-  /** A custom secret's use: "ref", OpenMausBot's own tools only; "file", the bot's commands; "email", the Email connector, never a bot. */ delivery?: SecretDelivery | "email";
+  /** A custom secret's use: "ref", MagicBot's own tools only; "file", the bot's commands; "email", the Email connector, never a bot. */ delivery?: SecretDelivery | "email";
   /** An email card: the mailbox it is for, when known; off a phone the person can change it on the card. */ address?: string;
   /** An email card: the incoming server that took the password, once it did, while sending is still being checked. */
   emailReading?: string;
@@ -927,8 +927,8 @@ export type SteerQueueReason = "capacity" | "group-turn";
 export type BotQueuedMessages = Record<string, Array<{ queueId: string; text: string; reason?: SteerQueueReason; /** The reason in plain words, shown as it is. */ why?: string;
   /** Team Cloud, where several people write: whose line waits; only they remove it, and it runs after as their own turn. */ sender?: ResolvedSender }>>;
 
-/** Skills library browse surface: one row per library entry, with the bots
- * currently assigned to it. Version is null for locally imported skills. */
+/** Skills library browse surface: one row per library entry, with the bots currently assigned to it. Version is null
+ * for locally imported skills. `onOffer`: bots it is not assigned to still read it when a task needs it. */
 export interface SkillsLibrarySkillWire {
   name: string;
   description: string;
@@ -942,10 +942,10 @@ export interface SkillsLibrarySkillWire {
   compatibility?: string;
   warnings: string[];
   assignedBots: Array<{ id: string; name: string }>;
+  onOffer?: boolean;
 }
 
-/** PUT body for a bot's assignment list: the full list, applied
- * idempotently. */
+/** PUT body for a bot's assignment list: the full list, applied idempotently. */
 export interface BotAssignedSkillsWire {
   skills: string[];
 }

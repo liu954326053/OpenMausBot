@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, unlinkSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 
 import { writeFileAtomic } from "./atomic.ts";
@@ -10,6 +10,7 @@ import {
   MEMORY_MAX_BYTES,
   MEMORY_MAX_LINES,
   ensureWorkspace,
+  ensureWorkspaceFolder,
   isMemoryTopicName,
   workspaceDir,
 } from "./workspace.ts";
@@ -230,7 +231,7 @@ export function writeMemoryDoc(
 ): MemoryWriteResult {
   const ref = parseMemoryPath(path);
   ensureWorkspace(botId);
-  if (ref.kind === "log") mkdirSync(join(workspaceDir(botId), "memory", "log"), { recursive: true, mode: 0o700 });
+  if (ref.kind === "log") ensureWorkspaceFolder(botId, "memory", "log");
   const absolute = resolveMemoryPath(botId, path);
   const after = redactSecretsInText(text);
   const bytes = Buffer.byteLength(after, "utf8");

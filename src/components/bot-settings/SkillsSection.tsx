@@ -12,6 +12,7 @@ import { inputCls } from "./field";
 import { OrgSkillsCard } from "./OrgSkillsCard";
 import { WriteCommandCard } from "./WriteCommandCard";
 import { Select } from "../Select";
+import { DepositSkillButton } from "../template-sync";
 
 export interface ManagedSkill {
   name: string;
@@ -503,6 +504,7 @@ export function SkillsSection({ bot }: { bot: Bot }) {
                       onClick={() => void toggle(skill)}
                     />
                   )}
+                  {libraryOn && (skill.origin === undefined || skill.origin === "private") && <DepositSkillButton botId={bot.id} name={skill.name} />}
                   {skill.origin !== "imported" && !inFolder(skill) && (
                     <button
                       aria-label={t("skills.removeName", { name: skill.name })}

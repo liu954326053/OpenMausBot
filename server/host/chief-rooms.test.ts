@@ -83,4 +83,12 @@ describe("a room without its department's Chief", () => {
     expect(chiefAbsentFrom(room("r", ["mira"], { kind: "mentions" }, { dm: true }), [chief])).toBeUndefined();
     expect(chiefAbsentFrom(room("r", ["mira"], { kind: "mentions" }), [{ ...chief, hidden: true } as BotRecord])).toBeUndefined();
   });
+
+  it("never names a Chief the room could not take: one outside its members' team project", () => {
+    const inProject = (id: string, lead = false) => ({ ...bot(id, lead), teamProject: { id: "drama", role: id } }) as BotRecord;
+    const writers = room("r", ["writer"], { kind: "mentions" });
+    expect(chiefAbsentFrom(writers, [chief, inProject("writer")]), "a project's room filed where an outside Chief leads").toBeUndefined();
+    expect(chiefAbsentFrom(writers, [inProject("lead", true), inProject("writer")])).toEqual({ botId: "lead", name: "LEAD" });
+    expect(chiefAbsentFrom(room("r", ["mira"], { kind: "mentions" }), [inProject("lead", true), bot("mira")])).toBeUndefined();
+  });
 });

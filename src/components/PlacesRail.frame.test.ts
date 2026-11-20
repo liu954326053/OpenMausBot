@@ -12,6 +12,7 @@ vi.mock("./DesktopCapabilities", async (importOriginal) => ({
 }));
 
 import { setLocale } from "@/lib/i18n";
+import { setAdvancedMode } from "@/lib/interface-mode";
 import { refreshPlaces } from "@/lib/places";
 import { PlacesRail } from "./PlacesRail";
 
@@ -22,6 +23,7 @@ const rail: RailState = { places: [{ id: "home", name: "My Cloud", color: null, 
 
 beforeEach(() => {
   setLocale("en");
+  setAdvancedMode(false);
   fixture.windowChrome = "mac-inset";
   fixture.windowFrame = undefined;
   Object.assign(window, { ogb: {

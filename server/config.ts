@@ -1,4 +1,4 @@
-// ~/.openmausbot/config.json, with env vars overriding its credentials.
+// ~/.magicbot/config.json, with env vars overriding its credentials.
 import { readFileSync, mkdirSync, existsSync, renameSync } from "node:fs";
 import { dataHome } from "./data-dir.ts";
 import { signInFromEnv } from "./sign-in-env.ts";
@@ -237,7 +237,7 @@ const featureConfigSchema = z.object({
   smartSetupChoices: z.boolean().optional(),
   /** Recall matching passages from the bot's memory into each turn. On unless false. */
   autoRecall: z.boolean().optional(),
-  /** One shared skills store that bots read by assignment. Off unless true. */
+  /** One shared skills store every bot reads from. On unless false. */
   skillsLibrary: z.boolean().optional(),
   shareLearnedSkills: z.enum(["off", "ask", "auto"]).optional(),
   /** Memory upkeep also reads a member bot's room turns. Off unless true. */
@@ -693,7 +693,7 @@ export function changedInstanceIds(before: Record<string, unknown>, after: Recor
     .filter((id) => !isDeepStrictEqual(before[id], after[id]));
 }
 
-export const DATA_DIR = process.env.OMB_DATA_DIR || join(dataHome(), ".openmausbot");
+export const DATA_DIR = process.env.OMB_DATA_DIR || join(dataHome(), ".magicbot");
 const LEGACY_DATA_DIR = join(dataHome(), ".opengrokbot");
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");

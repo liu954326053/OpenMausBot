@@ -1,7 +1,7 @@
 // License keys: signed entitlement claims.
 //
 // A key is `omb1.<claims>.<signature>`: base64url JSON claims, Ed25519-signed
-// by an OpenMausBot signing key. The public keys are baked in below, so one
+// by an MagicBot signing key. The public keys are baked in below, so one
 // build serves every customer — the key, not the code, decides the feature
 // set. Verification is offline; nothing phones home.
 import { createPrivateKey, createPublicKey, sign, verify, type JsonWebKeyInput } from "node:crypto";

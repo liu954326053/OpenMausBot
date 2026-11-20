@@ -16,13 +16,12 @@ vi.mock("@/components/Avatar", () => ({ MausAvatar: () => null }));
 vi.mock("../lazy-screens", () => ({ GrokMoveDialog: () => createElement("div", { "data-grok-move-dialog": "" }) }));
 vi.mock("@/lib/announcement-history", async original => ({ ...await original<typeof import("@/lib/announcement-history")>(), rememberNoticeSeen: f.remembered }));
 const { AnnouncementsPage } = await import("./AnnouncementsPage");
-const { track } = await import("@/lib/analytics");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const NOW = Date.parse("2026-11-18T10:00:00Z");
 const browser: HistoryFacts = { branded: false, organization: false, cloudSale: false, cloudCards: false, remote: false, team: false, canSave: true, sponsors: true, modelgo: true };
 const desktop: HistoryFacts = { ...browser, cloudSale: true, cloudCards: true };
-const card: AnnouncementCard = { id: "phone-app-2026-11", kind: "product", title: { en: "MausBot on your phone", "pt-br": "MausBot no seu celular" }, body: "Chat with your bots anywhere.",
+const card: AnnouncementCard = { id: "phone-app-2026-11", kind: "product", title: { en: "MagicBot on your phone", "pt-br": "MagicBot no seu celular" }, body: "Chat with your bots anywhere.",
   primary: { label: "Open", action: { open: "my_cloud" } }, starts: "2026-11-20T00:00:00Z", ends: "2027-01-01T00:00:00Z" } as AnnouncementCard;
 const markRead = vi.fn();
 const found = (facts: HistoryFacts, extra: Partial<Announcements> = {}): Announcements => ({
@@ -56,7 +55,7 @@ describe("Announcements", () => {
     const teams = rows()[1]!;
     expect(teams.querySelector("time")?.getAttribute("datetime")).toBe("2026-11-17T00:00:00.000Z");
     expect(teams.textContent).toContain("Nov 17, 2026");
-    expect(teams.textContent).toContain("MausBot is better with your team");
+    expect(teams.textContent).toContain("MagicBot is better with your team");
     expect(teams.textContent).toContain("Show again");
     const hunt = rows().find(row => row.dataset.announcementItem === "product-hunt-launch-2026-10")!;
     expect(hunt.querySelector("[data-announcement-ended]")?.textContent).toBe("Ended");
@@ -89,41 +88,27 @@ describe("Announcements", () => {
     expect(markRead).toHaveBeenCalledTimes(1);
   });
 
-  it("a popup's row opens the popup again, outside the notice queue; closing it marks it seen when it wasn't", async () => {
+  it("a popup's row opens the popup again, outside the notice queue", async () => {
     f.found = found(browser);
     await open();
-    await click(rows().find(row => row.dataset.announcementItem === TEAMS_NOTICE)?.querySelector("button"));
-    const popup = document.querySelector("[data-teams-popup]");
-    expect(popup?.getAttribute("data-teams-popup")).toBe("start");
-    expect(track).toHaveBeenCalledWith("whats_new", { action: "seen", slide: "teams", audience: "no_team", campaign: TEAMS_NOTICE });
-    await click([...popup!.querySelectorAll("button")].find(button => button.textContent === "Not now"));
-    expect(document.querySelector("[data-teams-popup]")).toBeNull();
-    expect(f.remembered).toHaveBeenCalledWith(TEAMS_NOTICE, undefined, expect.objectContaining({ team: false }));
-
+    expect(rows().some(row => row.dataset.announcementItem === TEAMS_NOTICE), "no Teams popup where no Cloud is sold").toBe(false);
     await click(rows().find(row => row.dataset.announcementItem === "grok-move-2026-11")?.querySelector("button"));
     await click(document.querySelector("[data-grok-move-popup] [data-primary]"));
     expect(document.querySelector("[data-grok-move-dialog]"), "Let's start opens the move, as from the popup").not.toBeNull();
   });
 
-  it("on a Team Cloud: its admin's popup invites, a member's only tells; a member's list is Teams alone", async () => {
+  it("on a Team Cloud: no Teams popup for its member", async () => {
     f.state = { config: { team: { id: "team-acme", name: "Acme", cloudPage: "https://admin.openmausbot.com/cloud" } } };
     f.found = found({ ...browser, team: true, canSave: false, sponsors: false }, { viewer: { hosted: true, canSave: false, teamRole: "member" } });
     await open();
-    expect(rows().map(row => row.dataset.announcementItem)).toEqual([card.id, TEAMS_NOTICE]);
-    await click(rows()[1]!.querySelector("button"));
-    expect(document.querySelector("[data-teams-popup]")?.getAttribute("data-teams-popup")).toBe("got-it");
-    await act(async () => root?.unmount()); root = null;
-    f.found = found({ ...browser, team: true }, { viewer: { hosted: true, canSave: true, teamRole: "admin" } });
-    await open();
-    await click(rows().find(row => row.dataset.announcementItem === TEAMS_NOTICE)?.querySelector("button"));
-    expect(document.querySelector("[data-teams-popup]")?.getAttribute("data-teams-popup")).toBe("invite");
+    expect(rows().map(row => row.dataset.announcementItem)).toEqual([card.id]);
   });
 
   it("shows a card's words in the person's language", async () => {
     setLocale("pt-br");
     f.found = found(browser);
     await open();
-    expect(rows()[0]!.textContent).toContain("MausBot no seu celular");
+    expect(rows()[0]!.textContent).toContain("MagicBot no seu celular");
     expect(document.querySelector("h1")?.textContent).toBe("Anúncios");
   });
 });

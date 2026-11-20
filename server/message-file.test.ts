@@ -152,7 +152,7 @@ describe("message-linked files", () => {
     )).toBe(false);
   });
 
-  it("keeps a Windows path's backslash before punctuation, as in \\.openmausbot", () => {
+  it("keeps a Windows path's backslash before punctuation, as in \\.magicbot", () => {
     const report = "C:\\Users\\Maus\\.openmausbot\\workspaces\\bot\\_drafts\\report.md";
     const chart = "C:\\Users\\Maus\\.openmausbot\\workspaces\\bot\\chart.png";
     const notes = "C:\\Users\\Maus\\.openmausbot\\release notes.md";

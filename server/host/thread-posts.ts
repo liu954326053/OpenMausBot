@@ -8,7 +8,7 @@ import type { Coordinator, CoordinateBotsCall } from "../coordinator.ts";
 import { peerDeliveryReceipt, type PeerDeliveryReceipt } from "../peer-delivery.ts";
 import type { Store } from "../store.ts";
 import { escapeNotes } from "../peer-provenance.ts";
-import { peerName } from "../peer-roster.ts";
+import { peerName, teamProjectAllows } from "../peer-roster.ts";
 import { AUTHORITY, botWho, fromNoteWith } from "../provenance-label.ts";
 
 export const THREAD_POST_MAX_CHARS = 8_000;
@@ -80,7 +80,7 @@ const pending = new Map<string, string>();
 
 /** POST /api/internal/post-to-thread: checks the call and sends it through coordinate_bots as a post, so its reach rules hold. */
 export async function postToThread(body: unknown, deps: { senderId: string; fromThreadId: string; waitsOn: (threadId: string) => boolean;
-  store: Pick<Store, "botByThread" | "groupByThread" | "messagesFor">; coordinateBots: (call: CoordinateBotsCall) => Promise<Reply> }): Promise<Reply> {
+  store: Pick<Store, "bot" | "botByThread" | "groupByThread" | "messagesFor">; coordinateBots: (call: CoordinateBotsCall) => Promise<Reply> }): Promise<Reply> {
   const refuse = (status: number, error: string): Reply => ({ status, body: { error } });
   const parsed = PostBody.safeParse(body);
   if (!parsed.success) return refuse(400, `Give thread_id (from list_threads) and a message of 1-${THREAD_POST_MAX_CHARS} characters; wake is true or false.`);
@@ -88,8 +88,9 @@ export async function postToThread(body: unknown, deps: { senderId: string; from
   const { toThreadId: threadId, message, wake } = parsed.data, deliveryId = parsed.data.deliveryId || randomUUID();
   const badId = deliveryIdProblem(deliveryId);
   if (badId) return refuse(400, badId);
-  const owner = deps.store.botByThread(threadId);
-  if (!owner || deps.store.groupByThread(threadId)) return refuse(404, "No open thread with that id: use a thread id list_threads shows. Rooms take post_to_room.");
+  const owner = deps.store.botByThread(threadId), sender = deps.store.bot(deps.senderId);
+  // Security invariant: a thread of a bot behind the sender's team project wall is answered as no thread at all.
+  if (!owner || deps.store.groupByThread(threadId) || !sender || !teamProjectAllows(sender, owner)) return refuse(404, "No open thread with that id: use a thread id list_threads shows. Rooms take post_to_room.");
   if (threadId === deps.fromThreadId) return refuse(409, "That is this conversation: say it in your reply instead.");
   if (deps.waitsOn(threadId)) return refuse(403, "That thread is waiting on this one: end your turn and your reply reaches it.");
   const key = `${deps.senderId}\u0000${deliveryId}`, sentTo = deliveries.get(key), sending = pending.get(key), usedFor = sentTo ?? sending;

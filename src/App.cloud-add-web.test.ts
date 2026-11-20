@@ -16,12 +16,12 @@ vi.mock("./state/store", async (original) => ({
 vi.mock("./lib/analytics", () => ({ initAnalytics: () => {}, track: (...args: unknown[]) => track(...args), emailGateDone: () => true }));
 const { default: App } = await import("./App");
 
-function render(cloudAdd: AppState["cloudAdd"], ogb?: unknown): { opened: ReturnType<typeof vi.fn>; done: () => void } {
+function render(cloudAdd: AppState["cloudAdd"], ogb?: unknown, config: AppState["config"] = null): { opened: ReturnType<typeof vi.fn>; done: () => void } {
   vi.stubGlobal("fetch", () => new Promise(() => {}));
   const opened = vi.fn(() => null);
   vi.stubGlobal("open", opened);
   if (ogb) (window as { ogb?: unknown }).ogb = ogb;
-  state = { ...initialState, connected: true, hydrated: true, cloudAdd };
+  state = { ...initialState, connected: true, hydrated: true, cloudAdd, config };
   dispatched = []; track.mockClear();
   const container = document.createElement("div");
   document.body.append(container);
@@ -32,20 +32,29 @@ function render(cloudAdd: AppState["cloudAdd"], ogb?: unknown): { opened: Return
 
 afterEach(() => { delete (window as { ogb?: unknown }).ogb; vi.unstubAllGlobals(); });
 
-it("in a browser, Try Cloud opens the Cloud website's checkout in the same tap, counts it and leaves nothing waiting", () => {
+it("in a browser off a Cloud, a Cloud request opens no checkout and leaves nothing waiting", () => {
   const { opened, done } = render({ source: "app_onboarding" });
   try {
-    expect(opened).toHaveBeenCalledExactlyOnceWith("https://cloud.openmausbot.com/pro/buy?src=app_onboarding", "_blank", "noopener,noreferrer");
-    expect(track).toHaveBeenCalledWith("cloud_checkout_opened", { plan: "pro", source: "app_onboarding", via: "web" });
+    expect(opened).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalledWith("cloud_checkout_opened", expect.anything());
     expect(dispatched).toContainEqual({ type: "closeCloudAdd" });
   } finally { done(); }
 });
 
-it("on a desktop showing another computer, it goes through main to the browser", () => {
+it("on a Cloud's own page, it opens the Cloud website's page for the account in the same tap and counts it", () => {
+  const { opened, done } = render({ source: "app_onboarding" }, undefined, { cloudHome: true } as AppState["config"]);
+  try {
+    expect(opened).toHaveBeenCalledExactlyOnceWith("https://cloud.openmausbot.com/cloud?src=app_onboarding", "_blank", "noopener,noreferrer");
+    expect(track).toHaveBeenCalledWith("cloud_checkout_opened", { source: "app_onboarding", via: "cloud_page" });
+    expect(dispatched).toContainEqual({ type: "closeCloudAdd" });
+  } finally { done(); }
+});
+
+it("on a desktop showing another computer that is no Cloud, it opens nothing", () => {
   const openExternal = vi.fn(async () => {});
   const { opened, done } = render({ source: "app_card" }, { remoteClient: { active: true }, cloudAccount: {}, openExternal });
   try {
-    expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://cloud.openmausbot.com/pro/buy?src=app_card");
+    expect(openExternal).not.toHaveBeenCalled();
     expect(opened).not.toHaveBeenCalled();
     expect(dispatched).toContainEqual({ type: "closeCloudAdd" });
   } finally { done(); }

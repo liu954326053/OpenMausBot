@@ -1,0 +1,355 @@
+import { createHash } from "node:crypto";
+
+import type {
+  CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectLookup, TeamProjectRecord, TeamProjectTemplateSetter, TeamProjectWire, TeamProjectsApi,
+  TeamProjectsListWire,
+} from "../../shared/team-projects.ts";
+import type { TemplateLibraryApi } from "../../shared/template-library.ts";
+import type { PackageImportDeps } from "../package-import.ts";
+import type { RoutineManager } from "../routines.ts";
+import { sectionKey, type BotRecord, type Store, type StoreChange } from "../store.ts";
+import { userError, userErrorThrown, type UserError } from "../user-errors.ts";
+import { teamProjectFolderReady } from "../workspace.ts";
+import { renderTeamProjectCopies, writeTeamProjectCopies, type TeamMemoryLine } from "./copies.ts";
+import { createTeamProject } from "./create.ts";
+import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
+import { checkTeamProjectsRoot } from "./root.ts";
+
+export interface TeamProjectsDeps {
+  registry: TeamProjectRegistry;
+  store: Store;
+  dataDir: string;
+  /** Null before the routines are loaded. */
+  routines(): Pick<RoutineManager, "listRoutines" | "update"> | null;
+  /** Puts a project bot's own files where its project keeps them. Throws when the project folder cannot take them. */
+  ensureWorkspace(botId: string): void;
+  templates: Pick<TemplateLibraryApi, "readTeam">;
+  importDeps(): Promise<PackageImportDeps>;
+  librarySkillNames(): readonly string[];
+  context(section: string): string;
+  memory(section: string): readonly TeamMemoryLine[];
+  /** Calls `flush` a moment after the first call since the last flush. */
+  schedule(flush: () => void): void;
+  newId(): string;
+  now?(): number;
+  log?(line: string): void;
+}
+
+type MovingBot = Pick<BotRecord, "name" | "section" | "teamProject">;
+
+function publicRecord(project: StoredTeamProject): TeamProjectRecord {
+  const { pausedRoutineIds: _paused, ...record } = project;
+  return record;
+}
+
+const detailOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+const routinesCannotBeChanged = (error: unknown) => (error as { status?: unknown } | null)?.status === 503;
+
+function roleNoTemplateGives(botId: string, taken: ReadonlySet<string>): string {
+  for (let attempt = 0; ; attempt += 1) {
+    const role = `member-${createHash("sha256").update(`${botId} ${attempt}`).digest("hex").slice(0, 8)}`;
+    if (!taken.has(role)) return role;
+  }
+}
+
+export class TeamProjects implements TeamProjectsApi, TeamProjectTemplateSetter {
+  private readonly deps: TeamProjectsDeps;
+  private readonly pending = new Map<string, { folder: string }>();
+  private readonly knownBots = new Set<string>();
+  private readonly staleCopies = new Set<string>();
+  private readonly writtenCopies = new Map<string, string>();
+  private readonly refusedCopies = new Set<string>();
+  private everyCopyStale = false;
+
+  constructor(deps: TeamProjectsDeps) {
+    this.deps = deps;
+  }
+
+  private log(line: string): void {
+    (this.deps.log ?? ((text) => console.error(text)))(`team projects: ${line}`);
+  }
+
+  private now(): number {
+    return this.deps.now?.() ?? Date.now();
+  }
+
+  /** Follows the bots from here on, and brings the copies up to date. Returns how to stop. */
+  start(): () => void {
+    for (const bot of this.deps.store.bots) {
+      this.knownBots.add(bot.id);
+      this.defaultBotToProjectFolder(bot);
+    }
+    this.touchAll();
+    return this.deps.store.onChange((change) => this.onStoreChange(change));
+  }
+
+  readonly lookup: TeamProjectLookup = (projectId) => {
+    const pending = this.pending.get(projectId);
+    if (pending) return { folder: pending.folder };
+    const project = this.deps.registry.find(projectId);
+    return project && { folder: project.folder, ...(project.archivedAt === undefined ? {} : { archivedAt: project.archivedAt }) };
+  };
+
+  private botsOf(projectId: string): BotRecord[] {
+    return this.deps.store.bots.filter((bot) => bot.teamProject?.id === projectId);
+  }
+
+  private wire(project: StoredTeamProject): TeamProjectWire {
+    const ready = teamProjectFolderReady(project.folder);
+    if (ready && !this.writtenCopies.has(project.id)) this.touch(project.id);
+    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: this.botsOf(project.id).map((bot) => bot.id) };
+  }
+
+  list(): TeamProjectWire[] {
+    return this.deps.registry.projects().map((project) => this.wire(project));
+  }
+
+  listWire(): TeamProjectsListWire {
+    return { root: this.deps.registry.root(), projects: this.list() };
+  }
+
+  setRoot(path: unknown): { root: string } | UserError {
+    const checked = checkTeamProjectsRoot(path, this.deps.dataDir);
+    if (!checked.ok) return userError(checked.error);
+    this.deps.registry.setRoot(checked.root);
+    return { root: checked.root };
+  }
+
+  async create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> {
+    const outcome = await createTeamProject(input, {
+      registry: this.deps.registry,
+      dataDir: this.deps.dataDir,
+      templates: this.deps.templates,
+      importDeps: this.deps.importDeps,
+      librarySkillNames: this.deps.librarySkillNames,
+      ensureWorkspace: this.deps.ensureWorkspace,
+      pending: this.pending,
+      writeCopies: (project) => {
+        const state = this.writeCopies(project);
+        if (state !== "written") throw new Error(`the copies in the project folder could not be written (${state})`);
+      },
+      newId: this.deps.newId,
+      now: () => this.now(),
+      log: (line) => this.log(line),
+    });
+    return "project" in outcome ? { project: this.wire(outcome.project), missingSkills: outcome.missingSkills } : outcome;
+  }
+
+  private stored(id: string): StoredTeamProject | undefined {
+    return this.deps.registry.projects().find((project) => project.id === id);
+  }
+
+  archive(id: string): TeamProjectWire | null {
+    const project = this.stored(id);
+    if (!project) return null;
+    if (project.archivedAt !== undefined) return this.wire(project);
+    const routines = this.deps.routines();
+    const botIds = new Set(this.botsOf(id).map((bot) => bot.id));
+    const paused: string[] = [];
+    try {
+      for (const routine of routines?.listRoutines() ?? []) {
+        if (!routine.enabled || !botIds.has(routine.botId)) continue;
+        routines!.update(routine.id, { enabled: false });
+        paused.push(routine.id);
+      }
+      this.deps.registry.replace({ ...project, archivedAt: this.now(), ...(paused.length ? { pausedRoutineIds: paused } : {}) });
+    } catch (error) {
+      for (const routineId of paused) {
+        try { routines!.update(routineId, { enabled: true }); } catch (failure) { this.log(`routine ${routineId} stayed paused after an archive that failed: ${detailOf(failure)}`); }
+      }
+      throw error;
+    }
+    return this.afterChange(id);
+  }
+
+  restore(id: string): TeamProjectWire | null {
+    const project = this.stored(id);
+    if (!project) return null;
+    if (project.archivedAt === undefined) return this.wire(project);
+    const { archivedAt: _archivedAt, pausedRoutineIds = [], ...restored } = project;
+    const routines = this.deps.routines();
+    const resumed: string[] = [];
+    try {
+      for (const routineId of pausedRoutineIds) {
+        const routine = routines?.listRoutines().find((candidate) => candidate.id === routineId);
+        if (!routine || routine.enabled) continue;
+        try {
+          routines!.update(routineId, { enabled: true });
+          resumed.push(routineId);
+        } catch (error) {
+          if (routinesCannotBeChanged(error)) throw error;
+          this.log(`routine ${routineId} stays paused after the restore: ${detailOf(error)}`);
+        }
+      }
+      this.deps.registry.replace(restored);
+    } catch (error) {
+      for (const routineId of resumed) {
+        try { routines!.update(routineId, { enabled: false }); } catch (failure) { this.log(`routine ${routineId} stayed on after a restore that failed: ${detailOf(failure)}`); }
+      }
+      throw error;
+    }
+    return this.afterChange(id);
+  }
+
+  setTemplate(id: string, template: TeamProjectRecord["template"]): TeamProjectWire | null {
+    const project = this.stored(id);
+    if (!project) return null;
+    const next = { id: template.id, name: template.name, version: template.version };
+    if (JSON.stringify(next) !== JSON.stringify(project.template)) this.deps.registry.replace({ ...project, template: next });
+    return this.afterChange(id);
+  }
+
+  private afterChange(id: string): TeamProjectWire | null {
+    const project = this.stored(id);
+    if (!project) return null;
+    try { this.writeCopies(project); } catch (error) { this.log(`the copies of ${project.name} were not updated: ${detailOf(error)}`); }
+    return this.wire(project);
+  }
+
+  /**
+   * Security invariant: a project's department stays closed to other bots while the list of projects cannot be read.
+   * A department that holds a project's bot is then that project's.
+   */
+  private projectIdOfDepartment(section: string): string | undefined {
+    if (!section) return undefined;
+    if (this.deps.registry.readable) return this.deps.registry.projects().find((project) => project.section === section)?.id;
+    return this.deps.store.bots.find((bot) => bot.teamProject && sectionKey(bot.section) === section)?.teamProject?.id;
+  }
+
+  /** Why `bot` may not go to the department `to`: null when it may, and when it stays where it is. */
+  moveRefusal(bot: MovingBot, to: string | null | undefined): UserError | null {
+    const target = sectionKey(to);
+    if (target === sectionKey(bot.section)) return null;
+    if (bot.teamProject && (!this.deps.registry.readable || this.deps.registry.find(bot.teamProject.id))) {
+      return userError("serverError.teamProject.botStays", { bot: bot.name });
+    }
+    return this.projectIdOfDepartment(target) ? userError("serverError.teamProject.noJoin", { department: target }) : null;
+  }
+
+  moveRefusalFor(botId: string, to: string | null | undefined): UserError | null {
+    const bot = this.deps.store.bots.find((candidate) => candidate.id === botId);
+    return bot ? this.moveRefusal(bot, to) : null;
+  }
+
+  /** Why the department may not be renamed or deleted: null when it is no project's. */
+  departmentRefusal(section: string | null | undefined): UserError | null {
+    const name = sectionKey(section);
+    return this.projectIdOfDepartment(name) ? userError("serverError.teamProject.departmentFixed", { department: name }) : null;
+  }
+
+  /** For a Chief's team setup: throws when the change moves a bot into or out of a project. */
+  checkSetupChange(before: MovingBot, fields: { section?: string }): void {
+    if (fields.section === undefined) return;
+    const refused = this.moveRefusal(before, fields.section);
+    if (refused) throw Object.assign(userErrorThrown(refused.errorKey, refused.errorParams), { status: 409 });
+  }
+
+  private onStoreChange(change: StoreChange): void {
+    if (change.type === "bot.deleted") {
+      this.knownBots.delete(change.botId);
+      this.touchAll();
+      return;
+    }
+    if (change.type === "sections") return this.touchAll();
+    if (change.type === "group") return this.defaultRoomToProjectFolder(change.groupId);
+    if (change.type !== "bot") return;
+    const bot = this.deps.store.bots.find((candidate) => candidate.id === change.botId);
+    if (!bot) return;
+    if (!this.knownBots.has(bot.id)) {
+      this.knownBots.add(bot.id);
+      this.takeIntoProjectOfItsDepartment(bot);
+    }
+    const projectId = bot.teamProject?.id;
+    if (!projectId) return;
+    this.defaultBotToProjectFolder(bot);
+    this.followLead(projectId);
+    this.touch(projectId);
+  }
+
+  private defaultBotToProjectFolder(bot: BotRecord): void {
+    if (!bot.teamProject || bot.cwd) return;
+    const folder = this.deps.registry.find(bot.teamProject.id)?.folder;
+    if (folder) this.deps.store.patchBot(bot.id, { cwd: folder });
+  }
+
+  private takeIntoProjectOfItsDepartment(bot: BotRecord): void {
+    const membership = bot.teamProject;
+    const projectId = membership?.id ?? this.projectIdOfDepartment(sectionKey(bot.section));
+    if (!projectId) return;
+    const readable = this.deps.registry.readable;
+    const project = this.deps.registry.find(projectId);
+    if (readable && !project) return;
+    const taken = new Set(this.botsOf(projectId).filter((other) => other.id !== bot.id).map((other) => other.teamProject!.role));
+    if (membership && !taken.has(membership.role)) return;
+    this.deps.store.patchBot(bot.id, { teamProject: { id: projectId, role: roleNoTemplateGives(bot.id, taken) }, ...(bot.cwd || !project ? {} : { cwd: project.folder }) });
+    try {
+      this.deps.ensureWorkspace(bot.id);
+    } catch (error) {
+      this.log(`the files of ${bot.name} were not put into ${project?.name ?? "its project"}: ${detailOf(error)}`);
+    }
+  }
+
+  private defaultRoomToProjectFolder(groupId: string): void {
+    const group = this.deps.store.group(groupId);
+    if (!group || group.cwd || !group.memberIds.length) return;
+    const projects = group.memberIds.map((id) => this.deps.store.bots.find((bot) => bot.id === id)?.teamProject?.id);
+    const projectId = projects[0];
+    if (!projectId || projects.some((id) => id !== projectId)) return;
+    const folder = this.lookup(projectId)?.folder;
+    if (folder) this.deps.store.patchGroup(group.id, { cwd: folder });
+  }
+
+  private followLead(projectId: string): void {
+    const project = this.deps.registry.find(projectId);
+    if (!project) return;
+    const chief = this.botsOf(projectId).find((bot) => bot.chiefOfStaff && sectionKey(bot.section) === project.section);
+    if (!chief || chief.id === project.leadBotId) return;
+    try {
+      this.deps.registry.replace({ ...project, leadBotId: chief.id });
+    } catch (error) {
+      this.log(`the lead of ${project.name} was not recorded: ${detailOf(error)}`);
+    }
+  }
+
+  private touch(projectId: string): void {
+    this.staleCopies.add(projectId);
+    this.deps.schedule(() => this.flushCopies());
+  }
+
+  /** Every project's copies may be behind their sources: the context or the team memory changed, or a bot left. */
+  touchAll(): void {
+    this.everyCopyStale = true;
+    this.deps.schedule(() => this.flushCopies());
+  }
+
+  flushCopies(): void {
+    if (!this.deps.registry.readable) return;
+    const all = this.everyCopyStale;
+    const stale = new Set(this.staleCopies);
+    this.everyCopyStale = false;
+    this.staleCopies.clear();
+    for (const project of this.deps.registry.projects()) {
+      if (!all && !stale.has(project.id)) continue;
+      try { this.writeCopies(project); } catch (error) { this.log(`the copies of ${project.name} were not updated: ${detailOf(error)}`); }
+    }
+  }
+
+  private writeCopies(project: StoredTeamProject): "written" | "missing" | "refused" {
+    const files = renderTeamProjectCopies(publicRecord(project), { bots: (id) => this.botsOf(id), context: this.deps.context, memory: this.deps.memory });
+    const print = JSON.stringify(files);
+    if (this.writtenCopies.get(project.id) === print) return "written";
+    const state = writeTeamProjectCopies(project.folder, files);
+    if (state === "written") {
+      this.writtenCopies.set(project.id, print);
+      this.refusedCopies.delete(project.id);
+      return state;
+    }
+    this.writtenCopies.delete(project.id);
+    if (state === "refused" && !this.refusedCopies.has(project.id)) {
+      this.refusedCopies.add(project.id);
+      this.log(`the copies of ${project.name} are not written: .magic-team, team or team/personas in its folder is not a real folder`);
+    }
+    return state;
+  }
+}

@@ -702,10 +702,10 @@ describe("team setup below Full access", () => {
   });
 });
 
-describe("MausBot's Chief-level team setup", () => {
+describe("MagicBot's Chief-level team setup", () => {
   const plan = (operations: unknown[]) => ({ reason: "Requested specialist setup", operations, newTeams: [] });
 
-  it("lets the person's MausBot add a specialist like a Chief, without making it the Chief", () => {
+  it("lets the person's MagicBot add a specialist like a Chief, without making it the Chief", () => {
     const h = harness();
     const maus = h.bot("Maus", { defaultBot: {} });
     const request = h.service.propose({ botId: maus.id, threadId: maus.threadId, plan: plan([specialist("Scout", "Work")]) });
@@ -714,7 +714,7 @@ describe("MausBot's Chief-level team setup", () => {
     expect(h.chief.chiefOfStaff).toBe(true);
   });
 
-  it("never lets MausBot change who the Chief is", () => {
+  it("never lets MagicBot change who the Chief is", () => {
     const h = harness();
     const maus = h.bot("Maus", { defaultBot: {} });
     for (const target of [maus.id, h.peer.id, h.chief.id]) {
@@ -723,14 +723,14 @@ describe("MausBot's Chief-level team setup", () => {
     }
   });
 
-  it("refuses a Team Cloud User's MausBot, which holds no more than its member", () => {
+  it("refuses a Team Cloud User's MagicBot, which holds no more than its member", () => {
     const h = harness();
     const maus = h.bot("Maus", { defaultBot: { person: "user@example.com" } });
     expect(() => h.service.propose({ botId: maus.id, threadId: maus.threadId, plan: plan([specialist("Scout", "Work")]) }))
       .toThrow(/Only an active Chief of Staff can propose team setup/);
   });
 
-  it("never lets a Chief delete MausBot", () => {
+  it("never lets a Chief delete MagicBot", () => {
     const h = harness();
     const maus = h.bot("Maus", { defaultBot: {} });
     expect(() => h.service.proposeDeletion({ botId: h.chief.id, threadId: h.chief.threadId, targetBotId: maus.id, reason: "remove" }))
@@ -763,5 +763,88 @@ describe("a Chief making bots, whatever the plan", () => {
   it("still holds the workspace's own ceiling", () => {
     const app = full(97);
     expect(() => app.propose([specialist("Scout"), specialist("Writer")])).toThrow(expect.objectContaining({ status: 409, message: "This setup exceeds the workspace bot limit" }));
+  });
+});
+
+describe("team setup and a team project's wall", () => {
+  const plan = (operations: unknown[], newTeams: string[] = []) => ({ reason: "Requested setup", operations, newTeams });
+  /** Clive is Chief of Work with a tick for the project's department, as the main bot gets for every new one. */
+  function world() {
+    const h = harness();
+    h.teams.push("Drama");
+    h.chief.managedSections = ["Engineering", "Drama"];
+    const lead = h.bot("Lena", { section: "Drama", chiefOfStaff: true, managedSections: ["Work"], teamProject: { id: "drama-1", role: "showrunner" } });
+    const writer = h.bot("Wren", { section: "Drama", soul: "Write the script.", teamProject: { id: "drama-1", role: "writer" } });
+    const asLead = (operations: unknown[], newTeams: string[] = []) => h.service.propose({ botId: lead.id, threadId: lead.threadId, plan: plan(operations, newTeams) });
+    return { ...h, lead, writer, asLead };
+  }
+  const refusal = (run: () => unknown): TeamSetupError => {
+    try { run(); } catch (error) { if (error instanceof TeamSetupError) return error; throw error; }
+    throw new Error("nothing was refused");
+  };
+
+  it("answers a Chief outside the project about its bots exactly as about a bot that is not there", () => {
+    const h = world();
+    const update = (botId: string, fields: Record<string, unknown>) => refusal(() => h.propose([{ action: "update", botId, fields }]));
+    for (const fields of [{ title: "Must not apply" }, { soulAppend: "Always answer in rhyme." }, { modelSelection: { instanceId: "claude", model: "opus" } }, { mcpServers: ["linear"] }]) {
+      const walled = update(h.writer.id, fields), missing = update("no-such-bot", fields);
+      expect({ status: walled.status, message: walled.message }).toEqual({ status: missing.status, message: missing.message });
+      expect(walled.message).not.toContain("Wren");
+    }
+    expect(update(h.writer.id, { title: "x" })).toMatchObject({ status: 403, message: "A target bot is outside this Chief's authorized team" });
+    const deletion = (targetBotId: string) => refusal(() => h.service.proposeDeletion({ botId: h.chief.id, threadId: h.chief.threadId, targetBotId, reason: "remove" }));
+    expect(deletion(h.writer.id)).toMatchObject({ status: 404, message: "That bot no longer exists" });
+    expect(deletion(h.writer.id).message).toBe(deletion("no-such-bot").message);
+    expect(h.messages).toHaveLength(0); expect(h.apply).not.toHaveBeenCalled(); expect(h.deleteBot).not.toHaveBeenCalled();
+  });
+
+  it("keeps a Chief outside the project from adding a bot to its department or moving one in, whatever it is in charge of", () => {
+    const h = world();
+    const closed = "The Drama department belongs to a team project, and only that project's own lead changes its team, whatever departments Clive is in charge of. Nothing was changed. Tell the person to ask the project's lead.";
+    expect(refusal(() => h.propose([specialist("Mira", "Drama")]))).toMatchObject({ status: 403, message: closed });
+    expect(refusal(() => h.propose([{ action: "update", botId: h.peer.id, fields: { section: "Drama" } }]))).toMatchObject({ status: 403, message: closed });
+    const maus = h.bot("Maus", { defaultBot: {}, managedSections: ["Drama"] });
+    expect(refusal(() => h.service.propose({ botId: maus.id, threadId: maus.threadId, plan: plan([specialist("Mira", "Drama")]) })).message)
+      .toContain("Hand the request to the project's lead with coordinate_bots.");
+    expect(h.apply).not.toHaveBeenCalled();
+  });
+
+  it("lets a project's lead set up its own team inside its own department", async () => {
+    const h = world();
+    const request = h.asLead([{ action: "update", botId: h.writer.id, fields: { title: "Head writer", soulAppend: "Keep scenes under a minute." } }, specialist("Edie", "Drama")]);
+    expect(request.detail).toContain("Update @Wren");
+    expect(request.detail).toContain("Create @Edie");
+    expect((await h.service.resolve({ botId: h.lead.id, threadId: h.lead.threadId, requestId: request.requestId, behavior: "allow" }))?.result.state).toBe("applied");
+    expect(h.writer.title).toBe("Head writer");
+    const removal = h.service.proposeDeletion({ botId: h.lead.id, threadId: h.lead.threadId, targetBotId: h.writer.id, reason: "The person asked" });
+    expect(removal.detail).toContain("Delete @Wren");
+  });
+
+  it("keeps a project's lead inside its department: no bot elsewhere, none moved out, no new department", () => {
+    const h = world();
+    const inside = "Lena leads one team project and sets up bots only in its own department, Drama: it cannot add a bot to another department, move one out of the project or create a new department. Nothing was changed.";
+    expect(refusal(() => h.asLead([specialist("Mira", "Work")]))).toMatchObject({ status: 403, message: inside });
+    expect(refusal(() => h.asLead([{ action: "update", botId: h.writer.id, fields: { section: "Work" } }]))).toMatchObject({ status: 403, message: inside });
+    expect(refusal(() => h.asLead([specialist("Mira", "Spin-off")], ["Spin-off"]))).toMatchObject({ status: 403, message: inside });
+    expect(h.apply).not.toHaveBeenCalled();
+  });
+
+  it("answers a project's lead about bots outside the project as about a bot that is not there, whatever it is in charge of", () => {
+    const h = world();
+    const walled = refusal(() => h.asLead([{ action: "update", botId: h.peer.id, fields: { title: "Must not apply" } }]));
+    expect(walled).toMatchObject({ status: 403, message: "A target bot is outside this Chief's authorized team" });
+    expect(refusal(() => h.service.proposeDeletion({ botId: h.lead.id, threadId: h.lead.threadId, targetBotId: h.peer.id, reason: "remove" })))
+      .toMatchObject({ status: 404, message: "That bot no longer exists" });
+    const other = h.bot("Omar", { section: "Drama 2", teamProject: { id: "drama-2", role: "writer" } });
+    expect(refusal(() => h.asLead([{ action: "update", botId: other.id, fields: { title: "Must not apply" } }])).message).toBe(walled.message);
+    expect(h.peer.title).toBe(""); expect(h.apply).not.toHaveBeenCalled();
+  });
+
+  it("cancels a reviewed setup whose target went behind the wall before the person answered", async () => {
+    const h = world();
+    const request = h.propose([{ action: "update", botId: h.peer.id, fields: { title: "Researcher" } }]);
+    h.peer.teamProject = { id: "drama-1", role: "researcher" };
+    expect((await h.resolve(request.requestId))?.result).toMatchObject({ state: "cancelled", error: "A target bot is outside this Chief's authorized team" });
+    expect(h.peer.title).toBe(""); expect(h.apply).not.toHaveBeenCalled();
   });
 });

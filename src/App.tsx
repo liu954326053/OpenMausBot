@@ -4,7 +4,7 @@ import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useStore } from "@/state/s
 import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
-import { MausBotWelcome } from "@/components/MausBotWelcome";
+import { MagicBotWelcome } from "@/components/MagicBotWelcome";
 import { NewBotNameHost } from "@/components/NewBotName";
 import { MemberApps } from "@/components/MemberApps";
 import { CloudTimeZoneSync } from "@/components/CloudTimeZone";
@@ -26,7 +26,7 @@ import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, TWO_SIDE_PANELS_FIT, useMediaQue
 import { preloadConnectedApps } from "@/lib/connected-apps";
 import {
   ActivityPanel, AnnouncementsPage, BotSettingsDialog, CloudAddDialog, ComputerPanel, FilesView, InspectorPanel, KeyboardShortcutsModal, LocalVmWorkspace,
-  PluginsPanel, preloadScreens, PublishedAppsPage, RemoteAgentSettingsPanel, RemoteDesktopPanel, RoomPanel, SettingsModal, TeamFilesPage, TeamMapPage, TriggersPage,
+  PluginsPanel, preloadScreens, PublishedAppsPage, RemoteAgentSettingsPanel, RemoteDesktopPanel, RoomPanel, SettingsModal, SkillsLibraryPage, TeamFilesPage, TeamMapPage, TriggersPage,
 } from "@/components/lazy-screens";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useRoomPanelShown } from "@/lib/room-panel";
@@ -38,6 +38,7 @@ import { AppNotices } from "@/components/AppNotices";
 import { CliLoginCard } from "@/components/CliLoginCard";
 import { AppGrantNotice } from "@/components/AppGrantPrompt";
 import { BotLimitPopup } from "@/components/BotLimitPopup";
+import { TemplateSyncHost } from "@/components/template-sync";
 import { CloudAsleepStrip } from "@/components/CloudAsleepStrip";
 import { LiveConnectionStrip } from "@/components/LiveConnectionStrip";
 import { CloudSendStrip } from "@/components/CloudSendStrip";
@@ -157,7 +158,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   // A layout effect runs inside the tap that asked, so a browser lets it open a tab.
   useLayoutEffect(() => {
     if (!state.cloudAdd || cloudAccountBridge()) return;
-    openCloudOnWeb(state.cloudAdd, { cloudHome: state.config?.cloudHome === true, teamCloudPage: state.config?.team?.cloudPage });
+    if (state.config?.cloudHome === true) openCloudOnWeb(state.cloudAdd, { cloudHome: true, teamCloudPage: state.config?.team?.cloudPage });
     dispatch({ type: "closeCloudAdd" });
   }, [state.cloudAdd]);
   const [localVmWorkspaceBotId, setLocalVmWorkspaceBotId] = useState<string | null>(null);
@@ -350,6 +351,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
     <div data-look="app" className={cn("flex h-full flex-col", framed && "bg-frame")} onClickCapture={drawerOpen ? noteDrawerAction : undefined} onKeyDownCapture={drawerOpen ? noteDrawerAction : undefined}>
       <WindowFrameBar notifications={notificationTray} />
       <BotLimitPopup />
+      <TemplateSyncHost />
       <ConversationShareDialogs />
       {!framed && strips}
       <div className="relative flex min-h-0 flex-1">
@@ -393,6 +395,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
         <WebPanelPage />
       ) : state.activeView === "published-apps" ? (
         <PublishedAppsPage />
+      ) : state.activeView === "skills-library" ? (
+        <SkillsLibraryPage />
       ) : state.activeView === "announcements" ? (
         <AnnouncementsPage />
       ) : state.activeView === "team-files" && state.config?.team ? (
@@ -513,7 +517,7 @@ function Application() {
           <Shell viewer={viewer} />
         </ThreadRefsProvider>
         <WelcomeGate viewer={viewer} />
-        <MausBotWelcome viewer={viewer} />
+        <MagicBotWelcome viewer={viewer} />
         <NewBotNameHost />
         <CloudTimeZoneSync viewer={viewer} />
         <GuidedTour />

@@ -9,7 +9,7 @@
 //     sign-ins bound into it, so no other audience's transcripts are there;
 //   - put back inside that empty folder: this turn's working folder, the bot's own folder (workspaces/<bot>) and what the
 //     caller names (the turn's permission socket, a read-only file the command line points at); and, read-only, the
-//     bot's own SOUL.md (bots/<bot>/SOUL.md, which it may read but never write) and the engines OpenMausBot installed
+//     bot's own SOUL.md (bots/<bot>/SOUL.md, which it may read but never write) and the engines MagicBot installed
 //     there, whole, since npm's bin links point into the prefix by relative paths; on a Team Cloud a turn that is not the
 //     team's has the bot's own folder read-only and of a process its conversations share only those it may read
 //     (BoxAudience);
@@ -41,12 +41,14 @@ export interface BoxSetup {
   home: string;
   /** Folders of code the box may read: the server's own files, the bots' browser. */
   codeRoots: readonly string[];
-  /** Folders of engine code OpenMausBot installed in the data folder, read-only at their own paths; absent ones are skipped. */
+  /** Folders of engine code MagicBot installed in the data folder, read-only at their own paths; absent ones are skipped. */
   engineRoots: readonly string[];
   /** Host unix sockets bridged to loopback ports inside the box, when the box has its own network. */
   bridges: readonly BoxBridge[];
   /** The descriptor number the box reads its seccomp filter from (`--seccomp FD`), or none. */
   seccompFd?: number;
+  /** A project bot's folder in its project folder, while it is a real folder there; null for every other bot. */
+  projectBotFolder?(botId: string): string | null;
   /** Test knobs; production passes none. */
   mutate?: ReadonlySet<BoxMutation>;
 }
@@ -80,7 +82,7 @@ export interface BoxRequest {
   /** Files bound read-write over their names in `home`: the team's engine sign-ins. */
   shared?: ReadonlyArray<{ source: string; target: string }>;
   /** The command, its arguments and its environment are a server someone configured (an MCP server a bot may have
-   * added), not ones OpenMausBot built. Security: none of them puts anything of the data folder in the box but the
+   * added), not ones MagicBot built. Security: none of them puts anything of the data folder in the box but the
    * bot's own folders, so an environment value naming a folder there is not made writable. */
   configured?: boolean;
   /** A host unix socket the box dials out to, so the server can reach a port the engine listens on inside the box's own
@@ -251,6 +253,12 @@ export function planBox(setup: BoxSetup, request: BoxRequest): BoxPlan {
     const own = join(dataDir, "workspaces", botId);
     if (!covered(own) && own !== teamFolder) rw(own);
   }
+  const inProject = botId && ID.test(botId) ? setup.projectBotFolder?.(botId) ?? null : null;
+  const teamOnlyWrites = Boolean(request.audience?.teamReadOnly);
+  if (inProject && !teamOnlyWrites && !covered(inProject)) {
+    mounts.push({ kind: "bind", source: inProject, target: inProject, optional: true });
+    writable.push(inProject);
+  }
   const ownFolders = botId && ID.test(botId) ? [join(dataDir, "workspaces", botId), join(dataDir, "task-workspaces", botId)] : [];
   // Security: only a conversation folder of this box's own bot, and never in a process other conversations share.
   const conversation = request.conversationFolder && !request.botThreads ? resolve(request.conversationFolder) : null;
@@ -295,6 +303,8 @@ export function planBox(setup: BoxSetup, request: BoxRequest): BoxPlan {
   } else if (teamFolder) {
     mounts.push({ kind: "ro", source: teamFolder, target: teamFolder, optional: true });
   }
+  // Security: a project bot's folder is the team's as well, and is inside the folder its turns work in.
+  if (inProject && teamOnlyWrites) mounts.push({ kind: "ro", source: inProject, target: inProject, optional: true });
   const readOnly = new Set<string>();
   const inBotFolder = (path: string) => ["workspaces", "task-workspaces"].some((kind) => {
     const [owner, ...rest] = relative(join(dataDir, kind), path).split(sep);

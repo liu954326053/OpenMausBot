@@ -11,7 +11,7 @@ import { uploadableFiles } from "./browser-upload.ts";
 import { listBotFiles } from "./cloud-send-files.ts";
 import { listMessageFolder, openMessageFile } from "./message-file.ts";
 import { botFileSource, readPageBundle } from "./pages/bundle.ts";
-import { SECRET_FILE_REFUSAL, SECRET_FOLDER } from "./secret-folder.ts";
+import { SECRET_FILE_REFUSAL, SECRET_FOLDERS } from "./secret-folder.ts";
 import { excludedWorkspaceAuthPath } from "./workspace-backup-policy.ts";
 import { omittedFromWorkspaceBackup } from "./workspace-backup.ts";
 
@@ -19,18 +19,18 @@ let data = "";
 let workspace = "";
 let secret = "";
 
-beforeEach(() => {
-  data = mkdtempSync(join(tmpdir(), "omb-secret-folder-"));
-  workspace = join(data, "workspaces", "atlas");
-  mkdirSync(join(workspace, SECRET_FOLDER, "thread-1"), { recursive: true });
-  secret = join(workspace, SECRET_FOLDER, "thread-1", "card-1");
-  writeFileSync(secret, "sk_canary_secret");
-  writeFileSync(join(workspace, "notes.txt"), "plain notes");
-  writeFileSync(join(workspace, "index.html"), "<p>page</p>");
-});
-afterEach(() => rmSync(data, { recursive: true, force: true }));
+describe.each(SECRET_FOLDERS)("a bot's private secret files, kept under %s", (SECRET_FOLDER) => {
+  beforeEach(() => {
+    data = mkdtempSync(join(tmpdir(), "omb-secret-folder-"));
+    workspace = join(data, "workspaces", "atlas");
+    mkdirSync(join(workspace, SECRET_FOLDER, "thread-1"), { recursive: true });
+    secret = join(workspace, SECRET_FOLDER, "thread-1", "card-1");
+    writeFileSync(secret, "sk_canary_secret");
+    writeFileSync(join(workspace, "notes.txt"), "plain notes");
+    writeFileSync(join(workspace, "index.html"), "<p>page</p>");
+  });
+  afterEach(() => rmSync(data, { recursive: true, force: true }));
 
-describe("a bot's private secret files", () => {
   it("never go into a workspace backup, a move to a Cloud or into a team, or Cloud Files", async () => {
     for (const path of [`workspaces/atlas/${SECRET_FOLDER}`, `workspaces/atlas/${SECRET_FOLDER}/thread-1/card-1`,
       `workspaces/atlas--member-ab12/${SECRET_FOLDER}/t/c`, `vm-home/${SECRET_FOLDER}/t/c`, `vm-homes/0123456789abcdef/${SECRET_FOLDER}/t/c`]) {

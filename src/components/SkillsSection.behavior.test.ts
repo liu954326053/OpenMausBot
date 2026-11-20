@@ -16,6 +16,7 @@ vi.mock("react", async (original) => ({
     return fixture.values[index];
   },
   useMemo: (compute: () => unknown) => compute(),
+  useCallback: (callback: unknown) => callback,
   useEffect: () => {},
 }));
 vi.mock("@/hooks/use-modal-dialog", () => ({ useModalDialog: fixture.modal }));
@@ -107,6 +108,54 @@ describe("Skills library review and assignment controls", () => {
     render().filter((node) => node.type === "button" && node.props.children === "Assign")[1]!.props.onClick!();
     await flush();
     expect(writes).toEqual([["alpha"], ["alpha", "beta"]]);
+  });
+
+  it("puts adding a package first, and reloads the list once one came in", async () => {
+    const tree = render();
+    const upload = tree.findIndex((node) => typeof node.type === "function" && node.type.name === "SkillPackageUpload");
+    expect(upload).toBeGreaterThan(-1);
+    expect(upload).toBeLessThan(tree.findIndex((node) => node.props.title === "Skills library"));
+    expect(tree[upload]!.props.disabled).toBe(false);
+    (tree[upload]!.props.onAdded as () => void)();
+    await flush();
+    expect(fetch).toHaveBeenCalledWith("/api/skills-library");
+  });
+
+  it("removes a skill from the library, and puts it back from Undo", async () => {
+    vi.mocked(fetch).mockImplementation(async (_url, options) => response(
+      options?.method === "DELETE" ? { ok: true, undo: "order-audit.token" } : options?.method === "POST" ? { skill: skill() } : { skills: [] }) as Response);
+    const toast = () => render().find((node) => typeof node.type === "function" && node.type.name === "UndoToast");
+    expect(toast()).toBeUndefined();
+    named(render(), "Remove order-audit").props.onClick!();
+    await flush();
+    expect(fetch).toHaveBeenCalledWith("/api/skills-library/order-audit", { method: "DELETE" });
+    expect(fixture.values[0]).toEqual([]);
+    expect(toast()!.props).toMatchObject({ text: "Removed order-audit from the library", failedText: "Couldn't put that skill back. Add its package again." });
+    await (toast()!.props.onUndo as () => Promise<void>)();
+    expect(fetch).toHaveBeenCalledWith("/api/skills-library/restore", expect.objectContaining({ method: "POST", body: '{"undo":"order-audit.token"}' }));
+    (toast()!.props.onDone as () => void)();
+    expect(toast()).toBeUndefined();
+  });
+
+  it("says so beside the list when a skill could not be removed or put back", async () => {
+    vi.mocked(fetch).mockResolvedValue(response({ error: "could not archive the library copy" }, false) as Response);
+    named(render(), "Remove order-audit").props.onClick!();
+    await flush();
+    expect(fixture.values[2]).toBe("could not archive the library copy");
+    expect(render().some((node) => typeof node.type === "function" && node.type.name === "UndoToast")).toBe(false);
+
+    vi.mocked(fetch).mockImplementation(async (_url, options) => response(options?.method === "DELETE" ? { ok: true, undo: "order-audit.token" } : { error: "taken" }, options?.method === "DELETE") as Response);
+    named(render(), "Remove order-audit").props.onClick!();
+    await flush();
+    const toast = render().find((node) => typeof node.type === "function" && node.type.name === "UndoToast")!;
+    await expect((toast.props.onUndo as () => Promise<void>)()).rejects.toThrow("Couldn't put that skill back. Add its package again.");
+  });
+
+  it("tells a switched-on skill any bot may pick up from one no bot can use yet", () => {
+    fixture.values[0] = [{ ...skill("on-offer"), enabled: true, onOffer: true }, skill("waiting")];
+    const said = render().filter((node) => node.type === "span").map((node) => node.props.children);
+    expect(said).toContain("No bot is assigned. Any bot picks it up when a task needs it.");
+    expect(said).toContain("Not assigned to any bot.");
   });
 
   it("requires the same source review before enabling a per-bot library skill", async () => {

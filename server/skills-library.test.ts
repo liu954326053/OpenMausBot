@@ -176,7 +176,7 @@ describe("skills library store", () => {
       expect(on.skillsIndex(record, "main")).toContain(name);
       expect(on.skillsIndex(record, undefined)).toContain(name);
       expect(on.expandSkillCommand(record, "main", `/${name}`, undefined, [], true)).toContain(`ran your ${name} skill`);
-      const off = hostWith({} as AppConfig);
+      const off = hostWith({ features: { skillsLibrary: false } } as AppConfig);
       expect(off.skillsIndex(record, "main")).not.toContain(name);
       expect(off.expandSkillCommand(record, "main", `/${name}`, undefined, [], true)).toBe(`/${name}`);
     } finally {
@@ -184,17 +184,18 @@ describe("skills library store", () => {
     }
   });
 
-  it("defaults the feature flag off and switches on only via features.skillsLibrary", () => {
-    expect(library.skillsLibraryEnabled({} as AppConfig)).toBe(false);
-    expect(library.skillsLibraryEnabled({ features: {} } as AppConfig)).toBe(false);
-    expect(library.skillsLibraryEnabled({ features: { skillsLibrary: true } } as AppConfig)).toBe(true);
+  it("defaults the feature flag on and switches off only via features.skillsLibrary", () => {
+    expect(library.skillsLibraryEnabled({} as AppConfig)).toBe(true);
+    expect(library.skillsLibraryEnabled({ features: {} } as AppConfig)).toBe(true);
+    expect(library.skillsLibraryEnabled({ features: { skillsLibrary: false } } as AppConfig)).toBe(false);
   });
 
   it("parseStoredConfig keeps features.skillsLibrary while stripping genuinely unknown keys", () => {
     const stored = config.parseStoredConfig({ features: { skillsLibrary: true, browser: true } });
     expect(stored).toEqual({ features: { skillsLibrary: true, browser: true } });
     expect(library.skillsLibraryEnabled(stored)).toBe(true);
-    expect(library.skillsLibraryEnabled(config.parseStoredConfig({ features: { browser: true } }))).toBe(false);
+    expect(library.skillsLibraryEnabled(config.parseStoredConfig({ features: { browser: true } }))).toBe(true);
+    expect(library.skillsLibraryEnabled(config.parseStoredConfig({ features: { skillsLibrary: false } }))).toBe(false);
     expect(config.parseStoredConfig({ features: { skillsLibrary: true, teleport: true } })).toEqual({
       features: { skillsLibrary: true },
     });

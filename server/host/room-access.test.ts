@@ -135,3 +135,70 @@ describe("roomHandoffProblem", () => {
     expect(roomHandoffProblem({ botId: "outsider", threadId: "outsider-work" }, from)).toMatch(/./);
   });
 });
+
+describe("a room and a team project's wall", () => {
+  const bots = {
+    main: { id: "main", name: "MagicBot", defaultBot: {}, chiefOfStaff: true, threadId: "main-main" },
+    outside: { id: "outside", name: "Otto", threadId: "outside-main" },
+    leadA: { id: "leadA", name: "Ava", chiefOfStaff: true, teamProject: { id: "a", role: "lead" }, threadId: "leadA-main" },
+    memberA: { id: "memberA", name: "Arlo", teamProject: { id: "a", role: "writer" }, threadId: "memberA-main" },
+    leadB: { id: "leadB", name: "Bea", chiefOfStaff: true, teamProject: { id: "b", role: "lead" }, threadId: "leadB-main" },
+    "link-0000abcd-far": { id: "link-0000abcd-far", name: "Far", threadId: "far-main" },
+  } as unknown as Record<string, BotRecord>;
+  const rooms: Record<string, Record<string, unknown>> = {
+    roomA: { id: "roomA", threadId: "roomA-thread", dm: false, memberIds: ["leadA", "memberA"], name: "Writers' room" },
+    roomB: { id: "roomB", threadId: "roomB-thread", dm: false, memberIds: ["leadB"], name: "Other writers" },
+    general: { id: "general", threadId: "general-thread", dm: false, memberIds: ["main", "outside"], name: "General" },
+    mixed: { id: "mixed", threadId: "mixed-thread", dm: false, memberIds: ["main", "leadA"], name: "Mixed before the rule" },
+    far: { id: "far", threadId: "far-thread", dm: false, memberIds: ["leadA", "link-0000abcd-far"], name: "With the other place" },
+    stale: { id: "stale", threadId: "stale-thread", dm: false, memberIds: ["leadA", "memberA", "deleted-bot"], name: "One member gone" },
+  };
+  const store = {
+    bot: (id: string) => bots[id] ?? null,
+    group: (id: string) => rooms[id],
+    groupByThread: (threadId: string) => Object.values(rooms).find(room => room.threadId === threadId),
+    groupTaskByThread: (groupId: string, threadId: string) => rooms[groupId]?.threadId === threadId ? { threadId } : undefined,
+    taskByThread: (botId: string, threadId: string) => bots[botId]?.threadId === threadId ? { threadId } : undefined,
+    messagesFor: () => [],
+  } as unknown as Store;
+  const { roomHandoffProblem } = createRoomAccess({ store });
+  const own = (botId: string) => ({ botId, threadId: `${botId}-main` });
+  const into = (groupId: string, botId: string) => ({ groupId, threadId: `${groupId}-thread`, botId });
+  const NO_SUCH_ROOM = "No such room; use list_room_targets.";
+
+  it("lets a project's bots work in their project's own room", () => {
+    expect(roomHandoffProblem(into("roomA", "leadA"), own("memberA"))).toBeUndefined();
+    expect(roomHandoffProblem(into("roomA", "memberA"), into("roomA", "leadA"))).toBeUndefined();
+    expect(roomHandoffProblem(into("general", "outside"), own("main"))).toBeUndefined();
+  });
+
+  it("answers the main bot that a project's room does not exist, though it reaches the lead directly", () => {
+    expect(roomHandoffProblem(own("leadA"), own("main"))).toBeUndefined();
+    expect(roomHandoffProblem(into("roomA", "leadA"), own("main"))).toBe(NO_SUCH_ROOM);
+  });
+
+  it("answers a project's bot that a room outside its project does not exist, the main bot's rooms included", () => {
+    expect(roomHandoffProblem(own("main"), own("memberA"))).toBeUndefined();
+    expect(roomHandoffProblem(into("general", "main"), own("memberA"))).toBe(NO_SUCH_ROOM);
+    expect(roomHandoffProblem(into("roomB", "leadB"), own("leadA"))).toBe(NO_SUCH_ROOM);
+    expect(roomHandoffProblem(into("roomA", "leadA"), own("outside"))).toBe(NO_SUCH_ROOM);
+  });
+
+  it("closes a room that mixes sides to both, and counts a member of the person's other place as outside every project", () => {
+    expect(roomHandoffProblem(into("mixed", "leadA"), own("main"))).toBe(NO_SUCH_ROOM);
+    expect(roomHandoffProblem(into("mixed", "main"), own("leadA"))).toBe(NO_SUCH_ROOM);
+    expect(roomHandoffProblem(into("far", "leadA"), own("memberA"))).toBe(NO_SUCH_ROOM);
+  });
+
+  it("does not close a project's room over a member that is gone", () => {
+    expect(roomHandoffProblem(into("stale", "leadA"), own("memberA"))).toBeUndefined();
+  });
+
+  it("refuses work sent straight to a bot behind the wall as an unknown id, without its name", () => {
+    const refused = roomHandoffProblem(own("leadB"), own("memberA"))!;
+    expect(refused).toContain('No bot with id "leadB"');
+    expect(refused).not.toContain("Bea");
+    expect(roomHandoffProblem(own("memberA"), own("main"))).toContain('No bot with id "memberA"');
+    expect(roomHandoffProblem(own("leadA"), own("outside"))).toContain('No bot with id "leadA"');
+  });
+});

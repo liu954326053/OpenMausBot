@@ -13,12 +13,12 @@ describe("skills library config visibility", () => {
       return { status: response.status, body: await response.json() as { features: { skillsLibrary?: boolean } } };
     };
     try {
-      expect((await api("GET")).body.features.skillsLibrary).toBe(false);
-      const saved = await api("PATCH", { features: { skillsLibrary: true } });
-      expect(saved.status).toBe(200);
-      expect(saved.body.features.skillsLibrary).toBe(true);
       expect((await api("GET")).body.features.skillsLibrary).toBe(true);
-      expect((await api("PATCH", { features: { skillsLibrary: false } })).body.features.skillsLibrary).toBe(false);
+      const saved = await api("PATCH", { features: { skillsLibrary: false } });
+      expect(saved.status).toBe(200);
+      expect(saved.body.features.skillsLibrary).toBe(false);
+      expect((await api("GET")).body.features.skillsLibrary).toBe(false);
+      expect((await api("PATCH", { features: { skillsLibrary: true } })).body.features.skillsLibrary).toBe(true);
       console.info(JSON.stringify(fixture.info));
     } finally {
       await fixture.close();

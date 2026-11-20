@@ -91,8 +91,8 @@ import { SidebarNoBots, SidebarTileGrid } from "./SidebarTiles";
 import { BotContextMenu } from "./SidebarBotMenu";
 export { BotContextMenu };
 import { AvatarActivityDot, AvatarCornerDot, RowDot, RowStatusText, rowSelectedSurface, rowSurface } from "./SidebarRowMarkers";
-
-
+import { SidebarTeamProjects } from "./team-projects/SidebarTeamProjects";
+import { useTeamProjectSide } from "@/state/team-projects";
 import { SidebarAttentionPanel } from "./SidebarAttentionPanel";
 import { SidebarPinnedThreadsPanel } from "./SidebarPinnedThreadsPanel";
 import { useLiveMedia } from "@/lib/live-call-media";
@@ -1082,7 +1082,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const botDrag = useSidebarBotDrag({ dispatch, announce: sections.announce, onNamed: sections.focusHeader, onRenamed: sections.renamed,
     onError: (text) => setTeamFeedback({ error: true, text }), onCancelled: () => sidebarRef.current?.focus() }), roomDrag = useSidebarRoomDrag({ dispatch, announce: sections.announce, enabled: (sections.interactive || density === "icons") && !phone && !q, groups: state.groups });
 
-  const sideLists = useTeamSideLists(state), matchingBots = sideLists.bots
+  const projectSide = useTeamProjectSide(), sideLists = useTeamSideLists(state), matchingBots = sideLists.bots
     .filter((b) => !b.hidden)
     .filter(
       (b) =>
@@ -1095,16 +1095,16 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
     );
   const visibleGroups = sideLists.groups.filter((g) => !q || g.name.toLowerCase().includes(q) || g.tasks?.some((task) => task.title.toLowerCase().includes(q)));
   const viewerEmail = useViewerEmail();
-  const parts = partitionSidebarBots(botDrag.preview(matchingBots), { universalPins, viewerEmail, welcoming: useWelcomingBot(), searching: Boolean(q) });
+  const parts = partitionSidebarBots(botDrag.preview(projectSide.bots(matchingBots)), { universalPins, viewerEmail, welcoming: useWelcomingBot(), searching: Boolean(q) });
   const saved = simpleDesk ? withPrimaryTile(parts, myDefaultBot(state.bots, viewerEmail)?.id) : { ...parts, primary: null };
   // Shown order only: drag and Alt+Up/Down keep working on the saved order, so a reorder never stores this one.
   const { primary, unsectionedChief, pinnedBots, sectionChiefs, sectionedBots, unsectionedBots } = { ...saved, ...activeBotsFirst(saved, (bot) => {
     const { waiting, working } = sidebarBotStatus(bot, state.pendingQueued);
     return waiting || working;
   }) };
-  const { botChats, sectionedRooms, unsectionedRooms } = partitionSidebarGroups(visibleGroups);
+  const { botChats, sectionedRooms, unsectionedRooms } = partitionSidebarGroups(projectSide.rooms(visibleGroups));
 
-  const sectionNames: string[] = [...(state.sections ?? []).filter((name) => !q || name.toLowerCase().includes(q.toLowerCase())), ...botDrag.pending];
+  const sectionNames: string[] = [...(state.sections ?? []).filter((name) => projectSide.department(name) && (!q || name.toLowerCase().includes(q.toLowerCase()))), ...botDrag.pending];
   for (const bot of sectionedBots) {
     if (!sectionNames.includes(bot.section!)) sectionNames.push(bot.section!);
   }
@@ -1133,6 +1133,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const pinnedThreads = crossBotPinnedThreads(state.bots, state.groups, state.pendingQueued);
   const pendingBotUndo = teamFeedback?.restoreBot;
   const botRow = (bot: Bot) => botRowProps(state, dispatch, bot, { density, query: q, onMenu: setMenu, renameRequest: renameRequest?.botId === bot.id ? renameRequest.nonce : 0, ...drops.row(bot.id) });
+  const roomRow = (group: Group) => <GroupListItem key={group.id} group={group} density={density} query={q} onMenu={setRoomMenu} />;
   const railSearch = () => {
     if (collapseToIcons) return openCommandPalette();
     setSearchOpen(true);
@@ -1375,15 +1376,14 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           {unsectionedChief && (phone ? (
             <PhoneHero bot={unsectionedChief} selected={botRow(unsectionedChief).selected} onOpen={() => openBotRow(dispatch, unsectionedChief, showThreads, botRow(unsectionedChief).selected)} onMenu={setMenu} />
           ) : (
-            <div className="mb-1.5">
-              <BotListItem {...botRow(unsectionedChief)} />
-            </div>
+            <div className="mb-1.5"><BotListItem {...botRow(unsectionedChief)} /></div>
           ))}
+          <SidebarTeamProjects side={projectSide} all={sideLists} found={{ bots: matchingBots, groups: visibleGroups }} query={q} sections={sections}
+            mode={{ density, advanced, tight: advanced || simpleDesk, remote: remoteClient, followed: sectionIds.length > 0 }}
+            botRow={(bot) => <BotListItem key={bot.id} {...botRow(bot)} />} roomRow={roomRow} onError={(text) => setTeamFeedback({ error: true, text })} />
           {sectionIds.map((id, index) => {
             const sectionName = userSectionName(id);
-            const sectionChiefItems = sectionName
-              ? sectionChiefs.filter((bot) => bot.section === sectionName)
-              : [];
+            const sectionChiefItems = sectionName ? sectionChiefs.filter((bot) => bot.section === sectionName) : [];
             const sectionGroupItems = roomDrag.list(id === CHANNELS_SECTION_ID
                 ? unsectionedRooms
                 : id === BOT_CHATS_SECTION_ID
@@ -1399,7 +1399,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
                   : sectionName
                     ? sectionedBots.filter((bot) => bot.section === sectionName)
                     : [];
-            const headless = simple && id === BOTS_SECTION_ID && index === 0;
+            const headless = simple && id === BOTS_SECTION_ID && index === 0 && !projectSide.shown;
             const collapsed = !headless && sectionCollapsed(id);
             const queued = collapsed ? [...sectionChiefItems, ...sectionBotItems].flatMap((bot) =>
               sidebarBotActivityTasks(bot, state.pendingQueued).filter((task) => task.queued).map((task) => `${bot.name}: ${task.title}`)) : [];
@@ -1449,15 +1449,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
                   <>
                     {id === BOTS_SECTION_ID && drops.slot}
                     {sectionChiefItems.map((bot) => <BotListItem key={bot.id} {...botRow(bot)} />)}
-                    {sectionGroupItems.map((group) => roomDrag.wrap(group.id, (
-                      <GroupListItem
-                        key={group.id}
-                        group={group}
-                        density={density}
-                        query={q}
-                        onMenu={setRoomMenu}
-                      />
-                    )))}
+                    {sectionGroupItems.map((group) => roomDrag.wrap(group.id, roomRow(group)))}
                     {id === PINNED_SECTION_ID ? (
                       <PinnedBotRoster
                         bots={sectionBotItems}

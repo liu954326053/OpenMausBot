@@ -1,6 +1,8 @@
 import {
+  createContext,
   forwardRef,
   memo,
+  useContext,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -239,6 +241,13 @@ export type BotAvatarProps = Omit<MausAvatarProps, "color" | "gradient"> & {
   };
 };
 
+/**
+ * On inside an editor of something not stored yet, whose picture is held by the page itself as a `data:` URL. Only
+ * such a picture is let past the stored-address rule: it is a PNG, JPEG or WebP that reaches no other site.
+ */
+export const HeldAvatarPictures = createContext(false);
+const HELD_PICTURE = /^data:image\/(?:png|jpeg|webp);base64,/;
+
 export type BotAvatarOutcome = "flatImage" | "gradientMascot";
 
 /** Mirrored name for name by resolveBotAvatarOutcome in ios/Sources/CompanionCore/BotAvatarRendering.swift. */
@@ -255,7 +264,9 @@ export function resolveBotAvatarOutcome(params: {
 }
 
 export function BotAvatar({ bot, size = 44, label, readable = false, ...mascotProps }: BotAvatarProps) {
-  const profile = botAvatarProfile(bot);
+  const held = useContext(HeldAvatarPictures);
+  const stored = botAvatarProfile(bot);
+  const profile = !stored.avatarUrl && held && typeof bot.avatarUrl === "string" && HELD_PICTURE.test(bot.avatarUrl) ? { ...stored, avatarUrl: bot.avatarUrl } : stored;
   const festival = useFestivalDress();
   const [imageFailed, setImageFailed] = useState(false);
 

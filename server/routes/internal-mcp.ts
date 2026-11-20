@@ -5,6 +5,7 @@ import type { McpChangeRequest } from "../../shared/mcp-request.ts";
 import type { WireMessage as Message } from "../../shared/wire.ts";
 import type { AppConfig } from "../config.ts";
 import { audienceWithin } from "../bot-visibility.ts";
+import { teamProjectAllows } from "../peer-roster.ts";
 import { SERVER_PREFIXES } from "../drivers/agents-bridge.ts";
 import { MCP_CONFIG_BUSY, runsElsewhere, type McpConfig, type McpConfigRefusal } from "../host/mcp-config.ts";
 import { MCP_KEY_EXPIRED, type McpApplied, type McpCardAction, type McpUpdateFields } from "../host/mcp-requests.ts";
@@ -78,7 +79,7 @@ export interface InternalMcpDeps {
   usedBy(name: string): string[];
   /** Shows the person a card for a change below Full access; the bot ends its turn and their answer resumes it. */
   requestApproval(proposal: { action: McpCardAction; name: string; subtitle: string; targetHash: string; fields?: McpUpdateFields }): { text: string };
-  /** Shows the person a Sign in card for a server reached by URL; the bot ends its turn and OpenMausBot resumes it when
+  /** Shows the person a Sign in card for a server reached by URL; the bot ends its turn and MagicBot resumes it when
    * they finish or set the card aside. */
   requestSignIn(name: string, server: StoredRemoteMcpServer): { posted: true } | { status: number; error: string };
   /** Whose lent computers this turn may use; null: nobody's. */
@@ -99,9 +100,10 @@ type Outcome = { status: number; text: string; dropped?: string[] } | { status: 
 export type McpCall = { action: McpAction; name?: string };
 
 /** The names of the other bots `given` holds, leaving out hidden ones and any whose audience is narrower than the
- * sender's: everyone who sees the sender's chat or room may see the names, so a restricted bot's name stays with its own audience. */
+ * sender's: everyone who sees the sender's chat or room may see the names, so a restricted bot's name stays with its own audience.
+ * A bot behind a team project's wall is left out as well: the sender is never told it exists. */
 export function otherBotsGiven(bots: readonly BotRecord[], sender: BotRecord, given: (bot: BotRecord) => boolean): string[] {
-  return bots.filter((bot) => bot.id !== sender.id && !bot.hidden && audienceWithin(sender.visibility, bot.visibility) && given(bot)).map((bot) => bot.name);
+  return bots.filter((bot) => bot.id !== sender.id && !bot.hidden && audienceWithin(sender.visibility, bot.visibility) && teamProjectAllows(sender, bot) && given(bot)).map((bot) => bot.name);
 }
 
 export function createInternalMcpRoutes(deps: InternalMcpDeps): RouteHandler {
@@ -351,7 +353,7 @@ function signIn(deps: Deps, name: string, server: StoredMcpServer, owner: Return
   const card = deps.requestSignIn(name, server);
   if ("error" in card) return card;
   say(deps, { action: "sign_in", name }, ["server.mcp.askedSignIn", { name }]);
-  return { status: 202, text: `A Sign in card for ${name} is now visible to the person. End this turn and wait; OpenMausBot resumes you when they finish.` };
+  return { status: 202, text: `A Sign in card for ${name} is now visible to the person. End this turn and wait; MagicBot resumes you when they finish.` };
 }
 
 async function signOut(deps: Deps, name: string, server: StoredMcpServer): Promise<Outcome> {

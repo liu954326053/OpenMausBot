@@ -61,6 +61,12 @@ export function pendingApprovals(messages: Message[]): Pending[] {
     }));
 }
 
+/** Whether the person must answer this card before they write again. A Turn on card can wait while they walk to their
+ * computer, and a proposed project while they say what to change. */
+export function approvalBlocksComposer(pending: Pending | undefined): boolean {
+  return Boolean(pending && !pending.message.card?.computerAsk && !pending.message.card?.teamProjectProposal);
+}
+
 export function spokenApprovalPrompt(pending: Pending, requester: string): string {
   const turnOn = computerAskWords(pending.message.card, requester);
   if (turnOn) return `${turnOn.line}. ${turnOn.reason}`;
@@ -338,7 +344,7 @@ export function PendingApprovalActions({
       {...marked("deny")}
       type="button"
       onClick={() => decide("deny")}
-      autoFocus={titled}
+      autoFocus={titled && approvalBlocksComposer(pending)}
       className={ASK_SECONDARY_BUTTON}
     >
       {pending.message.card?.lendingLift ? pending.message.card.options[1] : isRoutineRequest || isProfileRequest || titled ? t("approval.action.cancel") : t("approval.action.deny")}

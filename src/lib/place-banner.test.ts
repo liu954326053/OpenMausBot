@@ -41,6 +41,7 @@ it("a picture's kind comes from its first bytes; anything but PNG, JPEG or WebP 
   for (const head of [new TextEncoder().encode("GIF89a"), new TextEncoder().encode("<svg"), new Uint8Array()]) expect(pictureKind(head)).toBeNull();
   const fake = tools();
   expect(await prepareBanner(file(new TextEncoder().encode("<svg xmlns=")), fake)).toEqual({ ok: false, problem: "format" });
+  expect(await prepareBanner(file(new TextEncoder().encode("GIF89a")), fake)).toEqual({ ok: false, problem: "format" });
   expect(fake.drawn).toEqual([]);
   expect(await prepareBanner(file(PNG_HEAD), tools({ unreadable: true }))).toEqual({ ok: false, problem: "read" });
 });

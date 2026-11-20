@@ -17,6 +17,7 @@ import {
   writeMemoryDoc,
 } from "./memory-store.ts";
 import { redactSecretsInText } from "./redact.ts";
+import { teamProjectFilesAway } from "./team-project-folders.ts";
 import { memoryFilesOnDisk, readMemoryText, workspaceDir } from "./workspace.ts";
 
 export type MemoryActor = "bot" | "person" | "import" | "upkeep";
@@ -417,6 +418,7 @@ function currentDocs(botId: string): Map<string, string> {
 }
 
 function reconcile(botId: string, actor: MemoryActor, via: string, threadId: string | undefined, unknownIsNew: boolean): MemoryJournalEntry[] {
+  if (teamProjectFilesAway(botId)) return [];
   const baseline = baselineFor(botId);
   const docs = currentDocs(botId);
   const rows: MemoryJournalEntry[] = [];

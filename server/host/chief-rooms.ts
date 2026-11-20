@@ -2,6 +2,7 @@
 // that can't be changed then, or that never had its Chief, says so to the person instead.
 import { chiefScope } from "../../shared/bot-owner.ts";
 import type { GroupDefaultResponder } from "../../shared/wire.ts";
+import { sameTeamProject } from "../peer-roster.ts";
 import { conversationLanguage, serverLine } from "../server-lines.ts";
 import type { BotRecord, GroupRecord, Store } from "../store.ts";
 
@@ -17,12 +18,15 @@ const ledBy = (room: Pick<GroupRecord, "defaultResponder">, botId: string): bool
   return lead.kind === "member" ? lead.botId === botId : lead.kind === "auto" && lead.fallbackBotId === botId;
 };
 
-/** The department's Chief, when this room is a department's room and that Chief is not in it. */
+/** The department's Chief, when this room is a department's room and that Chief is not in it. Never a Chief the room
+ * could not take: one outside its members' team project. */
 export function chiefAbsentFrom(room: Pick<GroupRecord, "dm" | "section" | "memberIds">, bots: readonly BotRecord[]): { botId: string; name: string } | undefined {
   if (room.dm) return undefined;
   const scope = chiefScope({ section: room.section });
   const chief = bots.find((bot) => bot.chiefOfStaff && !bot.hidden && chiefScope(bot) === scope);
-  return chief && !room.memberIds.includes(chief.id) ? { botId: chief.id, name: chief.name } : undefined;
+  if (!chief || room.memberIds.includes(chief.id)) return undefined;
+  const members = bots.filter((bot) => room.memberIds.includes(bot.id));
+  return members.every((bot) => sameTeamProject(chief, bot)) ? { botId: chief.id, name: chief.name } : undefined;
 }
 
 export function createChiefRooms(deps: ChiefRoomsDeps) {

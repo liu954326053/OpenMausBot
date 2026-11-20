@@ -17,6 +17,8 @@ import type { HomeRecord, Operation, StateStore } from "./state.ts";
 import type { Transfer } from "./transfer.ts";
 
 const DATA: Mount = { Type: "volume", Source: NAMES.dataVolume, Target: "/data" };
+/** Where a home's server keeps its lease on the volume, under its data folder: .openmausbot in an image built from OpenMausBot. */
+const LEASE_PATHS = [".magicbot", ".openmausbot"].flatMap((folder) => [`/data/${folder}/openmausbot-server.lease*`, `/data/${folder}/${folder}-server-child/openmausbot-server.lease`]);
 const VERSION_LABEL = "org.opencontainers.image.version";
 /** What a copy of /data needs as root: read every file, and write it back with its owner, mode and times. */
 const COPY_CAPS = ["CHOWN", "DAC_OVERRIDE", "DAC_READ_SEARCH", "FOWNER", "FSETID"];
@@ -391,7 +393,7 @@ export class Home {
         const sent = await this.options.transfer.upload(`${admin.origin}${EXPORT_PATH}/${jobId}`, { authorization: admin.authorization(jobId) }, this.state.path(archive));
         return { bytes: sent.bytes, sha256: sent.sha256 };
       } catch (error) {
-        throw new JobFailure("transfer_failed", `The data could not be sent to MausBot (${errorText(error)}).`);
+        throw new JobFailure("transfer_failed", `The data could not be sent to MagicBot (${errorText(error)}).`);
       } finally {
         rmSync(this.state.path(archive), { force: true });
         this.finish({});
@@ -589,7 +591,7 @@ export class Home {
       const message = errorText(error);
       if (/port is already allocated|address already in use/i.test(message)) {
         const port = /:(\d+) failed/.exec(message)?.[1] ?? String(HOME_PORT);
-        throw new JobFailure("port_in_use", `Port ${port} on this server is used by another program, and MausBot's home needs it.`);
+        throw new JobFailure("port_in_use", `Port ${port} on this server is used by another program, and MagicBot's home needs it.`);
       }
       if (error instanceof DockerError && /apparmor|seccomp/i.test(message)) {
         throw new JobFailure("box_unavailable", "The bot box's security profiles are not installed on this server. Run the install command again to repair it.");
@@ -610,7 +612,7 @@ export class Home {
     if ((await this.docker.containersUsing(NAMES.dataVolume)).some((container) => container.State === "running" || container.State === "paused")) return;
     const cleared = await this.helper(image, [DATA], [
       "find", "/data", "-maxdepth", "3", "(",
-      "-path", "/data/.openmausbot/openmausbot-server.lease*", "-o", "-path", "/data/.openmausbot/.openmausbot-server-child/openmausbot-server.lease",
+      ...LEASE_PATHS.flatMap((path, index) => [...(index ? ["-o"] : []), "-path", path]),
       ")", "-print", "-delete",
     ], DELETE_CAPS);
     const paths = cleared.output.split("\n").map((line) => line.trim()).filter((line) => line.startsWith("/data/"));
