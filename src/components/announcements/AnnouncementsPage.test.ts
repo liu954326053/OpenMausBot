@@ -19,10 +19,12 @@ const { AnnouncementsPage } = await import("./AnnouncementsPage");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const NOW = Date.parse("2026-11-18T10:00:00Z");
-const browser: HistoryFacts = { branded: false, organization: false, cloudSale: false, cloudCards: false, remote: false, team: false, canSave: true, sponsors: true, modelgo: true };
+const browser: HistoryFacts = { branded: false, organization: false, cloudSale: false, cloudCards: false, remote: false, team: false, canSave: true };
 const desktop: HistoryFacts = { ...browser, cloudSale: true, cloudCards: true };
 const card: AnnouncementCard = { id: "phone-app-2026-11", kind: "product", title: { en: "MagicBot on your phone", "pt-br": "MagicBot no seu celular" }, body: "Chat with your bots anywhere.",
   primary: { label: "Open", action: { open: "my_cloud" } }, starts: "2026-11-20T00:00:00Z", ends: "2027-01-01T00:00:00Z" } as AnnouncementCard;
+const link: AnnouncementCard = { id: "tip-keys-2026-11", kind: "tip", title: "Bring your own key", body: "Any provider works.",
+  primary: { label: "Read more", action: { open_url: "https://example.com/keys" } }, starts: "2026-11-19T00:00:00Z", ends: "2027-01-01T00:00:00Z" } as AnnouncementCard;
 const markRead = vi.fn();
 const found = (facts: HistoryFacts, extra: Partial<Announcements> = {}): Announcements => ({
   items: announcementHistory({ facts, cards: [card], feedUpdatedAt: null, now: NOW }), unread: false, markRead,
@@ -50,8 +52,9 @@ describe("Announcements", () => {
     f.found = found(desktop);
     await open();
     expect(document.querySelector("h1")?.textContent).toBe("Announcements");
-    expect(rows().map(row => row.dataset.announcementItem)).toEqual([card.id, TEAMS_NOTICE, "modelgo-offer-2026-11", "grok-move-2026-11", "whats-new-2026-11",
-      "boat-credit-2026-11", "product-hunt-launch-2026-10", "cloud-trial-intro-v1"]);
+    expect(rows().map(row => row.dataset.announcementItem)).toEqual([card.id, TEAMS_NOTICE, "grok-move-2026-11", "whats-new-2026-11", "product-hunt-launch-2026-10",
+      "cloud-trial-intro-v1"]);
+    expect(document.body.textContent, "no sponsor's offer").not.toMatch(/ModelGo|Boat/);
     const teams = rows()[1]!;
     expect(teams.querySelector("time")?.getAttribute("datetime")).toBe("2026-11-17T00:00:00.000Z");
     expect(teams.textContent).toContain("Nov 17, 2026");
@@ -60,20 +63,20 @@ describe("Announcements", () => {
     const hunt = rows().find(row => row.dataset.announcementItem === "product-hunt-launch-2026-10")!;
     expect(hunt.querySelector("[data-announcement-ended]")?.textContent).toBe("Ended");
     expect(hunt.querySelector("button"), "no button to an offer that is over").toBeNull();
-    const boat = rows().find(row => row.dataset.announcementItem === "boat-credit-2026-11")!;
-    expect([...boat.querySelectorAll("button")].map(button => button.textContent)).toEqual(["Get Boat", "I bought it: claim my $50"]);
     expect(rows().find(row => row.dataset.announcementItem === "whats-new-2026-11")?.textContent, "the earlier What's new reopens only when it has something for this account")
       .not.toContain("Show again");
   });
 
   it("each button does what its own notice did", async () => {
-    f.found = found(desktop);
+    f.found = found(desktop, { items: announcementHistory({ facts: desktop, cards: [card, link], feedUpdatedAt: null, now: NOW }) });
     await open();
     const row = (id: string) => rows().find(each => each.dataset.announcementItem === id)!;
-    await click([...row("modelgo-offer-2026-11").querySelectorAll("button")].find(button => button.textContent === "Get a ModelGo key"));
-    expect(window.open).toHaveBeenCalledWith(expect.stringContaining("modelgo"), "_blank", "noopener,noreferrer");
+    await click(row(link.id).querySelector("button"));
+    expect(window.open).toHaveBeenCalledWith("https://example.com/keys", "_blank", "noopener,noreferrer");
     await click(row("cloud-trial-intro-v1").querySelector("button"));
     expect(f.dispatch).toHaveBeenCalledWith({ type: "openCloudAdd", source: "app_card" });
+    await click(row("cloud-trial-intro-v1").querySelectorAll("button")[1]);
+    expect(f.dispatch).toHaveBeenCalledWith({ type: "cloudHowTo", open: true });
     await click(row(card.id).querySelector("button"));
     expect(f.dispatch).toHaveBeenCalledWith({ type: "toggleAppSettings", open: true, section: "cloudAccount" });
   });
@@ -99,7 +102,7 @@ describe("Announcements", () => {
 
   it("on a Team Cloud: no Teams popup for its member", async () => {
     f.state = { config: { team: { id: "team-acme", name: "Acme", cloudPage: "https://admin.openmausbot.com/cloud" } } };
-    f.found = found({ ...browser, team: true, canSave: false, sponsors: false }, { viewer: { hosted: true, canSave: false, teamRole: "member" } });
+    f.found = found({ ...browser, team: true, canSave: false }, { viewer: { hosted: true, canSave: false, teamRole: "member" } });
     await open();
     expect(rows().map(row => row.dataset.announcementItem)).toEqual([card.id]);
   });

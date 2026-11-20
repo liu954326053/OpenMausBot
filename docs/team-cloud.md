@@ -149,8 +149,7 @@ keeps people apart on it. The bot box ([bot-box.md](bot-box.md)) is what makes t
   bot don't count as bots already there. The finished list ("Acme is ready") shows once: it is recorded as done as it
   shows, names the first bot ("Say hi to Poppy", never a Chief of Staff) and offers Invite people, the team's People page
   on MausBot Cloud.
-- **What a User isn't shown.** No sponsor card (the Owner and Admins, who choose the team's providers, still get them), no
-  "Meet MausBot" card (an Admin gets it at a later launch than their welcome, without the line about a Chief of Staff's
+- **What a User isn't shown.** No "Meet MausBot" card (an Admin gets it at a later launch than their welcome, without the line about a Chief of Staff's
   powers), no Rename on a bot they can't edit, and in Settings no AI, bots' computers, usage, import or domain: what only
   an admin can change is left out instead of shown with "Only an admin of this installation…". A refusal the server still
   sends them reads "Only the owner or an admin can do that.", with the server's words under Details. **Connect apps** opens

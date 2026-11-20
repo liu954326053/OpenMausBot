@@ -33,6 +33,7 @@ vi.mock("@/state/store", async (original) => {
 });
 vi.mock("@/lib/analytics", () => ({ track: fixture.track }));
 const { ApiError } = await import("@/state/store");
+const { MODELGO_URL } = await import("../../../shared/modelgo");
 const { KeyRow } = await import("./KeyRow");
 
 type Props = { children?: ReactNode; type?: string; onChange?: (event: { target: { value: string } }) => void; onKeyDown?: (event: { key: string; preventDefault: () => void }) => void; onClick?: () => void; "data-key-remove"?: boolean };
@@ -69,25 +70,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("the ModelGo row", () => {
-  const URL_EXACT = "https://modelgo.ai/?utm_source=openmausbot&utm_medium=sponsorship&utm_content=app&campaign_id=openmausbot&ad_group_id=app";
-  const offers = () => fixture.track.mock.calls.filter(([name]) => name === "modelgo_offer").map(([, props]) => props);
   const link = (props: Parameters<typeof KeyRow>[0]) => render(props).find((node) => node.type === "a")! as ReactElement<Props & { href?: string }>;
 
-  it("counts a key saved in Settings and its Get a key link, and points that link at exactly the sponsor's address", async () => {
+  it("is an ordinary key: Get a key opens ModelGo's page with nothing counted, and a key saved reports only the save", async () => {
     fixture.api.mockResolvedValueOnce({ modelgo: { configured: true, last4: KEY.slice(-4) } }).mockResolvedValueOnce({ ok: true });
-    expect(link({ id: "modelgo" }).props.href).toBe(URL_EXACT);
-    link({ id: "modelgo" }).props.onClick!();
-    expect(offers()).toEqual([{ action: "get_key", place: "settings" }]);
+    expect(link({ id: "modelgo" }).props.href).toBe(MODELGO_URL);
+    expect(link({ id: "modelgo" }).props.onClick).toBeUndefined();
     await enterKey({ id: "modelgo" });
-    expect(offers()).toEqual([{ action: "get_key", place: "settings" }, { action: "add_key", place: "settings" }]);
+    expect(fixture.track.mock.calls).toEqual([["api_key_saved", { provider: "modelgo", via: "settings", result: "ok" }]]);
     expectNoKeyIn(fixture.track.mock.calls);
-  });
-
-  it("does not count Settings for the model picker's copy of the row", async () => {
-    fixture.api.mockResolvedValueOnce({ modelgo: { configured: true } }).mockResolvedValueOnce({ ok: true });
-    link({ id: "modelgo", via: "model_picker" }).props.onClick!();
-    await enterKey({ id: "modelgo", via: "model_picker" });
-    expect(offers()).toEqual([]);
   });
 });
 

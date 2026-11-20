@@ -7,9 +7,8 @@ vi.mock("@/lib/analytics", () => ({ track: vi.fn(), emailGateDone: () => true })
 vi.mock("@/state/store", () => ({ api: vi.fn() }));
 import { track } from "@/lib/analytics";
 import {
-  announcementConditions, announcementPlan, announcementPlatform, announcementSurface, cardSeen, hintsWith, lastSponsorDay, launchAnnouncement, markLaunchAnnouncement,
-  pickAnnouncement, providersRestricted, rememberCardSeen, rememberSponsorDay, reportAnnouncement, seenKey, SPONSOR_CARDS_FOR_TEAM_MEMBERS, SPONSOR_REST_DAYS,
-  sponsorDayKey, type PickContext, type SeenRecord,
+  announcementConditions, announcementPlan, announcementPlatform, announcementSurface, cardSeen, hintsWith, launchAnnouncement, markLaunchAnnouncement,
+  pickAnnouncement, rememberCardSeen, reportAnnouncement, seenKey, type PickContext, type SeenRecord,
 } from "./announcements";
 
 const DAY = 86_400_000, NOW = new Date(2026, 11, 1, 12).getTime();
@@ -32,7 +31,7 @@ const facts = (extra: Partial<AnnouncementFacts> = {}): AnnouncementFacts => ({
   conditions: { no_api_key: false, one_bot_only: false, no_routine: false }, ...extra,
 });
 const seen = (extra: Partial<SeenRecord> = {}): SeenRecord => ({ record: record(), desktop: [], team: false, ...extra });
-const context = (extra: Partial<PickContext> = {}): PickContext => ({ facts: facts(), seen: seen(), branded: false, sponsors: true, admin: true, ...extra });
+const context = (extra: Partial<PickContext> = {}): PickContext => ({ facts: facts(), seen: seen(), branded: false, admin: true, ...extra });
 const pick = (cards: AnnouncementCard[], extra: Partial<PickContext> = {}) => { const due = pickAnnouncement(cards, context(extra)); return due && due !== "wait" ? due.id : due; };
 
 describe("which card is due", () => {
@@ -69,19 +68,7 @@ describe("which card is due", () => {
   });
 
   it("none on a branded build", () => {
-    expect(pick([make("card-a", { kind: "tip" }), make("card-b", { kind: "sponsor" })], { branded: true })).toBeNull();
-  });
-
-  it("a sponsor's card only where sponsors may show, and one a week", () => {
-    const cards = [make("sponsor-one", { kind: "sponsor" }), make("product")];
-    expect(pick(cards)).toBe("sponsor-one");
-    expect(pick(cards, { sponsors: false })).toBe("product");
-    storage.set("omb.announcement.sponsor-day", new Date(NOW - 3 * DAY).toISOString().slice(0, 10));
-    expect(pick(cards), "a sponsor's card three days ago").toBe("product");
-    storage.clear();
-    expect(pick(cards, { seen: seen({ desktop: [sponsorDayKey("2026-11-29")] }) })).toBe("product");
-    expect(pick(cards, { seen: seen({ record: record([sponsorDayKey("2026-11-20")]) }) }), `${SPONSOR_REST_DAYS} days on`).toBe("sponsor-one");
-    expect(SPONSOR_CARDS_FOR_TEAM_MEMBERS).toBe(false);
+    expect(pick([make("card-a", { kind: "tip" }), make("card-b")], { branded: true })).toBeNull();
   });
 
   it("a card that opens an admin's place skips someone who cannot change settings here", () => {
@@ -112,13 +99,6 @@ describe("remembering", () => {
     rememberCardSeen(seen({ team: true }), "card-a", { liveIds: new Set(["card-a"]), save });
     expect(save).not.toHaveBeenCalled();
     expect(storage.get(seenKey("card-a"))).toBe("1");
-  });
-
-  it("the day a sponsor's card showed, replacing the last one", () => {
-    const save = vi.fn();
-    rememberSponsorDay(seen({ record: record(["tour", sponsorDayKey("2026-10-01")]) }), NOW, { liveIds: new Set(), save });
-    expect(save).toHaveBeenCalledWith(["tour", sponsorDayKey("2026-12-01")]);
-    expect(lastSponsorDay(seen())).toBe("2026-12-01");
   });
 
   it("keeps the workspace record small: marks of cards gone from the feed leave, at most ten stay, and a full record is left alone", () => {
@@ -163,16 +143,6 @@ describe("what the page knows", () => {
     expect(state({ anthropic: { configured: false } }, [{}], [])).toEqual({ no_api_key: true, one_bot_only: true, no_routine: true });
     expect(state({ openrouter: { configured: true } }, [{}, {}, { hidden: true }], [{}])).toEqual({ no_api_key: false, one_bot_only: false, no_routine: false });
     expect(state(null, [], [], false)).toEqual({ no_api_key: false, one_bot_only: false, no_routine: false });
-  });
-
-  it("an organization that limits providers gets no sponsor's card; a Team Cloud's own rules do not count", () => {
-    const policy = (extra: Record<string, unknown>) => ({ organizationName: "Org", version: 1, companyModelsOnly: false, allowedEngines: "all", mcp: { allowCustom: true, allowlist: [] },
-      computers: { thisComputer: true, localVm: true, box: true, vps: true }, remoteAccess: true, ...extra }) as never;
-    expect(providersRestricted(null)).toBe(false);
-    expect(providersRestricted(policy({}))).toBe(false);
-    expect(providersRestricted(policy({ companyModelsOnly: true }))).toBe(true);
-    expect(providersRestricted(policy({ allowedEngines: ["claudeAgent"] }))).toBe(true);
-    expect(providersRestricted(policy({ allowedEngines: ["claudeAgent"], team: true }))).toBe(false);
   });
 });
 

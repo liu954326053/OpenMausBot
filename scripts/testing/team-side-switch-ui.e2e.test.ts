@@ -54,7 +54,7 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
   const browser = (...args: string[]) => agentBrowser(tools.binary, env, args, 120_000);
   await browser("set", "viewport", ...size);
   const evaluate = async <T>(js: string) => (await browser("eval", js)).result as T;
-  // Once-per-person cards (a sponsor's offer, say) sit over the message box: this browser has seen them before the app starts.
+  // Once-per-person cards sit over the message box: this browser has seen them before the app starts.
   await browser("open", new URL("/package.json", preview.previewUrl).href);
   await evaluate(`(() => { for (const notice of ${JSON.stringify(NOTICES)}) localStorage.setItem(notice, "1"); return true; })()`);
   await browser("open", preview.previewUrl);

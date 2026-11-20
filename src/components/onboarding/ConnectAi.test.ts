@@ -276,37 +276,26 @@ describe("connecting an AI on the first screen", () => {
   });
 });
 
-describe("the ModelGo option", () => {
-  const URL_EXACT = "https://modelgo.ai/?utm_source=openmausbot&utm_medium=sponsorship&utm_content=app&campaign_id=openmausbot&ad_group_id=app";
-  const option = () => host.querySelector("[data-modelgo-option]");
-  const events = () => vi.mocked(track).mock.calls.filter(([name]) => name === "modelgo_offer").map(([, props]) => props);
+describe("ModelGo", () => {
   const provider = (ready = false) => engine("modelgo", "modelgo", "ModelGo (API)", ready);
+  const rows = () => [...host.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")];
 
-  it("sits among the other ways, labelled a sponsor, and its link opens exactly the sponsor's address", async () => {
+  it("is listed like every other way: no sponsor's label, pitch or link, and it opens to its key field", async () => {
     f.instances.push(provider());
     await show();
-    expect(option()?.textContent).toContain("ModelGo"); expect(option()?.textContent).toContain("Sponsor");
-    expect(option()?.textContent).toContain("One API key, every model.");
-    expect(host.querySelectorAll("[data-modelgo-option]")).toHaveLength(1);
-    expect(events()).toEqual([{ action: "shown", place: "onboarding" }]);
-    const link = [...option()!.querySelectorAll("button")].find(button => button.textContent?.includes("Get a key"))!;
-    await act(async () => { link.click(); });
-    expect(f.opened).toEqual([URL_EXACT]);
-    expect(events().at(-1)).toEqual({ action: "get_key", place: "onboarding" });
+    await otherWays();
+    expect(rows().map((row) => row.textContent)).toEqual(["Grok", "ModelGo (API)"]);
+    for (const word of ["Sponsor", "One API key, every model.", "Get a key"]) expect(text()).not.toContain(word);
+    await act(async () => { rows().find((row) => row.textContent === "ModelGo (API)")!.click(); });
+    expect(host.querySelector('[data-engine-setup="modelgo"]')).toBeTruthy();
+    expect(f.opened).toEqual([]);
+    expect(vi.mocked(track).mock.calls.map(([name]) => name)).not.toContain("modelgo_offer");
   });
 
-  it("opens to its key field, and counts that as starting to add a key", async () => {
-    f.instances.push(provider());
+  it("is not listed once connected", async () => {
+    f.instances.push(provider(true));
     await show();
-    await act(async () => { option()!.querySelector<HTMLButtonElement>("button[aria-expanded]")!.click(); });
-    expect(option()!.querySelector('[data-engine-setup="modelgo"]')).toBeTruthy();
-    expect(events().at(-1)).toEqual({ action: "add_key", place: "onboarding" });
-  });
-
-  it("is not added on a white-label build, a desktop whose organization refuses it, or a hosted workspace; nor once connected", async () => {
-    f.brand = "file"; await show(); expect(option()).toBeNull();
-    f.brand = "default"; f.config = { managedPolicy: { companyModelsOnly: false, allowedEngines: ["codex"] } }; await show(); expect(option()).toBeNull();
-    f.config = {}; await show({ hosted: true }); expect(option()).toBeNull();
-    f.instances.push(provider(true)); await show(); expect(option()).toBeNull();
+    await otherWays();
+    expect(rows().map((row) => row.textContent)).toEqual(["Grok"]);
   });
 });

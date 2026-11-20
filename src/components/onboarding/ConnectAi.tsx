@@ -3,12 +3,10 @@ import { Check, ChevronDown, LoaderCircle, RefreshCw, X } from "lucide-react";
 import { EngineSetup } from "@/components/EngineSetup";
 import { engineReady } from "@/components/EngineLibrary";
 import { InstanceProviderMark } from "@/components/ProviderIcons";
-import { ModelgoOption } from "@/components/ModelgoOffer";
 import { cn } from "@/lib/cn";
 import { useConnectAiPlace, useConnectAiSteps, useDialogOpened } from "@/lib/connect-ai-events";
 import { t } from "@/lib/i18n";
 import { engineDisplayName } from "@/lib/engine-name";
-import { modelgoOfferable } from "@/lib/modelgo-offer";
 import { aiChoices, aiWorks, firstAis, organisationSignIn, signInFollows } from "@/lib/onboarding";
 import { api, useStore, type InstanceInfo } from "@/state/store";
 import { freeFallback } from "../../../shared/ai-ranking";
@@ -86,11 +84,6 @@ export function ConnectAi({ hosted = false, tested, onChoose }: { hosted?: boole
   const { recommended } = aiChoices(offered);
   const leading = first.length ? first : recommended ? [recommended] : [];
   const others = offered.filter((instance) => !leading.includes(instance));
-  const modelgoReady = state.instances.some((instance) => instance.driverKind === "modelgo" && engineReady(instance));
-  // Hosted: the organization provides the AI and refuses a key of the person's own.
-  const showModelgo = !hosted && !modelgoReady && modelgoOfferable(state.config?.managedPolicy);
-  const modelgo = others.find((instance) => instance.driverKind === "modelgo");
-  const otherRows = others.filter((instance) => !(showModelgo && instance === modelgo));
 
   return (
     <div className="flex w-full flex-col">
@@ -143,7 +136,7 @@ export function ConnectAi({ hosted = false, tested, onChoose }: { hosted?: boole
       )}
       {failed && <p role="alert" className="mt-2 text-[13px] text-danger">{t("onboarding.engines.error")}</p>}
 
-      {(organisation || otherRows.length > 0 || showModelgo) && (
+      {(organisation || others.length > 0) && (
         <div className="mt-3 w-full divide-y divide-hairline/40 overflow-hidden rounded-2xl bg-card text-left">
           {organisation && (
             <OrganisationRow
@@ -152,13 +145,7 @@ export function ConnectAi({ hosted = false, tested, onChoose }: { hosted?: boole
               onConnected={() => void refresh()}
             />
           )}
-          {showModelgo && <ModelgoOption open={open === "modelgo"} onToggle={() => {
-            if (open !== "modelgo") step("chosen", { driverKind: "modelgo" });
-            setOpen(open === "modelgo" ? null : "modelgo");
-          }}>
-            {modelgo && <EngineSetup instance={modelgo} {...setupFor(modelgo)} className="mx-4 mb-3.5 border-0 bg-inset" />}
-          </ModelgoOption>}
-          {otherRows.map((instance) => (
+          {others.map((instance) => (
             <OtherWay key={instance.instanceId} instance={instance} open={open === instance.instanceId}
               onToggle={() => {
                 if (open !== instance.instanceId) step("chosen", { driverKind: instance.driverKind });

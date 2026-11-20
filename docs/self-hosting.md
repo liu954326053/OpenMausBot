@@ -1297,7 +1297,7 @@ and one link.
 
 When someone opens the app, the server downloads the project's public announcements file from GitHub
 (`raw.githubusercontent.com`, at most once an hour, a plain GET with nothing of yours in it) and its pages may show one of
-its cards in the corner: product news, a tip, or a sponsor's offer, each once per person
+its cards in the corner: product news or a tip, each once per person, never a sponsor's card from the file
 ([docs/announcements.md](announcements.md)). Set `OMB_DISABLE_ANNOUNCEMENTS=1` in the server's environment to never
 download it and never show those cards.
 

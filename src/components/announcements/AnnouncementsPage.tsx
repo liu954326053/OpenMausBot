@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { Cloud, Gift, Megaphone, Rocket, UsersRound } from "lucide-react";
+import { Cloud, Megaphone, Rocket, UsersRound } from "lucide-react";
 import type { CloudOffer } from "../../../electron/cloud-home.mjs";
 import { itemSeen, rememberNoticeSeen, type HistoryAction, type HistoryItem, type HistoryMark, type HistoryModal } from "@/lib/announcement-history";
-import { openEmailDraft, openExternalLink } from "@/lib/app-links";
+import { openExternalLink } from "@/lib/app-links";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import { reportTeams, teamsAction } from "@/lib/teams-whats-new";
@@ -14,21 +14,20 @@ import { GrokBotMark } from "../GrokBotMark";
 import { GrokMovePopup } from "../GrokMovePopup";
 import { GrokMoveDialog } from "../lazy-screens";
 import { PRIMARY_BUTTON } from "../NoticeCard";
-import { ModelgoMark, type IconProps } from "../ProviderIcons";
+import type { IconProps } from "../ProviderIcons";
 import { TOOL_PAGE_TITLE, ToolPage, ToolPageHeader } from "../ToolPageShell";
 import { TeamsPopup } from "../whats-new/TeamsPopup";
 import { WhatsNewPopup } from "../whats-new/WhatsNewPopup";
 import { useAnnouncements, type Announcements } from "./use-announcements";
 
 const BUILT_IN_MARK: Record<HistoryMark, ComponentType<IconProps>> = {
-  teams: UsersRound, cloud: Cloud, boat: Gift, modelgo: ModelgoMark, grok: GrokBotMark, "product-hunt": Rocket,
+  teams: UsersRound, cloud: Cloud, grok: GrokBotMark, "product-hunt": Rocket,
 };
 const QUIET_BUTTON = "ui-button min-h-9 gap-1.5 px-3 py-1.5";
 
 /** A button that opens what an announcement's own notice opens, never anything else. */
 export interface AnnouncementRun {
   url: (url: string) => void;
-  email: (url: string) => void;
   place: (place: AnnouncementPlace) => void;
   cloudAdd: (action: Extract<HistoryAction, { cloud_add: unknown }>["cloud_add"]) => void;
   cloudHowTo: () => void;
@@ -36,7 +35,6 @@ export interface AnnouncementRun {
 
 function run(action: HistoryAction | AnnouncementAction, to: AnnouncementRun) {
   if ("open_url" in action) to.url(action.open_url);
-  else if ("email" in action) to.email(action.email);
   else if ("open" in action) to.place(action.open);
   else if ("cloud_add" in action) to.cloudAdd(action.cloud_add);
   else to.cloudHowTo();
@@ -154,7 +152,6 @@ export function AnnouncementsPage() {
   useEffect(() => { if (found.unread) found.markRead(); }, [found.unread]);
   const to: AnnouncementRun = {
     url: url => void openExternalLink(url).catch(() => undefined),
-    email: url => void openEmailDraft(url).catch(() => undefined),
     place: place => dispatch(announcementPlaceAction(place)),
     cloudAdd: source => dispatch({ type: "openCloudAdd", source }),
     cloudHowTo: () => dispatch({ type: "cloudHowTo", open: true }),

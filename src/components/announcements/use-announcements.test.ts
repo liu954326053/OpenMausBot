@@ -62,6 +62,16 @@ it("no dot once the Teams popup was seen, nor before the session is known", asyn
   expect(found.unread, "waits for who is looking").toBe(false);
 });
 
+it("never lists a sponsor's card from the announcements file; its other cards are", async () => {
+  const card = (id: string, extra: Record<string, unknown> = {}) => ({ id, kind: "product", title: `Card ${id}`, body: "Words",
+    primary: { label: "Open", action: { open_url: "https://example.com/" } }, ends: "2027-01-01T00:00:00Z", ...extra });
+  f.cards = [card("sponsor-acme", { kind: "sponsor", label: "Sponsor" }), card("phone-app")];
+  await mount();
+  const ids = found.items.map(item => item.id);
+  expect(ids).toContain("phone-app");
+  expect(ids).not.toContain("sponsor-acme");
+});
+
 it("a Team Cloud's member: no Teams popup, nor the team's record written", async () => {
   f.session = { hosted: true, scopes: ["client"], team: { role: "member" } };
   f.state = { ...f.state, config: config([], { team: { id: "t", name: "Acme" }, cloudHome: true }) };

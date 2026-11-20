@@ -12,7 +12,7 @@ const require = createRequire(import.meta.url);
 const environments = require("./environments.cjs");
 const localOrigin = require("./local-origin.cjs");
 
-const POPUP = "whats-new-2026-11", BOAT = "boat-credit-2026-11", GROK = "grok-move-2026-11", MODELGO = "modelgo-offer-2026-11";
+const POPUP = "whats-new-2026-11", GROK = "grok-move-2026-11", TEAMS = "teams-2026-11b";
 const NOON = new Date(2026, 9, 16, 12).getTime();
 const LOCAL = "http://127.0.0.1:18799", CLOUD = "https://omb-u-1.fly.dev", VPS = "https://bots.example.test";
 
@@ -20,13 +20,13 @@ test("a page on an older release keeps working with the longer list: its own ids
   let saved = { seen: [POPUP, GROK, "gone-notice"] };
   const prefs = createDesktopPrefs({ read: () => saved, write: value => { saved = structuredClone(value); } });
   assert.deepEqual(prefs.seen(), [POPUP, GROK]);
-  prefs.markSeen(BOAT);
-  assert.deepEqual(saved.seen, [POPUP, GROK, BOAT], "the new id is kept beside the ones an older page records");
-  assert.ok(prefs.seen().includes(BOAT) && prefs.seen().includes(POPUP), "the lookups an older page makes");
+  prefs.markSeen(TEAMS);
+  assert.deepEqual(saved.seen, [POPUP, GROK, TEAMS], "the new id is kept beside the ones an older page records");
+  assert.ok(prefs.seen().includes(TEAMS) && prefs.seen().includes(POPUP), "the lookups an older page makes");
 });
 
-test("What's new, Boat's credit offer and the Grok Bot move are the notices a page can record; seen and analytics survive a restart; a broken record never stops the app", () => {
-  assert.deepEqual([...DESKTOP_NOTICES], [POPUP, BOAT, GROK, MODELGO, "teams-2026-11b"]);
+test("What's new, the Grok Bot move and the Teams What's new are the notices a page can record; seen and analytics survive a restart; a broken record never stops the app", () => {
+  assert.deepEqual([...DESKTOP_NOTICES], [POPUP, GROK, TEAMS]);
   let saved = null;
   const writes = [];
   const prefs = createDesktopPrefs({ read: () => saved, write: value => { writes.push(value); saved = structuredClone(value); } });
@@ -35,11 +35,11 @@ test("What's new, Boat's credit offer and the Grok Bot move are the notices a pa
   assert.equal(writes.length, 0, "nothing a page names outside the list is written");
   prefs.markSeen(POPUP); prefs.markSeen(POPUP);
   assert.deepEqual(prefs.seen(), [POPUP]); assert.equal(writes.length, 1);
-  prefs.markSeen(BOAT);
-  assert.deepEqual(prefs.seen(), [POPUP, BOAT]); assert.equal(writes.length, 2);
+  prefs.markSeen(GROK);
+  assert.deepEqual(prefs.seen(), [POPUP, GROK]); assert.equal(writes.length, 2);
   prefs.setAnalytics(false);
   const restarted = createDesktopPrefs({ read: () => saved, write: value => { saved = value; } });
-  assert.deepEqual(restarted.seen(), [POPUP, BOAT]); assert.equal(restarted.analytics(), false);
+  assert.deepEqual(restarted.seen(), [POPUP, GROK]); assert.equal(restarted.analytics(), false);
   restarted.setAnalytics("yes"); assert.equal(restarted.analytics(), false, "only true turns it on");
   restarted.setAnalytics(true); assert.equal(restarted.analytics(), true);
 
@@ -55,14 +55,13 @@ test("What's new, Boat's credit offer and the Grok Bot move are the notices a pa
   }
 });
 
-test("an announcement card's mark and the last sponsor day are kept beside the fixed notices, the newest few only", () => {
+test("an announcement card's mark is kept beside the fixed notices, the newest few only", () => {
   let saved = { seen: [POPUP] };
   const prefs = createDesktopPrefs({ read: () => saved, write: value => { saved = structuredClone(value); } });
   prefs.markSeen("announcement:phone-app"); prefs.markSeen("announcement:phone-app");
-  prefs.markSeen("announcement-sponsor:2026-11-01"); prefs.markSeen("announcement-sponsor:2026-12-01");
-  assert.deepEqual(prefs.seen(), [POPUP, "announcement:phone-app", "announcement-sponsor:2026-12-01"], "one sponsor day: the latest");
-  for (const id of ["announcement:", "announcement:Bad Id", "announcement:x", `announcement:${"x".repeat(41)}`, "announcement-sponsor:soon", "announcement:../../x"]) prefs.markSeen(id);
-  assert.deepEqual(prefs.seen(), [POPUP, "announcement:phone-app", "announcement-sponsor:2026-12-01"], "nothing outside the two shapes is kept");
+  assert.deepEqual(prefs.seen(), [POPUP, "announcement:phone-app"], "once");
+  for (const id of ["announcement:", "announcement:Bad Id", "announcement:x", `announcement:${"x".repeat(41)}`, "announcement-sponsor:2026-12-01", "announcement:../../x"]) prefs.markSeen(id);
+  assert.deepEqual(prefs.seen(), [POPUP, "announcement:phone-app"], "nothing outside a card mark's shape is kept");
   for (let index = 0; index < 45; index++) prefs.markSeen(`announcement:card-${index}`);
   const marks = prefs.seen().filter(id => id.startsWith("announcement:"));
   assert.equal(marks.length, 40); assert.equal(marks.at(-1), "announcement:card-44"); assert.ok(prefs.seen().includes(POPUP));
