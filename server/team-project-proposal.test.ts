@@ -9,7 +9,7 @@ import type { OptionCardData } from "../shared/wire.ts";
 import { closedByStop, resumableCards } from "./host/resumable-cards.ts";
 import "./server-line-packs.ts";
 import type { Store } from "./store.ts";
-import { TEAM_PROJECT_BRIEF_MAX, TeamProjectProposalError, TeamProjectProposalService, teamProjectDecisionText } from "./team-project-proposal.ts";
+import { TEAM_PROJECT_BRIEF_MAX, TeamProjectProposalError, TeamProjectProposalService, type TeamProjectProposalOptions } from "./team-project-proposal.ts";
 
 const MAIN = "magicbot";
 const THREAD = "thread-main";
@@ -61,12 +61,22 @@ interface Setup {
   root?: string | null;
   language?: string;
   create?: (input: CreateTeamProjectInput) => Promise<CreateTeamProjectResult>;
+  handOff?: TeamProjectProposalOptions["handOff"];
+  /** Why the lead takes no work, in the person's words. */
+  held?: string;
 }
+
+const delivered: TeamProjectProposalOptions["handOff"] = async (_from, call) =>
+  ({ status: 200, body: { receipts: [{ botId: call.botIds[0], botName: "Pia", outcome: "queued", detail: "queued", threadId: "pia-drama" }] } });
+const refusedHandOff = (detail: string): TeamProjectProposalOptions["handOff"] => async (_from, call) =>
+  ({ status: 409, body: { error: detail, receipts: [{ botId: call.botIds[0], botName: "Pia", outcome: "failed", detail }] } });
 
 function service(setup: Setup = {}) {
   const store = setup.store ?? cardStore();
   const world = { teams: setup.teams ?? [URBAN, PERIOD], root: setup.root === undefined ? ROOT : setup.root };
   const create = vi.fn(setup.create ?? (async (input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> => ({ project: madeProject(input), missingSkills: [] })));
+  const steps: string[] = [];
+  const handOff = vi.fn<TeamProjectProposalOptions["handOff"]>(async (from, call) => { steps.push("hand off"); return (setup.handOff ?? delivered)(from, call); });
   const answers: string[] = [];
   const followed: Array<{ from: string; to: string }> = [];
   let parked = true;
@@ -78,13 +88,16 @@ function service(setup: Setup = {}) {
     botName: (botId) => (botId === "bot-pia" ? "Pia" : undefined),
     answer: (_threadId, _messageId, text) => { answers.push(text); return parked; },
     follow: (_threadId, from, to) => { followed.push({ from, to }); },
+    release: (threadId, messageId) => { steps.push(`release ${threadId} ${messageId}`); },
+    handOff,
+    held: () => setup.held ?? null,
     decide: (row) => { decisions.push(row); },
   });
   const propose = (over: Partial<{ name: string; templateId: string; brief: string; botId: string }> = {}) =>
     proposals.propose({ botId: MAIN, threadId: THREAD, name: "The Swapped Bride", templateId: URBAN.id, brief: BRIEF, ...over });
   const respond = (requestId: string, behavior: string, ownerReview = true) => proposals.respond({ threadId: THREAD, requestId, behavior }, ownerReview);
   const waiting = () => resumableCards(store as unknown as Pick<Store, "activePath">, THREAD, 0);
-  return { store, proposals, create, answers, followed, decisions, propose, respond, waiting, world, noTurnParked: () => { parked = false; }, turnParked: () => { parked = true; } };
+  return { store, proposals, create, handOff, steps, answers, followed, decisions, propose, respond, waiting, world, noTurnParked: () => { parked = false; }, turnParked: () => { parked = true; } };
 }
 
 const refusal = (work: () => unknown): TeamProjectProposalError => {
@@ -205,46 +218,49 @@ describe("proposing a project", () => {
 });
 
 describe("answering the card", () => {
-  it("Create makes the project as a person would, and tells the parked main bot to hand the request to its lead", async () => {
-    const { store, propose, respond, create, answers, decisions, waiting } = service();
-    const { requestId } = propose();
+  it("Create makes the project as a person would and hands the request to its lead itself, waking no turn of the main bot", async () => {
+    const { store, propose, respond, create, handOff, steps, answers, decisions, waiting } = service();
+    const { requestId, messageId } = propose();
     const answered = await respond(requestId, "allow");
     expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", templateId: "tpl-urban" });
+    expect(handOff).toHaveBeenCalledExactlyOnceWith({ botId: MAIN, threadId: THREAD },
+      { botIds: ["bot-pia"], message: BRIEF, thread: "new", title: "The Swapped Bride", reply: "none", rework: false, consult: false });
+    expect(steps).toEqual([`release ${THREAD} ${messageId}`, "hand off"]);
     const result = { state: "created", projectId: "project-1", leadBotId: "bot-pia", leadName: "Pia", missingSkills: [] };
     expect(answered).toEqual({ status: 200, body: { ok: true, outcome: "allowed-once", result, alreadySettled: false } });
     const card = store.rows[0]!.card;
-    expect(card).toMatchObject({ answered: "allow", teamProjectProposal: { result, resumed: true } });
-    expect(card).not.toHaveProperty("expired");
-    expect(answers).toHaveLength(1);
-    expect(answers[0]).toContain(requestId);
-    expect(answers[0]).toContain('coordinate_bots with bot_ids ["bot-pia"], reply "none", thread "new", title "The Swapped Bride"');
-    expect(answers[0]).toContain("Pia");
-    expect(answers[0]).toContain(BRIEF);
-    expect(answers[0]).toMatch(/only the lead|not .*other members/i);
+    expect(card).toMatchObject({ answered: "allow", teamProjectProposal: { result } });
+    for (const closed of ["expired", "held"]) expect(card).not.toHaveProperty(closed);
+    expect(answers).toEqual([]);
     expect(decisions.map((row) => row.decision)).toEqual(["card-shown", "user-approved"]);
     expect(waiting()).toEqual([]);
   });
 
-  it("has the main bot's reply carry the way into the project: the lead's thread, linked by its title", async () => {
-    const { propose, respond, answers } = service();
-    await respond(propose().requestId, "allow");
-    expect(answers[0]).toContain("Write the project in that reply as #The Swapped Bride, with a space before and after it: the app turns that into a link that opens the lead's chat on their request");
-    expect(answers[0]).toContain("Open project on the card opens the same chat");
-  });
-
-  it("afterwards the card and the main bot say where the project was made, as projects report it", async () => {
+  it("hands over under the name and in the folder projects made, and keeps the skills the library lacks on the card", async () => {
     const elsewhere = join(resolve("/moved"), "The Swapped Bride");
-    const { store, propose, respond, answers } = service({ create: async (input) => ({ project: { ...madeProject(input), folder: elsewhere }, missingSkills: [] }) });
-    await respond(propose().requestId, "allow");
-    expect(store.rows[0]!.card.teamProjectProposal).toMatchObject({ name: "The Swapped Bride", folder: elsewhere, result: { state: "created" } });
-    expect(answers[0]).toContain(`now exists in ${elsewhere}`);
+    const { store, propose, respond, handOff } = service({ create: async (input) => ({ project: { ...madeProject(input), folder: elsewhere }, missingSkills: ["shot-list", "casting"] }) });
+    await respond(propose({ name: "  The Swapped Bride " }).requestId, "allow");
+    expect(store.rows[0]!.card.teamProjectProposal).toMatchObject({ name: "The Swapped Bride", folder: elsewhere, result: { state: "created", missingSkills: ["shot-list", "casting"] } });
+    expect(handOff.mock.calls[0]![1]).toMatchObject({ title: "The Swapped Bride" });
   });
 
-  it("tells the main bot which of the template's skills the library does not hold", async () => {
-    const { propose, respond, answers, store } = service({ create: async (input) => ({ project: madeProject(input), missingSkills: ["shot-list", "casting"] }) });
-    await respond(propose().requestId, "allow");
-    expect(store.rows[0]!.card.teamProjectProposal?.result).toMatchObject({ state: "created", missingSkills: ["shot-list", "casting"] });
-    expect(answers[0]).toContain("shot-list, casting");
+  it("a lead that takes no work keeps the project made, and the card says why in the person's words", async () => {
+    const why = "Every bot is paused, so Pia takes no new work. Resume every bot from any bot’s menu in the sidebar.";
+    const { store, propose, respond, answers, waiting } = service({ handOff: refusedHandOff("@Pia is paused by the person"), held: why });
+    const answered = await respond(propose().requestId, "allow");
+    expect(answered).toMatchObject({ status: 200, body: { outcome: "allowed-once", result: { state: "created", leadBotId: "bot-pia" } } });
+    expect(store.rows[0]!.card).toMatchObject({ answered: "allow", held: `The request did not reach Pia. ${why} Then open the project and tell Pia what you want.` });
+    expect(store.rows[0]!.card).not.toHaveProperty("expired");
+    expect(answers).toEqual([]);
+    expect(waiting()).toEqual([]);
+  });
+
+  it("a hand-off refused for any other reason, or that fails, says plainly that the request did not reach the lead", async () => {
+    for (const handOff of [refusedHandOff("not sent"), async () => { throw new Error("down"); }]) {
+      const { store, propose, respond } = service({ handOff, language: "zh" });
+      expect(await respond(propose().requestId, "allow")).toMatchObject({ status: 200, body: { result: { state: "created" } } });
+      expect(store.rows[0]!.card.held).toBe("需求没能交给Pia。请打开项目，直接把需求告诉Pia。");
+    }
   });
 
   it("Cancel makes nothing and tells the main bot not to propose it again", async () => {
@@ -312,7 +328,7 @@ describe("answering the card", () => {
 
   it("answers a card once: a second press while the project is being made is refused, a later one changes nothing", async () => {
     let finish = () => {};
-    const { propose, respond, create, answers } = service({ create: (input) => new Promise((done) => { finish = () => done({ project: madeProject(input), missingSkills: [] }); }) });
+    const { propose, respond, create, handOff, answers } = service({ create: (input) => new Promise((done) => { finish = () => done({ project: madeProject(input), missingSkills: [] }); }) });
     const { requestId } = propose();
     const first = respond(requestId, "allow");
     expect(await respond(requestId, "allow")).toMatchObject({ status: 409, body: { errorKey: "serverError.teamProjectProposal.beingCreated" } });
@@ -322,7 +338,8 @@ describe("answering the card", () => {
     expect(await respond(requestId, "allow")).toMatchObject({ status: 200, body: { alreadySettled: true, result: { state: "created" } } });
     expect(await respond(requestId, "deny")).toMatchObject({ status: 200, body: { alreadySettled: true, outcome: "allowed-once" } });
     expect(create).toHaveBeenCalledOnce();
-    expect(answers).toHaveLength(1);
+    expect(handOff).toHaveBeenCalledOnce();
+    expect(answers).toEqual([]);
   });
 });
 
@@ -435,7 +452,7 @@ describe("a restart with a card pending", () => {
     expect(await after.respond(requestId, "allow")).toMatchObject({ status: 200, body: { result: { state: "created", leadBotId: "bot-pia" } } });
     expect(after.create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", templateId: "tpl-urban" });
     expect(before.create).not.toHaveBeenCalled();
-    expect(after.answers[0]).toContain(BRIEF);
+    expect(after.handOff.mock.calls[0]![1]).toMatchObject({ message: BRIEF });
   });
 
   it("a decision no turn could take is kept, and handed over once a turn is parked on the card again", async () => {
@@ -443,9 +460,9 @@ describe("a restart with a card pending", () => {
     const { requestId, messageId } = setup.propose();
     expect(setup.proposals.decided(THREAD, messageId)).toBe(false);
     setup.noTurnParked();
-    await setup.respond(requestId, "allow");
+    await setup.respond(requestId, "deny");
     const kept = setup.store.rows[0]!.card.teamProjectProposal!;
-    expect(kept.result).toMatchObject({ state: "created" });
+    expect(kept.result).toEqual({ state: "cancelled" });
     expect(kept).not.toHaveProperty("resumed");
     expect(setup.waiting().map((card) => card.id)).toEqual([messageId]);
 
@@ -453,10 +470,23 @@ describe("a restart with a card pending", () => {
     expect(restarted.proposals.decided(THREAD, messageId)).toBe(true);
     const heard: string[] = [];
     expect(restarted.proposals.resume(THREAD, messageId, (text) => { heard.push(text); return true; })).toBe(true);
-    expect(heard).toEqual([teamProjectDecisionText(kept)]);
+    expect(heard).toEqual([`MagicBot project decision ${requestId}: the person pressed Cancel, so no project was made. Do not propose it again unless they ask. If they tell you what to change, call propose_team_project again with the change.`]);
     expect(setup.store.rows[0]!.card.teamProjectProposal).toMatchObject({ resumed: true });
     expect(restarted.waiting()).toEqual([]);
     expect(restarted.create).not.toHaveBeenCalled();
+  });
+
+  it("a made project leaves nothing for the main bot to hear, before a restart or after it", async () => {
+    const setup = service();
+    const { requestId, messageId } = setup.propose();
+    await setup.respond(requestId, "allow");
+    const restarted = service({ store: setup.store });
+    const answer = vi.fn(() => true);
+    expect(restarted.proposals.decided(THREAD, messageId)).toBe(false);
+    expect(restarted.proposals.resume(THREAD, messageId, answer)).toBe(false);
+    expect(answer).not.toHaveBeenCalled();
+    expect(restarted.waiting()).toEqual([]);
+    expect(restarted.handOff).not.toHaveBeenCalled();
   });
 
   it("resume hands nothing over for a card nobody answered", () => {

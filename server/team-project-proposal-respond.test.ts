@@ -43,9 +43,10 @@ async function fixture() {
     missingSkills: [],
   }));
   const answer = vi.fn(() => true);
+  const handOff = vi.fn(async (_from: unknown, call: { botIds: string[] }) => ({ status: 200, body: { receipts: [{ botId: call.botIds[0], outcome: "queued", detail: "queued" }] } }));
   const cards = new TeamProjectProposalService({
     store, backends: { templates: { list: () => LIBRARY }, projects: { create }, projectsRoot: () => "/projects" },
-    botName: (id) => store.bot(id)?.name, answer, follow: () => {}, decide: () => {},
+    botName: (id) => store.bot(id)?.name, answer, follow: () => {}, release: () => {}, held: () => null, decide: () => {}, handOff,
   });
   const { requestId } = cards.propose({ botId: main.id, threadId: main.threadId, name: "Palace", templateId: "drama", brief: "A revenge drama in twelve episodes." });
   const deps = {
@@ -80,11 +81,11 @@ async function fixture() {
     return { status: response.status, body: await response.json() as Record<string, unknown> };
   };
   const card = () => store.messagesFor(main.threadId).find((line) => line.card?.requestId === requestId)?.card;
-  return { store, main, other, lead, create, answer, press, card };
+  return { store, main, other, lead, create, answer, handOff, press, card };
 }
 
 it("refuses Create from a local browser while a bot is busy, and makes the project once every bot is idle", async () => {
-  const { store, main, other, lead, create, answer, press, card } = await fixture();
+  const { store, main, other, lead, create, answer, handOff, press, card } = await fixture();
   const path = `/api/threads/${main.threadId}/respond`;
 
   store.setTaskActivity(other.id, other.threadId, "working");
@@ -99,7 +100,8 @@ it("refuses Create from a local browser while a bot is busy, and makes the proje
   expect(await press(path, "allow")).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", result: { state: "created", projectId: "p1", leadBotId: lead.id } } });
   expect(create).toHaveBeenCalledExactlyOnceWith({ name: "Palace", templateId: "drama" });
   expect(card()).toMatchObject({ answered: "allow", teamProjectProposal: { result: { state: "created", leadName: "Head writer" } } });
-  expect(answer).toHaveBeenCalledOnce();
+  expect(handOff).toHaveBeenCalledOnce();
+  expect(answer).not.toHaveBeenCalled();
 });
 
 it("takes Cancel from anyone who can answer the chat's cards, a busy bot or not", async () => {

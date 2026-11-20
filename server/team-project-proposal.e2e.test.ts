@@ -1,6 +1,6 @@
 // The main bot makes a project when asked, on a real server: its two tools through each turn's own agents server on the
-// scripted fake engine, the card, Create and Cancel, the real template library and the real projects. Nothing here
-// reaches the user's data or port 8799.
+// scripted fake engine, the card, Create and Cancel, the hand-over to the project's lead, the real template library and
+// the real projects. Nothing here reaches the user's data or port 8799.
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,14 +26,8 @@ const TEMPLATE: TeamTemplateInput = {
 };
 
 const propose = (name: string, templateId: string) => ({ tool: "propose_team_project", arguments: { name, template_id: templateId, request: BRIEF } });
-/** What the decision tells the main bot to do: the lead's id, then the request to that bot alone, one way, in a thread of its own. */
-const handOver = (project: string) => [
-  { tool: "list_bots", arguments: {}, capture: { lead: `- Director[^\\n]*\\[id: ([^,\\]]+)[^\\n]*department: ${project}` } },
-  { tool: "coordinate_bots", arguments: { bot_ids: ["{{lead}}"], message: BRIEF, reply: "none", thread: "new", title: project } },
-];
-const created = (project: string, key: string) => ({ key, match: ["now exists in", project], steps: handOver(project), reply: `HANDED ${project} to {{lead}}` });
 
-/** No catch-all entry: a turn of the main bot that nothing here expects fails loudly. */
+/** No catch-all entry: a turn of the main bot that nothing here expects, such as one after Create, fails loudly. */
 const mainScript = (templateId: string) => [
   { key: "fresh", match: ["FRESH-INSTALL"], steps: [{ tool: "list_team_templates", arguments: {} }, { ...propose("Too early", "none"), expectError: true }], reply: "FRESH DONE" },
   { key: "list", match: ["LIST-TEMPLATES"], steps: [{ tool: "list_team_templates", arguments: {} }, { ...propose("No such team", "0000000000000000"), expectError: true }], reply: "LISTED" },
@@ -41,12 +35,10 @@ const mainScript = (templateId: string) => [
   { key: "renamed", match: ["PROPOSE-RENAMED"], steps: [propose("First drama", templateId)], reply: "PROPOSED RENAMED" },
   { key: "cancelled", match: ["pressed Cancel"], reply: "HEARD CANCEL" },
   { key: "again", match: ["PROPOSE-AGAIN"], steps: [propose("First drama", templateId)], reply: "PROPOSED AGAIN" },
-  created("First drama", "made-first"),
   { key: "taken", match: ["PROPOSE-TAKEN"], steps: [propose("First drama", templateId)], reply: "PROPOSED TAKEN" },
   { key: "refused", match: ["was not made (name_taken"], steps: [propose("Second drama", templateId)], reply: "PROPOSED UNDER ANOTHER NAME" },
-  created("Second drama", "made-second"),
   { key: "restart", match: ["PROPOSE-BEFORE-RESTART"], steps: [propose("Third drama", templateId)], reply: "PROPOSED BEFORE RESTART" },
-  created("Third drama", "made-third"),
+  { key: "paused", match: ["PROPOSE-BEFORE-PAUSE"], steps: [propose("Fourth drama", templateId)], reply: "PROPOSED BEFORE PAUSE" },
 ];
 
 /** A bot that is not the main bot tries both tools, then holds its turn open so its capability can be tried on the server. */
@@ -102,6 +94,17 @@ describe("the main bot makes a project when asked", () => {
   const toolNames = (turn: Turn): string[] => turn.evidence[0].result.tools.map((tool: { name: string }) => tool.name);
   const called = (turn: Turn, tool: string) => turn.evidence.find((item) => item.step?.tool === tool).response as { error?: { message: string }; result?: { isError?: boolean; content: Array<{ text: string }> } };
   const answerText = (turn: Turn, tool: string) => called(turn, tool).result!.content.map((part) => part.text).join("\n");
+  const mainTurns = () => turns().filter((turn) => turn.botId === main.id).length;
+  /** The lead's thread named after the project, opened in the main bot's name, once the lead has answered in it. */
+  const handedTo = async (leadBotId: string, project: string) => {
+    let work: Bot["tasks"][number] | undefined;
+    await expect.poll(async () => {
+      work = (await bot(leadBotId)).tasks.find((task) => task.openedBy?.botId === main.id);
+      return work?.title;
+    }, { timeout: 30_000 }).toBe(project);
+    await said(work!.threadId, `Result from ${leadBotId}`);
+    return work!;
+  };
   const waitingTurns = () => {
     const path = join(server.dataDir, "runtime.db");
     if (!existsSync(path)) return [];
@@ -238,7 +241,7 @@ describe("the main bot makes a project when asked", () => {
     expect(waitingTurns()).toEqual([]);
   }, hostTimeout(60_000));
 
-  it("Create is the owner's; it makes the project, and the main bot hands the request to the project's lead in a thread named after it", async () => {
+  it("Create is the owner's; it makes the project and hands the request to the project's lead in a thread named after it, with no turn of the main bot", async () => {
     await say(main, "PROPOSE-AGAIN");
     await said(main.threadId, "PROPOSED AGAIN");
     await idle();
@@ -246,6 +249,7 @@ describe("the main bot makes a project when asked", () => {
     expect(await respond(open.card.requestId, "allow", false)).toMatchObject({ status: 403, body: { errorKey: "serverError.teamProjectProposal.ownerCreates" } });
     expect(await projects()).toEqual([]);
 
+    const mainBefore = mainTurns();
     const answer = await respond(open.card.requestId, "allow");
     expect(answer).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", alreadySettled: false, result: { state: "created", leadName: "Director", missingSkills: [] } } });
     const { projectId, leadBotId } = answer.body.result as { projectId: string; leadBotId: string };
@@ -255,28 +259,21 @@ describe("the main bot makes a project when asked", () => {
     expect(first.botIds).toHaveLength(2);
     expect(existsSync(folder)).toBe(true);
 
-    await said(main.threadId, `HANDED First drama to ${leadBotId}`);
-    const decision = ownTurnText(turnOf(main.id, "made-first").prompt);
-    expect(decision).toContain(`the person pressed Create, and the project "First drama" now exists in ${folder}, with the team of the template "Short drama crew". Its lead is Director (bot id "${leadBotId}").`);
-    expect(decision).toContain(`call coordinate_bots with bot_ids ["${leadBotId}"], reply "none", thread "new", title "First drama"`);
-    expect(decision).toContain("Write the project in that reply as #First drama, with a space before and after it");
-    expect(decision).toContain(`The person's request:\n${BRIEF}`);
-
-    let work: Bot["tasks"][number] | undefined;
-    await expect.poll(async () => {
-      work = (await bot(leadBotId)).tasks.find((task) => task.openedBy?.botId === main.id);
-      return work?.title;
-    }, { timeout: 30_000 }).toBe("First drama");
-    await said(work!.threadId, `Result from ${leadBotId}`);
+    const work = await handedTo(leadBotId, "First drama");
+    expect((await messages(work.threadId))[0]).toMatchObject({ role: "bot", from: { botId: main.id, name: "MagicBot" }, text: `@Director ${BRIEF}` });
     const leadTurn = turns().find((turn) => turn.botId === leadBotId)!;
     expect(ownTurnText(leadTurn.prompt)).toContain(BRIEF);
     for (const tool of TOOLS) expect(toolNames(leadTurn)).not.toContain(tool);
 
     const chat = await messages(main.threadId);
-    expect(chat.find((line) => line.id === open.id)!.card).toMatchObject({ answered: "allow", teamProjectProposal: { resumed: true, folder, result: { state: "created", projectId, leadBotId } } });
-    expect(chat.filter((line) => line.threadRef).map((line) => line.threadRef)).toEqual([{ botId: leadBotId, threadId: work!.threadId, title: "First drama" }]);
+    const settled = chat.find((line) => line.id === open.id)!.card;
+    expect(settled).toMatchObject({ answered: "allow", teamProjectProposal: { folder, result: { state: "created", projectId, leadBotId } } });
+    expect(settled).not.toHaveProperty("held");
+    expect(settled.teamProjectProposal).not.toHaveProperty("resumed");
+    expect(chat.filter((line) => line.threadRef).map((line) => line.threadRef)).toEqual([{ botId: leadBotId, threadId: work.threadId, title: "First drama" }]);
     await idle();
     expect(waitingTurns()).toEqual([]);
+    expect(mainTurns()).toBe(mainBefore);
   }, hostTimeout(90_000));
 
   it("the project's lead and its members have neither tool, and the server refuses their capabilities", async () => {
@@ -301,12 +298,12 @@ describe("the main bot makes a project when asked", () => {
     const answer = await respond(renamed!.card.requestId, "allow");
     expect(answer).toMatchObject({ status: 200, body: { result: { state: "created", leadName: "Director" } } });
     expect(answer.body.result.leadBotId).not.toBe(first.leadBotId);
-    await said(main.threadId, `HANDED Second drama to ${answer.body.result.leadBotId}`);
+    await handedTo(answer.body.result.leadBotId, "Second drama");
     expect((await projects()).map((project) => project.name).sort()).toEqual(["First drama", "Second drama"]);
     await idle();
   }, hostTimeout(90_000));
 
-  it("a card still open after a restart is answered as before, and the main bot is woken to hand the request over", async () => {
+  it("a card still open after a restart is answered as before, and the request still goes to the lead", async () => {
     await say(main, "PROPOSE-BEFORE-RESTART");
     await said(main.threadId, "PROPOSED BEFORE RESTART");
     await idle();
@@ -322,8 +319,34 @@ describe("the main bot makes a project when asked", () => {
 
     const answer = await respond(pending.card.requestId, "allow");
     expect(answer).toMatchObject({ status: 200, body: { result: { state: "created" } } });
-    await said(main.threadId, `HANDED Third drama to ${answer.body.result.leadBotId}`);
+    await handedTo(answer.body.result.leadBotId, "Third drama");
     expect((await projects()).map((project) => project.name).sort()).toEqual(["First drama", "Second drama", "Third drama"]);
+    await idle();
+  }, hostTimeout(120_000));
+
+  it("a lead that takes no work still gets its project made; the card says why, and the main bot is not woken", async () => {
+    await say(main, "PROPOSE-BEFORE-PAUSE");
+    await said(main.threadId, "PROPOSED BEFORE PAUSE");
+    await idle();
+    const pending = (await cards()).at(-1)!;
+    await server.stop();
+    writeFileSync(join(server.dataDir, "paused-bots.json"), JSON.stringify({ v: 1, bots: [], departments: [], all: true }));
+    await server.start();
+    await expect.poll(waitingTurns, { timeout: 30_000 }).toEqual([[pending.id]]);
+
+    const mainBefore = mainTurns();
+    const answer = await respond(pending.card.requestId, "allow");
+    expect(answer).toMatchObject({ status: 200, body: { result: { state: "created", leadName: "Director" } } });
+    const why = "Every bot is paused, so Director takes no new work. Resume every bot from any bot’s menu in the sidebar.";
+    expect((await cards()).at(-1)!.card).toMatchObject({ answered: "allow", held: `The request did not reach Director. ${why} Then open the project and tell Director what you want.`,
+      teamProjectProposal: { result: { state: "created", leadBotId: answer.body.result.leadBotId } } });
+    expect((await projects()).map((project) => project.name)).toContain("Fourth drama");
+    expect((await bot(answer.body.result.leadBotId)).tasks.filter((task) => task.openedBy?.botId === main.id)).toEqual([]);
+    expect((await messages(main.threadId)).filter((line) => line.threadRef?.title === "Fourth drama")).toEqual([]);
+    expect(waitingTurns()).toEqual([]);
+    expect((await api("POST", "/api/paused", { kind: "all", paused: false })).status).toBe(200);
+    await idle();
+    expect(mainTurns()).toBe(mainBefore);
   }, hostTimeout(120_000));
 
   it("ran no turn of the main bot that the flow did not call for", () => {

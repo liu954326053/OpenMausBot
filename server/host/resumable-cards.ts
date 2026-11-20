@@ -1,10 +1,11 @@
 import type { OptionCardData } from "../../shared/wire.ts";
 import type { Store } from "../store.ts";
+import { mainBotDecision } from "../team-project-proposal.ts";
 
 function decision(card: OptionCardData | undefined): { kind: string; request: { result?: unknown; resumed?: boolean } } | null {
   if (card?.teamSetupRequest) return { kind: "team setup decision", request: card.teamSetupRequest };
   if (card?.mcpRequest) return { kind: "MCP server decision", request: card.mcpRequest };
-  if (card?.teamProjectProposal) return { kind: "project decision", request: card.teamProjectProposal };
+  if (card?.teamProjectProposal) return { kind: "project decision", request: { result: mainBotDecision(card.teamProjectProposal), resumed: card.teamProjectProposal.resumed } };
   return null;
 }
 

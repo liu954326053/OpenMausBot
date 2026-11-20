@@ -43,6 +43,9 @@ function setup(options: { backends?: Partial<TeamProjectBackends>; rooms?: strin
   dirs.push(dataDir);
   const rows: Line[] = [];
   const answers: string[] = [];
+  const released: Array<[string, string]> = [];
+  const handOff = vi.fn(async (_from: { botId: string; threadId: string }, call: { botIds: string[] }) =>
+    ({ status: 200, body: { receipts: [{ botId: call.botIds[0], botName: "Pia", outcome: "queued", detail: "queued", threadId: "pia-drama" }] } }));
   const create = vi.fn(async (input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> => ({ project: made(input), missingSkills: [] }));
   const backends: TeamProjectBackends = {
     templates: { list: () => ({ bots: [], teams: [TEMPLATE] }) }, projects: { create }, projectsRoot: () => "/projects", ...options.backends,
@@ -59,6 +62,9 @@ function setup(options: { backends?: Partial<TeamProjectBackends>; rooms?: strin
     directChat: (_botId, threadId) => !(options.rooms ?? []).includes(threadId),
     answerCardNode: (_threadId, _messageId, text) => { answers.push(text); return true; },
     followCard: () => {},
+    releaseCardNode: (threadId, messageId) => { released.push([threadId, messageId]); },
+    handOff,
+    held: () => null,
     threadLanguage: () => undefined,
   });
   const call = async (bot: Bot, method: string, path: string, body?: unknown, extra: { threadId?: string; active?: boolean } = {}) => {
@@ -79,7 +85,7 @@ function setup(options: { backends?: Partial<TeamProjectBackends>; rooms?: strin
     const folder = join(dataDir, "decisions");
     return readdirSync(folder).flatMap((file) => readFileSync(join(folder, file), "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>));
   };
-  return { proposals, rows, answers, create, call, decisions };
+  return { proposals, rows, answers, released, handOff, create, call, decisions };
 }
 
 const LIST = "/api/internal/team-templates";
@@ -183,17 +189,17 @@ describe("the main bot's project routes", () => {
 });
 
 describe("answering the card through the host", () => {
-  it("makes the project on Create, wakes the main bot with the hand-over, and logs who decided", async () => {
-    const { proposals, call, create, answers, decisions, rows } = setup();
+  it("makes the project on Create, hands the request to its lead as the main bot's coordinate_bots, lets the waiting turn go, and logs who decided", async () => {
+    const { proposals, call, create, answers, released, handOff, decisions, rows } = setup();
     const { payload } = await call(MAIN, "POST", PROPOSE, ASK);
     const answered = await proposals.respond({ threadId: "thread-main", requestId: payload!.requestId!, behavior: "allow" }, true);
     expect(answered).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", result: { state: "created", leadBotId: LEAD.id, leadName: "Pia" } } });
     expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", templateId: "short-drama" });
-    expect(answers).toHaveLength(1);
-    expect(answers[0]).toContain(`coordinate_bots with bot_ids ["${LEAD.id}"]`);
-    expect(answers[0]).toContain(ASK.request);
+    expect(handOff).toHaveBeenCalledExactlyOnceWith({ botId: MAIN.id, threadId: "thread-main" }, expect.objectContaining({ botIds: [LEAD.id], message: ASK.request, thread: "new", title: "The Swapped Bride", reply: "none" }));
+    expect(released).toEqual([["thread-main", rows[0]!.id]]);
+    expect(answers).toEqual([]);
     expect((await decisions()).map((row) => [row.decision, row.source])).toEqual([["card-shown", "question"], ["user-approved", "user"]]);
-    expect(proposals.decided("thread-main", rows[0]!.id)).toBe(true);
+    expect(proposals.decided("thread-main", rows[0]!.id)).toBe(false);
   });
 
   it("is not its card: null, so the next resolver takes the answer", async () => {

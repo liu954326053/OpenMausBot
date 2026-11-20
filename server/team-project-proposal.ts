@@ -5,7 +5,9 @@ import { TEAM_PROJECT_NAME_MAX, isTeamProjectName, type CreateTeamProjectResult,
 import type { TeamTemplateSummary, TemplateLibraryApi } from "../shared/template-library.ts";
 import type { OptionCardData } from "../shared/wire.ts";
 import { newId } from "./contracts.ts";
+import type { CoordinateBotsCall } from "./coordinator.ts";
 import { intlLocale } from "./language.ts";
+import type { PeerDeliveryReceipt } from "./peer-delivery.ts";
 import { serverLine, type ServerLineKey } from "./server-lines.ts";
 import { coordinateMessageMax, tooLongRefusal } from "./too-long.ts";
 import { userError } from "./user-errors.ts";
@@ -23,6 +25,8 @@ export interface TeamProjectBackends {
 
 type Refusal = TeamProjectRefusal | "template_changed" | "root_changed";
 type Decision = "card-shown" | "user-approved" | "user-denied";
+type Created = Extract<TeamProjectProposalResult, { state: "created" }>;
+type MainBotDecision = Exclude<TeamProjectProposalResult, Created>;
 type Outcome = { result: TeamProjectProposalResult } & Partial<Pick<TeamProjectProposal, "name" | "folder">>;
 type CardLine = { id: string; card?: OptionCardData };
 type Respond = { status: number; body: Record<string, unknown> };
@@ -34,7 +38,7 @@ export const TEAM_PROJECT_BRIEF_MAX = coordinateMessageMax - DECISION_WORDS_ROOM
 const NO_ROOT = "No folder for projects is chosen yet, so no project can be made. Tell the person to choose one in Settings, under Data, and to ask you again afterwards.";
 const NO_TEMPLATES = "There are no team templates yet, so no project can be proposed. Tell the person so, and that team templates are made in Settings, under Templates. You cannot make or change one.";
 const BAD_NAME = `The project's name is also its folder's name: give one short name of at most ${TEAM_PROJECT_NAME_MAX} characters, without / \\ : * ? " < > | and without a dot at the start or the end.`;
-const PROPOSED = "A card with Create and Cancel is now in the chat. Nothing is made until the person presses Create: say so in one short line, end your turn and wait for the decision. If they tell you what to change instead, call propose_team_project again; the earlier card then stops working.";
+const PROPOSED = "A card with Create and Cancel is now in the chat. Nothing is made until the person presses Create: say so in one short line and end your turn. On Create the app makes the project and hands the request to its lead itself, so you never hand it over; you hear back only if they press Cancel or the project cannot be made. If they tell you what to change instead, call propose_team_project again; the earlier card then stops working.";
 
 const REFUSED: Record<Refusal, { line: ServerLineKey; next: string }> = {
   no_root: { line: "server.teamProjectProposal.refused.noRoot", next: NO_ROOT },
@@ -63,29 +67,20 @@ function templateLines(templates: readonly TeamTemplateSummary[]): string {
   ].join("\n")).join("\n");
 }
 
+/** What the main bot's parked turn still has to hear about its card: Cancel or a refusal. A project that was made needs no
+ * turn of the main bot, since the server hands the request to the project's lead. */
+export function mainBotDecision(proposal: TeamProjectProposal | undefined): MainBotDecision | undefined {
+  return proposal?.result?.state === "created" ? undefined : proposal?.result;
+}
+
 /** What the main bot hears once its card is answered. Only a model reads it. */
-export function teamProjectDecisionText(proposal: TeamProjectProposal): string {
+export function teamProjectDecisionText(proposal: TeamProjectProposal, result: MainBotDecision): string {
   const head = `MagicBot project decision ${proposal.requestId}:`;
-  const result = proposal.result;
-  if (!result) return `${head} not answered yet.`;
   if (result.state === "cancelled") {
     return `${head} the person pressed Cancel, so no project was made. Do not propose it again unless they ask. If they tell you what to change, call propose_team_project again with the change.`;
   }
-  if (result.state === "refused") {
-    const code = isRefusal(result.code) ? result.code : "failed";
-    return `${head} the person pressed Create, but the project "${proposal.name}" was not made (${result.code}: ${result.error}). ${REFUSED[code].next}${code === "failed" ? "" : CARD_SAYS_WHY}`;
-  }
-  const lead = result.leadName ? `${result.leadName} (bot id "${result.leadBotId}")` : `the bot with id "${result.leadBotId}"`;
-  return [
-    `${head} the person pressed Create, and the project "${proposal.name}" now exists in ${proposal.folder}, with the team of the template "${proposal.template.name}". Its lead is ${lead}.`,
-    "Do these two things now, in this order:",
-    `1. Hand the person's request to the lead: call coordinate_bots with bot_ids ["${result.leadBotId}"], reply "none", thread "new", title ${JSON.stringify(proposal.name)}, and the request below as the message, word for word, with anything else the person told you that the team needs. Reach only the lead, not the other members: the lead runs the project. Do not do the work yourself.`,
-    `2. Then tell the person, in one or two short sentences, that the project is ready and its lead has their request. Write the project in that reply as #${proposal.name}, with a space before and after it: the app turns that into a link that opens the lead's chat on their request. Open project on the card opens the same chat.`,
-    ...(result.missingSkills.length ? [`The template names skills the skills library does not hold, so the team works without them: ${result.missingSkills.join(", ")}. Say so.`] : []),
-    "Do not propose this project again.",
-    "The person's request:",
-    proposal.brief,
-  ].join("\n");
+  const code = isRefusal(result.code) ? result.code : "failed";
+  return `${head} the person pressed Create, but the project "${proposal.name}" was not made (${result.code}: ${result.error}). ${REFUSED[code].next}${code === "failed" ? "" : CARD_SAYS_WHY}`;
 }
 
 export class TeamProjectProposalError extends Error {
@@ -108,6 +103,12 @@ export interface TeamProjectProposalOptions {
   answer(threadId: string, messageId: string, text: string): boolean;
   /** A newer card replaced `from`: the turn parked on it waits on `to`. */
   follow(threadId: string, from: string, to: string): void;
+  /** Ends the turn parked on this card without waking it. */
+  release(threadId: string, messageId: string): void;
+  /** coordinate_bots for `from`, made by the server while no turn of that bot runs. */
+  handOff(from: { botId: string; threadId: string }, call: CoordinateBotsCall): Promise<Respond>;
+  /** Why this bot takes no new work now, in the person's words; null when it can take work. */
+  held(botId: string, language: string | undefined): string | null;
   decide(row: { threadId: string; requestId: string; botId: string; summary: string; decision: Decision }): void;
   language?(threadId: string): string | undefined;
 }
@@ -189,30 +190,49 @@ export class TeamProjectProposalService {
       if (this.resolving.has(proposal.requestId)) return { status: 409, body: userError("serverError.teamProjectProposal.beingCreated") };
       this.resolving.add(proposal.requestId);
       let outcome: Outcome;
+      let note: string | undefined;
       try {
         outcome = args.behavior === "deny" ? { result: { state: "cancelled" } } : await this.create(proposal);
+        if (outcome.result.state === "created") {
+          this.options.release(args.threadId, message.id);
+          note = await this.handOver({ ...proposal, ...outcome }, outcome.result);
+        }
       } finally {
         this.resolving.delete(proposal.requestId);
       }
-      settled = this.record(args.threadId, message.id, { ...proposal, ...outcome });
+      settled = this.record(args.threadId, message.id, { ...proposal, ...outcome }, note);
       this.options.decide({ threadId: args.threadId, requestId: proposal.requestId, botId: proposal.botId, summary: `${card.title}\n${card.subtitle}`,
         decision: args.behavior === "allow" ? "user-approved" : "user-denied" });
     }
-    if (settled.result && !settled.resumed) this.resume(args.threadId, message.id, (text) => this.options.answer(args.threadId, message.id, text));
+    if (mainBotDecision(settled) && !settled.resumed) this.resume(args.threadId, message.id, (text) => this.options.answer(args.threadId, message.id, text));
     return { status: 200, body: { ok: true, outcome: settled.result?.state === "created" ? "allowed-once" : "rejected", ...(settled.result ? { result: settled.result } : {}), alreadySettled: duplicate } };
   }
 
   decided(threadId: string, messageId: string): boolean {
-    return Boolean(this.options.store.messagesFor(threadId).find((line) => line.id === messageId)?.card?.teamProjectProposal?.result);
+    return Boolean(mainBotDecision(this.options.store.messagesFor(threadId).find((line) => line.id === messageId)?.card?.teamProjectProposal));
   }
 
   /** Hands the card's decision to a parked turn; true once that turn took it. A restart calls it again for a card
    * answered while no turn could take it. */
   resume(threadId: string, messageId: string, answer: (text: string) => boolean): boolean {
     const card = this.options.store.messagesFor(threadId).find((line) => line.id === messageId)?.card, proposal = card?.teamProjectProposal;
-    if (!card || !proposal?.result || !answer(teamProjectDecisionText(proposal))) return false;
+    const decision = mainBotDecision(proposal);
+    if (!card || !proposal || !decision || !answer(teamProjectDecisionText(proposal, decision))) return false;
     if (!proposal.resumed) this.options.store.patchMessage(threadId, messageId, { card: { ...card, teamProjectProposal: { ...proposal, resumed: true } } });
     return true;
+  }
+
+  /** The request goes to the new project's lead as the main bot's coordinate_bots hand-off: in a new thread named after
+   * the project, and the lead's turn starts. Returns the card's note when the lead did not get it. */
+  private async handOver(proposal: TeamProjectProposal, made: Created): Promise<string | undefined> {
+    const sent = await this.options.handOff({ botId: proposal.botId, threadId: proposal.threadId },
+      { botIds: [made.leadBotId], message: proposal.brief, thread: "new", title: proposal.name, reply: "none", rework: false, consult: false }).catch(() => undefined);
+    const receipt = (sent?.body.receipts as PeerDeliveryReceipt[] | undefined)?.[0];
+    if (sent?.status === 200 && receipt && receipt.outcome !== "failed") return undefined;
+    const language = this.language(proposal.threadId);
+    const lead = made.leadName || proposal.template.roles.find((role) => role.key === proposal.template.lead)?.name || "";
+    const why = this.options.held(made.leadBotId, language);
+    return why ? serverLine(language, "server.teamProjectProposal.handOver.held", { lead, why }) : serverLine(language, "server.teamProjectProposal.handOver.failed", { lead });
   }
 
   /** Whether new projects now go somewhere else than the card said. A list that cannot be read is `create`'s to report. */
@@ -244,11 +264,11 @@ export class TeamProjectProposalService {
     return { name, folder, result: { state: "created", projectId: id, leadBotId, leadName: this.options.botName(leadBotId) ?? "", missingSkills: made.missingSkills } };
   }
 
-  private record(threadId: string, messageId: string, settled: TeamProjectProposal & { result: TeamProjectProposalResult }): TeamProjectProposal {
+  private record(threadId: string, messageId: string, settled: TeamProjectProposal & { result: TeamProjectProposalResult }, note?: string): TeamProjectProposal {
     const { result } = settled;
     const current = this.options.store.messagesFor(threadId).find((line) => line.id === messageId)?.card;
     if (current) {
-      const closed = result.state === "created" ? { answered: "allow" }
+      const closed = result.state === "created" ? { answered: "allow", ...(note ? { held: note } : {}) }
         : result.state === "cancelled" ? { answered: "deny" }
         : { expired: true, options: [], held: serverLine(this.language(threadId), REFUSED[isRefusal(result.code) ? result.code : "failed"].line, { name: settled.name }) };
       this.options.store.patchMessage(threadId, messageId, { card: { ...current, ...closed, teamProjectProposal: settled } });

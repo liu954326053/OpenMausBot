@@ -23,6 +23,9 @@ export interface TeamProjectProposalsDeps {
   directChat(botId: string, threadId: string): boolean;
   answerCardNode(threadId: string, messageId: string, text: string): boolean;
   followCard(threadId: string, from: string, to: string): void;
+  releaseCardNode(threadId: string, messageId: string): void;
+  handOff: TeamProjectProposalOptions["handOff"];
+  held: TeamProjectProposalOptions["held"];
   threadLanguage(threadId: string): string | undefined;
 }
 
@@ -61,6 +64,9 @@ export function createTeamProjectProposals(deps: TeamProjectProposalsDeps) {
     botName: (botId) => store.bot(botId)?.name,
     answer: deps.answerCardNode,
     follow: deps.followCard,
+    release: deps.releaseCardNode,
+    handOff: deps.handOff,
+    held: deps.held,
     language: deps.threadLanguage,
     decide: (row) => appendDecision(deps.dataDir, {
       ...row, botName: store.bot(row.botId)?.name, tool: PROPOSE_TEAM_PROJECT_TOOL, source: row.decision === "card-shown" ? "question" : "user",

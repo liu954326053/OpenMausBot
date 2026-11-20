@@ -136,17 +136,17 @@ describe("a project the main bot proposes", () => {
     await showActions(projectCard());
     expect(texts("button")).toEqual(["取消", "创建"]);
     await showCard(projectCard({ answered: "allow" }, CREATED));
-    expect(host.textContent).toContain("项目已创建");
+    expect(host.textContent).toContain("项目已创建，需求已交给Pia");
     expect(openButton()?.textContent).toBe("打开项目");
   });
 });
 
 describe("once the person has answered", () => {
-  it("a project that was made says so and opens on its lead's chat", async () => {
+  it("a project that was made says so and that its lead has the request, and opens on its lead's chat", async () => {
     const made = projectCard({ answered: "allow" }, CREATED);
     expect(pendingApprovals([made])).toEqual([]);
     await showCard(made);
-    expect(host.textContent).toContain("Project created");
+    expect(host.textContent).toContain("Project created; Pia has the request");
     expect(host.textContent).not.toContain("Waiting for your confirmation");
     expect(openButton()?.textContent).toBe("Open project");
     expect(dimmed()).toBe(false);
@@ -188,6 +188,17 @@ describe("once the person has answered", () => {
     await showCard(projectCard({ answered: "allow" }, CREATED), []);
     expect(host.textContent).toContain("Project created");
     expect(openButton()).toBeNull();
+  });
+
+  it("a project whose request did not reach its lead says why, and opens on the lead's chat to tell it there", async () => {
+    const why = "The request did not reach Pia. Every bot is paused, so Pia takes no new work. Resume every bot from any bot’s menu in the sidebar. Then open the project and tell Pia what you want.";
+    await showCard(projectCard({ answered: "allow", held: why }, CREATED));
+    expect(host.textContent).toContain("Project created");
+    expect(host.textContent).not.toContain("has the request");
+    expect(host.textContent).toContain(why);
+    expect(dimmed()).toBe(false);
+    await act(async () => openButton()!.click());
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
   });
 
   it("names the skills the team works without", async () => {

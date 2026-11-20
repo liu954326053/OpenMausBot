@@ -186,6 +186,8 @@
   "server.teamProjectProposal.refused.templateChanged": "Diese Team-Vorlage wurde geändert, nachdem diese Karte erstellt wurde. Frag noch einmal, um das Team zu sehen, wie es jetzt ist.",
   "server.teamProjectProposal.refused.rootChanged": "Der Ordner für neue Projekte wurde geändert, nachdem diese Karte erstellt wurde. Frag noch einmal, um zu sehen, wo das Projekt angelegt wird.",
   "server.teamProjectProposal.refused.failed": "Das Projekt konnte nicht erstellt werden. Frag noch einmal, um es erneut zu versuchen.",
+  "server.teamProjectProposal.handOver.held": "Die Anfrage ist nicht bei {lead} angekommen. {why} Öffne danach das Projekt und sag {lead}, was du möchtest.",
+  "server.teamProjectProposal.handOver.failed": "Die Anfrage ist nicht bei {lead} angekommen. Öffne das Projekt und sag {lead}, was du möchtest.",
   "server.mcp.askedSignIn": "Anmeldung bei MCP-Server {name} angefragt",
   "server.mcp.signIn.card": "Der MCP-Server von {label} braucht eine Anmeldung. Öffne diese Unterhaltung in MagicBot, um dich anzumelden.",
   "server.mcp.signIn.description": "{bot} hat den MCP-Server von {label} hinzugefügt ({host}). Melde dich an, damit {bot} ihn nutzen kann.",

@@ -6866,6 +6866,159 @@ function activeRoutineRunForThread(threadId: string): RoutineRun | null {
   return run && ["running", "waiting"].includes(run.status) ? run : null;
 }
 
+function coordinateBotsFor(internalCapability: InternalCapability, internalSender: BotRecord, requireActiveInternalCapability: () => void, delegatedThisTurn: (taskId: string) => void): (call: CoordinateBotsCall) => Promise<{ status: number; body: Record<string, unknown> }> {
+  const EXTERNAL = internalCapability.generation === EXTERNAL_RUNTIME_GENERATION;
+  const linkSourceProblem = (botId: string, threadId: string) => { const source = store.groupByThread(threadId); return source && (source.dm || !source.memberIds.includes(botId)) ? "Coordination needs a room you are a member of, or your own conversation." : roomHandoffProblem({ groupId: source?.id, threadId, botId }); }; const coordinateHere = async (call: CoordinateBotsCall): Promise<{ status: number; body: Record<string, unknown> }> => {
+    const refuse = (status: number, error: string, more: Record<string, unknown> = {}) => ({ status, body: { error, ...more } });
+    const source = store.groupByThread(internalCapability.threadId);
+    if (source && (source.dm || !source.memberIds.includes(internalSender.id))) {
+      return refuse(403, "Coordination needs a room you are a member of, or your own conversation.");
+    }
+    const address = { groupId: source?.id, threadId: internalCapability.threadId, botId: internalSender.id };
+    const problem = roomHandoffProblem(address);
+    if (problem) return refuse(403, problem);
+    if (call.consult && call.reply === "none") return refuse(400, "consult asks a question whose answer comes back to you; leave reply out");
+    const groupId = call.groupId ?? source?.id;
+    const destination = groupId ? store.group(groupId) : undefined;
+    if (groupId && (!destination || roomBehindWall(internalSender, destination))) return refuse(404, "No such room; use list_room_targets.");
+    if (destination && destination.id !== source?.id && !outsideLineage.mayReach(address.threadId, destination.threadId)) return refuse(403, OUTSIDE_STAYS_HERE);
+    const botIds: string[] = [];
+    for (const raw of call.botIds) {
+      const resolved = resolveTeammate(store.bots, internalSender, raw, placesElsewhere.explain, (bot) => (CLOUD_TEAM ? lookedAfterBy(bot, teamHost.personName) : null), { reaches: (bot) => personalReach.listed(internalSender, bot, address.threadId), hides: (bot) => personalReach.hides(internalSender, bot), refusal: (bot) => personalReach.refusal(internalSender, bot, address.threadId) });
+      if ("error" in resolved) return refuse(403, resolved.error);
+      botIds.push(resolved.id);
+    }
+    if (new Set(botIds).size !== botIds.length) return refuse(400, "bot_ids name the same teammate twice — send each teammate once");
+    const addressedRoom = destination && { id: destination.id, name: destination.name, here: destination.id === source?.id };
+    const roomThreadId = destination && (addressedRoom?.here ? address.threadId : destination.threadId);
+    const targets = botIds.map(botId => roomHandoffTarget({ groupId: destination?.id, threadId: roomThreadId ?? store.bot(botId)?.threadId ?? "", botId }, address));
+    const direct = targets.some(target => !target.groupId), fresh = direct && call.thread === "new";
+    const folder = inMyFolderCwd(call.inMyFolder, direct, store.taskByThread(internalSender.id, address.threadId)?.cwd, DATA_DIR);
+    if (fresh && !EXTERNAL && internalCapability.openedThreads >= MAX_THREADS_OPENED_PER_TURN) {
+      return refuse(429, `You have already opened ${MAX_THREADS_OPENED_PER_TURN} threads this turn, which is the limit. Do not retry — finish your turn and tell the person which threads you still wanted to open, so they can open them or ask you again.`);
+    }
+    const steersOwn = !destination && botIds.length === 1 && botIds[0] === internalSender.id && ownThreads.steersOwn(call.thread, internalSender.id, address.threadId), { post } = call, postsOwn = Boolean(post) && botIds[0] === internalSender.id, toSelf = Boolean(call.ownThread) || steersOwn || postsOwn || ownThreads.answersOwn(call.answers, internalSender.id);
+    for (const target of targets) {
+        // Echo only the id the caller sent, never a bot's name.
+      const addressed = store.bot(target.botId);
+      const eligibility =
+        target.botId === internalSender.id && !toSelf ? "Choose a teammate, not yourself"
+        : !addressed ? `No bot with id "${target.botId}" — call list_bots and copy the exact id from the result`
+        : addressed.hidden ? `The bot with id "${target.botId}" is no longer available — call list_bots for the ones you can reach`
+        : roomHandoffProblem(target, address) ?? personalReach.handOnProblem(internalSender, addressed, address.threadId, internalCapability.generation);
+      if (eligibility) return refuse(403, eligibility);
+    }
+    const requestBatchKey = destination ? randomUUID() : undefined, fanOut = targets.length > 1 ? randomUUID() : undefined, handOnFor = CLOUD_TEAM ? teamConnections.handOnFor(internalCapability.threadId, internalCapability.generation) : null;
+    const generation = EXTERNAL ? randomUUID() : internalCapability.generation;
+    if (EXTERNAL) {
+      const opener = handoffOpener(internalCapability, address.threadId);
+      const running = store.projectBotForTask(internalSender.id, address.threadId) ?? internalSender;
+      coordinator.beginTurn({ id: generation, address, brief: call.message, level: approvalModeForTurn(running, true, address.threadId), ...(opener ? { opener } : {}) });
+    }
+    const mode: NonNullable<HandoffOptions["mode"]> = call.consult ? "consult" : call.reply === "none" ? "notify" : "work";
+    const reply: NonNullable<HandoffOptions["reply"]> = call.reply === "none" ? "none" : EXTERNAL ? "poll" : "resume";
+    const returns = reply === "none" ? "nothing comes back from it" : reply === "poll" ? "read its result with assignment_status" : "its result will resume you";
+    const inRoom = targets.filter(target => target.groupId).length, lanes = inRoom > 0 && Boolean(addressedRoom?.here) && roomJobs.useLanes(destination!, roomThreadId!, inRoom, mode);
+    const receipts: PeerDeliveryReceipt[] = [];
+    const refused: string[] = [];
+    const answeredForPerson = new Set<PeerDeliveryReceipt>();
+    for (const target of targets) {
+      let createdThread: string | undefined;
+      const room = target.groupId ? destination : undefined;
+      try {
+        requireActiveInternalCapability();
+        const recipient = store.bot(target.botId);
+        if (!recipient) throw new Error("The recipient no longer exists");
+        // Work a person's request hands on opens in the receiving bot's chat with them when it may use their own apps.
+        const opener = (room ? null : handOnFor) ?? openerFrom(address.threadId); if (!room) personalReach.checkHandOn(internalSender, recipient, address.threadId, opener, call.answers ? { threadId: coordinator.node(call.answers)?.threadId } : undefined);
+        // A Chief answers, for the person, the question a teammate it manages waits on in a thread the Chief did not open.
+        let lends = mode === "work" && handsOnLending(internalCapability); const forPerson = EXTERNAL || room || fresh || post || call.answers || mode !== "work" || call.thread === "standing" || !teammatePrompts.actsForPerson(internalSender, internalCapability.threadId) || !canManage(internalSender, recipient) || !threadReadableFrom(internalCapability.threadId)(call.thread) || !asksActingPerson(internalCapability.threadId, store.groupByThread(internalCapability.threadId) ? internalCapability.generation : undefined)(call.thread, recipient.id) ? undefined : await questionRouting.answerForPerson({ lends, sender: internalSender, senderThreadId: address.threadId, target: recipient, threadId: call.thread, message: call.message });
+        if (forPerson) { if (forPerson.outcome === "failed") refused.push(forPerson.detail); else answeredForPerson.add(forPerson); receipts.push(forPerson); continue; }
+        const continued = room || fresh ? undefined : workThreadFor(store, { botId: target.botId, botName: recipient.name, fromBotId: internalSender.id, fromThreadId: address.threadId, thread: call.thread, notice: mode === "notify", any: Boolean(post),
+          answering: coordinator.answersTo(internalCapability.roomHandoffId ?? generation), also: (task) => !CLOUD_TEAM || threadStarters.get(task.threadId) === opener, reach: (task) => outsideLineage.mayReach(address.threadId, task.threadId) });
+        const relayed = EXTERNAL || post || (!call.answers && (room || fresh || mode === "consult")) ? undefined : await questionRouting.relay({ lends, sender: internalSender, senderThreadId: address.threadId,
+          senderNode: coordinator.node(internalCapability.roomHandoffId ?? generation), target: recipient, message: call.message, ...(call.answers ? { answers: call.answers } : {}), ...(continued ? { threadId: continued.threadId, ...(steersOwn ? { selected: true } : {}) } : {}),
+          ...(internalCapability.delegatedThisTurn ? { sentThisTurn: internalCapability.delegatedThisTurn } : {}) });
+        if (relayed) { if (relayed.outcome === "failed") refused.push(relayed.detail); receipts.push(relayed); continue; } if (post && !post.wake && continued) { receipts.push(leaveThreadPost(store, { from: internalSender, fromThreadId: address.threadId, deliveryId: post.deliveryId, text: call.message, to: recipient, task: continued, label: serverLine(threadLanguage(continued.threadId), "server.threads.posted", { bot: internalSender.name }) })); continue; } // no turn starts: its next run reads it
+        const lane = room && lanes ? roomJobs.openLane(room, target.threadId, target.botId, internalSender, call.message) : undefined;
+        const via = lane ? "lane" : room ? "room" : "direct";
+        if (lane?.created) createdThread = lane.threadId;
+        if (lane) delegatedLevel.apply(internalSender, internalCapability.threadId, internalCapability.roomHandoffId ?? generation, recipient, lane.threadId);
+        if (!room) {
+          const opened = { botId: internalSender.id, name: internalSender.name, threadId: address.threadId, at: Date.now(), ...(lends ? { forOwner: true as const } : {}) }, startedFor = (created: { threadId: string }) => threadStarters.set(created.threadId, opener);
+          const task = continued ?? (fresh
+            ? store.createTask(target.botId, call.title ?? (call.message.replace(/\s+/g, " ").trim().slice(0, 60) || `From ${internalSender.name}`), false, call.projectId, opened, call.ownThread?.approvalMode, call.ownThread?.modelSelection, folder.cwd, startedFor)
+            : store.createTask(target.botId, `@${internalSender.name} · work`, false, undefined, { ...opened, kind: "work" }, undefined, undefined, folder.cwd, startedFor));
+          if (!task) throw new Error("The recipient no longer exists");
+          target.threadId = task.threadId;
+          if (!continued) createdThread = task.threadId;
+          delegatedLevel.apply(internalSender, internalCapability.threadId, internalCapability.roomHandoffId ?? generation, recipient, target.threadId); if (lends && !levelWithin(approvalModeForTurn(store.projectBotForTask(recipient.id, target.threadId) ?? recipient, true, target.threadId), approvalModeForTurn(store.projectBotForTask(internalSender.id, address.threadId) ?? internalSender, internalCapability.depth > 0, address.threadId))) { lends = false; handedInUnproven(target.threadId); }
+        }
+        const routed = lane ? { botId: target.botId, threadId: lane.threadId } : target;
+        outsideLineage.carry(address.threadId, routed.threadId);
+        const { node, duplicate } = coordinator.enqueue(address, generation, internalCapability.roomHandoffId, routed, call.message, {
+          mode, reply, thread: lane || fresh || steersOwn || postsOwn ? "new" : "standing", rework: call.rework, ...(lane ? {} : { requestBatchKey }), ...(fanOut ? { fanOut } : {}), ...(call.ownThread || steersOwn || postsOwn ? { ownThread: true } : {}),
+          ...(call.doneWhen ? { doneWhen: call.doneWhen } : {}),
+        });
+        usageTrace.link(node.id, node.parentId, { threadId: internalCapability.threadId, turnId: liveTurnByThread.get(internalCapability.threadId) ?? "" }); if (!duplicate) { actingPeople.handOn(internalCapability, node, lends); if (!lends && !room && !lane) handedInUnproven(routed.threadId); }
+        if (!duplicate && call.files?.length) handoffFiles.sent(node.id, { botId: internalSender.id, name: internalSender.name }, call.files);
+        if (duplicate && createdThread) store.deleteTask(target.botId, createdThread);
+        else if (createdThread) {
+          threadStarters.set(createdThread, opener);
+          if (fresh && !EXTERNAL) internalCapability.openedThreads += 1;
+        }
+        createdThread = undefined;
+        const title = via === "room" ? undefined : store.taskByThread(node.botId, node.threadId)?.title;
+        const finished: Partial<Record<HandoffView["status"], string>> = {
+          completed: "it already finished and its result stands; send it with rework=true to run it again",
+          failed: "it failed; send it with rework=true to retry", cancelled: "it was cancelled; send it with rework=true to retry",
+        };
+        const notSent = duplicate && finished[node.status] ? `not sent again: ${finished[node.status]}` : undefined;
+        if (notSent) refused.push(notSent);
+        receipts.push(peerDeliveryReceipt({
+          botId: node.botId,
+          botName: recipient.name,
+          outcome: notSent ? "failed" : !duplicate || node.status === "queued" ? "queued" : "injected",
+          detail: notSent ?? (duplicate
+            ? `already sent: it is ${node.status === "queued" ? "queued" : "under way"} and ${returns}`
+            : lane
+              ? `runs in its own thread "${lane.title}", in parallel with the other room jobs; its result posts in this room and ${returns}`
+              : title
+                ? `${outsideRoomNote(addressedRoom, via)}sent to "${title}"; it runs after anything still running there`
+                : "handed to the coordinator; the teammate's turn has not started yet"),
+          requestId: node.id,
+          ...(via === "room" ? {} : { threadId: node.threadId }),
+        }));
+        if (!duplicate) {
+          if (!EXTERNAL) delegatedThisTurn(node.id);
+          const sentRowId = post ? undefined : store.appendMessage(address.threadId, sentRow({ sender: internalSender, recipient, threadId: node.threadId, room: addressedRoom, via, language: threadLanguage(address.threadId),
+            reason: call.reason, doneWhen: call.doneWhen ? redactSecretsInText(call.doneWhen) : undefined, title: store.taskByThread(recipient.id, node.threadId)?.title, ...handoffFiles.sentWith(node.id) })).id; if (sentRowId && via !== "room") handoffStatus.track(node.id, address.threadId, sentRowId);
+        }
+      } catch (error) {
+        if (createdThread) store.deleteTask(target.botId, createdThread);
+        const said = error instanceof Error ? error.message : String(error);
+        refused.push(said);
+          // A bot hidden since the call was admitted is not the sender's to see: keep the id, no current name.
+        const current = store.bot(target.botId);
+        receipts.push(peerDeliveryReceipt({ botId: target.botId, ...(current && !current.hidden ? { botName: current.name } : {}), outcome: "failed", detail: said }));
+      }
+    }
+    const sent = refused.length < receipts.length;
+    const answeredOnly = answeredForPerson.size > 0 && receipts.every((receipt) => receipt.outcome === "failed" || answeredForPerson.has(receipt));
+    const lead = destination && sent ? roomJobs.describeRoomJobs(destination, roomThreadId!, receipts,
+      { senderId: internalSender.id, returns, lanes, awaited: reply !== "none" }) : "";
+    if (EXTERNAL) coordinator.endTurn(generation, { ok: sent, text: sent ? "" : refused.join("; ") });
+    const message = coordinateResultMessage(reply, answeredOnly);
+    return { status: sent ? 200 : 409, body: { receipts, ...(sent ? { message: lead ? `${lead} ${message}` : message } : { error: refused.join("; "), ...(refusalsOnlyInstructions(refused, receipts) ? { instructionOnly: true } : {}) }),
+      ...(EXTERNAL && sent ? { rootId: generation } : {}) } };
+  }; return (call: CoordinateBotsCall) => internalSender.teamProject ? coordinateHere(call) : botLink.link.coordinate(call, { sender: internalSender, address: { groupId: store.groupByThread(internalCapability.threadId)?.id, threadId: internalCapability.threadId, botId: internalSender.id }, generation: internalCapability.generation, parentId: internalCapability.roomHandoffId, external: EXTERNAL, handed: delegatedThisTurn, problem: linkSourceProblem(internalSender.id, internalCapability.threadId) }, coordinateHere);
+}
+async function coordinateBotsOutsideTurn(from: { botId: string; threadId: string }, call: CoordinateBotsCall): Promise<{ status: number; body: Record<string, unknown> }> {
+  const sender = store.bot(from.botId), generation = randomUUID(), opener = handoffOpener(from, from.threadId);
+  if (!sender) return { status: 404, body: { error: "That bot no longer exists" } };
+  coordinator.beginTurn({ id: generation, address: from, brief: call.message, level: approvalModeForTurn(store.projectBotForTask(from.botId, from.threadId) ?? sender, false, from.threadId), ...(opener ? { opener } : {}) });
+  try { return await coordinateBotsFor({ ...from, generation, depth: 0, kind: "agents", skillAuthoring: false, createdBots: 0, openedThreads: 0, orphanExpiresAt: 0 }, sender, () => undefined, () => undefined)(call); } finally { coordinator.endTurn(generation, { ok: true, text: "" }); }
+}
 function handoffOpener(capability: Pick<InternalCapability, "botId" | "threadId" | "externalRuntime">, threadId: string): HandoffOpener | undefined {
   if (capability.externalRuntime) {
     return {
@@ -9191,7 +9344,7 @@ async function resolveAndSendTeamSetup(res: ServerResponse, args: { botId: strin
 const { mcpRequests, mcpSignInCards, mcpServerDeps, resolveAndSendMcp, mcpServerResponse, mcpPolicyRefusal } = createMcpChat({ store, cfg, mcpOAuth, teamConnections, mcpServersHost, managedPolicy,
   secretCards: () => secretCards, mcpConfig: () => mcpConfig, teamCloud: Boolean(CLOUD_TEAM), threadLanguage, answerCardNode, followCard: (threadId, from, to) => coordinator.followCard(threadId, from, to), fullAccessForSource, cloudGuestDriven, liveTurnByThread, broadcast,
   publicOrigins: () => [CLOUD_HOME?.publicOrigin, hostedWorkspaceConfiguration()?.tenant.origin, savedCustomDomain(), FALLBACK_PUBLIC_URL], threadVisible: (auth, threadId) => visibleTo(viewerFor(auth)).thread(threadId), lending: () => lentMcp });
-const teamProjectProposals = createTeamProjectProposals({ store, dataDir: DATA_DIR, backends: () => ({ templates: templateLibrary, projects: teamProjects.api, projectsRoot: teamProjects.root }), directChat: directChatOf, answerCardNode, followCard: (threadId, from, to) => coordinator.followCard(threadId, from, to), threadLanguage });
+const teamProjectProposals = createTeamProjectProposals({ store, dataDir: DATA_DIR, backends: () => ({ templates: templateLibrary, projects: teamProjects.api, projectsRoot: teamProjects.root }), directChat: directChatOf, answerCardNode, followCard: (threadId, from, to) => coordinator.followCard(threadId, from, to), releaseCardNode: (threadId, messageId) => releaseCardNode(threadId, messageId, WAIT_CARD_CLOSED_REASON), handOff: coordinateBotsOutsideTurn, held: (botId, language) => botHolds.text(botId, language) ?? starterCaps.pausedText(botId, language) ?? null, threadLanguage });
 const routineTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 function sendRoutineResolution(
   res: ServerResponse,
@@ -13542,150 +13695,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
         });
       }
       const EXTERNAL = internalCapability.generation === EXTERNAL_RUNTIME_GENERATION;
-      const linkSourceProblem = (botId: string, threadId: string) => { const source = store.groupByThread(threadId); return source && (source.dm || !source.memberIds.includes(botId)) ? "Coordination needs a room you are a member of, or your own conversation." : roomHandoffProblem({ groupId: source?.id, threadId, botId }); }; const coordinateHere = async (call: CoordinateBotsCall): Promise<{ status: number; body: Record<string, unknown> }> => {
-        const refuse = (status: number, error: string, more: Record<string, unknown> = {}) => ({ status, body: { error, ...more } });
-        const source = store.groupByThread(internalCapability.threadId);
-        if (source && (source.dm || !source.memberIds.includes(internalSender.id))) {
-          return refuse(403, "Coordination needs a room you are a member of, or your own conversation.");
-        }
-        const address = { groupId: source?.id, threadId: internalCapability.threadId, botId: internalSender.id };
-        const problem = roomHandoffProblem(address);
-        if (problem) return refuse(403, problem);
-        if (call.consult && call.reply === "none") return refuse(400, "consult asks a question whose answer comes back to you; leave reply out");
-        const groupId = call.groupId ?? source?.id;
-        const destination = groupId ? store.group(groupId) : undefined;
-        if (groupId && (!destination || roomBehindWall(internalSender, destination))) return refuse(404, "No such room; use list_room_targets.");
-        if (destination && destination.id !== source?.id && !outsideLineage.mayReach(address.threadId, destination.threadId)) return refuse(403, OUTSIDE_STAYS_HERE);
-        const botIds: string[] = [];
-        for (const raw of call.botIds) {
-          const resolved = resolveTeammate(store.bots, internalSender, raw, placesElsewhere.explain, (bot) => (CLOUD_TEAM ? lookedAfterBy(bot, teamHost.personName) : null), { reaches: (bot) => personalReach.listed(internalSender, bot, address.threadId), hides: (bot) => personalReach.hides(internalSender, bot), refusal: (bot) => personalReach.refusal(internalSender, bot, address.threadId) });
-          if ("error" in resolved) return refuse(403, resolved.error);
-          botIds.push(resolved.id);
-        }
-        if (new Set(botIds).size !== botIds.length) return refuse(400, "bot_ids name the same teammate twice — send each teammate once");
-        const addressedRoom = destination && { id: destination.id, name: destination.name, here: destination.id === source?.id };
-        const roomThreadId = destination && (addressedRoom?.here ? address.threadId : destination.threadId);
-        const targets = botIds.map(botId => roomHandoffTarget({ groupId: destination?.id, threadId: roomThreadId ?? store.bot(botId)?.threadId ?? "", botId }, address));
-        const direct = targets.some(target => !target.groupId), fresh = direct && call.thread === "new";
-        const folder = inMyFolderCwd(call.inMyFolder, direct, store.taskByThread(internalSender.id, address.threadId)?.cwd, DATA_DIR);
-        if (fresh && !EXTERNAL && internalCapability.openedThreads >= MAX_THREADS_OPENED_PER_TURN) {
-          return refuse(429, `You have already opened ${MAX_THREADS_OPENED_PER_TURN} threads this turn, which is the limit. Do not retry — finish your turn and tell the person which threads you still wanted to open, so they can open them or ask you again.`);
-        }
-        const steersOwn = !destination && botIds.length === 1 && botIds[0] === internalSender.id && ownThreads.steersOwn(call.thread, internalSender.id, address.threadId), { post } = call, postsOwn = Boolean(post) && botIds[0] === internalSender.id, toSelf = Boolean(call.ownThread) || steersOwn || postsOwn || ownThreads.answersOwn(call.answers, internalSender.id);
-        for (const target of targets) {
-            // Echo only the id the caller sent, never a bot's name.
-          const addressed = store.bot(target.botId);
-          const eligibility =
-            target.botId === internalSender.id && !toSelf ? "Choose a teammate, not yourself"
-            : !addressed ? `No bot with id "${target.botId}" — call list_bots and copy the exact id from the result`
-            : addressed.hidden ? `The bot with id "${target.botId}" is no longer available — call list_bots for the ones you can reach`
-            : roomHandoffProblem(target, address) ?? personalReach.handOnProblem(internalSender, addressed, address.threadId, internalCapability.generation);
-          if (eligibility) return refuse(403, eligibility);
-        }
-        const requestBatchKey = destination ? randomUUID() : undefined, fanOut = targets.length > 1 ? randomUUID() : undefined, handOnFor = CLOUD_TEAM ? teamConnections.handOnFor(internalCapability.threadId, internalCapability.generation) : null;
-        const generation = EXTERNAL ? randomUUID() : internalCapability.generation;
-        if (EXTERNAL) {
-          const opener = handoffOpener(internalCapability, address.threadId);
-          const running = store.projectBotForTask(internalSender.id, address.threadId) ?? internalSender;
-          coordinator.beginTurn({ id: generation, address, brief: call.message, level: approvalModeForTurn(running, true, address.threadId), ...(opener ? { opener } : {}) });
-        }
-        const mode: NonNullable<HandoffOptions["mode"]> = call.consult ? "consult" : call.reply === "none" ? "notify" : "work";
-        const reply: NonNullable<HandoffOptions["reply"]> = call.reply === "none" ? "none" : EXTERNAL ? "poll" : "resume";
-        const returns = reply === "none" ? "nothing comes back from it" : reply === "poll" ? "read its result with assignment_status" : "its result will resume you";
-        const inRoom = targets.filter(target => target.groupId).length, lanes = inRoom > 0 && Boolean(addressedRoom?.here) && roomJobs.useLanes(destination!, roomThreadId!, inRoom, mode);
-        const receipts: PeerDeliveryReceipt[] = [];
-        const refused: string[] = [];
-        const answeredForPerson = new Set<PeerDeliveryReceipt>();
-        for (const target of targets) {
-          let createdThread: string | undefined;
-          const room = target.groupId ? destination : undefined;
-          try {
-            requireActiveInternalCapability();
-            const recipient = store.bot(target.botId);
-            if (!recipient) throw new Error("The recipient no longer exists");
-            // Work a person's request hands on opens in the receiving bot's chat with them when it may use their own apps.
-            const opener = (room ? null : handOnFor) ?? openerFrom(address.threadId); if (!room) personalReach.checkHandOn(internalSender, recipient, address.threadId, opener, call.answers ? { threadId: coordinator.node(call.answers)?.threadId } : undefined);
-            // A Chief answers, for the person, the question a teammate it manages waits on in a thread the Chief did not open.
-            let lends = mode === "work" && handsOnLending(internalCapability); const forPerson = EXTERNAL || room || fresh || post || call.answers || mode !== "work" || call.thread === "standing" || !teammatePrompts.actsForPerson(internalSender, internalCapability.threadId) || !canManage(internalSender, recipient) || !threadReadableFrom(internalCapability.threadId)(call.thread) || !asksActingPerson(internalCapability.threadId, store.groupByThread(internalCapability.threadId) ? internalCapability.generation : undefined)(call.thread, recipient.id) ? undefined : await questionRouting.answerForPerson({ lends, sender: internalSender, senderThreadId: address.threadId, target: recipient, threadId: call.thread, message: call.message });
-            if (forPerson) { if (forPerson.outcome === "failed") refused.push(forPerson.detail); else answeredForPerson.add(forPerson); receipts.push(forPerson); continue; }
-            const continued = room || fresh ? undefined : workThreadFor(store, { botId: target.botId, botName: recipient.name, fromBotId: internalSender.id, fromThreadId: address.threadId, thread: call.thread, notice: mode === "notify", any: Boolean(post),
-              answering: coordinator.answersTo(internalCapability.roomHandoffId ?? generation), also: (task) => !CLOUD_TEAM || threadStarters.get(task.threadId) === opener, reach: (task) => outsideLineage.mayReach(address.threadId, task.threadId) });
-            const relayed = EXTERNAL || post || (!call.answers && (room || fresh || mode === "consult")) ? undefined : await questionRouting.relay({ lends, sender: internalSender, senderThreadId: address.threadId,
-              senderNode: coordinator.node(internalCapability.roomHandoffId ?? generation), target: recipient, message: call.message, ...(call.answers ? { answers: call.answers } : {}), ...(continued ? { threadId: continued.threadId, ...(steersOwn ? { selected: true } : {}) } : {}),
-              ...(internalCapability.delegatedThisTurn ? { sentThisTurn: internalCapability.delegatedThisTurn } : {}) });
-            if (relayed) { if (relayed.outcome === "failed") refused.push(relayed.detail); receipts.push(relayed); continue; } if (post && !post.wake && continued) { receipts.push(leaveThreadPost(store, { from: internalSender, fromThreadId: address.threadId, deliveryId: post.deliveryId, text: call.message, to: recipient, task: continued, label: serverLine(threadLanguage(continued.threadId), "server.threads.posted", { bot: internalSender.name }) })); continue; } // no turn starts: its next run reads it
-            const lane = room && lanes ? roomJobs.openLane(room, target.threadId, target.botId, internalSender, call.message) : undefined;
-            const via = lane ? "lane" : room ? "room" : "direct";
-            if (lane?.created) createdThread = lane.threadId;
-            if (lane) delegatedLevel.apply(internalSender, internalCapability.threadId, internalCapability.roomHandoffId ?? generation, recipient, lane.threadId);
-            if (!room) {
-              const opened = { botId: internalSender.id, name: internalSender.name, threadId: address.threadId, at: Date.now(), ...(lends ? { forOwner: true as const } : {}) }, startedFor = (created: { threadId: string }) => threadStarters.set(created.threadId, opener);
-              const task = continued ?? (fresh
-                ? store.createTask(target.botId, call.title ?? (call.message.replace(/\s+/g, " ").trim().slice(0, 60) || `From ${internalSender.name}`), false, call.projectId, opened, call.ownThread?.approvalMode, call.ownThread?.modelSelection, folder.cwd, startedFor)
-                : store.createTask(target.botId, `@${internalSender.name} · work`, false, undefined, { ...opened, kind: "work" }, undefined, undefined, folder.cwd, startedFor));
-              if (!task) throw new Error("The recipient no longer exists");
-              target.threadId = task.threadId;
-              if (!continued) createdThread = task.threadId;
-              delegatedLevel.apply(internalSender, internalCapability.threadId, internalCapability.roomHandoffId ?? generation, recipient, target.threadId); if (lends && !levelWithin(approvalModeForTurn(store.projectBotForTask(recipient.id, target.threadId) ?? recipient, true, target.threadId), approvalModeForTurn(store.projectBotForTask(internalSender.id, address.threadId) ?? internalSender, internalCapability.depth > 0, address.threadId))) { lends = false; handedInUnproven(target.threadId); }
-            }
-            const routed = lane ? { botId: target.botId, threadId: lane.threadId } : target;
-            outsideLineage.carry(address.threadId, routed.threadId);
-            const { node, duplicate } = coordinator.enqueue(address, generation, internalCapability.roomHandoffId, routed, call.message, {
-              mode, reply, thread: lane || fresh || steersOwn || postsOwn ? "new" : "standing", rework: call.rework, ...(lane ? {} : { requestBatchKey }), ...(fanOut ? { fanOut } : {}), ...(call.ownThread || steersOwn || postsOwn ? { ownThread: true } : {}),
-              ...(call.doneWhen ? { doneWhen: call.doneWhen } : {}),
-            });
-            usageTrace.link(node.id, node.parentId, { threadId: internalCapability.threadId, turnId: liveTurnByThread.get(internalCapability.threadId) ?? "" }); if (!duplicate) { actingPeople.handOn(internalCapability, node, lends); if (!lends && !room && !lane) handedInUnproven(routed.threadId); }
-            if (!duplicate && call.files?.length) handoffFiles.sent(node.id, { botId: internalSender.id, name: internalSender.name }, call.files);
-            if (duplicate && createdThread) store.deleteTask(target.botId, createdThread);
-            else if (createdThread) {
-              threadStarters.set(createdThread, opener);
-              if (fresh && !EXTERNAL) internalCapability.openedThreads += 1;
-            }
-            createdThread = undefined;
-            const title = via === "room" ? undefined : store.taskByThread(node.botId, node.threadId)?.title;
-            const finished: Partial<Record<HandoffView["status"], string>> = {
-              completed: "it already finished and its result stands; send it with rework=true to run it again",
-              failed: "it failed; send it with rework=true to retry", cancelled: "it was cancelled; send it with rework=true to retry",
-            };
-            const notSent = duplicate && finished[node.status] ? `not sent again: ${finished[node.status]}` : undefined;
-            if (notSent) refused.push(notSent);
-            receipts.push(peerDeliveryReceipt({
-              botId: node.botId,
-              botName: recipient.name,
-              outcome: notSent ? "failed" : !duplicate || node.status === "queued" ? "queued" : "injected",
-              detail: notSent ?? (duplicate
-                ? `already sent: it is ${node.status === "queued" ? "queued" : "under way"} and ${returns}`
-                : lane
-                  ? `runs in its own thread "${lane.title}", in parallel with the other room jobs; its result posts in this room and ${returns}`
-                  : title
-                    ? `${outsideRoomNote(addressedRoom, via)}sent to "${title}"; it runs after anything still running there`
-                    : "handed to the coordinator; the teammate's turn has not started yet"),
-              requestId: node.id,
-              ...(via === "room" ? {} : { threadId: node.threadId }),
-            }));
-            if (!duplicate) {
-              if (!EXTERNAL) delegatedThisTurn(node.id);
-              const sentRowId = post ? undefined : store.appendMessage(address.threadId, sentRow({ sender: internalSender, recipient, threadId: node.threadId, room: addressedRoom, via, language: threadLanguage(address.threadId),
-                reason: call.reason, doneWhen: call.doneWhen ? redactSecretsInText(call.doneWhen) : undefined, title: store.taskByThread(recipient.id, node.threadId)?.title, ...handoffFiles.sentWith(node.id) })).id; if (sentRowId && via !== "room") handoffStatus.track(node.id, address.threadId, sentRowId);
-            }
-          } catch (error) {
-            if (createdThread) store.deleteTask(target.botId, createdThread);
-            const said = error instanceof Error ? error.message : String(error);
-            refused.push(said);
-              // A bot hidden since the call was admitted is not the sender's to see: keep the id, no current name.
-            const current = store.bot(target.botId);
-            receipts.push(peerDeliveryReceipt({ botId: target.botId, ...(current && !current.hidden ? { botName: current.name } : {}), outcome: "failed", detail: said }));
-          }
-        }
-        const sent = refused.length < receipts.length;
-        const answeredOnly = answeredForPerson.size > 0 && receipts.every((receipt) => receipt.outcome === "failed" || answeredForPerson.has(receipt));
-        const lead = destination && sent ? roomJobs.describeRoomJobs(destination, roomThreadId!, receipts,
-          { senderId: internalSender.id, returns, lanes, awaited: reply !== "none" }) : "";
-        if (EXTERNAL) coordinator.endTurn(generation, { ok: sent, text: sent ? "" : refused.join("; ") });
-        const message = coordinateResultMessage(reply, answeredOnly);
-        return { status: sent ? 200 : 409, body: { receipts, ...(sent ? { message: lead ? `${lead} ${message}` : message } : { error: refused.join("; "), ...(refusalsOnlyInstructions(refused, receipts) ? { instructionOnly: true } : {}) }),
-          ...(EXTERNAL && sent ? { rootId: generation } : {}) } };
-      }, coordinateBots = (call: CoordinateBotsCall) => internalSender.teamProject ? coordinateHere(call) : botLink.link.coordinate(call, { sender: internalSender, address: { groupId: store.groupByThread(internalCapability.threadId)?.id, threadId: internalCapability.threadId, botId: internalSender.id }, generation: internalCapability.generation, parentId: internalCapability.roomHandoffId, external: EXTERNAL, handed: delegatedThisTurn, problem: linkSourceProblem(internalSender.id, internalCapability.threadId) }, coordinateHere);
+      const coordinateBots = coordinateBotsFor(internalCapability, internalSender, requireActiveInternalCapability, delegatedThisTurn);
       if (method === "GET" && path === "/api/internal/assignment-status") {
         const id = url.searchParams.get("id")?.trim() ?? "";
         const fromThreadId = internalCapability.threadId;
