@@ -770,7 +770,7 @@ describe("pairing, end to end", () => {
         authenticate: (t) => registry.authenticate(t ?? undefined),
         redeem: (code, deviceName, pairRequestId) => registry.redeem(code, deviceName, pairRequestId),
         serverName: () => "Ada's computer",
-        hosts: () => ["macbook.tail1234.ts.net", "192.168.1.42", "openmausbot-abcd1234.local"],
+        hosts: () => ["macbook.tail1234.ts.net", "192.168.1.42", "magicbot-abcd1234.local"],
         endpoints: () => [
           { url: "https://device-123.companion.example", kind: "hosted", priority: 0 },
           { url: "http://192.168.1.42:8810", kind: "lan", priority: 200 },
@@ -841,7 +841,7 @@ describe("pairing, end to end", () => {
       };
       expect(body.serverName).toBe("Ada's computer");
       expect(body.token).toMatch(/^omb_/);
-      expect(body.hosts).toEqual(["macbook.tail1234.ts.net", "192.168.1.42", "openmausbot-abcd1234.local"]);
+      expect(body.hosts).toEqual(["macbook.tail1234.ts.net", "192.168.1.42", "magicbot-abcd1234.local"]);
       expect(body.endpoints).toEqual([
         { url: "https://device-123.companion.example", kind: "hosted", priority: 0 },
         { url: "http://192.168.1.42:8810", kind: "lan", priority: 200 },

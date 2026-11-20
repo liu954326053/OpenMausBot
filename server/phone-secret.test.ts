@@ -104,8 +104,8 @@ describe("PhoneSecretBridge", () => {
       messageId: "message-1",
       target: "ttsKey",
       requestKey: "credential-request-1",
-      encapsulatedKey: "BCaZzoRne3rNRU2Yg3KdO5XRW34oHHD-ktuCma7XZnlgoD3T5TiBFu0IUkP_wloJi20dFUNWmf4LRMc2QnUM-ls",
-      ciphertext: "eofpLClFOOWrGzdyq_x4Pc_GoraBB40L8RI76TyNT7i_b20b",
+      encapsulatedKey: "BJKdCCbZGFzzU2aDcVH48KQ1OjyIzuk_y6oSnxO6ArlsHCkp2hFffvYzT8t4vdtdz3Kkk4vAyP9veR0Umv5vpY0",
+      ciphertext: "Lnjitt0KxRI5iKHz_jvmQOZ8H_j7dJrcaGHhpD3RejAlAmUB",
     })).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledTimes(1);
   });
@@ -263,7 +263,7 @@ describe("PhoneSecretBridge", () => {
 describe("phoneSecretAAD", () => {
   it("has the exact stable cross-platform serialization", () => {
     expect(new TextDecoder().decode(phoneSecretAAD(baseContext("AAAAAAAAAAAAAAAAAAAAAA")))).toBe([
-      "openmausbot-phone-credential-v1",
+      "magicbot-phone-credential-v1",
       "AAAAAAAAAAAAAAAAAAAAAA",
       "paired-device-1",
       "bot-1",
