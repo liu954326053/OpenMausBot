@@ -27,6 +27,8 @@ export interface CatalogProfile {
   /** The global main bot (the person's MagicBot, in no project) in a chat of its own: list_project_teams and
    * propose_team_project are mounted. */
   teamProjects?: boolean;
+  /** One of a project's bots in a chat of its own: the canvas tools are mounted. */
+  projectCanvas?: boolean;
   /** A direct chat whose bot may pick where it works (Works on is not Off and no team computer is its own): select_computer
    * is mounted, and the harness refuses a pick on any turn but a person's own message. */
   computerSelection?: boolean;
@@ -59,6 +61,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     team: env.OMB_TEAM_PEOPLE === "1",
     mausbot: env.OMB_MAUSBOT === "1",
     teamProjects: env.OMB_TEAM_PROJECTS === "1",
+    projectCanvas: env.OMB_PROJECT_CANVAS === "1",
     computerSelection: env.OMB_COMPUTER_SELECTION === "1",
     localVm: env.OMB_LOCAL_VM !== "0",
     room: env.OMB_ROOM === "1",

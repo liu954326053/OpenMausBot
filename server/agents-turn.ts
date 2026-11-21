@@ -51,6 +51,7 @@ export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTu
     OMB_RESEARCH: flag(host.x && host.research && bot.xResearch !== false),
     ...roleToolEnv(bot),
     OMB_TEAM_PROJECTS: flag(proposesTeamProjects(bot) && !conversation.room),
+    OMB_PROJECT_CANVAS: flag(Boolean(bot.teamProject) && !conversation.room),
     OMB_IMAGE_GENERATION: flag(host.imageGeneration),
     OMB_MEETINGS: flag(host.meetings === true && !conversation.room),
     OMB_APP_HOSTING: flag(host.appHosting === true),

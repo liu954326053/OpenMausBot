@@ -29,6 +29,7 @@ import { callHostingTool, HOSTING_TOOL_NAMES } from "./agents-hosting-tools.ts";
 import { callMeetingTool, MEETING_TOOL_NAMES } from "./agents-meeting-tools.ts";
 import { callMagicBotTool, MAUSBOT_TOOL_NAMES } from "./agents-mausbot-tools.ts";
 import { callTeamProjectTool, TEAM_PROJECT_TOOL_NAMES } from "./agents-team-project-tools.ts";
+import { callProjectCanvasTool, PROJECT_CANVAS_TOOL_NAMES } from "./agents-project-canvas-tools.ts";
 import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
 import { callShareTool, SHARE_TOOL_NAMES } from "./agents-share-tool.ts";
 import { callPersonTool, PERSON_TOOL_NAMES } from "./agents-person-tools.ts";
@@ -252,6 +253,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (MEETING_TOOL_NAMES.has(name)) return callMeetingTool(name, args, context);
   if (MAUSBOT_TOOL_NAMES.has(name)) return callMagicBotTool(name, args, context);
   if (TEAM_PROJECT_TOOL_NAMES.has(name)) return callTeamProjectTool(name, args, context);
+  if (PROJECT_CANVAS_TOOL_NAMES.has(name)) return callProjectCanvasTool(name, args, context);
   if (PAGE_TOOL_NAMES.has(name)) return callPageTool(name, args, context);
   if (SHARE_TOOL_NAMES.has(name)) return callShareTool(args, context);
   if (PERSON_TOOL_NAMES.has(name)) return callPersonTool(name, args, context);
