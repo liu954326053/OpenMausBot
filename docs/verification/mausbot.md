@@ -11,7 +11,8 @@ its menu's **Hide from sidebar** also turns off.
 ```sh
 pnpm exec vitest run server/default-bot.test.ts server/default-bot.e2e.test.ts \
   server/team-setup-requests.test.ts src/lib/default-bot.test.ts src/components/MagicBotWelcome.test.ts \
-  src/lib/mausbot-landing.test.ts
+  src/lib/mausbot-landing.test.ts server/main-bot-department.test.ts server/team-projects/main-bot.test.ts \
+  server/skill-library-offer.test.ts server/chief-of-staff.test.ts server/team-setup.e2e.test.ts
 ```
 
 - `server/default-bot.test.ts`: a fresh install gets one MausBot once; an
@@ -21,8 +22,9 @@ pnpm exec vitest run server/default-bot.test.ts server/default-bot.e2e.test.ts \
   move to My Cloud and coming home leave exactly one; each Team Cloud member
   gets their own; a Team User's MausBot holds no Chief tools.
 - `server/default-bot.e2e.test.ts`: on a real fixture server, `DELETE
-  /api/bots/:id` answers 409, the switch hides and shows it, and a MausBot that
-  is not the Chief creates a bot with `create_bot`.
+  /api/bots/:id` answers 409, the switch hides and shows it, moving it into a
+  department is refused, and a MausBot that is not the Chief still holds a
+  Chief's tools (`list_team_setup` answers) but not `create_bot`.
 - `server/mausbot-notifications.test.ts`, `server/drivers/agents-mausbot-tools.test.ts`
   and the second case of `server/default-bot.e2e.test.ts`: MausBot alone gets
   `list_unread_notifications` and `mark_notifications_read`, listed last.
@@ -38,7 +40,28 @@ pnpm exec vitest run server/default-bot.test.ts server/default-bot.e2e.test.ts \
   `server/drivers/agents-catalog-wire.test.ts` budgets the `+mausbot` profiles,
   each within 2% of the same Chief's list without them.
 - `server/team-setup-requests.test.ts` ("MausBot's Chief-level team setup"):
-  it adds specialists like a Chief but never changes who the Chief is.
+  it adds specialists like a Chief but never changes who the Chief is, except
+  to appoint one of the bots it makes for a new team in the same plan.
+- MausBot makes bots only on a card the person confirms. `create_bot` is not
+  among its tools (`server/drivers/agents-catalog-wire.test.ts`) and the server
+  refuses it; its team setup and deletion proposals always show a card, at
+  every access level; its prompt says to propose a new team with one of its
+  bots appointed Chief (`server/chief-of-staff.test.ts`). The second case of
+  `server/team-setup.e2e.test.ts` proves it on a fixture server: `create_bot`
+  is refused, a plan for a new team creates nothing until the card is allowed,
+  then makes the team with the Chief it named, and MausBot stays out of it.
+- MausBot belongs to no department. Moving it into one is refused on every
+  path, bot settings, the sidebar and Team map, and team setup
+  (`server/team-projects/main-bot.test.ts`). `server/main-bot-department.test.ts`:
+  a start that finds MausBot in a department copies `bots.json` to
+  `bots.json.bak.<UTC time>` first, then takes it out and logs one line;
+  anything that fails leaves `bots.json` as it was, logs why and is tried again
+  at the next start. When another Chief already leads the general area, that
+  Chief stays and MausBot gives up its Chief mark and the departments it was
+  also in charge of; otherwise it keeps them, and the department it left has no
+  Chief until the person names one.
+- `server/skill-library-offer.test.ts`: MausBot's prompt lists every skill the
+  skills library offers, not only the ones that fit it best.
 - `src/components/MagicBotWelcome.test.ts` and `src/lib/default-bot.test.ts`:
   the first-launch welcome shows once with its panel closed, Add pins it and Not
   now turns the switch off, a name, colour, look or uploaded picture is saved as

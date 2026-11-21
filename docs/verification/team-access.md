@@ -73,7 +73,7 @@ made-up id gets, whether it was asked for by id, by the start of an id or by
 name; so are its threads and the rooms it is in. The one exception is the main
 bot asking for authority over a lead, which it can see: it is told that what
 is inside a project is set up from inside it. Projects made from one team
-template share their bots' names: a name resolves inside the asking bot's own
+share their bots' names: a name resolves inside the asking bot's own
 project, and the main bot asking for a name two leads share is given both,
 each with its project's department.
 
@@ -91,7 +91,7 @@ pnpm exec vitest run server/team-project-wall-real-projects.e2e.test.ts --maxWor
 
 The server check starts a fixture with the main bot, one bot outside projects
 and two projects of two bots each: a Director who leads and a Writer, under the
-same two names in both, as two projects made from one team template have them.
+same two names in both, as two projects made from one team have them.
 Making projects is not what it checks, so it stops the server, marks the four
 bots in `bots.json`, writes the two projects into `projects.json` and starts
 the server again on the same data. Then the person writes to one bot after the
@@ -113,10 +113,10 @@ started, every call and every answer are kept beside the fixture's server log
   member. A member by id or by name is answered like a made-up id, and the
   name both leads share is answered with the two leads and their projects. For
   a member it is refused a profile change, a team setup change, a retry, the
-  triggers, a copy of the bot, a thread on it and a wait for it. For the lead
-  it is refused a profile change, a team setup change, a retry, the triggers, a
-  copy of the bot and a room with it. It is refused a new bot in the project's
-  department. Work it hands to a lead is handed on by that lead to its own
+  triggers, a thread on it and a wait for it. For the lead it is refused a
+  profile change, a team setup change, a retry, the triggers and a room with
+  it. It is refused a new bot in the project's department, and it has no
+  `create_bot`, so it copies no bot. Work it hands to a lead is handed on by that lead to its own
   member, and the result comes back up.
 - A bot outside every project is told of no project's bot and reaches none,
   its lead included, and the refusals say nothing of projects.
@@ -132,15 +132,15 @@ started, every call and every answer are kept beside the fixture's server log
   bot outside, another department and a new one.
 
 The second server check makes the projects the way the person does, through
-the real routes: it saves a department of a Director who leads and a Writer
-as a team template, sets the folder for projects and makes two projects from
-that template. What each AI was told and every answer are kept beside the
+the real routes: it sets up a department of a Director who leads and a Writer,
+sets the folder for projects and makes two projects from that team. What each
+AI was told and every answer are kept beside the
 fixture's server log (`.two-real-projects.json`). It proves:
 
 - Each project's Director is the Chief of its project's department and the
-  project's lead; MagicBot and the template's own Director stay Chiefs.
+  project's lead; MagicBot and the team's own Director stay Chiefs.
 - A member is told its own lead and the main bot alone. The other project's
-  lead and member, the template's own bots and the bot outside projects are
+  lead and member, the team's own bots and the bot outside projects are
   answered word for word like a made-up id, and the name Director reaches its
   own lead.
 - The main bot is told both leads, each as a project's lead, and no member.
@@ -150,7 +150,7 @@ fixture's server log (`.two-real-projects.json`). It proves:
 - A bot the person adds to a project's department, and a bot the project's
   lead makes with `create_bot`, join that project: its lead is told of them,
   and the other project's member finds neither, by id or by name.
-- The team the template was saved from and the bot outside projects are told
+- The team the projects were made from and the bot outside projects are told
   of no project's bot and reach none.
 - A room of the two leads, of the main bot and a lead, or with a bot from
   outside in a project's department is refused; a room of one project's bots
