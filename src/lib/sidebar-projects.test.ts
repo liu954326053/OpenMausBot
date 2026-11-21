@@ -20,10 +20,9 @@ describe("the bot at the top of the sidebar", () => {
     expect(sidebarMainBot([{ id: "plain" }], "ada@example.com")).toBeUndefined();
   });
 
-  it("is left out while its welcome plays, or when hidden from the sidebar, unless a search found it", () => {
+  it("is left out while its welcome plays, or when hidden from the sidebar", () => {
     expect(sidebarMainBot([main], null, { welcoming: "maus" })).toBeUndefined();
     expect(sidebarMainBot([{ ...main, sidebarHidden: true }], null)).toBeUndefined();
-    expect(sidebarMainBot([{ ...main, sidebarHidden: true }], null, { searching: true })?.id).toBe("maus");
     expect(sidebarMainBot([{ ...main, hidden: true }], null)).toBeUndefined();
   });
 });

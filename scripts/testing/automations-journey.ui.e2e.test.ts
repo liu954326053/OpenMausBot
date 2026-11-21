@@ -16,7 +16,7 @@ import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
 import { healthAnswerer, launchRestartableServer, type RestartableServer, webhookPortRefusal } from "../../server/testing/restartable-server.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { agentBrowser, ensureUiBrowser, findInSidebar, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, openFromPalette, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
 import { mountPreview } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -162,15 +162,15 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await expect.poll(() => evaluate(OPEN_AUTOMATIONS), { timeout: 15_000, interval: 500 }).toBe(true);
     await expect.poll(() => text("main h1"), { timeout: 15_000 }).toBe("Automations");
   };
-  /** Opens a bot's chat; with `thread`, that conversation, as a person would from the bot's thread list. */
+  const clickMenuItem = (test: string) => `(() => { const item = [...document.querySelectorAll('[role="menuitem"]')].find((one) => ${test}); item?.click(); return Boolean(item); })()`;
+  /** Opens a bot's chat from the command palette; with `thread`, that conversation, from the chat's All threads. */
   const openChat = async (bot: string, thread?: string) => {
-    const id = options.bots[bot];
-    await expect.poll(() => evaluate(findInSidebar(bot)), { timeout: 15_000 }).toBe(true);
-    await expect.poll(() => evaluate(`(() => { const row = document.querySelector('[data-sidebar-bot-row="${id}"]'); row?.click(); return Boolean(row); })()`), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => evaluate(openFromPalette(bot, `bot:${options.bots[bot]}`)), { timeout: 15_000 }).toBe(true);
     await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 15_000 }).toBe(`Message ${bot}`);
     if (!thread || (await text()).includes(thread)) return;
-    await evaluate(`document.querySelector('button[aria-label="Expand ${bot} threads"]')?.click(); true`);
-    await expect.poll(() => evaluate(`(() => { const botRow = document.querySelector('[data-sidebar-bot-row="${id}"]'); const row = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === ${JSON.stringify(thread)} && (botRow.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING)); row?.click(); return Boolean(row); })()`)).toBe(true);
+    await evaluate(`document.querySelector('[data-testid="chat-more"]')?.click(); true`);
+    await expect.poll(() => evaluate(clickMenuItem(`one.textContent.trim().startsWith("All threads")`))).toBe(true);
+    await expect.poll(() => evaluate(clickMenuItem(`one.textContent.trim() === ${JSON.stringify(thread)}`))).toBe(true);
     await expect.poll(() => text(), { timeout: 15_000 }).toContain(thread);
   };
   const say = async (bot: string, message: string, thread?: string) => { await openChat(bot, thread); await ui("type", "--name", `Message ${bot}`, "--text", message); await ui("press", "--keys", "Enter"); };
@@ -385,16 +385,9 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(2);
     await screenshot("ledger-automations");
-    await openChat("Ledger");
-    await evaluate(`document.querySelector('button[aria-label="Actions for Ledger"]').click(); true`);
-    await expect.poll(() => text("[role=menu]")).toContain("Delete");
-    await clickIn("[role=menu]", "Delete");
-    await expect.poll(() => text("[role=alertdialog], [role=dialog]")).toContain("automations");
-    await screenshot("delete-bot-confirm");
-    await clickIn("[role=alertdialog], [role=dialog]", "Delete");
-    await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-sidebar-bot-row]")].some((item) => item.innerText.startsWith("Ledger"))`), { timeout: 30_000 }).toBe(false);
+    await api("DELETE", `/api/bots/${ledger}`);
     await openAutomations();
-    expect(await evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(0);
+    await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`), { timeout: 30_000 }).toBe(0);
     await screenshot("bot-deleted-list");
     await click("Calendar");
     expect(await evaluate(`[...document.querySelectorAll("[data-event-card]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(0);
@@ -562,7 +555,7 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     const state = async () => ({ ...(await api("GET", "/api/routines")), ...(await api("GET", "/api/webhooks")) }) as { routines: any[]; runs: any[]; webhooks: any[] };
 
     app = await openApp({ url: cloud.url, port: cloud.port, dataDir: cloud.dataDir, logPath: cloud.logPath }, { shots, bots: { Scout: scout, Ledger: ledger }, proxyHeaders: cloud.owner });
-    const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, openChat, say } = app;
+    const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, say } = app;
 
     // A new personal Cloud's first hour ends its welcome steps, so it opens on a chat.
     await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 30_000 }).toMatch(/^Message /);
@@ -639,15 +632,10 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     await api("POST", "/api/routines", { name: "Ledger close", prompt: "Close the books.", botId: ledger, schedule: { type: "daily", time: "18:00", weekdays: [1, 2, 3, 4, 5] } });
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(2);
-    await openChat("Ledger");
-    await evaluate(`document.querySelector('button[aria-label="Actions for Ledger"]').click(); true`);
-    await expect.poll(() => text("[role=menu]")).toContain("Delete");
-    await clickIn("[role=menu]", "Delete");
-    await expect.poll(() => text("[role=alertdialog]")).toContain("automations");
-    await clickIn("[role=alertdialog]", "Delete");
+    await api("DELETE", `/api/bots/${ledger}`);
     await expect.poll(async () => (await api("GET", "/api/bots?messages=0")).bots.some((bot: any) => bot.id === ledger), { timeout: 30_000 }).toBe(false);
     await openAutomations();
-    expect(await evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(0);
+    await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`), { timeout: 30_000 }).toBe(0);
     const after = await state();
     expect([...after.routines, ...after.webhooks].filter((item) => item.botId === ledger)).toEqual([]);
     await screenshot("cloud-bot-deleted");

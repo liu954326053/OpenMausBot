@@ -1,7 +1,7 @@
-import { Children, createElement, isValidElement, type ComponentProps, type KeyboardEvent, type MemoExoticComponent, type MouseEvent, type ReactElement, type ReactNode } from "react";
+import { Children, createElement, isValidElement, type KeyboardEvent, type MemoExoticComponent, type MouseEvent, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initialState, type AppState, type Bot, type Group } from "@/state/store";
+import { initialState, type AppState, type Bot } from "@/state/store";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
 
 const fixture = vi.hoisted(() => ({ advanced: false, showThreads: true, admin: true as boolean | null, state: {} as Partial<AppState>, dispatch: vi.fn() }));
@@ -18,9 +18,9 @@ vi.mock("@/state/store", async (importOriginal) => {
   return { ...original, useStore: () => ({ state: { ...original.initialState, ...fixture.state }, dispatch: fixture.dispatch }) };
 });
 
-import { BotContextMenu, BotListItem, BotThreadList, botRowProps, GroupListItem, type BotRowProps } from "./Sidebar";
+import { BotContextMenu, BotListItem, BotThreadList, botRowProps, type BotRowProps } from "./Sidebar";
 import { SidebarBotActivity, sidebarBotActivityTasks } from "./SidebarBotActivity";
-import { forgetSearchDisclosuresForTests } from "@/lib/search-disclosure";
+import { forgetDisclosuresForTests } from "@/lib/remembered-disclosure";
 import { noteTurnEvent, resetTurnLive } from "@/state/turn-status";
 import type { RuntimeEvent } from "../../shared/runtime-events";
 
@@ -41,8 +41,8 @@ const bot: Bot = {
 const quiet: Bot = { ...bot, unread: false, tasks: bot.tasks!.filter((task) => !task.busy && !task.unread && !task.activity) };
 const densities: SidebarDensity[] = ["comfortable", "icons"];
 const botRow = (BotListItem as MemoExoticComponent<(props: BotRowProps) => ReactNode>).type;
-const rowProps = (density: SidebarDensity, candidate: Bot = bot, query = "") =>
-  botRowProps({ ...initialState, ...fixture.state }, fixture.dispatch, candidate, { density, query, onMenu: vi.fn() });
+const rowProps = (density: SidebarDensity, candidate: Bot = bot) =>
+  botRowProps({ ...initialState, ...fixture.state }, fixture.dispatch, candidate, { density, onMenu: vi.fn() });
 
 type ElementProps = { children?: ReactNode; onClick?: (event: MouseEvent) => void; onKeyDown?: (event: KeyboardEvent) => void; [key: string]: unknown };
 function findElement(tree: ReactNode, attribute: string, value: string): ReactElement<ElementProps> | undefined {
@@ -67,21 +67,13 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("bot-first sidebar", () => {
-  it.each([false, true])("uses the selected mode for bot and room tool previews (advanced: %s)", (advanced) => {
+  it.each([false, true])("uses the selected mode for a bot's tool previews (advanced: %s)", (advanced) => {
     fixture.advanced = advanced;
     fixture.showThreads = false;
     const messages: Bot["messages"] = [{ id: "step", role: "bot", kind: "activity", at: 1, tool: { name: "mcp__omb__computer_batch", ok: true } }];
-    const candidate = { ...bot, messages, tasks: [], projects: [] };
-    const group: Group = { id: "room", threadId: "room-thread", name: "Team", memberIds: [bot.id], messages, defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };
-    const expected = advanced ? "mcp__omb__computer_batch" : "Use the screen";
-    const other = advanced ? "Use the screen" : "mcp__omb__computer_batch";
-    for (const markup of [
-      renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", candidate))),
-      renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() })),
-    ]) {
-      expect(markup).toContain(expected);
-      expect(markup).not.toContain(other);
-    }
+    const markup = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...bot, messages, tasks: [], projects: [] })));
+    expect(markup).toContain(advanced ? "mcp__omb__computer_batch" : "Use the screen");
+    expect(markup).not.toContain(advanced ? "Use the screen" : "mcp__omb__computer_batch");
   });
 
   it.each([
@@ -225,11 +217,10 @@ describe("bot-first sidebar", () => {
     resetTurnLive();
   });
 
-  it("rings a focused row or group chat inside its edge in both modes", () => {
+  it("rings a focused row inside its edge in both modes", () => {
     fixture.showThreads = false;
-    const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };
-    const simple = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...bot, tasks: [], projects: [] }))) + renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() }));
-    expect(simple.match(/focus-visible:outline-2 focus-visible:-outline-offset-2! focus-visible:outline-focus/g)).toHaveLength(2);
+    const simple = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...bot, tasks: [], projects: [] })));
+    expect(simple.match(/focus-visible:outline-2 focus-visible:-outline-offset-2! focus-visible:outline-focus/g)).toHaveLength(1);
     expect(simple).not.toContain("focus-visible:ring-accent/60");
     fixture.advanced = true;
     const advanced = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...bot, tasks: [], projects: [] })));
@@ -249,34 +240,11 @@ describe("bot-first sidebar", () => {
     expect(renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", candidate)))).toMatch(/data-bot-actions="atlas"[^>]*class="[^"]*\bpointer-events-auto opacity-100/);
   });
 
-  it.each(densities)("marks a room as one place instead of its members' faces, where a two-bot channel keeps both faces (%s)", (density) => {
-    const pip: Bot = { ...quiet, id: "pip", name: "Pip", color: "blue" };
-    fixture.state = { ...fixture.state, bots: [bot, pip] };
-    const room: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id, pip.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };
-    const roomMarkup = renderToStaticMarkup(createElement(GroupListItem, { group: room, density, onMenu: vi.fn() }));
-    expect(roomMarkup).toContain("data-room-mark");
-    expect(roomMarkup).not.toContain("data-avatar-kind=\"bot\"");
-    const channel = renderToStaticMarkup(createElement(GroupListItem, { group: { ...room, dm: true }, density, onMenu: vi.fn() }));
-    expect(channel).not.toContain("data-room-mark");
-    expect(channel.match(/data-avatar-kind="bot"/g)).toHaveLength(2);
-  });
-
-  it("marks an unread Simple group chat with the same top-right dot as a bot row, said once for a screen reader", () => {
-    const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: true, createdAt: 1 };
-    const markup = renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() }));
-    const name = markup.slice(markup.indexOf('class="flex items-baseline justify-between gap-2 pr-7"'));
-    expect(name.indexOf('data-row-dot=""')).toBeLessThan(name.indexOf("</div>"));
-    expect(markup.match(/data-testid="unread-dot"/g)).toHaveLength(1);
-    expect(markup).toContain('<span class="sr-only">Unread</span>');
-  });
-
-  it("draws no engine mark for a bot with no AI yet or in a group chat, and a faded one in Advanced mode", () => {
+  it("draws no engine mark for a bot with no AI yet, and a faded one in Advanced mode", () => {
     fixture.showThreads = false;
     fixture.state = { ...fixture.state, instances: [{ instanceId: "fake", driverKind: "claudeAgent", displayName: "Claude" }] as unknown as AppState["instances"] };
     const candidate = { ...bot, tasks: [], projects: [] };
     expect(renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", { ...candidate, modelSelection: { instanceId: "none", model: "m" } })))).not.toContain("data-provider-mark");
-    const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };
-    expect(renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() }))).not.toContain("data-provider-mark");
     fixture.advanced = true;
     const advanced = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", candidate)));
     expect(advanced).toMatch(/data-testid="model-badge"[^>]*><span data-provider-mark="brand" class="[^"]*\bopacity-60\b/);
@@ -298,24 +266,6 @@ describe("bot-first sidebar", () => {
     expect(markup).not.toMatch(/tabular-nums text-ink-secondary transition-opacity group-hover:opacity-0/);
     const row = findElement(tree, "data-sidebar-bot-row", bot.id)!;
     expect(row.props.title).toBe("Atlas · Research · Chief of Staff · Model: Sonnet (Claude)");
-  });
-
-  it.each([
-    { advanced: false, density: "comfortable", slot: "size-9", spacing: ["gap-2", "rounded-[8px]", "pl-2", "pr-2", "md:h-[54px]"], name: "font-medium", preview: "text-[13px]" },
-    { advanced: false, density: "icons", slot: "size-9", spacing: ["h-[54px]", "justify-center"], name: "font-semibold", preview: "text-[11px]" },
-    { advanced: true, density: "icons", slot: "size-12", spacing: ["justify-center", "px-1", "py-1.5"], name: "font-semibold", preview: "text-[11px]" },
-    { advanced: true, density: "comfortable", slot: "size-8", spacing: ["gap-2", "py-1.5", "pl-6", "pr-9"], name: "font-semibold", preview: "text-[11px]" },
-  ] as const)("sizes group chat rows in $density density (advanced $advanced)", ({ advanced, density, slot, spacing, name, preview }) => {
-    fixture.advanced = advanced;
-    const group: Group = { id: "room", threadId: "room-thread", name: "Launch", memberIds: [bot.id], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1 };
-    let tree: ReactNode;
-    function Capture() { tree = (GroupListItem as unknown as { type: (props: ComponentProps<typeof GroupListItem>) => ReactElement }).type({ group, density, onMenu: vi.fn() }); return tree; }
-    const markup = renderToStaticMarkup(createElement(Capture));
-    const row = findElement(tree, "data-sidebar-group-row", group.id)!;
-    expect(String(row.props.className).split(" ")).toEqual(expect.arrayContaining([...spacing]));
-    expect(markup).toMatch(new RegExp(`data-room-mark="" class="[^"]*\\b${slot}\\b[^"]*"><svg[^>]*width="16" height="16"`));
-    expect(markup).toMatch(new RegExp(`truncate text-\\[14px\\] text-ink ${name}`));
-    expect(markup).toContain(`truncate text-ink-secondary ${preview}`);
   });
 
   it("keeps the queued dot small", () => {
@@ -555,70 +505,23 @@ describe("bot-first sidebar", () => {
     if (density !== "icons") expect(renderToStaticMarkup(createElement(BotListItem, rowProps(density)))).toContain('aria-label="Atlas threads"');
     fixture.advanced = false;
     fixture.showThreads = false;
-    for (const query of ["", "history"]) {
-      const markup = renderToStaticMarkup(createElement(BotListItem, rowProps(density, bot, query)));
-      expect(markup).toContain(`data-sidebar-bot-row="${bot.id}"`);
-      expect(markup).not.toContain("data-sidebar-thread-row");
-      expect(markup).not.toContain("data-sidebar-folder-row");
-      expect(markup).not.toContain('aria-label="Atlas threads"');
-      if (density === "icons") expect(markup).not.toContain("data-sidebar-bot-activity");
-      else {
-        // It asks the person something, or has a reply they have not read; running, queued and idle threads stay out.
-        expect([...markup.matchAll(/data-sidebar-activity-row="([^"]+)"/g)].map((match) => match[1]).sort()).toEqual(["approval", "unread"]);
-      }
-      expect(markup).toContain('data-testid="waiting-dot"');
+    const markup = renderToStaticMarkup(createElement(BotListItem, rowProps(density)));
+    expect(markup).toContain(`data-sidebar-bot-row="${bot.id}"`);
+    expect(markup).not.toContain("data-sidebar-thread-row");
+    expect(markup).not.toContain("data-sidebar-folder-row");
+    expect(markup).not.toContain('aria-label="Atlas threads"');
+    if (density === "icons") expect(markup).not.toContain("data-sidebar-bot-activity");
+    else {
+      // It asks the person something, or has a reply they have not read; running, queued and idle threads stay out.
+      expect([...markup.matchAll(/data-sidebar-activity-row="([^"]+)"/g)].map((match) => match[1]).sort()).toEqual(["approval", "unread"]);
     }
+    expect(markup).toContain('data-testid="waiting-dot"');
     const unread = renderToStaticMarkup(createElement(BotListItem, rowProps(density, { ...bot, tasks: [bot.tasks![0]!, bot.tasks![5]!] })));
     expect(unread.includes('data-sidebar-activity-row="unread"')).toBe(density !== "icons");
     const read = renderToStaticMarkup(createElement(BotListItem, rowProps(density, { ...bot, unread: false, tasks: [bot.tasks![0]!, bot.tasks![1]!, bot.tasks![3]!] })));
     expect(read).not.toContain("data-sidebar-activity-row");
     expect(unread).toContain(density === "icons" ? "rounded-full border border-panel bg-accent" : density === "comfortable" ? 'data-testid="unread-dot"' : 'aria-label="Unread threads"');
-    forgetSearchDisclosuresForTests();
-  });
-
-  it("reveals a matching sole thread when searching a bot", () => {
-    fixture.advanced = true;
-    const single = { ...bot, projects: [], tasks: [bot.tasks![0]], unread: false };
-    const markup = renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", single, "last selected")));
-    expect(markup).toContain('data-sidebar-thread-row="last-selected"');
-  });
-
-  it("does not change group collaboration histories or creation", () => {
-    fixture.showThreads = false;
-    const group: Group = {
-      id: "group", name: "Planning", threadId: "group-thread", memberIds: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 0, messages: [],
-      tasks: [{ threadId: "group-thread", title: "Group conversation", createdAt: 1 }, { threadId: "group-earlier", title: "Earlier planning", createdAt: 0 }],
-    };
-    fixture.state.selectedId = group.id;
-    const markup = renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() }));
-    expect(markup).toContain('data-sidebar-thread-row="group-thread"');
-    expect(markup).toContain('aria-label="New thread"');
-    expect(markup).toContain('aria-label="Collapse Planning threads"');
-    const working = renderToStaticMarkup(createElement(GroupListItem, { group: { ...group, working: true }, density: "comfortable", onMenu: vi.fn() }));
-    expect(working).toMatch(/<button type="button" disabled="" aria-label="New thread"/);
-    const single = renderToStaticMarkup(createElement(GroupListItem, { group: { ...group, tasks: [group.tasks![0]] }, density: "comfortable", onMenu: vi.fn() }));
-    expect(single).not.toContain("Planning threads");
-    expect(single).not.toContain('data-sidebar-thread-row=');
-    const searched = renderToStaticMarkup(createElement(GroupListItem, {
-      group: { ...group, tasks: [group.tasks![0]] }, density: "comfortable", query: "conversation", onMenu: vi.fn(),
-    }));
-    expect(searched).toContain('data-sidebar-thread-row="group-thread"');
-  });
-});
-
-describe("group preview", () => {
-  it("previews the last reply, not the digest receipt that follows it", () => {
-    const group: Group = {
-      id: "group", name: "Planning", threadId: "group-thread", memberIds: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 0,
-      messages: [
-        { id: "b1", role: "bot", kind: "text", text: "Plan drafted.", at: 2, from: { botId: "atlas", name: "Atlas", color: "green" } },
-        { id: "d1", role: "bot", kind: "digest", text: "[digest] · tools: Write ×1", at: 3, digest: { turnId: "t1", tools: [{ name: "Write", count: 1 }], hookCoverage: "full" } },
-      ] as Group["messages"],
-      tasks: [{ threadId: "group-thread", title: "Group conversation", createdAt: 1 }],
-    };
-    const markup = renderToStaticMarkup(createElement(GroupListItem, { group, density: "comfortable", onMenu: vi.fn() }));
-    expect(markup).toContain("Atlas: Plan drafted.");
-    expect(markup).not.toContain("[digest]");
+    forgetDisclosuresForTests();
   });
 });
 
@@ -653,15 +556,21 @@ describe("activity-only escape hatch", () => {
       { threadId: "run", title: "Morning report", createdAt: 2, routineRunId: "run-1", busy: true, activity: "working" },
     ] };
     const ended: Bot = { ...runner, tasks: runner.tasks!.map((task) => task.routineRunId ? { ...task, busy: false, activity: "idle" as const, unread: true } : task) };
-    // Searching "Main" opens the thread tree, which itself keeps routine runs out: the row is the only way in.
-    const rows = (candidate: Bot, query = "") => renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", candidate, query))).split('data-sidebar-activity-row="run"').length - 1;
+    const rows = (candidate: Bot) => renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", candidate))).split('data-sidebar-activity-row="run"').length - 1;
     for (const showThreads of [false, true]) for (const advanced of [false, true]) {
       fixture.showThreads = showThreads;
       fixture.advanced = advanced;
       expect(rows(runner)).toBe(1);
       expect(rows(ended)).toBe(0);
-      if (showThreads) expect(rows(runner, "Main")).toBe(1);
     }
+    // The open thread tree keeps routine runs out itself: the row is the only way in.
+    let tree: ReactNode;
+    function Capture() { tree = botRow(rowProps("comfortable", runner)); return tree; }
+    renderToStaticMarkup(createElement(Capture));
+    findElement(tree, "aria-label", "Expand Atlas threads")!.props.onClick!({} as MouseEvent);
+    expect(renderToStaticMarkup(createElement(BotListItem, rowProps("comfortable", runner)))).toContain('aria-label="Atlas threads"');
+    expect(rows(runner)).toBe(1);
+    forgetDisclosuresForTests();
   });
 
   it("lists a reply in the thread a bot was left on, since its row opens the main thread", () => {

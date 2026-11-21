@@ -1,15 +1,14 @@
 import { approvalCardOutcome } from "./ApprovalCard";
-import type { Bot, Group, InstanceInfo, Message } from "@/state/store";
+import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { RoutineRunCardData } from "../../shared/routine-run";
 import { peerLine } from "@/lib/peer-message";
 import { isReceipt } from "@/lib/receipts";
 import { activityPreview, botEngine, failedTurnCause, STATUS_MARKER } from "@/lib/failed-turn";
 import { t } from "@/lib/i18n";
-import { sidebarConnectorPreview, sidebarGoalRunPreview } from "@/lib/sidebar-layout";
+import { sidebarConnectorPreview } from "@/lib/sidebar-layout";
 import { citationPreviewText } from "@/lib/citations";
 import { plainPreviewText } from "@/lib/plain-preview";
 import { isClientCancellation, isStoppedTurnName } from "../../shared/client-cancel";
-import { roomWorkingPreview } from "@/lib/room-threads";
 import { localizedCard } from "@/lib/widget-text";
 import { widgetToText } from "../../shared/widget";
 
@@ -74,27 +73,4 @@ const RUN_PREVIEW = {
 /** "“Morning summary” finished": an automation's run, in the page's words. */
 export function automationRunPreview(run: Pick<RoutineRunCardData, "routineName" | "status">): string {
   return t(RUN_PREVIEW[run.status], { name: run.routineName });
-}
-
-export function groupPreview(group: Group, bots: Bot[], instances: InstanceInfo[], advanced: boolean): string {
-  const working = roomWorkingPreview(group, (botId) => bots.find((b) => b.id === botId)?.name);
-  if (working) return working;
-  if (group.working) return t("sidebar.preview.teamWorking");
-  const newest = lastPreviewable(group.messages);
-  if (!newest) return t("sidebar.preview.noMessages");
-  const last = quotedLine(group.messages, newest, advanced);
-  if (last.kind === "text" && last.role !== "user" && isClientCancellation(last.text ?? "")) {
-    const stopped = t("chat.turnStopped");
-    return last.from ? `${last.from.name}: ${stopped}` : stopped;
-  }
-  const text = last.kind === "activity" && last.tool
-    ? activityPreview(last.tool, botEngine(bots.find((bot) => bot.id === last.from?.botId), instances), last.dataResult, advanced)
-    : last.kind === "goal.run" && last.goalRun
-      ? sidebarGoalRunPreview(last.goalRun)
-      : last.kind === "connector" && last.connector
-        ? sidebarConnectorPreview(last.connector, t)
-        : (last.text ?? "");
-  const readable = plainPreviewText(citationPreviewText(text));
-  if (last.role === "user") return t("sidebar.preview.you", { text: readable });
-  return last.from ? `${last.from.name}: ${readable}` : readable;
 }
