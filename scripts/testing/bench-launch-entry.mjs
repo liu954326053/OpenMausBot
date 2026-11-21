@@ -100,7 +100,7 @@ utilityProcess.fork = function (entry, ...rest) {
   return child;
 };
 
-const MAIN_BOT_ROW = "[data-sidebar-bot-row]:not([data-sidebar-project-member])";
+const MAIN_BOT_ROW = "[data-sidebar-bot-row]";
 const SIDEBAR_ROWS = `${MAIN_BOT_ROW}, [data-sidebar-project-row]`;
 const FORGET_LAST_PROJECT = `localStorage.removeItem("openmausbot.lastProject.v1")`;
 const COLLECT = (target) => `(() => {

@@ -26,7 +26,6 @@ import { RoomMark, StackedMauses } from "./StackedMauses";
 import { LocalComputerAutoWarning } from "./LocalComputerAutoWarning";
 import { nextRename } from "@/lib/rename";
 import { useDesktopCapabilities, windowFramed } from "./DesktopCapabilities";
-import { MIN_QUERY, SearchResults } from "./SearchResults";
 import { ImportDialog } from "./lazy-screens";
 import { openCommandPalette } from "./CommandPalette";
 import { TeamDialog } from "./TeamDialog";
@@ -50,7 +49,6 @@ import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
 import { GlassBar, GlassScrollFrame, GlassScroller } from "./GlassScrollFrame";
 import { DesktopWorkspaceSwitcher, endCloudHowTo } from "./DesktopWorkspaceSwitcher"; import { PlaceTint } from "./PlaceTint"; import { ChromeRailToggle } from "./ChromeRailToggle";
 import { useCloudOwner } from "./CloudOwner"; import { OtherPlaceBots, OwnBotHomeMark } from "./OtherPlaceBots"; import { NewBotOtherPlaceItem, useNewBotHereLabel } from "./NewBotPlaceItems";
-import { SidebarSectionHeader } from "./SidebarSectionHeader";
 import { NeedsYouButton, OwnerPickerHost } from "./TeamOwner"; import { SidebarPeople } from "./SidebarPeople"; import { SidebarInboxRow } from "./SidebarInboxRow"; import { TeamSideSwitch, useTeamSideLists } from "./TeamSideSwitch"; import { SidebarActiveThreads } from "./SidebarActiveThreads"; import { useInboxSupport } from "@/state/inbox";
 import { MENU_ITEM, MENU_SHEET } from "./menu-recipe";
 import { ELEVATED_CONTROL } from "./elevated";
@@ -75,7 +73,7 @@ import { LiveCallPill, liveBadgeFor } from "./LiveCallPill";
 import { ShortcutHint } from "./ShortcutHint";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { useAdvancedMode } from "@/lib/interface-mode";
-import { hiddenFromSidebar, useViewerEmail, useWelcomingBot } from "@/lib/default-bot";
+import { useViewerEmail, useWelcomingBot } from "@/lib/default-bot";
 import { archiveBotWithNotice, onArchiveNotice } from "./bot-archive";
 import { ArchivedBotsPanel, botConfirmProps, type BotConfirmKind } from "./ArchivedBotsPanel"; import { MovedBotRows } from "./MoveToTeam"; import { MovedToMyCloudRow } from "./MoveToMyCloud";
 import { SectionPicker } from "./SidebarSectionPicker";
@@ -1011,39 +1009,23 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const q = query.trim().toLowerCase();
   const tools = useToolsSection(density, q);
 
-  const projectSide = useTeamProjectSide(), sideLists = useTeamSideLists(state), matchingBots = sideLists.bots
-    .filter((b) => !b.hidden)
-    .filter(
-      (b) =>
-        !q ||
-        b.name.toLowerCase().includes(q) ||
-        (b.title ?? "").toLowerCase().includes(q) ||
-        botPreview(b, visibleMessages(b), state.instances, advanced).toLowerCase().includes(q) ||
-        b.tasks?.some((task) => !task.routineRunId && task.title.toLowerCase().includes(q)) ||
-        b.projects?.some((folder) => folder.name.toLowerCase().includes(q)),
-    );
-  const visibleGroups = sideLists.groups.filter((g) => !q || g.name.toLowerCase().includes(q) || g.tasks?.some((task) => task.title.toLowerCase().includes(q)));
+  const projectSide = useTeamProjectSide(), sideLists = useTeamSideLists(state);
   const viewerEmail = useViewerEmail(), welcoming = useWelcomingBot();
-  const mainBot = sidebarMainBot(sideLists.bots, viewerEmail, { welcoming, searching: Boolean(q) });
-  const shownMain = mainBot && matchingBots.includes(mainBot) ? mainBot : null;
-  const outside = q ? {
-    bots: matchingBots.filter((bot) => bot !== mainBot && !projectSide.of(bot) && !hiddenFromSidebar(bot, viewerEmail)),
-    groups: projectSide.rooms(visibleGroups),
-  } : null;
+  const shownMain = sidebarMainBot(sideLists.bots, viewerEmail, { welcoming }) ?? null;
   const tiles = simpleDesk && shownMain !== null;
   const archivedBots = state.bots.filter((bot) => bot.hidden && !bot.movedTo);
   const archivedEntry = remoteClient ? undefined : { count: archivedBots.length, open: () => setArchivedBotsOpen(true) };
   const attention = crossBotAttentionThreads(state.bots, state.pendingQueued, undefined, state.groups);
-  const unreadOutside = unreadOutsideProjects(sideLists.bots, sideLists.groups, projectSide, { viewer: viewerEmail, mainBotId: mainBot?.id });
+  const unreadOutside = unreadOutsideProjects(sideLists.bots, sideLists.groups, projectSide, { viewer: viewerEmail, mainBotId: shownMain?.id });
   const pendingBotUndo = teamFeedback?.restoreBot;
-  const botRow = (bot: Bot) => botRowProps(state, dispatch, bot, { density, query: q, onMenu: setMenu, renameRequest: renameRequest?.botId === bot.id ? renameRequest.nonce : 0 });
-  const roomRow = (group: Group) => <GroupListItem key={group.id} group={group} density={density} query={q} onMenu={setRoomMenu} />;
-  const inboxRow = !q && <SidebarInboxRow icons={density === "icons"} large={!advanced} flush={!simpleDesk} running={attentionHasRunningWork(attention)} onOpened={phone ? onClose : undefined} />;
+  const botRow = (bot: Bot) => botRowProps(state, dispatch, bot, { density, query: "", onMenu: setMenu, renameRequest: renameRequest?.botId === bot.id ? renameRequest.nonce : 0 });
+  const inboxRow = <SidebarInboxRow icons={density === "icons"} large={!advanced} flush={!simpleDesk} running={attentionHasRunningWork(attention)} onOpened={phone ? onClose : undefined} />;
   const railSearch = () => {
     if (collapseToIcons) return openCommandPalette();
     setSearchOpen(true);
     toggleCollapsed();
   };
+  const railSearchLabel = t(collapseToIcons ? "sidebar.searchAria" : "sidebar.searchProjects");
   const plusItem = cn(MENU_ITEM, "text-ink hover:bg-menu-hover"), newBotHere = useNewBotHereLabel();
   const mayMakeBots = teamSettingsAllowed !== false || Boolean(state.config?.team);
   const mayMakeProjects = projectSide.shown && !remoteClient, mayMakeDepartments = !remoteClient && teamSettingsAllowed !== false;
@@ -1134,7 +1116,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           <div aria-hidden="true" data-traffic-light-space className={density === "icons" ? "h-5 w-full" : "w-[72px] shrink-0 md:w-[calc(72px_-_var(--rail-beside,0px))]"} />
         ) : null}{!phone && !framed && <ChromeRailToggle advanced={advanced} icons={density === "icons"} style={windowNoDragStyle} />}
         {rail && <div data-sidebar-rail-top className="flex flex-col items-center gap-2 pt-1" style={windowNoDragStyle}>
-          <button type="button" onClick={railSearch} aria-label={t("sidebar.searchAria")} title={t("sidebar.searchAria")} className={SIMPLE_TOP_BUTTON}>
+          <button type="button" onClick={railSearch} aria-label={railSearchLabel} title={railSearchLabel} className={SIMPLE_TOP_BUTTON}>
             <Search size={18} strokeWidth={1.5} aria-hidden="true" />
           </button>
           <div className="relative flex">{plusControl}</div>
@@ -1176,8 +1158,8 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setQuery("")}
-            placeholder={t("sidebar.search")}
-            aria-label={t("sidebar.searchAria")}
+            placeholder={t("sidebar.searchProjects")}
+            aria-label={t("sidebar.searchProjects")}
             className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-tertiary focus:outline-none"
           />
         </div>
@@ -1193,9 +1175,6 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
 
       <GlassScroller className={rail ? "[scrollbar-gutter:stable_both-edges]" : simpleDesk ? "px-3" : "px-2"}>
         <div className={cn("flex flex-col", simpleDesk ? cn("gap-0.5 pb-2", !tiles && "pt-2") : advanced ? "gap-0.5" : "gap-1 pb-2 pt-2")}>
-          {matchingBots.length === 0 && visibleGroups.length === 0 && q && q.length < MIN_QUERY && (
-            <div className="px-3 py-6 text-center text-[13px] text-ink-secondary">{t("sidebar.noMatch", { query })}</div>
-          )}
           {shownMain && !simpleDesk && (phone ? (
             <PhoneHero bot={shownMain} selected={botRow(shownMain).selected} onOpen={() => openBotRow(dispatch, shownMain, showThreads, botRow(shownMain).selected)} onMenu={setMenu} />
           ) : (
@@ -1203,18 +1182,11 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           ))}
           {!simpleDesk && inboxRow}
           {!q && <NeedsYouButton compact={rail} />}
-          <SidebarTeamProjects side={projectSide} all={sideLists} found={{ bots: matchingBots, groups: visibleGroups }} query={q}
-            mode={{ density, advanced, tight: advanced || simpleDesk, remote: remoteClient, followed: Boolean(outside?.bots.length || outside?.groups.length) }}
-            roomRow={roomRow} onNew={() => setNewProject(true)} onError={(text) => setTeamFeedback({ error: true, text })} />
-          {outside && outside.bots.length + outside.groups.length > 0 && (
-            <div data-sidebar-outside-projects="" className={cn("flex flex-col", advanced || simpleDesk ? "gap-0.5" : "gap-1")}>
-              {density !== "icons" && <SidebarSectionHeader name={t("sidebarProjects.outside")} line={simple} collapsed={false} reorderable={false} dragging={false} />}
-              {outside.bots.map((bot) => <BotListItem key={bot.id} {...botRow(bot)} />)}
-              {outside.groups.map(roomRow)}
-            </div>
-          )}
+          <SidebarTeamProjects side={projectSide} all={sideLists} query={query.trim()}
+            mode={{ density, advanced, tight: advanced || simpleDesk, remote: remoteClient }}
+            onNew={() => setNewProject(true)} onError={(text) => setTeamFeedback({ error: true, text })} />
           {!q && <SidebarPeople compact={rail} onOpened={phone ? onClose : undefined} />}
-          <OtherPlaceBots query={query} /><MovedBotRows bots={state.bots} /><MovedToMyCloudRow bots={state.bots} /><SearchResults query={query} onLanded={() => { setQuery(""); setSearchOpen(false); }} />
+          {!q && <OtherPlaceBots />}<MovedBotRows bots={state.bots} /><MovedToMyCloudRow bots={state.bots} />
         </div>
       </GlassScroller>
       <GlassBar edge="bottom">

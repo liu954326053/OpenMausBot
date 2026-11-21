@@ -1,15 +1,11 @@
-import { Crown, FolderClosed, MoreHorizontal } from "lucide-react";
+import { FolderClosed, MoreHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
-import { botShowsUnread } from "@/lib/bot-unread";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { sidebarAttentionLabel, type SidebarSectionAttention } from "@/lib/sidebar-attention";
-import { visibleMessages, type Bot } from "@/state/store";
-import { BotAvatar } from "../Avatar";
-import { sidebarBotStatus } from "../SidebarBotActivity";
-import { AvatarActivityDot, RowStatusText, rowSelectedSurface, rowSurface, type RowActivity } from "../SidebarRowMarkers";
+import { rowSelectedSurface } from "../SidebarRowMarkers";
 import { SectionAttention } from "../SidebarSectionHeader";
 import { SIMPLE_RAIL_BUTTON, SIMPLE_ROW_FOCUS } from "../SidebarSimpleTop";
 
@@ -81,42 +77,6 @@ export function SidebarProjectTile({ project, attention, selected, onOpen, onMen
         {[...project.name.trim()][0]?.toLocaleUpperCase() ?? <FolderClosed size={16} />}
       </span>
       <span aria-hidden="true" className="absolute -end-0.5 -top-0.5 flex"><SectionAttention attention={attention} label="" /></span>
-    </button>
-  );
-}
-
-/** A project's bot a search found: a click opens the project's canvas with this bot's node chosen. */
-export function SidebarProjectMember({ bot, lead, simple, selected, queued, onOpen }: {
-  bot: Bot;
-  lead: boolean;
-  simple: boolean;
-  selected: boolean;
-  queued: Record<string, unknown[]>;
-  onOpen: () => void;
-}) {
-  const { waiting, working, failed, teammateWait, queued: inQueue } = sidebarBotStatus(bot, queued, visibleMessages(bot));
-  const unread = botShowsUnread(bot);
-  const activity: RowActivity | null = working ? "working" : failed ? "failed" : teammateWait ? "teammate" : inQueue ? "queued" : null;
-  return (
-    <button type="button" data-sidebar-bot-row={bot.id} data-sidebar-project-member={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen}
-      className={cn(
-        "relative flex w-full min-w-0 items-center gap-2 text-start", SIMPLE_ROW_FOCUS, rowSurface(selected),
-        simple ? "h-10 rounded-[8px] ps-5 pe-3" : "h-8 rounded-md ps-5 pe-3",
-        selected ? rowSelectedSurface : "hover:bg-raised/50",
-      )}>
-      <span className="relative flex shrink-0">
-        <BotAvatar bot={bot} size={simple ? 26 : 22} animated={working} />
-        <AvatarActivityDot activity={activity} />
-      </span>
-      <span className="min-w-0 truncate text-[13px] text-ink">{bot.name}</span>
-      {lead && <Crown size={11} aria-label={t("sidebar.bot.chiefOfStaff")} className="shrink-0 text-warning" />}
-      <span className="flex-1" />
-      {(waiting || unread) && (
-        <span aria-hidden="true" data-testid={waiting ? "waiting-dot" : "unread-dot"} title={waiting ? t("sidebar.preview.waiting") : t("task.unread")}
-          className={cn("size-2 shrink-0 rounded-full", waiting ? "bg-warning" : "bg-accent")} />
-      )}
-      {waiting && <span className="sr-only">{t("sidebar.preview.waiting")}</span>}
-      <RowStatusText working={working} failed={failed} unread={unread} />
     </button>
   );
 }
