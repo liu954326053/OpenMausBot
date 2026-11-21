@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { McpOAuthManager } from "../mcp-oauth.ts";
@@ -95,6 +97,19 @@ describe("a project's MCP server", () => {
     expect(said.code).toBe("unreachable");
     expect(said.error).toMatch(/^The MCP server gen couldn't be reached \(.+\)\. Check it in Apps → MCP servers, then try again\.$/);
     expect(JSON.stringify(said)).not.toMatch(/tok-9d8e7f6a5b4c3d2e|sk-gen-/);
+  });
+
+  it("refuses a server it could not connect to in words of its own, without the connection's English, and keeps any other detail as it was", async () => {
+    const failing = createServer((_request, response) => { response.writeHead(500).end(); });
+    await new Promise<void>((resolve) => failing.listen(0, "127.0.0.1", resolve));
+    opened.push({ close: () => new Promise((resolve) => failing.close(resolve)) });
+    const { mcp } = access({ gen: { url: "http://127.0.0.1:9/mcp" }, failing: { url: `http://127.0.0.1:${(failing.address() as AddressInfo).port}/mcp` } });
+    const offline = await refusal(() => names(mcp, "gen"));
+    expect(offline).toMatchObject({ code: "unreachable", errorKey: "serverError.projectGeneration.unreachableNetwork", errorParams: { server: "gen" } });
+    expect(JSON.stringify(offline)).not.toContain("request failed");
+    expect(await refusal(() => names(mcp, "failing"))).toMatchObject({
+      code: "unreachable", errorKey: "serverError.projectGeneration.unreachable", errorParams: { server: "failing", detail: "it answered HTTP 500" },
+    });
   });
 
   it("answers a tool's JSON-RPC error as that tool's error", async () => {
