@@ -16,8 +16,8 @@
 6. **机器人节点**的编号是 `bot:<botId>`，快照里每个机器人都有节点和推出来的状态（`CanvasBotState`）。没人摆过的（`placed: false`）用服务器的默认布局，和程序的树是同一条规则，所以打开时照快照的位置画，不写回。机器人节点不能删除、复制、打组，只能挪和改大小，面板里不选模型。
 7. **派发线**来自快照里 `kind: "dispatch"` 的连线：虚线、另一种颜色、没有连接点、点不中、删不掉。
 8. **自动排列**：负责人在最左，下级在右边一列，每棵子树占自己的一段高度；机器人做出来的节点（`createdBy` 是它、或者从它连出来）排在它右边，从这些节点生成出来的跟着走。“整理”只排机器人和它们做出来的节点，把位置存回去，可以撤销。
-9. **文本节点**的面板是“要写什么”和选一个机器人，发出去由机器人写，回复填进这个文本节点（`CanvasBotTask.targetNodeId`，契约里没有，报告里列出）；双击正文仍然可以直接改。
-10. **生成**：程序只把节点的提示词、改过的设置和连进来的图片、音频交给 `startGeneration`；结果放在哪里由服务器定（空节点在原地，其余在右边新建并连上，排在之前生成的下面）。分镜生成中，程序在它右边将要出结果的地方画一个虚线的“生成中”视频节点。生成中可以取消，失败显示原因并可以重试，被拒绝时显示服务器的原因。
+9. **文本节点**的面板是“要写什么”和选一个机器人，发出去由机器人写，回复填进这个文本节点（`CanvasTaskRequest.targetNodeId`）；机器人在写的时候节点上显示“正在写”（快照里的 `writingInto`）；双击正文仍然可以直接改。
+10. **生成**：程序先存好节点的提示词，再请服务器生成这个节点（`startGeneration(projectId, nodeId)`），服务器从节点存着的提示词、设置和连进来的文件开始；结果都在右边新建并连上，排在之前生成的下面。生成中，程序在将要出结果的地方画一个虚线的“生成中”节点。生成中可以取消，失败显示原因并可以重试，被拒绝时显示服务器的原因。
 11. **设置的继承**用契约里的 `resolveSettings`、`modelOffers`、`settingProblems`：节点的 `settings` 只存它改过的项，其余跟项目设置走。面板里改过的项带“已改”的标记和“恢复默认”（删掉这个键）；项目设置改了，没改过的项跟着变。模型不提供的设置标出来。
 12. **没有选 MCP 服务器**时生成按钮不能点，旁边说明要先在项目设置里选服务器，并给一个打开项目设置的按钮。
 13. **`@` 引用**用 app 自己的 `MentionTextarea`：引用写成 `@图片 1` 这样的文字并高亮，不搬 infinite-canvas 的可编辑芯片输入框。
@@ -31,7 +31,7 @@
 - 页面组件 `ProjectCanvas`（`src/components/project-canvas/ProjectCanvas.tsx`）的属性是 `{ projectId: string; selectedBotId?: string; backend: CanvasBackend; topBarSlot?: ReactNode }`；`topBarSlot` 是顶栏里“团队有变化”的位置，任务说明里没有，报告里列出。
 - 每个新文件不超过 1,000 行（`file-size-ratchet`）。
 - 新文字都在 `projectCanvas.` 前缀下，四个语言文件（英文、简体、繁体、巴西葡萄牙语）各加在一处，不动原有的键。
-- `shared/project-canvas.ts` 和 `shared/project-generation.ts` 按负责人提交的原样单独提交一次，之后不改。
+- `shared/project-canvas.ts` 和 `shared/project-generation.ts` 按负责人提交的原样单独提交一次。第二阶段的服务器改动只在 `shared/project-canvas.ts` 加了 `CanvasTaskRequest.targetNodeId` 和 `CanvasBotState.writingInto`。
 
 ## 文件
 
@@ -77,11 +77,14 @@
 3. **`baseRevision`**：取画布当时的修订号，但不早于自己上一批的修订号，免得和自己的上一批冲突。冲突时这一批不生效，显示服务器的原因，再读一次快照。
 4. **重读**：每个事件、以及实时流重连后漏掉事件时，都先读快照、再读机器人的样子。
 5. **样子跟着 store**：`src/components/project-canvas/ServerProjectCanvas.tsx` 是项目页要放的组件。它旁边有个不画东西的小组件读 store，store 里机器人的样子和交给画布的不一样时（app 刚读完数据、改了头像、新机器人进来）让画布重读；画布本身不跟着 store 的每次变化重画。
-6. **生成**的开始和取消等 `canvas-server` 合进 `main`，照最终的路由和确认卡片做。
-7. **端到端**：`scripts/testing/project-canvas-server-preview.tsx` 把 `ServerProjectCanvas` 放在 app 的 `StoreProvider` 里，经预览的代理接真的服务器（`launchRestartableServer`，脚本化的假引擎）。`scripts/testing/project-canvas-ui.e2e.test.ts` 用 agent-browser 走：快照画出项目的机器人（颜色来自 store）、改动刷新后还在、上传进 `素材`、带参考的任务到达机器人、外面的修改让打开的画布更新、打开对话和停止走 app 的导航和 Stop。
+6. **生成**照 `canvas-server` 合进 `main` 的样子做：开始走画布的 `POST .../canvas/generate { nodeId }`，取消走生成的 `POST .../generation/jobs/:jobId/cancel`，生成接口的拒绝原样显示。机器人超过每天的上限时，它的节点显示服务器那张确认卡片的原因（用 app 的 `approvalDetailText`，人的语言），在对话里回答：store 的 `answerCard` 要对话已经读进来，否则会把回答当成一条普通消息发出去，所以画布不直接回答卡片。
+7. **端到端**：`scripts/testing/project-canvas-server-preview.tsx` 把 `ServerProjectCanvas` 放在 app 的 `StoreProvider` 里，经预览的代理接真的服务器（`launchRestartableServer`，脚本化的假引擎，生成接 `startFakeGenerationMcp`）。`scripts/testing/project-canvas-ui.e2e.test.ts` 用 agent-browser 走：快照画出项目的机器人（颜色来自 store）、改动刷新后还在、上传进 `素材`、带参考的任务到达机器人、外面的修改让打开的画布更新、打开对话和停止走 app 的导航和 Stop、图片节点生成一张图、停止一个生成、在文本节点里请机器人写（先显示“正在写”，回复再写进节点）、删掉机器人的分镜再撤销（回来还是机器人的，机器人还能改它）。
 8. **端到端找出的三处界面问题**（真鼠标才会出，happy-dom 里看不到）：在节点上一按就抓住指针，Chrome 把 click 和 dblclick 发给抓指针的元素，双击写字、双击改名、双击看大图都打开了“加节点”菜单——改成拖动起来才抓；平移工具下按画布空白处 `preventDefault`，焦点不走，正在写的文字不保存——只对中键（它会开浏览器的自动滚动）这样做；平移或拖动时面板被卸掉，回来时展开的对话等状态没了——改成只藏起来。
-9. **要服务器做的三处**写在报告里，等 `canvas-server` 合进 `main` 后加到它的模块里：
-   - **撤销时加回删掉的节点**：`add_node` 已经接受删掉的 id，但严格的 schema 没有 `createdBy`，机器人做的节点加回来就成了人的，机器人再也改不了、删不了、生成不了，也离开了它的那一列。文档存储把删掉的节点的 `createdBy` 在 `CANVAS_HISTORY` 的范围里留着，人加回同类型的同一个 id 时恢复它（或者加一个 `restore_nodes` 操作把节点和它的连线一起恢复）。测试：机器人加一个分镜，人删掉再加回同一个 id，机器人还能改它。
-   - **`targetNodeId`**：`CanvasTaskRequest` 加 `targetNodeId?`，检查它是这块画布上的文本节点；服务器记住这个任务，机器人在那个对话里给这条任务的最后回复落地时，把回复（照 `output` 的方式去掉不该给的）写进节点的 `metadata.content`，发 `document` 事件，节点的制作者不变；节点没了、回合失败或被停时不写。快照里给出还在写的目标（比如 `CanvasBotState.writingInto?: string[]`），刷新后画布还显示“正在写”。
-   - **参考的名字**：画布给参考起名“文本 1”“图片 1”（按种类和连进来的顺序，组会展开成里面的节点），人在消息里用 `@文本 1` 指它；服务器的 `references.ts` 写的是 `Text "<标题或 id>"`，没标题的节点给机器人看到的是一串 id，连进来的组整个被跳过。两边应该用同一套名字，最好把 `connectedReferences` 挪进 `shared/`，两边都用它。
-10. **接进项目页**等侧栏那一轨合进来：在 `StoreProvider` 里的项目页放 `<ServerProjectCanvas projectId={project.id} selectedBotId={…} topBarSlot={…团队有变化的提示…} />`，不用再写别的。
+9. **服务器的两处改动**在 `canvas-server` 合进 `main` 后加进了它的模块，带测试：
+   - **撤销时加回删掉的节点**：文档存储在画布文件里记下 `CANVAS_HISTORY` 范围内删掉的内容节点是谁做的；人加回同类型的同一个 id 时，节点回到它的制作者手里，机器人还能改、删、生成它，也还在它的那一列。机器人加节点永远是它自己的。
+   - **`targetNodeId`**：`CanvasTaskRequest.targetNodeId` 必须是这块画布上的文本节点。服务器跟着这条任务的消息（排队的等它送进对话，用 `queueId` 认出来），等回答这条消息的那一回合结束：成功就把最后的回复（照 `output` 去掉密钥，截到 `CANVAS_CONTENT_MAX_CHARS`）写进节点，发 `document` 事件，制作者不变；回合失败、被停、节点没了或项目归档时不写。快照的 `CanvasBotState.writingInto` 列出它在写的节点（对话在忙或在排队时），刷新后画布还显示“正在写”。插进正在跑的回合的任务、和别的排队消息合成一回合的任务、服务器在回复前重启的任务，都不写。
+10. **还要服务器做的**（报告里列出，没有改契约）：
+    - **参考的名字**：画布给参考起名“文本 1”“图片 1”（按种类和连进来的顺序，组会展开成里面的节点），人在消息里用 `@文本 1` 指它；服务器的 `references.ts` 写的是 `Text "<标题或 id>"`，没标题的节点给机器人看到的是一串 id，连进来的组整个被跳过。两边应该用同一套名字，最好把 `connectedReferences` 挪进 `shared/`，两边都用它。
+    - **生成配置节点**：契约给 `config` 节点 `prompt`、`settings` 和 `generationMode`，但服务器只生成分镜、图片和视频节点，画布上的“生成配置”节点现在点生成会被拒。
+    - **`canvas-server` 下一次合进来的**：节点的错误和拒绝带上目录键（`5cb525b19`），合进来后画布用人的语言显示；派发线跟着团队的流程走（`6c5ac5ddc`），画布照快照画派发线、收到事件就重读，应该不用改。
+11. **接进项目页**等侧栏那一轨合进 `main`：在 `StoreProvider` 里的项目页放 `<ServerProjectCanvas projectId={project.id} selectedBotId={…} topBarSlot={…团队有变化的提示…} />`，不用再写别的。
