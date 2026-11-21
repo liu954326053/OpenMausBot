@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
-import { activeLocale, t } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { sidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
 import { teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
@@ -31,8 +31,6 @@ export interface SidebarTeamProjectsMode {
   tight: boolean;
   /** This app drives another computer: its projects are shown, and made and archived on that computer only. */
   remote: boolean;
-  /** Other lists come after the projects. */
-  followed: boolean;
 }
 
 interface Lists {
@@ -40,24 +38,14 @@ interface Lists {
   groups: Group[];
 }
 
-interface Match {
-  names?: string;
-  botId?: string;
-}
-
 const MENU_WIDTH = 200;
-const NO_MATCH: Match = {};
-const listed = (names: string[]) => new Intl.ListFormat(activeLocale(), { type: "conjunction", style: "narrow" }).format(names);
 
-/** One row per project, with nothing under it; a click opens its canvas. A search keeps the projects whose name, bots or
- * group chats match. Where it matched inside a project, the row names what it found there, and a click chooses the
- * first bot it found on the canvas, the lead first. */
-export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onError }: {
+/** One row per project; a click opens its canvas. A search lists the projects whose name holds it, nothing under them. */
+export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: {
   side: TeamProjectSide;
-  /** Every bot and group chat the sidebar lists on this side, and those a search found (all of them without a search). */
+  /** Every bot and group chat the sidebar lists on this side. */
   all: Lists;
-  found: Lists;
-  /** Trimmed and in lower case. */
+  /** The sidebar's search, trimmed. */
   query: string;
   mode: SidebarTeamProjectsMode;
   onNew: () => void;
@@ -69,6 +57,7 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
   useTeamProjectsLoader(useStoreSelector((state) => teamProjectsVersion(state.bots, state.sections)));
   const selectedId = useStoreSelector((state) => state.selectedId);
   const shownProject = useStoreSelector((state) => (state.activeView === "project" ? state.project : undefined));
+  const openChat = useStoreSelector((state) => (state.activeView === "chat" ? state.selectedId : null));
   const latest = useRef({ selectedId, shownProject });
   latest.current = { selectedId, shownProject };
   const [menu, setMenu] = useState<{ project: TeamProjectWire; x: number; y: number } | null>(null);
@@ -78,7 +67,14 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
   const [reviewing, setReviewing] = useState<TeamProjectWire | null>(null);
   const forget = useCallback(() => setArchived(null), []);
 
-  if (!side.shown) return null;
+  const listedBots = all.bots.filter((bot) => !bot.hidden);
+  const shownProjects = side.projects
+    .filter((project) => project.name.toLowerCase().includes(query.toLowerCase()))
+    .map((project) => ({ project, attention: sidebarSectionAttention(side.team(project, listedBots), side.teamRooms(project, all.groups)) }));
+  const noMatch = query !== "" && shownProjects.length === 0 && (
+    <p data-sidebar-no-project-match="" className="px-3 py-6 text-center text-[13px] text-ink-secondary">{t("sidebar.noProjectMatch", { query })}</p>
+  );
+  if (!side.shown) return noMatch || null;
 
   const { density, advanced, remote } = mode;
   const icons = density === "icons";
@@ -94,9 +90,12 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
     setMenu({ project, x: Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 10)), y: Math.max(8, Math.min(y, window.innerHeight - 60)) });
   };
 
-  const inProject = (project: TeamProjectWire, id: string) =>
-    latest.current.shownProject?.id === project.id ||
+  const holds = (project: TeamProjectWire, id: string) =>
     all.bots.some((bot) => bot.id === id && side.of(bot)?.id === project.id) || side.teamRooms(project, all.groups).some((group) => group.id === id);
+  const inProject = (project: TeamProjectWire, id: string) => latest.current.shownProject?.id === project.id || holds(project, id);
+  const hasOwnRow = (id: string) => side.bots(all.bots.filter((bot) => bot.id === id)).length > 0;
+  const selected = (project: TeamProjectWire) =>
+    shownProject?.id === project.id || (openChat !== null && holds(project, openChat) && !hasOwnRow(openChat));
   const archive = async (project: TeamProjectWire) => {
     closeMenu();
     const open = latest.current.selectedId;
@@ -120,16 +119,7 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
     await restoreProject(project.id);
     if (left && latest.current.selectedId === left.to) dispatch({ type: "select", id: left.from });
   };
-  const show = (project: TeamProjectWire, botId?: string) => dispatch({ type: "showProject", projectId: project.id, ...(botId ? { botId } : {}) });
-
-  const listedBots = all.bots.filter((bot) => !bot.hidden);
-  const shownProjects = side.projects.flatMap((project) => {
-    const attention = sidebarSectionAttention(side.team(project, listedBots), side.teamRooms(project, all.groups));
-    if (!query || project.name.toLowerCase().includes(query)) return [{ project, attention, match: NO_MATCH }];
-    const bots = side.team(project, found.bots), groups = side.teamRooms(project, found.groups);
-    if (bots.length + groups.length === 0) return [];
-    return [{ project, attention, match: { names: listed([...bots, ...groups].map((one) => one.name)), botId: bots[0]?.id } }];
-  });
+  const show = (project: TeamProjectWire) => dispatch({ type: "showProject", projectId: project.id });
   const mayCreate = !remote && !query;
 
   const floating = (
@@ -157,7 +147,7 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
         </div>,
         document.body,
       )}
-      {archived && <UndoToast key={archived.project.id} text={t("teamProjects.archived", { name: archived.project.name })}
+      {archived && <UndoToast key={archived.project.id} clearOfComposer text={t("teamProjects.archived", { name: archived.project.name })}
         failedText={t("teamProjects.undoFailed", { place: dataSettingsPlace() })} onUndo={() => undo(archived)} onDone={forget} />}
       {reviewing?.teamChanges && <TeamChangesDialog project={reviewing} changes={reviewing.teamChanges} onClose={() => setReviewing(null)} />}
     </>
@@ -167,14 +157,14 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
     return (
       <div data-sidebar-team-projects="" className={cn("flex flex-col", gap)}>
         {shownProjects.length > 0 && <SidebarRailSeparator />}
-        {shownProjects.map(({ project, attention, match }) => {
+        {shownProjects.map(({ project, attention }) => {
           const missing = project.folderState === "missing";
           const missingText = t("teamProjects.folderMissingNamed", { name: project.name });
           const changedText = t("teamProjects.changes.noticeNamed", { name: project.name });
           return (
             <div key={project.id} role="group" aria-label={project.name} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-              <SidebarProjectTile project={project} attention={attention} found={match.names} selected={shownProject?.id === project.id}
-                onOpen={() => show(project, match.botId)} onMenu={openMenu?.(project)} />
+              <SidebarProjectTile project={project} attention={attention} selected={selected(project)}
+                onOpen={() => show(project)} onMenu={openMenu?.(project)} />
               {missing && (
                 <span role="img" data-team-project-missing="" aria-label={missingText} title={missingText} className="mx-auto flex size-6 shrink-0 items-center justify-center text-warning">
                   <FolderX size={16} aria-hidden="true" />
@@ -195,21 +185,21 @@ export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onEr
             <Plus size={18} aria-hidden="true" />
           </button>
         )}
-        {mode.followed && <SidebarRailSeparator />}
         {floating}
       </div>
     );
   }
 
   return (
-    <div data-sidebar-team-projects="" className={cn("flex flex-col", gap, advanced && mode.followed && "pb-3")}>
-      {shownProjects.map(({ project, attention, match }) => {
+    <div data-sidebar-team-projects="" className={cn("flex flex-col", gap)}>
+      {noMatch}
+      {shownProjects.map(({ project, attention }) => {
         const missing = project.folderState === "missing";
         return (
           <div key={project.id} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-            <SidebarProjectRow project={project} attention={attention} found={match.names} simple={simple}
-              selected={shownProject?.id === project.id} menuOpen={menu?.project.id === project.id}
-              onOpen={() => show(project, match.botId)} onMenu={openMenu?.(project)} />
+            <SidebarProjectRow project={project} attention={attention} simple={simple}
+              selected={selected(project)} menuOpen={menu?.project.id === project.id}
+              onOpen={() => show(project)} onMenu={openMenu?.(project)} />
             {missing && (
               <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
                 <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>

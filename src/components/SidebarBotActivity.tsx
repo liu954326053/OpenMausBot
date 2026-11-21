@@ -59,7 +59,6 @@ export function threadsWaitingOnPerson(bot: Bot, queued: Record<string, unknown[
   return orderedThreadList(sidebarBotActivityTasks(bot, queued).filter((task) => task.activity === "waiting-on-you" || task.unread));
 }
 
-/** Must derive each thread's state exactly as GroupThreadList's sidebar rows do. */
 export function sidebarGroupActivityTasks(group: Group, bots: Bot[], queued: Record<string, unknown[]>): Array<Task & { queued: boolean }> {
   if (group.dm) return [];
   const tasks = (group.tasks ?? [{ threadId: group.threadId, title: group.name, createdAt: group.createdAt }]).map((task) => {
@@ -188,7 +187,8 @@ export function AttentionThreadRows({ entries, onJump, inset = false, unreadDot 
     {entries.map((entry) => {
       const { Icon, colorClass, label: status } = attentionRowStatus(entry.task);
       const name = attentionOwnerName(entry);
-      const label = t("attention.item", { title: entry.task.title, name, status });
+      const title = localizedTaskTitle(entry.task.title);
+      const label = t("attention.item", { title, name, status });
       const unread = unreadDot && entry.task.unread === true;
       const open = isOpenThread(entry, current);
       return <button key={`${entry.kind}-${entry.kind === "bot" ? entry.botId : entry.groupId}-${entry.task.threadId}`} type="button" aria-label={label} title={label}
@@ -197,7 +197,7 @@ export function AttentionThreadRows({ entries, onJump, inset = false, unreadDot 
         className={cn("flex w-full items-center gap-2.5 text-left text-[13px] text-ink hover:bg-menu-hover", inset ? "rounded-md px-2 py-1.5" : "px-3.5 py-2", open && openThreadRow)}>
         <Icon size={inset ? 16 : 15} aria-hidden="true" className={cn("shrink-0", colorClass)} />
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate", unread && "font-medium text-ink")}>{entry.task.title}</span>
+          <span className={cn("block truncate", unread && "font-medium text-ink")}>{title}</span>
           <span className="block truncate text-[11px] text-ink-secondary">{name} · {status}</span>
         </span>
         {unread && <span data-attention-unread-dot aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-accent" />}
@@ -213,7 +213,8 @@ export function PinnedThreadRows({ entries, now, onJump, onUnpin }: { entries: A
       const status = attentionRowStatus(entry.task);
       const updated = threadUpdatedLabel(threadRecency(entry.task), now);
       const byline = status.active ? `${name} · ${status.label}` : updated ? `${name} · ${updated}` : name;
-      const label = t("sidebar.pinnedThreads.item", { title: entry.task.title, name: byline });
+      const title = localizedTaskTitle(entry.task.title);
+      const label = t("sidebar.pinnedThreads.item", { title, name: byline });
       const unpinLabel = t("sidebar.bot.unpin");
       const key = `${entry.kind}-${entry.kind === "bot" ? entry.botId : entry.groupId}-${entry.task.threadId}`;
       const Icon = status.active ? status.Icon : Pin;
@@ -223,7 +224,7 @@ export function PinnedThreadRows({ entries, now, onJump, onUnpin }: { entries: A
           className="flex min-w-0 flex-1 items-center gap-2.5 px-3.5 py-2 text-left text-[13px] text-ink hover:bg-menu-hover">
           <Icon size={15} aria-hidden="true" className={cn("shrink-0", status.active ? status.colorClass : "text-ink-secondary")} />
           <span className="min-w-0 flex-1">
-            <span className="block truncate">{entry.task.title}</span>
+            <span className="block truncate">{title}</span>
             <span className="block truncate text-[11px] text-ink-secondary">{byline}</span>
           </span>
         </button>

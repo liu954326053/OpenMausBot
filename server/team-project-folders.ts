@@ -1,4 +1,5 @@
 import { lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { TEAM_PROJECT_FOLDER, type TeamProjectLookup, type TeamProjectMembership } from "../shared/team-projects.ts";
@@ -22,6 +23,15 @@ export function setTeamProjectMemberships(membership: (botId: string) => TeamPro
 export function teamProjectFolderReady(folder: string): boolean {
   try {
     return isAbsolute(folder) && statSync(folder).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** `teamProjectFolderReady`, without holding up the server while a drive is slow to answer. */
+export async function teamProjectFolderReadyAsync(folder: string): Promise<boolean> {
+  try {
+    return isAbsolute(folder) && (await stat(folder)).isDirectory();
   } catch {
     return false;
   }

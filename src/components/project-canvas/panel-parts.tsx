@@ -199,11 +199,13 @@ export function settingValueLabel(key: SettingKey, value: SettingValue, models?:
   if (key === "seconds") return t("projectCanvas.settings.secondsValue", { count: value });
   if (key === "count") return t("projectCanvas.settings.countValue", { count: value });
   if (key === "quality") {
-    switch (value) {
+    switch (String(value).toLowerCase()) {
       case "auto": return t("projectCanvas.settings.qualityAuto");
       case "low": return t("projectCanvas.settings.qualityLow");
       case "medium": return t("projectCanvas.settings.qualityMedium");
       case "high": return t("projectCanvas.settings.qualityHigh");
+      case "standard": return t("projectCanvas.settings.qualityStandard");
+      case "hd": return t("projectCanvas.settings.qualityHd");
     }
   }
   return String(value);

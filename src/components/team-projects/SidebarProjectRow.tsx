@@ -11,15 +11,11 @@ import { SIMPLE_RAIL_BUTTON, SIMPLE_ROW_FOCUS } from "../SidebarSimpleTop";
 
 const HOVER_CONTROL = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-70 touch:opacity-70";
 
-const rowLabel = (project: TeamProjectWire, found: string | undefined) => (found ? `${project.name} · ${found}` : project.name);
-
 /** One project in the sidebar: a click opens its canvas. */
-export function SidebarProjectRow({ project, attention, found, simple, selected, menuOpen, onOpen, onMenu }: {
+export function SidebarProjectRow({ project, attention, simple, selected, menuOpen, onOpen, onMenu }: {
   project: TeamProjectWire;
   /** Over all the project's bots and group chats. */
   attention: SidebarSectionAttention;
-  /** The names of the bots and group chats a search found in the project. */
-  found?: string;
   simple: boolean;
   selected: boolean;
   menuOpen: boolean;
@@ -33,7 +29,7 @@ export function SidebarProjectRow({ project, attention, found, simple, selected,
   };
   return (
     <div className="group relative">
-      <button type="button" data-sidebar-project-row={project.id} aria-current={selected ? "page" : undefined} title={found ? rowLabel(project, found) : undefined} onClick={onOpen}
+      <button type="button" data-sidebar-project-row={project.id} aria-current={selected ? "page" : undefined} onClick={onOpen}
         onContextMenu={onMenu ? (event) => { event.preventDefault(); onMenu(event.clientX, event.clientY, event.currentTarget); } : undefined}
         onKeyDown={onMenu ? (event) => {
           if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
@@ -49,10 +45,7 @@ export function SidebarProjectRow({ project, attention, found, simple, selected,
         <span aria-hidden="true" className={cn("grid shrink-0 place-items-center bg-raised text-ink-secondary", simple ? "size-8 rounded-[10px]" : "size-7 rounded-lg")}>
           <FolderClosed size={simple ? 16 : 15} strokeWidth={1.75} />
         </span>
-        <span className="flex min-w-0 flex-1 items-baseline gap-1">
-          <span className={cn("min-w-0 truncate text-ink", simple ? "text-[14px] font-medium leading-5" : "text-[14px] font-semibold leading-5")}>{project.name}</span>
-          {found && <span data-sidebar-project-found="" className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink-secondary">· {found}</span>}
-        </span>
+        <span className={cn("min-w-0 flex-1 truncate text-ink", simple ? "text-[14px] font-medium leading-5" : "text-[14px] font-semibold leading-5")}>{project.name}</span>
         <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
       </button>
       {onMenu && (
@@ -67,18 +60,16 @@ export function SidebarProjectRow({ project, attention, found, simple, selected,
 }
 
 /** A project in the narrow sidebar: its first letter in a square, with the mark of its team's state. */
-export function SidebarProjectTile({ project, attention, found, selected, onOpen, onMenu }: {
+export function SidebarProjectTile({ project, attention, selected, onOpen, onMenu }: {
   project: TeamProjectWire;
   attention: SidebarSectionAttention;
-  found?: string;
   selected: boolean;
   onOpen: () => void;
   onMenu?: (x: number, y: number, returnTo: HTMLElement) => void;
 }) {
-  const name = rowLabel(project, found);
   const label = sidebarAttentionLabel(attention);
   return (
-    <button type="button" data-sidebar-project-row={project.id} aria-label={label ? `${name}, ${label}` : name} title={name}
+    <button type="button" data-sidebar-project-row={project.id} aria-label={label ? `${project.name}, ${label}` : project.name} title={project.name}
       aria-current={selected ? "page" : undefined} onClick={onOpen}
       onContextMenu={onMenu ? (event) => { event.preventDefault(); onMenu(event.clientX, event.clientY, event.currentTarget); } : undefined}
       className={cn(SIMPLE_RAIL_BUTTON, "relative mx-auto size-[46px]", selected && "bg-raised text-ink")}>

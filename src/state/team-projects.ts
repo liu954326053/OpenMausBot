@@ -1,8 +1,10 @@
-// The projects as the sidebar, the New project dialog and Settings show them: one copy of the server's list. The server
-// sends no live update for it, so it is read again when the set of bots or departments changes, after every change made
-// here, and when the window gets focus again. A server without projects answers 404 and is not asked again.
+// The projects as the sidebar, the New project dialog and Settings show them: one copy of the server's list. It is read
+// again when the server says a project's folder went missing or came back, when the set of bots or departments changes,
+// after every change made here, and when the window gets focus again. A server without projects answers 404 and is not
+// asked again.
 import { useEffect, useSyncExternalStore } from "react";
-import type { CreateTeamProjectInput, TeamChangesInput, TeamChangesResult, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
+import type { CreateTeamProjectInput, TeamChangesInput, TeamChangesResult, TeamProjectsEvent, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
+import { listenLiveFrames } from "../lib/live-events";
 import { teamProjectSide, type TeamProjectSide } from "../lib/team-projects";
 import {
   archiveTeamProject, createTeamProject, decideTeamChanges, listTeamProjects, restoreTeamProject, saveTeamProjectsRoot, type CreateTeamProjectOutcome,
@@ -119,9 +121,20 @@ export async function saveProjectsRoot(path: string): Promise<{ root: string } |
   return saved;
 }
 
-/** Reads the list when `version` changes (`teamProjectsVersion`) and when the window gets focus again. */
+const isFolderEvent = (frame: unknown) => (frame as Partial<TeamProjectsEvent>).kind === "team-projects";
+
+/** Reads the list when the server says a project's folder went missing or came back, and when the live stream came back
+ * without the frames it missed. Returns how to stop. */
+export function followTeamProjectEvents(): () => void {
+  const again = () => { void refreshTeamProjects({ background: true }); };
+  return listenLiveFrames({ onFrame: (frame) => { if (isFolderEvent(frame)) again(); }, onMissedFrames: again });
+}
+
+/** Reads the list when `version` changes (`teamProjectsVersion`), when the server says a folder changed, and when the
+ * window gets focus again. */
 export function useTeamProjectsLoader(version: string): void {
   useEffect(() => { void refreshTeamProjects({ background: true }); }, [version]);
+  useEffect(followTeamProjectEvents, []);
   useEffect(() => {
     const again = () => { void refreshTeamProjects({ background: true }); };
     window.addEventListener("focus", again);

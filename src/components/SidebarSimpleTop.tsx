@@ -30,9 +30,9 @@ export function SidebarSearchToggle({ open, onToggle, corner = false, ref }: { o
       type="button"
       data-sidebar-search-toggle
       onClick={onToggle}
-      aria-label={t("sidebar.searchAria")}
+      aria-label={t("sidebar.searchProjects")}
       aria-expanded={open}
-      title={t("sidebar.searchAria")}
+      title={t("sidebar.searchProjects")}
       className={corner ? SIMPLE_CORNER_BUTTON : SIMPLE_TOP_BUTTON}
     >
       <Search size={corner ? 17 : 18} strokeWidth={1.5} aria-hidden="true" />
@@ -54,8 +54,8 @@ export function SidebarSearchPill({ query, onQuery, onClose }: { query: string; 
             event.preventDefault();
             onClose();
           }}
-          placeholder={t("sidebar.searchAria")}
-          aria-label={t("sidebar.searchAria")}
+          placeholder={t("sidebar.searchProjects")}
+          aria-label={t("sidebar.searchProjects")}
           className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-tertiary focus:outline-none"
         />
         <button

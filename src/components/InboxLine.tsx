@@ -3,6 +3,7 @@
 import { useStore, openThread, type Message } from "@/state/store";
 import { isQuestionCard } from "@/lib/question-card";
 import { t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { useShowThreads } from "@/lib/thread-preferences";
 import type { TeamPerson } from "@/state/team-people";
 import { BotAvatar } from "./Avatar";
@@ -24,9 +25,10 @@ export function useInboxOrigin(message: Pick<Message, "inbox">): { label: string
   const showThreads = useShowThreads();
   const origin = message.inbox?.origin;
   if (!origin) return undefined;
+  const title = localizedTaskTitle(origin.title);
   return {
-    label: t("inbox.in", { title: origin.title }),
-    hint: t("inbox.openOrigin", { title: origin.title }),
+    label: t("inbox.in", { title }),
+    hint: t("inbox.openOrigin", { title }),
     open: () => openThread(dispatch, { botId: origin.botId, threadId: origin.threadId }, state, showThreads),
   };
 }
@@ -46,6 +48,7 @@ export function InboxCaption({ message }: { message: Message }) {
   if (!item || headedByItsCard(message)) return null;
   const who = item.assistant ? t("inbox.assistantOf", { name: item.from.name }) : t("inbox.from", { name: item.from.name });
   const origin = item.origin;
+  const originTitle = origin ? localizedTaskTitle(origin.title) : "";
   return (
     <div data-inbox-line={item.kind} className="-mb-2 flex min-w-0 items-center gap-1.5 pl-0.5 text-[11px] text-ink-tertiary">
       <InboxSender from={item.from} />
@@ -53,9 +56,9 @@ export function InboxCaption({ message }: { message: Message }) {
       {item.via && <span className="shrink-0">· {t("inbox.via", { name: item.via.name })}</span>}
       {origin && (
         <button type="button" onClick={() => openThread(dispatch, { botId: origin.botId, threadId: origin.threadId }, state, showThreads)}
-          aria-label={t("inbox.openOrigin", { title: origin.title })} title={t("inbox.openOrigin", { title: origin.title })}
+          aria-label={t("inbox.openOrigin", { title: originTitle })} title={t("inbox.openOrigin", { title: originTitle })}
           className="min-w-0 truncate rounded px-1 hover:bg-inset hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
-          · {t("inbox.in", { title: origin.title })}
+          · {t("inbox.in", { title: originTitle })}
         </button>
       )}
     </div>

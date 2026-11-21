@@ -198,12 +198,12 @@ async function finish() {
     steps.push(await main.executeJavaScript(`(async () => {
       for (const [key, value] of Object.entries(${JSON.stringify(config.prime.storage ?? {})})) localStorage.setItem(key, value);
       const until = async (test, ms) => { const end = performance.now() + ms; while (performance.now() < end) { if (test()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
-      const row = () => document.querySelector(${JSON.stringify(`[data-sidebar-bot-row="${config.prime.botId}"]`)});
+      const row = () => document.querySelector(${JSON.stringify(`[data-sidebar-bot-row="${config.prime.botId}"], [data-command-palette] [data-palette-entry="bot:${config.prime.botId}"]`)});
       const name = ${JSON.stringify(config.prime.botName ?? "")};
       const search = () => {
-        if (!document.querySelector("[data-sidebar] input")) document.querySelector("[data-sidebar-search-toggle]")?.click();
-        const input = document.querySelector("[data-sidebar] input");
-        if (input && name && input.value !== name) {
+        const input = document.querySelector("[data-command-palette] input");
+        if (!input) window.dispatchEvent(new Event("omb:open-command-palette"));
+        else if (name && input.value !== name) {
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, name);
           input.dispatchEvent(new Event("input", { bubbles: true }));
         }

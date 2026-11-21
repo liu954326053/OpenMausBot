@@ -13,7 +13,7 @@ import { SPOTLIGHTS } from "../../src/lib/first-conversation.ts";
 import { TOUR_STEPS } from "../../src/lib/guided-tour.ts";
 import { NOTICES } from "../../src/lib/notices.ts";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "./cloud-send-fixture.ts";
-import { agentBrowser, ensureUiBrowser, findInSidebar, OPEN_TEAM_MAP, sessionEnv } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, OPEN_TEAM_MAP, searchSidebar, sessionEnv } from "./control-omb-ui.ts";
 import { mountPreview, REPO_ROOT } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -62,12 +62,12 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
   const audience = () => evaluate<string | null>("(() => { const label = document.querySelector('[data-team-audience]'); return label ? label.dataset.teamAudience + ':' + label.textContent : null; })()");
   const app = {
     who, evaluate, side, audience,
-    /** The bots the sidebar lists, or a sidebar search for `name` lists; the search is cleared again. */
+    /** The bots the sidebar lists, while its search holds `name` if one is given; the search is cleared again. */
     async listed(name?: string) {
-      if (name) await expect.poll(() => evaluate<boolean>(findInSidebar(name)), { timeout: 10_000, interval: 250 }).toBe(true);
+      if (name) await expect.poll(() => evaluate<boolean>(searchSidebar(name)), { timeout: 10_000, interval: 250 }).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const rows = await evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)");
-      if (name) await evaluate(findInSidebar(""));
+      if (name) await evaluate(searchSidebar(""));
       return rows;
     },
     words: () => evaluate<string>("document.body.innerText"),
@@ -164,7 +164,7 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     const bots = (await team.as(tokens.ada, "GET", "/api/bots?messages=0")).body.bots as Array<Bot & { defaultBot?: { person?: string } }>;
     mine = bots.find((bot) => bot.defaultBot?.person === "ada@acme.test")!.id;
     expect(await ada.listed(), "Just me lists her own MagicBot").toContain(mine);
-    expect(await ada.listed("Scout"), "and finds the bots she can chat with").toContain(scout);
+    expect(await ada.listed("Scout"), "a search finds projects, not bots").not.toContain(scout);
     const own = (await scoutAs("ada")).tasks.filter((task) => task.private === true);
     expect(own.length, "one private conversation, made by the click").toBe(1);
     adaOwn = own[0]!.threadId;
@@ -175,7 +175,7 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     await ada.choose("team");
     expect(await ada.audience()).toBe("team:Shared · everyone in Acme can see");
     expect(await ada.listed(), "a private-only bot is not on the Team side").not.toContain(mine);
-    expect(await ada.listed("Scout")).toContain(scout);
+    expect(await ada.listed("Scout")).not.toContain(scout);
     expect(await ada.words(), "nothing of the private chat on the Team side: not the transcript, not the sidebar").not.toContain(PRIVATE);
     await ada.say(SHARED);
     await ada.shot("02-ada-team-desktop");

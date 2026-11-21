@@ -5,8 +5,12 @@ an isolated fake-engine server and two disposable bots, then prints a preview
 URL. Open that URL, never the user's live app. Ctrl-C closes both servers and
 removes only the fixture data.
 
-The preview mounts the actual Sidebar and StoreProvider. The sidebar lists the
-main bot and the projects; search it for Atlas to list a bot in no project.
+The preview mounts the actual Sidebar and StoreProvider. The sidebar lists only
+the main bot and the projects, and its search finds projects, so Atlas has no
+row there; the main bot's menu offers Hide from sidebar and Make this a regular
+bot rather than Archive and Delete. Until bot management has a place outside
+the sidebar, the steps below have no entry point in the app and only the unit
+tests named after them run.
 Verify:
 
 1. Click Archive Sidebar Atlas: Cancel receives focus by default.
@@ -29,8 +33,8 @@ Those paths are covered by the computer-section and server Boat inventory tests.
 ## Projects and the team map
 
 The sidebar lists, top to bottom, the main bot, Inbox, the projects and New
-project, then the footer tools. Bots in no project and group chats outside
-projects are reached through the sidebar search and the team map.
+project, then the footer tools. The sidebar's search finds projects only. Bots
+and group chats are reached through the team map and the command palette (⌘K).
 
 In the UI fixture (`node --experimental-strip-types scripts/control-omb.ts ui launch`),
 set a projects folder under `/tmp` and make two projects from a department with
@@ -40,20 +44,36 @@ a Chief through `/api/team-projects`, then check:
    two projects and with none.
 2. A project is one row, with no chevron and no members under it, and opens
    the project's canvas. Its mark stays on and counts all the project's bots
-   and group chats. A search keeps a project to that one row with nothing
-   under it. When it found bots or group chats in the project, the row names
-   them after the project's name and opens the canvas with the first bot found
-   chosen, the lead first; a project found by its own name names nothing.
-3. The + menu offers exactly New project, New bot and Add department. A bot or
+   and group chats.
+3. The search, named Search projects, keeps the projects whose name holds what
+   is typed, in any case, each still one row with nothing under it that opens
+   the canvas; the main bot and Inbox stay. A bot's or group chat's name or a
+   message's words find no project, and one muted line says so. Clearing the
+   search gives the plain list back.
+4. The + menu offers exactly New project, New bot and Add department. A bot or
    department made there, or a bot made from the team map's Add menu, opens the
    team map and is brought into view.
-4. The team map leaves out the projects' teams, says when a department has no
+5. The team map leaves out the projects' teams, says when a department has no
    Chief, puts a dot on a card with unread output and on the footer's Team map
    entry, and does not take the main bot into a department.
-5. A project copy's chat locks its model picker and says why.
+6. A project copy's chat locks its model picker and says why.
+7. While a project copy's or a project group chat's conversation is open, the
+   project's row is the selected one, unless the copy is pinned and has a row
+   of its own.
+8. Archiving a project from its row's menu offers Undo in the bottom-left
+   corner, clear of the composer.
+9. Renaming a project's folder away shows Project folder not found under its
+   row and on its open canvas within a few seconds, with no reload, and
+   renaming it back takes both away.
+10. In Simple mode, Settings shows Data with the projects folder and the
+    archived projects, and restoring one there leaves the app in Simple mode.
 
 `src/components/Sidebar.projects.test.ts`, `src/lib/sidebar-projects.test.ts`,
+`src/components/Sidebar.search.dom.test.ts`,
 `src/components/team-projects/SidebarTeamProjects.dom.test.ts`,
+`src/state/team-projects.test.ts`, `server/team-projects/folder-watch.test.ts`,
+`server/team-project-folder-live.e2e.test.ts`,
+`src/components/settings/SettingsWindow.test.ts`,
 `src/components/project-view/ProjectView.dom.test.ts`,
 `src/state/project-view.dom.test.ts`, `src/components/TeamMapPage.manage.test.ts`,
 `src/lib/team-map-scope.test.ts` and
@@ -66,10 +86,12 @@ Run `node --experimental-strip-types scripts/verify-sidebar.ts --unread`.
 This opt-in fixture seeds Sidebar Atlas with twelve unread webhook-like
 conversations across a folder and unfiled history, plus a running fake-provider
 turn and a sibling report queued behind its capacity limit. The data directory contains `bulk-read-before.json`.
+The action is in a bot's sidebar menu, and Atlas has no sidebar row now (see
+above), so step 1 has no entry point until bot management has a place outside
+the sidebar; the tests named after the steps still run.
 Open only the printed `previewUrl`:
 
-1. Search the sidebar for Atlas, then open **Actions for Sidebar Atlas → Mark
-   all conversations as read**.
+1. Open **Actions for Sidebar Atlas → Mark all conversations as read**.
    While requests are pending the action shows progress and cannot be repeated.
 2. All existing unread conversations for Atlas become read. Its working and
    queued indicators remain. No conversation is selected, deleted or archived.
@@ -121,10 +143,9 @@ Chief; see [Teams](teams.md) for those lifecycle checks.
 
 ## Activity, quieter rows, and notification preference
 
-Use the full-app [threads fixture](threads.md) for channel activity, search,
-and snooze interactions. Compact/quiet rows must retain live status and
-keyboard-accessible owner-row New thread/New folder controls. The matching
-sole thread must still appear during search even when its normal tree is hidden.
+Use the full-app [threads fixture](threads.md) for channel activity and snooze
+interactions. Compact/quiet rows must retain live status and
+keyboard-accessible owner-row New thread/New folder controls.
 
 In Settings → Appearance, **Notification sounds** controls the operating
 system alert sound on this computer only; it does not disable notification
