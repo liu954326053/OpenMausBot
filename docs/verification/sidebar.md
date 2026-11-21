@@ -169,6 +169,8 @@ group chat from that list:
 `src/components/TeamMapRooms.dom.test.ts` covers the button, right-click,
 keyboard, arrow keys, rename, description, copy, the confirmation and the list
 in a narrow window;
+`src/components/TeamMapRooms.place.dom.test.ts` where the list and a group
+chat's menu open, 8 px inside the window;
 `src/components/room-delete-copy.test.ts` the confirmation's words and
 `src/state/delete-group.test.ts` the request and a refusal from the server.
 

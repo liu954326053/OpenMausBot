@@ -232,39 +232,50 @@ describe("a remote client", () => {
 describe("the list in a narrow window", () => {
   const details = () => q("details") as HTMLDetailsElement;
   const list = () => details().querySelector<HTMLElement>("summary + div")!;
-  const layOut = (box: { left: number; right: number }, windowWidth: number) => {
-    vi.spyOn(list(), "getBoundingClientRect").mockReturnValue({ ...box, top: 40, bottom: 200, width: box.right - box.left, height: 160, x: box.left, y: 40, toJSON: () => ({}) });
+  const layOut = (button: { left: number; right: number }, windowWidth: number) => {
+    const box = { ...button, top: 40, bottom: 76, width: button.right - button.left, height: 36, x: button.left, y: 40, toJSON: () => ({}) };
+    vi.spyOn(details(), "getBoundingClientRect").mockReturnValue(box);
+    vi.spyOn(q("summary")!, "getBoundingClientRect").mockReturnValue(box);
     vi.spyOn(window, "innerWidth", "get").mockReturnValue(windowWidth);
   };
   const setOpen = (open: boolean) => {
     details().open = open;
     flushSync(() => details().dispatchEvent(new Event("toggle")));
   };
-  const openAt = (box: { left: number; right: number }, windowWidth: number) => {
+  const shown = () => {
+    const left = details().getBoundingClientRect().left + parseFloat(list().style.left);
+    return { left, right: left + parseFloat(list().style.width) };
+  };
+  const openAt = (button: { left: number; right: number }, windowWidth: number) => {
     setOpen(false);
-    layOut(box, windowWidth);
+    layOut(button, windowWidth);
     setOpen(true);
-    return list().style.translate;
+    return shown();
+  };
+  const expectInside = ({ left, right }: { left: number; right: number }, windowWidth: number) => {
+    expect(left).toBeGreaterThanOrEqual(8);
+    expect(right).toBeLessThanOrEqual(windowWidth - 8);
   };
   afterEach(() => vi.restoreAllMocks());
 
-  it("moves sideways to stay 8px inside the window, its left edge first when it can't fit", () => {
-    expect(openAt({ left: -100, right: 156 }, 640)).toBe("108px");
-    expect(openAt({ left: 69, right: 325 }, 320)).toBe("-13px");
-    expect(openAt({ left: 20, right: 276 }, 260)).toBe("-12px");
-    expect(openAt({ left: 10, right: 266 }, 260)).toBe("-2px");
-    expect(openAt({ left: 505, right: 761 }, 1024)).toBe("");
+  it("stays at least 8px inside the window on both sides, and ends at its button's right edge at desktop width", () => {
+    expectInside(openAt({ left: 48, right: 156 }, 640), 640);
+    expectInside(openAt({ left: 69, right: 177 }, 320), 320);
+    expectInside(openAt({ left: 20, right: 128 }, 260), 260);
+    expectInside(openAt({ left: 10, right: 118 }, 260), 260);
+    expect(openAt({ left: 653, right: 761 }, 1024)).toEqual({ left: 505, right: 761 });
   });
 
-  it("moves again when the window narrows while it is open, and not once it is closed", () => {
-    expect(openAt({ left: 505, right: 761 }, 1024)).toBe("");
-    layOut({ left: -100, right: 156 }, 390);
+  it("moves back inside when the window narrows while it is open, and not once it is closed", () => {
+    expect(openAt({ left: 653, right: 761 }, 1024)).toEqual({ left: 505, right: 761 });
+    layOut({ left: 48, right: 156 }, 390);
     window.dispatchEvent(new Event("resize"));
-    expect(list().style.translate).toBe("108px");
+    expectInside(shown(), 390);
+    const { left, width } = list().style;
 
     setOpen(false);
-    layOut({ left: 69, right: 325 }, 320);
+    layOut({ left: 69, right: 177 }, 320);
     window.dispatchEvent(new Event("resize"));
-    expect(list().style.translate).toBe("108px");
+    expect([list().style.left, list().style.width]).toEqual([left, width]);
   });
 });
