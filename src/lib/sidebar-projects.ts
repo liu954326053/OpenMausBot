@@ -5,12 +5,11 @@ import type { TeamProjectSide } from "./team-projects";
 
 type ListedBot = DefaultBotFields & { id: string; hidden?: boolean };
 
-/** The bot at the top of the sidebar: the viewer's MagicBot. Hidden from the sidebar in Settings, only a search finds it;
- * while its first welcome plays it is not listed. */
-export function sidebarMainBot<T extends ListedBot>(bots: readonly T[], viewer: string | null | undefined, options: { welcoming?: string | null; searching?: boolean } = {}): T | undefined {
+/** The bot at the top of the sidebar: the viewer's MagicBot, unless it is hidden from the sidebar in Settings; while its
+ * first welcome plays it is not listed. */
+export function sidebarMainBot<T extends ListedBot>(bots: readonly T[], viewer: string | null | undefined, options: { welcoming?: string | null } = {}): T | undefined {
   const main = viewersDefaultBot(bots.filter((bot) => !bot.hidden), viewer ?? null);
-  if (!main || main.id === options.welcoming) return undefined;
-  return !hiddenFromSidebar(main, viewer) || options.searching ? main : undefined;
+  return main && main.id !== options.welcoming && !hiddenFromSidebar(main, viewer) ? main : undefined;
 }
 
 /** Whether a bot in no project, or a group chat outside the projects, has something unread: the sidebar lists neither,
