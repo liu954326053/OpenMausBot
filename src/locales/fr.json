@@ -3715,6 +3715,7 @@
   "teamProjects.settings.restore": "Restaurer",
   "teamProjects.settings.restoreNamed": "Restaurer {name}",
   "teamProjects.settings.restoreFailed": "Impossible de restaurer {name}. Réessayez.",
+  "sidebarProjects.teamMapUnread": "Non lu sur la carte de l'équipe",
   "settings.advancedMode.subtitle": "Affiche chaque réglage technique sur cet appareil : usage et tokens, l'inspecteur et d'autres outils pour bâtisseurs. Désactivez-le pour une app plus simple. Rien n'est supprimé dans un cas comme dans l'autre.",
   "settings.followUp.subtitle": "Intégrer ajoute votre message à ce que fait le bot ; mettre en file le lance à la fin du tour. {key} fait l'autre pour un seul message, et la flèche à côté d'Envoyer peut aussi relancer le tour. Sur cet appareil seulement.",
   "settings.notificationFeed.subtitle": "Affiche une cloche sur le bord droit de la fenêtre qui garde les 500 dernières notifications de tous les bots, lues ou non.",

@@ -5816,6 +5816,7 @@
   "teamProjects.settings.restore": "Khôi phục",
   "teamProjects.settings.restoreNamed": "Khôi phục {name}",
   "teamProjects.settings.restoreFailed": "Không khôi phục được {name}. Hãy thử lại.",
+  "sidebarProjects.teamMapUnread": "Có mục chưa đọc trên sơ đồ team",
   "settings.followUp.subtitle": "Đưa vào sẽ thêm tin nhắn vào việc bot đang làm; xếp hàng sẽ chạy khi lượt kết thúc. {key} làm cách còn lại cho một tin nhắn, và mũi tên cạnh Gửi cũng có thể bắt đầu lại lượt. Chỉ trên thiết bị này.",
   "settings.openAtLogin.subtitle": "Mở {app} khi bạn đăng nhập vào máy tính này, để bot và quy trình sẵn sàng mà không cần tự mở.",
   "settings.simple.advancedMode": "Hiện mọi điều khiển, kể cả công cụ cho người xây dựng. Không có gì bị xóa.",

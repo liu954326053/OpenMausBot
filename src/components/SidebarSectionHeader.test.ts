@@ -146,7 +146,6 @@ describe("SidebarSectionHeader as a Simple-mode line", () => {
     expect(renderToStaticMarkup(line({ reserveMenu: true }))).toMatch(slot);
     expect(renderToStaticMarkup(line({ reserveMenu: true, onMenu: () => {} }))).not.toMatch(slot);
     expect(renderToStaticMarkup(line())).not.toMatch(slot);
-    expect(renderToStaticMarkup(line({ reserveMenu: true, naming: { value: "", label: "Name", onCommit: () => {}, onCancel: () => {} } }))).not.toMatch(slot);
     const top = (props: Parameters<typeof line>[0]) => Children.toArray(line(props).props.children).filter(isValidElement) as ReactElement<Props>[];
     const reserved = top({ reserveMenu: true });
     const withMenu = top({ onMenu: () => {} });

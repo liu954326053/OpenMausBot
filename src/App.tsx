@@ -28,6 +28,7 @@ import {
   PluginsPanel, preloadScreens, ProjectView, PublishedAppsPage, RemoteAgentSettingsPanel, RemoteDesktopPanel, RoomPanel, SettingsModal, SkillsLibraryPage, TeamFilesPage, TeamMapPage, TriggersPage,
 } from "@/components/lazy-screens";
 import { useLastProject } from "@/state/project-view";
+import { newBotOnTeamMap } from "@/state/team-map-focus";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useRoomPanelShown } from "@/lib/room-panel";
 import { WorkspaceBackupRecovery } from "@/components/WorkspaceBackupSettings";
@@ -146,7 +147,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
     dispatch(phonePairingSettingsAction());
   }, [dispatch]);
   useConnectLink(dispatch, Boolean(state.config?.team));
-  useExternalChatLinks(state, dispatch); useDesktopNotificationOpens(state, dispatch); useNewBotFromOtherPlace(state.hydrated === true, useCallback(() => dispatch({ type: "newBot" }), [dispatch]));
+  useExternalChatLinks(state, dispatch); useDesktopNotificationOpens(state, dispatch); useNewBotFromOtherPlace(state.hydrated === true, useCallback(() => dispatch(newBotOnTeamMap(dispatch)), [dispatch]));
   usePresence(state, dispatch); useTeamPresence(state); useLastProject(state, dispatch);
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language), true);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -217,7 +218,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
           const selected = state.bots.find((bot) => bot.id === state.selectedId && !bot.hidden);
           if (!e.repeat && selected && selected.yourAccess !== "view") dispatch({ type: "newTask", botId: selected.id });
         } else {
-          dispatch({ type: "newBot" });
+          dispatch(newBotOnTeamMap(dispatch));
         }
       } else if (/^[1-9]$/.test(e.key)) {
         const target = bots[Number(e.key) - 1];

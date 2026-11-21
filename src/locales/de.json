@@ -3939,6 +3939,7 @@
   "teamProjects.settings.restore": "Wiederherstellen",
   "teamProjects.settings.restoreNamed": "{name} wiederherstellen",
   "teamProjects.settings.restoreFailed": "{name} ließ sich nicht wiederherstellen. Versuch es noch einmal.",
+  "sidebarProjects.teamMapUnread": "Ungelesenes auf der Teamkarte",
   "settings.advancedMode.subtitle": "Zeigt auf diesem Gerät jede technische Einstellung: Nutzung und Tokens, den Inspektor und andere Werkzeuge für Bastler. Schalte ihn für eine einfachere App aus. Gelöscht wird so oder so nichts.",
   "settings.followUp.subtitle": "Einbringen fügt deine Nachricht dem hinzu, was der Bot gerade tut; Vormerken führt sie nach dem Durchlauf aus. {key} macht für eine einzelne Nachricht das andere, und der Pfeil neben Senden kann den Durchlauf auch neu starten. Nur auf diesem Gerät.",
   "settings.notificationFeed.subtitle": "Zeigt rechts am Fensterrand eine Glocke, die die letzten 500 Mitteilungen aller Bots behält, gelesen oder nicht.",

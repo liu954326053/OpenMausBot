@@ -7231,6 +7231,8 @@
   "teamProjects.changes.noticeNamed": "{name}: team changed",
   "teamProjects.changes.review": "Review team changes…",
   "projectView.loading": "Loading the project…",
+  "sidebarProjects.outside": "Outside projects",
+  "sidebarProjects.teamMapUnread": "Unread on the team map",
   "teamFiles.title": "Team files",
   "teamFiles.intro": "One folder for everyone on {team} and its bots: records, client lists, templates, brand assets.",
   "teamFiles.upload": "Upload",

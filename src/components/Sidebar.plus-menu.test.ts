@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const fixture = vi.hoisted(() => ({ values: [] as unknown[], index: 0, admin: true as boolean | null, team: false, state: {} as Record<string, unknown> }));
 vi.mock("react", async (original) => ({
@@ -40,6 +40,7 @@ vi.mock("@/state/store", async (importOriginal) => {
   return { ...original, useStore: () => ({ state: { ...original.initialState, ...fixture.team ? { config: { team: { id: "acme", name: "Acme" } } } : {}, ...fixture.state }, dispatch: vi.fn() }) };
 });
 
+import { setTeamProjects } from "@/state/team-projects";
 import { Sidebar } from "./Sidebar";
 const drawSidebar = (Sidebar as unknown as { type: (props: import("react").ComponentProps<typeof Sidebar>) => import("react").ReactNode }).type;
 
@@ -60,12 +61,13 @@ function render() {
   fixture.index = 0;
   return nodes(drawSidebar({ open: true, onClose: () => {} }));
 }
+const plusButton = () => render().find((node) => node.type === "button" && String(node.props["aria-label"]).startsWith("New"));
 function openPlusMenu(admin: boolean | null, team = false, state: Record<string, unknown> = {}) {
   fixture.values = [];
   fixture.admin = admin;
   fixture.team = team;
   fixture.state = state;
-  render().find((node) => node.type === "button" && String(node.props["aria-label"]).startsWith("New"))!.props.onClick!();
+  plusButton()!.props.onClick!();
   return render();
 }
 function plusMenu(admin: boolean | null, team = false) {
@@ -73,17 +75,28 @@ function plusMenu(admin: boolean | null, team = false) {
 }
 
 describe("the sidebar's + menu", () => {
-  it("offers a new bot, a department, templates and Import… to someone who can make one, and while that isn't known yet", () => {
-    for (const admin of [true, null]) expect(plusMenu(admin)).toEqual(["New bot", "New group chat", "Add department", "Templates", "Import…"]);
+  afterEach(() => setTeamProjects(null));
+
+  it("offers a new bot and a department to someone who can make one, and while that isn't known yet", () => {
+    for (const admin of [true, null]) expect(plusMenu(admin)).toEqual(["New bot", "Add department"]);
   });
 
-  it("offers a team's User a new bot of their own, and departments, templates and Import… only to its admins", () => {
-    expect(plusMenu(false, true)).toEqual(["New bot", "New group chat"]);
-    expect(plusMenu(true, true)).toEqual(["New bot", "New group chat", "Add department", "Templates", "Import…"]);
+  it("offers New project first once the server lists projects", () => {
+    setTeamProjects({ root: "/dramas", projects: [] });
+    expect(plusMenu(true)).toEqual(["New project", "New bot", "Add department"]);
   });
 
-  it("offers neither to someone without the admin scope anywhere else, who keeps New group chat", () => {
-    expect(plusMenu(false)).toEqual(["New group chat"]);
+  it("offers a team's User a new bot of their own, and departments only to its admins", () => {
+    expect(plusMenu(false, true)).toEqual(["New bot"]);
+    expect(plusMenu(true, true)).toEqual(["New bot", "Add department"]);
+  });
+
+  it("draws no + for someone without the admin scope anywhere else, who has nothing to make here", () => {
+    fixture.values = [];
+    fixture.admin = false;
+    fixture.team = false;
+    fixture.state = {};
+    expect(plusButton()).toBeUndefined();
   });
 });
 
@@ -106,12 +119,5 @@ describe("the sidebar's + menu with a long bot name (simple mode)", () => {
     expect(style({ inspectorOpen: true })["--sidebar-max"]).toBe("280px");
     expect(style({})["--sidebar-max"]).toBe("calc(100vw - 320px)");
     expect(root({ computerOpen: true }).props.className).toContain("md:max-w-[var(--sidebar-max)]");
-  });
-
-  it("truncates the bot's name in New conversation with … and keeps the full name on hover", () => {
-    const item = withLongBot().filter((node) => node.props.role === "menuitem")[0];
-    const label = nodes(item.props.children).find((node) => node.type === "span" && node.props.title === longName);
-    expect(label?.props.className).toContain("truncate");
-    expect(label?.props.className).toContain("min-w-0");
   });
 });

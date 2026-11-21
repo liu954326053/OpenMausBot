@@ -23,6 +23,7 @@ function NavRow({
   icon,
   active = false,
   attention = false,
+  unread = false,
   iconsOnly,
   rail = false,
   tourId,
@@ -33,6 +34,8 @@ function NavRow({
   icon: (active: boolean) => ReactNode;
   active?: boolean;
   attention?: boolean;
+  /** Something it leads to is unread. */
+  unread?: boolean;
   iconsOnly: boolean;
   rail?: boolean;
   tourId?: string;
@@ -44,7 +47,7 @@ function NavRow({
       data-tour={tourId}
       data-sidebar-nav={id}
       onClick={onClick}
-      aria-label={iconsOnly ? label : undefined}
+      aria-label={iconsOnly ? (unread ? `${label}, ${t("task.unread")}` : label) : undefined}
       title={iconsOnly ? label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
@@ -61,6 +64,11 @@ function NavRow({
           className={cn("size-2 shrink-0 rounded-full bg-danger", iconsOnly && (rail ? "absolute right-1 top-1" : "absolute right-2 top-2"))}
         />
       )}
+      {unread && !attention && (
+        <span data-sidebar-nav-unread="" aria-hidden="true"
+          className={cn("size-2 shrink-0 rounded-full bg-accent", iconsOnly && (rail ? "absolute end-1 top-1" : "absolute end-2 top-2"))} />
+      )}
+      {unread && !iconsOnly && <span className="sr-only">{t("task.unread")}</span>}
     </button>
   );
 }
@@ -112,11 +120,14 @@ export function SidebarFooterNav({
   rail = false,
   collapsed = false,
   onToggleCollapsed,
+  teamMapUnread = false,
 }: {
   density: SidebarDensity;
   rail?: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
+  /** A bot in no project or a group chat outside the projects has something unread: the sidebar lists neither. */
+  teamMapUnread?: boolean;
 }) {
   const { state, dispatch } = useStore();
   const advanced = useAdvancedMode();
@@ -170,6 +181,7 @@ export function SidebarFooterNav({
           tourId="team-tools"
           iconsOnly={iconsOnly || toolbar}
           active={state.activeView === "team-map"}
+          unread={teamMapUnread}
           icon={(active) => <UsersRound size={iconSize} className={tone(active)} />}
           onClick={() => dispatch({ type: "showTeamMap" })}
         />
@@ -234,6 +246,7 @@ export function SidebarFooterNav({
         name={t("sidebar.tools")}
         collapsed={collapsed}
         alert={collapsed && automationsNeedYou}
+        attention={collapsed && teamMapUnread ? { unread: 1, waiting: 0, working: 0 } : undefined}
         onToggle={onToggleCollapsed}
         reorderable={false}
         dragging={false}

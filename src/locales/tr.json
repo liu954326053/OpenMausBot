@@ -5816,6 +5816,7 @@
   "teamProjects.settings.restore": "Geri Yükle",
   "teamProjects.settings.restoreNamed": "{name} projesini geri yükle",
   "teamProjects.settings.restoreFailed": "{name} geri yüklenemedi. Tekrar dene.",
+  "sidebarProjects.teamMapUnread": "Ekip haritasında okunmamışlar var",
   "settings.followUp.subtitle": "Ekleme mesajını botun şu an yaptığına katar; sıraya alma tur bitince çalıştırır. {key} tek bir mesaj için diğerini yapar, Gönder'in yanındaki ok da turu yeniden başlatabilir. Yalnızca bu cihazda.",
   "settings.openAtLogin.subtitle": "Bu bilgisayarda oturum açtığında {app} uygulamasını açar, böylece botların ve rutinlerin sen açmadan hazır olur.",
   "settings.simple.advancedMode": "Geliştirici araçları dahil her ayarı gösterir. Hiçbir şey silinmez.",

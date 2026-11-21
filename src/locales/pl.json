@@ -7018,6 +7018,7 @@
   "teamProjects.settings.restore": "Przywróć",
   "teamProjects.settings.restoreNamed": "Przywróć {name}",
   "teamProjects.settings.restoreFailed": "Nie udało się przywrócić projektu {name}. Spróbuj ponownie.",
+  "sidebarProjects.teamMapUnread": "Nieprzeczytane na mapie zespołu",
   "defaultBot.show.subtitle": "Twój pomocnik do wszystkiego w aplikacji. Ukryty dalej pracuje, a wyszukiwanie wciąż go znajduje.",
   "settings.followUp.subtitle": "Włączenie dodaje wiadomość do tego, co bot teraz robi; kolejka uruchamia ją po końcu tury. {key} robi to drugie dla pojedynczej wiadomości, a strzałka obok Wyślij może też zacząć turę od nowa. Tylko na tym urządzeniu.",
   "settings.openAtLogin.subtitle": "Otwiera {app} po zalogowaniu się do tego komputera, aby boty i rutyny były gotowe bez ręcznego otwierania.",

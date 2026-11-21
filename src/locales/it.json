@@ -6886,6 +6886,7 @@
   "teamProjects.settings.restore": "Ripristina",
   "teamProjects.settings.restoreNamed": "Ripristina {name}",
   "teamProjects.settings.restoreFailed": "Impossibile ripristinare {name}. Riprova.",
+  "sidebarProjects.teamMapUnread": "Da leggere sulla mappa del team",
   "settings.followUp.subtitle": "Inserirlo aggiunge il tuo messaggio a ciò che il bot sta facendo; metterlo in coda lo esegue alla fine del turno. {key} fa l'altra cosa per un solo messaggio, e la freccia accanto a Invia può anche riavviare il turno. Solo su questo dispositivo.",
   "settings.openAtLogin.subtitle": "Apre {app} quando accedi a questo computer, così bot e routine sono pronti senza aprirlo tu.",
   "settings.simple.advancedMode": "Mostra ogni controllo, compresi gli strumenti per chi costruisce. Non si cancella nulla in nessun caso.",

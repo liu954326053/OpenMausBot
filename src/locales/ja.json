@@ -7876,6 +7876,7 @@
   "teamProjects.settings.restore": "戻す",
   "teamProjects.settings.restoreNamed": "{name} を戻す",
   "teamProjects.settings.restoreFailed": "{name} を戻せませんでした。もう一度お試しください。",
+  "sidebarProjects.teamMapUnread": "チームマップに未読があります",
   "settings.simple.themes.browse": "テーマを見る",
   "phone.pair.rowTitle": "お使いのスマホ",
   "phone.pair.rowLine": "App Store または Google Play からスマホに {app} をインストールし、ここでペアリングします。",

@@ -28,7 +28,7 @@ const { setLocale, t } = await import("@/lib/i18n");
 const thread = (threadId: string, title: string, projectId?: string): Task =>
   ({ threadId, title, createdAt: 1, busy: false, activity: "idle", modelSelection: { instanceId: "test", model: "m" }, approvalMode: "ask", projectId });
 const atlas: Bot = {
-  id: "atlas", threadId: "loose", name: "Atlas", title: "", description: "", color: "green",
+  id: "atlas", threadId: "loose", name: "Atlas", title: "", description: "", color: "green", defaultBot: {},
   notifications: true, unread: false, busy: false, messages: [], modelSelection: { instanceId: "test", model: "m" },
   projects: [{ id: "taxes", name: "Taxes" }],
   tasks: [thread("loose", "Loose chat"), thread("filed", "Filed chat", "taxes")],
@@ -46,7 +46,7 @@ async function draw() {
 }
 // Simple mode's hover list carries the same name as the tree's disclosure, so the tree's is the one that is not the list's.
 const expand = () => document.querySelector<HTMLButtonElement>(`button[aria-label="${t("task.expandNamed", { name: "Atlas" })}"]:not([data-bot-threads-peek])`);
-const peek = () => document.querySelector('[data-bot-threads-peek="atlas"]');
+const tile = () => document.querySelector('[data-sidebar-tile="primary"][data-sidebar-bot-row="atlas"]');
 const folder = () => document.querySelector('[data-sidebar-folder-row="taxes"]');
 
 beforeAll(() => {
@@ -78,10 +78,10 @@ describe("thread folders after Advanced mode comes back", () => {
     await draw();
     expect(folder()).toBeNull();
     expect(expand()).toBeNull();
-    expect(peek(), "the hover list stands in for the tree").not.toBeNull();
+    expect(tile(), "Simple draws the main bot as a tile").not.toBeNull();
     flushSync(() => setAdvancedMode(true));
     await draw();
-    expect(peek()).toBeNull();
+    expect(tile()).toBeNull();
     expect(folder()?.textContent).toContain("Taxes");
   });
 });
