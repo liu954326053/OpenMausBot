@@ -1,8 +1,12 @@
 // Real model picker and chat transport against disposable provider CLIs.
+import { mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, it } from "vitest";
 import { closeBrowserSession } from "../../server/browser-engine.ts";
+import { removeTempDir } from "../../server/testing/cleanup.ts";
 import { launchVerificationServer, runControlOmb } from "../control-omb.ts";
-import { agentBrowser, ensureUiBrowser, sessionEnv } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, openFromPalette, sessionEnv } from "./control-omb-ui.ts";
 import { mountPreview } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -11,7 +15,10 @@ const enabled = process.env.OMB_UI_E2E === "1";
   const tools = await ensureUiBrowser();
   const fixture = await launchVerificationServer({}, undefined, undefined, undefined, undefined, undefined, ["cline"]);
   let preview: Awaited<ReturnType<typeof mountPreview>> | undefined;
-  const env = sessionEnv({ home: fixture.info.dataDir, session: `omb-cline-ui-${new URL(fixture.info.url).port}`, chrome: tools.chrome });
+  // agent-browser 0.37 refuses a socket path over 103 bytes, and it lives under this home.
+  const home = mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "omb-cline-"));
+  mkdirSync(join(home, "tmp"));
+  const env = sessionEnv({ home, session: "cline", chrome: tools.chrome });
   const browser = (...args: string[]) => agentBrowser(tools.binary, env, args);
   const evaluate = async (js: string) => (await browser("eval", js)).result;
   const cli = (...args: string[]) => runControlOmb([...args, "--url", fixture.info.url]) as Promise<any>;
@@ -28,12 +35,15 @@ const enabled = process.env.OMB_UI_E2E === "1";
     await browser("open", preview.previewUrl);
     for (const advanced of [false, true]) {
       await evaluate(`localStorage.setItem('omb-advanced-mode', '${advanced ? "1" : "0"}'); location.reload(); true`);
+      await expect.poll(() => evaluate(openFromPalette("Cline specialist", `bot:${bot.id}`)), { timeout: 15_000 }).toBe(true);
       await expect.poll(() => evaluate("document.querySelector('textarea[aria-label=\"Message Cline specialist\"]') !== null"), { timeout: 15_000 }).toBe(true);
       await evaluate("document.querySelector('button[data-tour=\"model\"]').click(); true");
       await expect.poll(() => evaluate("document.querySelector('[data-model-picker-content]') !== null")).toBe(true);
-      const provider = `[...document.querySelectorAll('[data-model-picker-content] button')].find(button => button.getAttribute('aria-label') === ${JSON.stringify(clineName)} || button.textContent.trim().endsWith(${JSON.stringify(clineName)}))`;
+      const provider = advanced
+        ? `[...document.querySelectorAll('[data-model-picker-content] button')].find(button => button.getAttribute('aria-label') === ${JSON.stringify(clineName)} || button.textContent.trim().endsWith(${JSON.stringify(clineName)}))`
+        : `[...document.querySelectorAll('[data-model-picker-content] [data-simple-provider]')].find(group => group.textContent.includes(${JSON.stringify(clineName)}))`;
       await expect.poll(() => evaluate(`${provider} !== undefined`), { timeout: 15_000, message: `Cline provider in ${advanced ? "Advanced" : "Simple"} picker` }).toBe(true);
-      await evaluate(`${provider}.click(); true`);
+      if (advanced) await evaluate(`${provider}.click(); true`);
       const model = "[...document.querySelectorAll('[data-model-picker-content] button')].find(button => button.textContent.includes('Cline default (configured)') && !button.hasAttribute('data-follow-bot-model'))";
       await expect.poll(() => evaluate(`${model}?.textContent ?? ''`), { timeout: 15_000 }).toContain("Cline default (configured)");
       expect(await evaluate("document.querySelector('[data-model-picker-content]').textContent")).not.toContain("Run this agent with a model already on your machine.");
@@ -57,5 +67,6 @@ const enabled = process.env.OMB_UI_E2E === "1";
     await closeBrowserSession(tools.binary, env);
     await preview?.close();
     await fixture.close();
+    await removeTempDir(home);
   }
 }, 180_000);
