@@ -102,7 +102,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const servers = saved?.servers ?? [];
 
   return createPortal(
-    <div className="ui-scrim fixed inset-0 z-[100] flex items-center justify-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <div className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} data-project-canvas-settings=""
         className="ui-modal flex max-h-full w-full max-w-[480px] flex-col text-ink outline-none animate-pop-in motion-reduce:animate-none">
         <header className="flex flex-col gap-3 px-5 pb-2 pt-5">
