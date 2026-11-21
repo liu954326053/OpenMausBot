@@ -1,5 +1,5 @@
 import { AppWindow, BookOpen, FolderOpen, FolderTree, Globe, Puzzle, Rocket, Server, UsersRound, Zap } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useId, useMemo, type ReactNode } from "react";
 
 import { useAppTriggers } from "@/lib/app-triggers";
 import { appsOpen, mcpOpen } from "@/lib/apps-panel";
@@ -23,6 +23,7 @@ function NavRow({
   icon,
   active = false,
   attention = false,
+  unread = false,
   iconsOnly,
   rail = false,
   tourId,
@@ -33,35 +34,46 @@ function NavRow({
   icon: (active: boolean) => ReactNode;
   active?: boolean;
   attention?: boolean;
+  /** Something it leads to is unread. */
+  unread?: boolean;
   iconsOnly: boolean;
   rail?: boolean;
   tourId?: string;
   onClick: () => void;
 }) {
+  const unreadId = useId();
   return (
-    <button
-      type="button"
-      data-tour={tourId}
-      data-sidebar-nav={id}
-      onClick={onClick}
-      aria-label={iconsOnly ? label : undefined}
-      title={iconsOnly ? label : undefined}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex items-center rounded-xl transition-colors",
-        rail ? "size-9 shrink-0 justify-center" : iconsOnly ? "mx-auto size-[46px] shrink-0 justify-center" : "w-full min-h-9 gap-3 px-3 py-1.5 text-left",
-        active ? "bg-raised text-ink" : "text-ink hover:bg-raised/50",
-      )}
-    >
-      {icon(active)}
-      {!iconsOnly && <span className="flex-1 truncate text-[14px] font-medium leading-5">{label}</span>}
-      {attention && (
-        <span
-          data-testid="routines-attention"
-          className={cn("size-2 shrink-0 rounded-full bg-danger", iconsOnly && (rail ? "absolute right-1 top-1" : "absolute right-2 top-2"))}
-        />
-      )}
-    </button>
+    <>
+      <button
+        type="button"
+        data-tour={tourId}
+        data-sidebar-nav={id}
+        onClick={onClick}
+        aria-label={iconsOnly ? label : undefined}
+        aria-describedby={unread ? unreadId : undefined}
+        title={iconsOnly ? label : undefined}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "relative flex items-center rounded-xl transition-colors",
+          rail ? "size-9 shrink-0 justify-center" : iconsOnly ? "mx-auto size-[46px] shrink-0 justify-center" : "w-full min-h-9 gap-3 px-3 py-1.5 text-left",
+          active ? "bg-raised text-ink" : "text-ink hover:bg-raised/50",
+        )}
+      >
+        {icon(active)}
+        {!iconsOnly && <span className="flex-1 truncate text-[14px] font-medium leading-5">{label}</span>}
+        {attention && (
+          <span
+            data-testid="routines-attention"
+            className={cn("size-2 shrink-0 rounded-full bg-danger", iconsOnly && (rail ? "absolute right-1 top-1" : "absolute right-2 top-2"))}
+          />
+        )}
+        {unread && !attention && (
+          <span data-sidebar-nav-unread="" aria-hidden="true"
+            className={cn("size-2 shrink-0 rounded-full bg-accent", iconsOnly && (rail ? "absolute end-1 top-1" : "absolute end-2 top-2"))} />
+        )}
+      </button>
+      {unread && <span id={unreadId} hidden>{t("task.unread")}</span>}
+    </>
   );
 }
 
@@ -112,11 +124,14 @@ export function SidebarFooterNav({
   rail = false,
   collapsed = false,
   onToggleCollapsed,
+  teamMapUnread = false,
 }: {
   density: SidebarDensity;
   rail?: boolean;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
+  /** A bot in no project or a group chat outside the projects has something unread: the sidebar lists neither. */
+  teamMapUnread?: boolean;
 }) {
   const { state, dispatch } = useStore();
   const advanced = useAdvancedMode();
@@ -170,6 +185,7 @@ export function SidebarFooterNav({
           tourId="team-tools"
           iconsOnly={iconsOnly || toolbar}
           active={state.activeView === "team-map"}
+          unread={teamMapUnread}
           icon={(active) => <UsersRound size={iconSize} className={tone(active)} />}
           onClick={() => dispatch({ type: "showTeamMap" })}
         />
@@ -234,6 +250,7 @@ export function SidebarFooterNav({
         name={t("sidebar.tools")}
         collapsed={collapsed}
         alert={collapsed && automationsNeedYou}
+        attention={collapsed && teamMapUnread ? { unread: 1, waiting: 0, working: 0 } : undefined}
         onToggle={onToggleCollapsed}
         reorderable={false}
         dragging={false}

@@ -18,7 +18,7 @@ vi.mock("@/state/store", async (importOriginal) => {
   return { ...original, useStore: () => ({ state: { ...original.initialState, ...fixture.state }, dispatch: fixture.dispatch }) };
 });
 
-import { BotContextMenu, BotListItem, BotThreadList, botRowProps, GroupListItem, PinnedBotCircle, type BotRowProps } from "./Sidebar";
+import { BotContextMenu, BotListItem, BotThreadList, botRowProps, GroupListItem, type BotRowProps } from "./Sidebar";
 import { SidebarBotActivity, sidebarBotActivityTasks } from "./SidebarBotActivity";
 import { forgetSearchDisclosuresForTests } from "@/lib/search-disclosure";
 import { noteTurnEvent, resetTurnLive } from "@/state/turn-status";
@@ -41,7 +41,6 @@ const bot: Bot = {
 const quiet: Bot = { ...bot, unread: false, tasks: bot.tasks!.filter((task) => !task.busy && !task.unread && !task.activity) };
 const densities: SidebarDensity[] = ["comfortable", "icons"];
 const botRow = (BotListItem as MemoExoticComponent<(props: BotRowProps) => ReactNode>).type;
-const pinnedCircle = (PinnedBotCircle as MemoExoticComponent<(props: BotRowProps) => ReactNode>).type;
 const rowProps = (density: SidebarDensity, candidate: Bot = bot, query = "") =>
   botRowProps({ ...initialState, ...fixture.state }, fixture.dispatch, candidate, { density, query, onMenu: vi.fn() });
 
@@ -337,10 +336,10 @@ describe("bot-first sidebar", () => {
     expect(markup).not.toContain("waiting-dot");
   });
 
-  it.each(densities)("opens the thread a row or circle is marked for, on mouse or keyboard, %s density", (density) => {
+  it.each(densities)("opens the thread a row is marked for, on mouse or keyboard, %s density", (density) => {
     fixture.showThreads = false;
     const trees: ReactNode[] = [];
-    function Capture() { const tree = [botRow(rowProps(density)), pinnedCircle(rowProps(density))]; trees.push(...tree); return tree; }
+    function Capture() { const tree = [botRow(rowProps(density))]; trees.push(...tree); return tree; }
     renderToStaticMarkup(createElement(Capture));
     for (const tree of trees) {
       const row = findElement(tree, "data-sidebar-bot-row", bot.id)!;
@@ -360,7 +359,7 @@ describe("bot-first sidebar", () => {
       fixture.showThreads = enabled;
       const opened = enabled ? { type: "select", id: bot.id } : { type: "switchTask", botId: bot.id, threadId: "idle-history" };
       const trees: ReactNode[] = [];
-      function Capture() { const tree = [botRow(rowProps(density, used)), pinnedCircle(rowProps(density, used))]; trees.push(...tree); return tree; }
+      function Capture() { const tree = [botRow(rowProps(density, used))]; trees.push(...tree); return tree; }
       renderToStaticMarkup(createElement(Capture));
       for (const tree of trees) {
         const row = findElement(tree, "data-sidebar-bot-row", bot.id)!;

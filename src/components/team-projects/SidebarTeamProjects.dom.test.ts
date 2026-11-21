@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamChangesInput, TeamChangesResult, TeamProjectsListWire, TeamProjectWire } from "../../../shared/team-projects";
-import type { Bot, Group } from "@/state/store";
+import type { AppState, Bot, Group } from "@/state/store";
 
-const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: { bots: [] as unknown[], groups: [] as unknown[], sections: [] as string[], selectedId: "" } }));
+type Shown = Pick<AppState, "bots" | "groups" | "sections" | "selectedId" | "activeView" | "project" | "pendingQueued">;
+const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: {} as Shown }));
 vi.mock("@/state/store-select", () => ({
-  useStoreSelector: (selector: (state: typeof fixture.state) => unknown) => selector(fixture.state),
+  useStoreSelector: (selector: (state: Shown) => unknown) => selector(fixture.state),
   useStoreDispatch: () => fixture.dispatch,
 }));
 vi.mock("@/lib/thread-preferences", () => ({ useShowThreads: () => false }));
@@ -17,7 +18,7 @@ vi.mock("../MenuMotion", () => ({
 }));
 
 import { setLocale } from "@/lib/i18n";
-import { teamProjectSectionId } from "@/lib/team-projects";
+import { SIDEBAR_OPEN_PROJECTS_KEY } from "@/lib/sidebar-projects";
 import { setTeamProjects, useTeamProjectSide } from "@/state/team-projects";
 import { SidebarTeamProjects, type SidebarTeamProjectsMode } from "./SidebarTeamProjects";
 
@@ -35,11 +36,12 @@ const project = (id: string, botIds: string[], extra: Partial<TeamProjectWire> =
 
 const bride = project("The bride", ["bride-lead", "bride-writer", "bride-editor"]);
 const heir = project("The heir", ["heir-lead", "heir-writer"]);
-const bots = [
+const team = () => [
   bot("sales", { section: "Sales" }), bot("main", { defaultBot: {}, chiefOfStaff: true }),
   bot("bride-editor", { section: "The bride" }), bot("bride-writer", { section: "The bride" }), bot("bride-lead", { section: "The bride", chiefOfStaff: true }),
   bot("heir-writer", { section: "The heir" }), bot("heir-lead", { section: "The heir", chiefOfStaff: true }),
 ];
+let bots = team();
 const rooms = [room("bride-room", "The bride"), room("sales-room", "Sales")];
 
 interface Call { path: string; method: string }
@@ -51,8 +53,8 @@ let decide: (project: TeamProjectWire) => TeamChangesResult = (project) => ({ pr
 let gate: Promise<void> | null = null;
 let mode: SidebarTeamProjectsMode = { density: "comfortable", advanced: false, tight: true, remote: false, followed: true };
 let query = "";
-let collapsedIds: string[] = [];
 const onError = vi.fn();
+const onNew = vi.fn();
 
 let container: HTMLDivElement, root: Root;
 const q = (selector: string) => document.body.querySelector<HTMLElement>(selector);
@@ -60,26 +62,22 @@ const all = (selector: string) => [...document.body.querySelectorAll<HTMLElement
 const settle = async () => { await act(async () => { await new Promise((done) => setTimeout(done, 0)); }); };
 const click = async (element: HTMLElement | null) => { expect(element).toBeTruthy(); await act(async () => element!.click()); await settle(); };
 const block = (id: string) => q(`[data-sidebar-team-project="${id}"]`);
-const drawn = (id: string) => [...block(id)!.querySelectorAll<HTMLElement>("[data-row]")].map((row) => row.dataset.row);
+const row = (id: string) => q(`[data-sidebar-project-row="${id}"]`);
+const member = (id: string) => q(`[data-sidebar-project-member="${id}"]`);
+const drawn = (id: string) => [...block(id)!.querySelectorAll<HTMLElement>("[data-sidebar-project-member], [data-row]")].map((one) => one.dataset.sidebarProjectMember ?? one.dataset.row);
 const listed = () => all("[data-sidebar-team-project]").map((one) => one.dataset.sidebarTeamProject);
 const TOGGLE = "button[aria-expanded]:not([aria-haspopup])";
+const toggle = (id: string) => block(id)!.querySelector<HTMLElement>(TOGGLE);
 const posts = () => calls.filter((call) => call.method === "POST").map((call) => call.path);
+const shown = (id: string, botId?: string) => ({ type: "showProject", projectId: id, ...(botId ? { botId } : {}) });
 
 function Harness() {
   const side = useTeamProjectSide();
-  const [closed, setClosed] = useState(collapsedIds);
-  const interactive = mode.density !== "icons" && !query;
   const matches = (name: string) => !query || name.toLowerCase().includes(query);
   return createElement(SidebarTeamProjects, {
-    side, mode, query, onError,
+    side, mode, query, onError, onNew,
     all: { bots, groups: rooms },
     found: { bots: bots.filter((one) => matches(one.name)), groups: rooms.filter((one) => matches(one.name)) },
-    sections: {
-      interactive,
-      collapsed: (id: string) => interactive && closed.includes(id),
-      toggle: (id: string) => setClosed((now) => (now.includes(id) ? now.filter((one) => one !== id) : [...now, id])),
-    },
-    botRow: (one: Bot) => createElement("div", { key: one.id, "data-row": one.id }),
     roomRow: (one: Group) => createElement("div", { key: one.id, "data-row": one.id }),
   });
 }
@@ -93,7 +91,9 @@ async function draw(): Promise<void> {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   setLocale("en");
+  localStorage.clear();
   calls = [];
+  bots = team();
   list = { root: "/dramas", projects: [bride, heir] };
   refuse = false;
   decided = [];
@@ -101,10 +101,10 @@ beforeEach(() => {
   gate = null;
   mode = { density: "comfortable", advanced: false, tight: true, remote: false, followed: true };
   query = "";
-  collapsedIds = [];
-  fixture.state = { bots, groups: rooms, sections: ["The bride", "The heir", "Sales"], selectedId: "main" };
+  fixture.state = { bots, groups: rooms, sections: ["The bride", "The heir", "Sales"], selectedId: "main", activeView: "chat", pendingQueued: {} };
   fixture.dispatch.mockClear();
   onError.mockClear();
+  onNew.mockClear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const call = { path: String(input), method: init?.method ?? "GET" };
     calls.push(call);
@@ -148,13 +148,69 @@ describe("the projects in the sidebar", () => {
     expect(listed()).toEqual(["The bride", "The heir"]);
   });
 
-  it("lists each project with its team under it: the lead, the members in the server's order, then its group chats", async () => {
+  it("is one closed row per project, and a click on one opens the project's view", async () => {
     await draw();
-    expect(listed()).toEqual(["The bride", "The heir"]);
-    expect(drawn("The bride")).toEqual(["bride-lead", "bride-writer", "bride-editor", "bride-room"]);
+    expect([listed(), drawn("The bride"), drawn("The heir")]).toEqual([["The bride", "The heir"], [], []]);
+    expect(row("The bride")!.textContent).toBe("The bride");
+    await click(row("The heir"));
+    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
+  });
+
+  it("opens a project's team under its row: the lead, then the members in the server's order", async () => {
+    await draw();
+    expect([toggle("The bride")!.getAttribute("aria-expanded"), toggle("The bride")!.getAttribute("aria-label")]).toEqual(["false", "Expand The bride"]);
+    await click(toggle("The bride"));
+    expect(drawn("The bride")).toEqual(["bride-lead", "bride-writer", "bride-editor"]);
+    expect(member("bride-lead")!.querySelector('[aria-label="Chief of Staff"]')).not.toBeNull();
+    expect([q('[data-sidebar-project-member="sales"]'), drawn("The heir")]).toEqual([null, []]);
+    expect(block("The bride")!.querySelector('[role="group"]')!.getAttribute("aria-label")).toBe("The bride");
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("opens the project with a member chosen when the member is clicked", async () => {
+    await draw();
+    await click(toggle("The bride"));
+    await click(member("bride-writer"));
+    expect(fixture.dispatch.mock.calls).toEqual([[shown("The bride", "bride-writer")]]);
+  });
+
+  it("remembers on this device which projects are open", async () => {
+    await draw();
+    await click(toggle("The heir"));
+    expect(JSON.parse(localStorage.getItem(SIDEBAR_OPEN_PROJECTS_KEY)!)).toEqual(["The heir"]);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await draw();
     expect(drawn("The heir")).toEqual(["heir-lead", "heir-writer"]);
-    expect(all("[data-row]").map((row) => row.dataset.row)).not.toContain("sales");
-    expect(block("The bride")!.querySelector("[data-section]")!.getAttribute("data-section")).toBe("The bride");
+    await click(toggle("The heir"));
+    expect([drawn("The heir"), JSON.parse(localStorage.getItem(SIDEBAR_OPEN_PROJECTS_KEY)!)]).toEqual([[], []]);
+  });
+
+  it("marks the project whose view is open, or the member chosen in it", async () => {
+    fixture.state = { ...fixture.state, activeView: "project", project: { id: "The bride" } };
+    await draw();
+    expect([row("The bride")!.getAttribute("aria-current"), row("The heir")!.getAttribute("aria-current")]).toEqual(["page", null]);
+    fixture.state = { ...fixture.state, project: { id: "The bride", botId: "bride-writer" } };
+    await draw();
+    expect(row("The bride")!.getAttribute("aria-current")).toBe("page");
+    await click(toggle("The bride"));
+    expect([row("The bride")!.getAttribute("aria-current"), member("bride-writer")!.getAttribute("aria-current"), member("bride-lead")!.getAttribute("aria-current")]).toEqual([null, "page", null]);
+  });
+
+  it("marks the member whose chat is open", async () => {
+    fixture.state = { ...fixture.state, selectedId: "bride-editor" };
+    await draw();
+    await click(toggle("The bride"));
+    expect([member("bride-editor")!.getAttribute("aria-current"), row("The bride")!.getAttribute("aria-current")]).toEqual(["page", null]);
+  });
+
+  it("shows what each member is doing", async () => {
+    bots = bots.map((one) => one.id === "bride-lead" ? { ...one, busy: true } : one.id === "bride-writer" ? { ...one, activity: "waiting-on-you" as const } : one.id === "bride-editor" ? { ...one, unread: true } : one);
+    await draw();
+    await click(toggle("The bride"));
+    expect(member("bride-lead")!.querySelector('[data-testid="working-dot"]')).not.toBeNull();
+    expect([member("bride-writer")!.querySelector('[data-testid="waiting-dot"]') !== null, member("bride-writer")!.textContent]).toEqual([true, "bride-writerWaiting for you…"]);
+    expect([member("bride-editor")!.querySelector('[data-testid="unread-dot"]') !== null, member("bride-editor")!.textContent]).toEqual([true, "bride-editorUnread"]);
   });
 
   it("leaves archived projects out", async () => {
@@ -163,7 +219,7 @@ describe("the projects in the sidebar", () => {
     expect(listed()).toEqual(["The heir"]);
   });
 
-  it("ends with New project, which is all there is with no projects", async () => {
+  it("ends with New project, which is all there is with no projects, and asks the sidebar for its dialog", async () => {
     await draw();
     const last = q("[data-sidebar-team-projects]")!.lastElementChild as HTMLElement;
     expect([last.dataset.teamProjectNew, last.textContent]).toEqual(["", "New project"]);
@@ -171,24 +227,8 @@ describe("the projects in the sidebar", () => {
     await draw();
     expect(listed()).toEqual([]);
     expect(q("[data-sidebar-team-projects]")!.textContent).toBe("New project");
-  });
-
-  it("opens the New project dialog", async () => {
-    await draw();
     await click(q("[data-team-project-new]"));
-    expect(q('[role="dialog"]')!.textContent).toContain("New project");
-  });
-
-  it("closes and opens a project from its row, and remembers it under the project's own id", async () => {
-    collapsedIds = [teamProjectSectionId("The heir")];
-    await draw();
-    expect([drawn("The bride").length, drawn("The heir").length]).toEqual([4, 0]);
-    const toggle = block("The bride")!.querySelector<HTMLElement>(TOGGLE)!;
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    await click(toggle);
-    expect(drawn("The bride")).toEqual([]);
-    await click(block("The heir")!.querySelector<HTMLElement>(TOGGLE));
-    expect(drawn("The heir")).toEqual(["heir-lead", "heir-writer"]);
+    expect(onNew).toHaveBeenCalledTimes(1);
   });
 
   it("says on the row when the project's folder is not there, and shows its team as unavailable", async () => {
@@ -196,50 +236,36 @@ describe("the projects in the sidebar", () => {
     await draw();
     expect(block("The bride")!.querySelector("[data-team-project-missing]")).toBeNull();
     expect(block("The heir")!.querySelector("[data-team-project-missing]")!.textContent).toBe("Project folder not found");
-    const team = (id: string) => block(id)!.querySelector<HTMLElement>("[data-team-project-team]")!;
-    expect([team("The bride").className.includes("opacity-50"), team("The heir").className.includes("opacity-50")]).toEqual([false, true]);
-    expect(drawn("The heir")).toEqual(["heir-lead", "heir-writer"]);
+    await click(toggle("The heir"));
+    expect([block("The heir")!.querySelector<HTMLElement>("[data-team-project-team]")!.className.includes("opacity-50"), drawn("The heir")]).toEqual([true, ["heir-lead", "heir-writer"]]);
   });
 
-  it("still says the folder is not there on a closed project", async () => {
-    list = { root: "/dramas", projects: [{ ...heir, folderState: "missing" }] };
-    collapsedIds = [teamProjectSectionId("The heir")];
+  it("marks a closed project when something in it is unread, and leaves the mark to the members once it is open", async () => {
+    bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, unread: true } : one));
     await draw();
-    expect([drawn("The heir"), block("The heir")!.querySelector("[data-team-project-missing]")!.textContent]).toEqual([[], "Project folder not found"]);
-  });
-
-  it("marks a closed project when something in it is unread", async () => {
-    collapsedIds = [teamProjectSectionId("The bride")];
-    fixture.state = { ...fixture.state };
-    bots[3] = bot("bride-writer", { section: "The bride", unread: true });
-    await draw();
-    bots[3] = bot("bride-writer", { section: "The bride" });
     expect(block("The bride")!.querySelector("[data-section-mark]")!.getAttribute("data-section-mark")).toBe("unread");
+    expect(block("The heir")!.querySelector("[data-section-mark]")).toBeNull();
+    await click(toggle("The bride"));
+    expect(row("The bride")!.querySelector("[data-section-mark]")).toBeNull();
   });
 });
 
 describe("a search", () => {
-  it("keeps the projects that have a match, with only what matches", async () => {
+  it("keeps the projects that have a match, open, with only what matches", async () => {
     query = "writer";
     await draw();
     expect(listed()).toEqual(["The bride", "The heir"]);
     expect([drawn("The bride"), drawn("The heir")]).toEqual([["bride-writer"], ["heir-writer"]]);
-    expect(q("[data-team-project-new]")).toBeNull();
+    expect([toggle("The bride"), q("[data-team-project-new]")]).toEqual([null, null]);
   });
 
-  it("shows the whole team of a project whose name matches", async () => {
+  it("shows the whole team of a project whose name matches, and a group chat that matches", async () => {
     query = "the heir";
     await draw();
-    expect(listed()).toEqual(["The heir"]);
-    expect(drawn("The heir")).toEqual(["heir-lead", "heir-writer"]);
-  });
-
-  it("opens what it finds in a project that was closed", async () => {
-    collapsedIds = [teamProjectSectionId("The bride")];
-    query = "bride-lead";
+    expect([listed(), drawn("The heir")]).toEqual([["The heir"], ["heir-lead", "heir-writer"]]);
+    query = "bride-room";
     await draw();
-    expect(drawn("The bride")).toEqual(["bride-lead"]);
-    expect(block("The bride")!.querySelector(TOGGLE)).toBeNull();
+    expect([listed(), drawn("The bride")]).toEqual([["The bride"], ["bride-room"]]);
   });
 });
 
@@ -253,18 +279,18 @@ describe("the project's menu", () => {
     expect(q('[role="menu"]')!.getAttribute("aria-label")).toBe("The bride");
     expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Archive"]);
     expect(menuButton("The bride")!.getAttribute("aria-expanded")).toBe("true");
+    expect(fixture.dispatch).not.toHaveBeenCalled();
   });
 
   it("opens on a right-click of the row too", async () => {
     await draw();
-    await act(async () => { block("The heir")!.querySelector("[data-section]")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 60 })); });
+    await act(async () => { row("The heir")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 40, clientY: 60 })); });
     expect(q('[role="menu"]')!.getAttribute("aria-label")).toBe("The heir");
   });
 
   it("is also there in Advanced mode", async () => {
     mode = { ...mode, advanced: true };
     await draw();
-    expect(block("The bride")!.querySelector("[data-sidebar-section-line]")).toBeNull();
     await click(menuButton("The bride"));
     expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Archive"]);
   });
@@ -301,6 +327,14 @@ describe("the project's menu", () => {
     expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "main" }], [{ type: "select", id: "bride-writer" }]]);
   });
 
+  it("leaves the view of the project it archives for the main bot", async () => {
+    fixture.state = { ...fixture.state, activeView: "project", project: { id: "The bride" } };
+    await draw();
+    await click(menuButton("The bride"));
+    await click(q("[data-team-project-archive]"));
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "main" }]]);
+  });
+
   it("stays where the person is when another project is archived", async () => {
     fixture.state = { ...fixture.state, selectedId: "heir-lead" };
     await draw();
@@ -331,7 +365,8 @@ describe("the project's menu", () => {
     mode = { ...mode, remote: true };
     await draw();
     expect([menuButton("The bride"), q("[data-team-project-new]")]).toEqual([null, null]);
-    expect(drawn("The bride")).toHaveLength(4);
+    await click(toggle("The bride"));
+    expect(drawn("The bride")).toHaveLength(3);
   });
 });
 
@@ -408,24 +443,31 @@ describe("a project whose team changed", () => {
 describe("the narrow column of icons", () => {
   beforeEach(() => { mode = { density: "icons", advanced: false, tight: false, remote: false, followed: true }; });
 
-  it("draws each team as a named group with no row of its own, and New project as a named button", async () => {
+  it("draws each project as a square named for it that opens its view, with no team under it, and New project as a named button", async () => {
     await draw();
-    expect(all("[data-section]")).toEqual([]);
     expect(all('[role="group"]').map((group) => group.getAttribute("aria-label"))).toEqual(["The bride", "The heir"]);
-    expect(drawn("The heir")).toEqual(["heir-lead", "heir-writer"]);
+    expect([row("The heir")!.getAttribute("aria-label"), row("The heir")!.textContent, drawn("The heir")]).toEqual(["The heir", "T", []]);
+    await click(row("The heir"));
+    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
     const add = q("[data-team-project-new]")!;
     expect([add.getAttribute("aria-label"), add.getAttribute("title"), add.textContent]).toEqual(["New project", "New project", ""]);
   });
 
-  it("parts the teams from each other and from what follows", async () => {
+  it("names what is going on in a project on its square", async () => {
+    bots = bots.map((one) => (one.id === "heir-writer" ? { ...one, unread: true } : one));
     await draw();
-    expect(all("[data-sidebar-rail-separator]")).toHaveLength(3);
-    mode = { ...mode, followed: false };
-    await draw();
-    expect(all("[data-sidebar-rail-separator]")).toHaveLength(2);
+    expect(row("The heir")!.getAttribute("aria-label")).toBe("The heir, 1 unread");
   });
 
-  it("marks a team whose folder is not there", async () => {
+  it("parts the projects from what is above and what follows", async () => {
+    await draw();
+    expect(all("[data-sidebar-rail-separator]")).toHaveLength(2);
+    mode = { ...mode, followed: false };
+    await draw();
+    expect(all("[data-sidebar-rail-separator]")).toHaveLength(1);
+  });
+
+  it("marks a project whose folder is not there", async () => {
     list = { root: "/dramas", projects: [{ ...heir, folderState: "missing" }] };
     await draw();
     const mark = block("The heir")!.querySelector<HTMLElement>("[data-team-project-missing]")!;

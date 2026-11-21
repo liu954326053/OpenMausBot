@@ -25,10 +25,10 @@ export function SidebarPlaceStatus({ place, className }: { place: WorkspacePlace
   return null;
 }
 
-function SimpleSidebarFooter({ owner, archived }: { owner: string | null; archived?: ArchivedBots }) {
+function SimpleSidebarFooter({ owner, archived, teamMapUnread }: { owner: string | null; archived?: ArchivedBots; teamMapUnread: boolean }) {
   const { state } = useStore();
   const place = useSimplePlace();
-  const account = useSimpleAccount(place, owner, archived);
+  const account = useSimpleAccount(place, owner, archived, teamMapUnread);
   const move = useAccountMoveLine(state.config?.cloudHome === true);
   const footer = useRef<HTMLDivElement>(null);
   // The move's words open the account menu just below them, where the move's row is.
@@ -48,19 +48,20 @@ function SimpleSidebarFooter({ owner, archived }: { owner: string | null; archiv
   );
 }
 
-export function SidebarFooter({ density, simple = false, owner = null, archived, toolsCollapsed, onToggleTools }: {
+export function SidebarFooter({ density, simple = false, owner = null, archived, toolsCollapsed, onToggleTools, teamMapUnread = false }: {
   density: SidebarDensity;
   simple?: boolean;
   owner?: string | null;
   archived?: ArchivedBots;
   toolsCollapsed: boolean;
   onToggleTools?: () => void;
+  teamMapUnread?: boolean;
 }) {
   const { dispatch } = useStore();
-  if (simple) return <SimpleSidebarFooter owner={owner} archived={archived} />;
+  if (simple) return <SimpleSidebarFooter owner={owner} archived={archived} teamMapUnread={teamMapUnread} />;
   return (
     <div className={cn("pb-3 pt-2", density === "icons" ? "flex flex-col items-center gap-1 px-2" : "px-3")}>
-      <SidebarFooterNav density={density} collapsed={toolsCollapsed} onToggleCollapsed={onToggleTools} />
+      <SidebarFooterNav density={density} collapsed={toolsCollapsed} onToggleCollapsed={onToggleTools} teamMapUnread={teamMapUnread} />
       {density === "icons" ? (
         <>
           <SidebarPhoneButton density={density} onOpen={() => dispatch(phoneSettingsAction())} />

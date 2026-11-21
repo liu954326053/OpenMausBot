@@ -61,7 +61,7 @@ describe("sidebar header", () => {
     const html = render();
     expect(html).toContain('aria-label="Inbox"');
     expect(html).not.toContain('aria-label="Active Threads"');
-    expect(html).toContain('aria-label="New or share"');
+    expect(html).toContain('aria-label="New"');
     expect(html).not.toMatch(collapse);
   });
 
@@ -71,7 +71,7 @@ describe("sidebar header", () => {
     const html = render();
     expect(html).toContain('aria-label="Inbox"');
     expect(html).not.toContain('aria-label="Active Threads"');
-    expect(html).toContain('aria-label="New or share"');
+    expect(html).toContain('aria-label="New"');
     expect(html).not.toMatch(collapse);
     expect(html, "the edge that is dragged, open or as avatars, so the avatars are never a dead end").toMatch(/role="separator" aria-label="Resize sidebar"/);
   });
@@ -85,7 +85,7 @@ describe("sidebar top row", () => {
   });
   const topRow = (html: string) => {
     const start = html.indexOf("data-sidebar-top-row");
-    const end = html.indexOf('aria-label="New or share"');
+    const end = html.indexOf('aria-label="New"');
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     return html.slice(start, end);
@@ -128,7 +128,7 @@ describe("sidebar top row", () => {
     expect(row).toMatch(/aria-label="Switch server: Servers"[^>]*title="Servers"[^>]*class="[^"]*\bh-7\b[^"]*\boverflow-hidden\b[^"]*\btext-\[13px\][^"]*" style="-webkit-app-region:no-drag"/);
     expect(row).toContain('<span class="min-w-0 truncate @max-[96px]/sidebar-top:hidden">Servers</span>');
     expect(row).toContain("focus-visible:outline-2");
-    expect(html).toContain('title="New or share"');
+    expect(html).toContain('title="New"');
     expect(html.match(/Switch server:/g)).toHaveLength(1);
   });
 
@@ -149,7 +149,7 @@ describe("sidebar top row", () => {
     expect(row.slice(buttons).match(/<button/g)).toHaveLength(2);
     expect(row).toMatch(/data-sidebar-search-toggle="true" aria-label="Search bots and messages" aria-expanded="false" title="Search bots and messages" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b[^"]*\btext-ink-secondary\b/);
     expect(row, "no round box round either").not.toContain("bg-composer");
-    expect(html).toMatch(/aria-label="New or share" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b/);
+    expect(html).toMatch(/aria-label="New" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b/);
     expect(html).not.toContain("data-sidebar-edge-toggle");
     expect(html).not.toContain('title="Active Threads"');
     expect(html).not.toContain("data-sidebar-search-pill");
@@ -220,9 +220,9 @@ describe("sidebar top row", () => {
     expect(top).not.toContain("data-traffic-light-space");
     expect(top).not.toContain("data-sidebar-top-buttons");
     expect(top).not.toContain("data-workspace-switcher");
-    expect(top.indexOf('aria-label="Search bots and messages"')).toBeLessThan(top.indexOf('aria-label="New or share"'));
+    expect(top.indexOf('aria-label="Search bots and messages"')).toBeLessThan(top.indexOf('aria-label="New"'));
     expect(top).toMatch(/data-sidebar-rail-top="true" class="flex flex-col items-center gap-2 pt-1"/);
-    expect(top).toMatch(/aria-label="New or share" class="[^"]*\bsize-9\b[^"]*\brounded-full\b/);
+    expect(top).toMatch(/aria-label="New" class="[^"]*\bsize-9\b[^"]*\brounded-full\b/);
     const foot = html.slice(html.indexOf("data-sidebar-rail-footer"));
     const at = (marker: string) => {
       const index = foot.indexOf(marker);
@@ -241,7 +241,7 @@ describe("sidebar top row", () => {
     expect(foot).not.toContain('data-sidebar-nav="automations"');
     expect(foot).not.toContain('data-sidebar-nav="team-map"');
     expect(html).not.toContain("Switch server:");
-    expect(html.match(/aria-label="New or share"/g)).toHaveLength(1);
+    expect(html.match(/aria-label="New"/g)).toHaveLength(1);
   });
 
   it("stacks the icons rail unchanged and keeps the icon-only switcher beneath it", () => {
@@ -262,7 +262,7 @@ describe("sidebar top row", () => {
 describe("the button that hides and shows the window's rail of places", () => {
   const row = () => {
     const html = render();
-    return html.slice(html.indexOf("data-sidebar-top-row"), html.indexOf('aria-label="New or share"'));
+    return html.slice(html.indexOf("data-sidebar-top-row"), html.indexOf('aria-label="New"'));
   };
   const toggle = (html: string) => /<button type="button" data-rail-toggle="true"[^>]*>/.exec(html)?.[0] ?? "";
   beforeEach(() => {

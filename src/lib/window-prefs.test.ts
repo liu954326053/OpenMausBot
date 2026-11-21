@@ -20,8 +20,8 @@ describe("window preferences", () => {
     applyWindowPref({ kind: "window-pref", id: "general.sendKey", value: "space" });
     expect(values.get("omb-send-key")).toBe("mod-enter");
     applyWindowPref({ kind: "window-pref", id: "general.notificationSounds", value: false });
-    applyWindowPref({ kind: "window-pref", id: "appearance.pinnedCircles", value: true });
-    expect(await windowPrefValues()).toMatchObject({ "general.sendKey": "mod-enter", "general.notificationSounds": false, "appearance.pinnedCircles": true });
+    applyWindowPref({ kind: "window-pref", id: "appearance.toolsLayout", value: "toolbar" });
+    expect(await windowPrefValues()).toMatchObject({ "general.sendKey": "mod-enter", "general.notificationSounds": false, "appearance.toolsLayout": "toolbar" });
   });
 
   it("reports the window's values once after a burst of setters", async () => {

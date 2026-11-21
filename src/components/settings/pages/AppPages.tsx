@@ -7,8 +7,8 @@ import { useStore } from "@/state/store";
 import { AboutDialog } from "../../AboutDialog";
 import { ChatWidthRow, FontRow, SidebarToolsLayoutRow } from "../../AppearanceSelectRows";
 import {
-  ColorUserBubblesRow, FollowUpRow, LanguageRow, PinnedCirclesRow, ReplayTourRow, RunCardRow, SendKeyRow, ShowThreadsRow,
-  ToolCallsRow, UniversalPinsRow, UpdatesRow,
+  ColorUserBubblesRow, FollowUpRow, LanguageRow, ReplayTourRow, RunCardRow, SendKeyRow, ShowThreadsRow,
+  ToolCallsRow, UpdatesRow,
 } from "../../AppSettingsRows";
 import { ChromeRailRow } from "../../ChromeRailToggle";
 import { ConnectedWorkspacesSettings } from "../../ConnectedWorkspacesSettings";
@@ -176,8 +176,6 @@ export function AppearancePage() {
         <WindowFrameRow />
         {ctx.advanced && <ShowThreadsRow />}
         {ctx.advanced && <SidebarToolsLayoutRow />}
-        {ctx.advanced && <PinnedCirclesRow />}
-        {ctx.advanced && <UniversalPinsRow />}
       </SettingsRows>
     </SettingsGroup>}
     {ctx.advanced && <PinnedPanelsSettings />}

@@ -20,6 +20,13 @@ describe("window preferences on the server", () => {
     expect(frames).toEqual([{ kind: "window-pref", id: "appearance.skin", value: "midnight" }]);
   });
 
+  it("hears a window that still reports the pinned-bot settings the app no longer has", async () => {
+    const prefs = createWindowPrefs({ broadcast: () => {}, ownerOrAdmin: () => true, windowOpen: () => true });
+    const values = { "appearance.pinnedCircles": true, "appearance.universalPins": false, "appearance.showThreads": true };
+    expect(await callRoute(prefs.routes, { method: "PUT", path: "/api/window-prefs", body: { values }, auth: owner })).toMatchObject({ status: 200 });
+    expect(prefs.read("appearance.showThreads")).toBe(true);
+  });
+
   it("changes nothing while no window is open, and works again once one reconnects", async () => {
     const frames: Record<string, unknown>[] = [];
     let open = true;

@@ -155,13 +155,13 @@ describe("Simple mode's bot menu", () => {
   const point = (target: Element, y: number) => target.dispatchEvent(new MouseEvent("pointerover", { bubbles: true, clientX: 60, clientY: y }));
   beforeEach(() => { mode.advanced = false; });
 
-  it("leads with Pin, Move and Mark as read, then the thread items, then Rename, then Copy conversation ID and More, and ends with Archive and Delete", () => {
+  it("leads with Move and Mark as read, then the thread items, then Rename, then Copy conversation ID and More, and ends with Archive and Delete", () => {
     draw();
     expect([...sheet().querySelectorAll("button")].map((node) => node.textContent)).toEqual([
-      "Pin", "Move to department", "Mark as read", "New thread", "View threads", "Rename", "Copy conversation ID", "More", "Archive", "Delete",
+      "Move to department", "Mark as read", "New thread", "View threads", "Rename", "Copy conversation ID", "More", "Archive", "Delete",
     ]);
     expect([...sheet().children].map((node) => node.getAttribute("role") === "separator" ? "|" : node.textContent)).toEqual([
-      "Pin", "Move to department", "Mark as read", "|", "New thread", "View threads", "|", "Rename", "|", "Copy conversation ID", "More", "|", "Archive", "Delete",
+      "Move to department", "Mark as read", "|", "New thread", "View threads", "|", "Rename", "|", "Copy conversation ID", "More", "|", "Archive", "Delete",
     ]);
     flushSync(() => button("Rename").click());
     expect(onRename).toHaveBeenCalledWith(bot.id);
@@ -207,18 +207,18 @@ describe("Simple mode's bot menu", () => {
 
   it("opens More only after the pointer rests on it, closes it when a sibling row takes the pointer, and opens it at once on a click", async () => {
     draw();
-    const pin = button("Pin");
+    const sibling = button("Move to department");
     point(more(), 200);
     await wait(100);
     expect(flyout()).toBeNull();
-    point(pin, 80);
+    point(sibling, 80);
     await wait(400);
     expect(flyout()).toBeNull();
     point(more(), 200);
     await wait(320);
     expect(flyout()).not.toBeNull();
     expect([...flyout()!.querySelectorAll("button")].map((node) => node.textContent)).toEqual(["Edit profile", "Pause bot", "Pause every bot", "Make Chief of Staff", "Duplicate", "Delete all conversations…"]);
-    point(pin, 80);
+    point(sibling, 80);
     await wait(20);
     expect(flyout()).toBeNull();
     flushSync(() => more().click());

@@ -218,6 +218,7 @@ export const SRC_OUTSIDE_RENDERER = [
   "src/components/app/app-frame-host.ts",
   "src/lib/citations.ts",
   "src/lib/composer-attachments.ts",
+  "src/lib/last-conversation.ts",
   "src/lib/random-uuid.ts",
   "src/lib/receipts.ts",
 ];
