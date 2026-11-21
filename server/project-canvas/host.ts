@@ -14,6 +14,7 @@ import type { RouteHandler } from "../routes/table.ts";
 import { isSteeredMessageQueued, onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
 import type { Store } from "../store.ts";
 import { onTeamFlowsChange, projectParents } from "../team-flow/flows.ts";
+import { onTeamProjectFolderChange } from "../team-projects/folder-watch.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import { setCanvasGenerationCardAnswer } from "./card-route.ts";
@@ -133,6 +134,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
       console.error(`[project-canvas] a change to a team's flow could not be drawn on the canvases (${error instanceof Error ? error.message : "unknown"})`);
     }
   });
+  onTeamProjectFolderChange(({ projectId }) => botsChanged(projectId));
 
   deps.generation.onJobChange((job) => service.jobChanged(job));
   service.reconcileGenerations();

@@ -57,10 +57,23 @@ a Chief through `/api/team-projects`, then check:
    Chief, puts a dot on a card with unread output and on the footer's Team map
    entry, and does not take the main bot into a department.
 6. A project copy's chat locks its model picker and says why.
+7. While a project copy's or a project group chat's conversation is open, the
+   project's row is the selected one, unless the copy is pinned and has a row
+   of its own.
+8. Archiving a project from its row's menu offers Undo in the bottom-left
+   corner, clear of the composer.
+9. Renaming a project's folder away shows Project folder not found under its
+   row and on its open canvas within a few seconds, with no reload, and
+   renaming it back takes both away.
+10. In Simple mode, Settings shows Data with the projects folder and the
+    archived projects, and restoring one there leaves the app in Simple mode.
 
 `src/components/Sidebar.projects.test.ts`, `src/lib/sidebar-projects.test.ts`,
 `src/components/Sidebar.search.dom.test.ts`,
 `src/components/team-projects/SidebarTeamProjects.dom.test.ts`,
+`src/state/team-projects.test.ts`, `server/team-projects/folder-watch.test.ts`,
+`server/team-project-folder-live.e2e.test.ts`,
+`src/components/settings/SettingsWindow.test.ts`,
 `src/components/project-view/ProjectView.dom.test.ts`,
 `src/state/project-view.dom.test.ts`, `src/components/TeamMapPage.manage.test.ts`,
 `src/lib/team-map-scope.test.ts` and

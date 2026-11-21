@@ -142,7 +142,7 @@ function ConversationTaskPicker({
   const startRename = (task: PickerTask) => {
     clearDismiss();
     finishingRename.current = false;
-    setDraft(task.title);
+    setDraft(localizedTaskTitle(task.title));
     setRenaming(task.threadId);
   };
 
@@ -195,7 +195,7 @@ function ConversationTaskPicker({
     // Escape unmounts the input, which fires blur; without this guard blur would save the cancelled draft.
     if (finishingRename.current) return;
     finishingRename.current = true;
-    const currentTitle = tasks.find((task) => task.threadId === threadId)?.title ?? "";
+    const currentTitle = localizedTaskTitle(tasks.find((task) => task.threadId === threadId)?.title ?? "");
     const title = save ? nextRename(currentTitle, draft) : null;
     setRenaming(null);
     if (title) onRename(threadId, title);
@@ -214,7 +214,7 @@ function ConversationTaskPicker({
   const visible = grouped ? grouped.flatMap((group) => group.tasks) : filterTasks(tasks, query);
   const attentionNeedle = query.trim().toLowerCase();
   const attentionRows = (attention ?? []).filter((entry) =>
-    !attentionNeedle || entry.task.title.toLowerCase().includes(attentionNeedle) || attentionOwnerName(entry).toLowerCase().includes(attentionNeedle));
+    !attentionNeedle || [entry.task.title, localizedTaskTitle(entry.task.title), attentionOwnerName(entry)].some((text) => text.toLowerCase().includes(attentionNeedle)));
   const looking = query.trim();
   const results = [...attentionRows.map((entry) => ({ kind: "attention" as const, entry })), ...visible.map((task) => ({ kind: "task" as const, task }))];
 
@@ -373,7 +373,7 @@ function ConversationTaskPicker({
                     <button
                       type="button"
                       onClick={() => startRename(task)}
-                      aria-label={t("task.renameNamed", { title: task.title })}
+                      aria-label={t("task.renameNamed", { title: localizedTaskTitle(task.title) })}
                       title={t("task.renameTitle")}
                       className="rounded-md p-1 text-ink-secondary opacity-0 hover:bg-menu-hover hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 touch:opacity-70"
                     >
@@ -382,7 +382,7 @@ function ConversationTaskPicker({
                   )}
                   {bot && onMove && (bot.projects?.length ?? 0) > 0 && <label title={t("folder.move")} className="relative rounded-md p-1 text-ink-secondary opacity-0 hover:bg-menu-hover hover:text-ink focus-within:opacity-100 group-hover:opacity-100 touch:opacity-70">
                     <FolderInput size={14} />
-                    <select aria-label={t("folder.moveNamed", { title: task.title })} value={bot.projects?.some((project) => project.id === task.projectId) ? task.projectId : ""}
+                    <select aria-label={t("folder.moveNamed", { title: localizedTaskTitle(task.title) })} value={bot.projects?.some((project) => project.id === task.projectId) ? task.projectId : ""}
                       onFocus={clearDismiss} onChange={(event) => { clearDismiss(); onMove(task.threadId, event.target.value || null); }}
                       className="absolute inset-0 w-full cursor-pointer opacity-0">
                       <option value="">{t("folder.none")}</option>
@@ -428,6 +428,7 @@ export function BotActivityPicker({ bot }: { bot: Bot }) {
   if (showThreads) return null;
   const activity = threadsWhenTreeHidden(bot, state.pendingQueued).filter((task) => task.threadId !== bot.threadId);
   if (!activity.length) return null;
+  const openTitle = bot.tasks?.find((task) => task.threadId === bot.threadId)?.title;
   return (
     <div className="flex shrink-0 items-center gap-2 px-5 py-2" data-background-activity>
       <Select variant="pill" size="sm" className="max-w-[180px] shrink-0"
@@ -437,10 +438,10 @@ export function BotActivityPicker({ bot }: { bot: Bot }) {
       >
         <option value="" disabled>{t("task.otherActivity", { count: activity.length })}</option>
         {activity.map((task) => <option key={task.threadId} value={task.threadId}>
-          {task.title} · {task.activity === "waiting-on-you" ? t("task.waiting") : task.waitingForTeammates ? t("task.waitingOnTeammate") : task.busy || task.activity === "working" ? t("chat.activity.working") : task.queued ? t("task.queued") : t("task.unread")}
+          {localizedTaskTitle(task.title)} · {task.activity === "waiting-on-you" ? t("task.waiting") : task.waitingForTeammates ? t("task.waitingOnTeammate") : task.busy || task.activity === "working" ? t("chat.activity.working") : task.queued ? t("task.queued") : t("task.unread")}
         </option>)}
       </Select>
-      <span dir="auto" className="truncate text-[12px] text-ink-secondary">{bot.tasks?.find((task) => task.threadId === bot.threadId)?.title}</span>
+      <span dir="auto" className="truncate text-[12px] text-ink-secondary">{openTitle && localizedTaskTitle(openTitle)}</span>
     </div>
   );
 }

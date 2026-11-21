@@ -4,6 +4,7 @@ import { Share } from "lucide-react";
 
 import { t } from "@/lib/i18n";
 import { useStore, type Bot } from "@/state/store";
+import { TOAST_CLEAR_OF_COMPOSER } from "../NoticeCard";
 import { saveAccess } from "./access";
 import { ShareBotDialog, type AccessChange } from "./ShareBotDialog";
 
@@ -40,17 +41,19 @@ export function ShareBotButton({ bot, className, headerMenu, iconSize = 16, lead
   );
 }
 
-/** "Bob can now chat · Undo", for a few seconds; Undo puts the sharing back as it was. */
-export function UndoToast({ text, onUndo, onDone, actionLabel = t("common.undo"), failedText = t("botAccess.undoFailed") }: {
-  text: string; onUndo: () => Promise<unknown>; onDone: () => void; actionLabel?: string; failedText?: string;
+/** "Bob can now chat · Undo", for a few seconds; Undo puts the sharing back as it was. `clearOfComposer` sits it in the
+ * corner the notices use, for a toast that shows over a chat. */
+export function UndoToast({ text, onUndo, onDone, actionLabel = t("common.undo"), failedText = t("botAccess.undoFailed"), clearOfComposer = false }: {
+  text: string; onUndo: () => Promise<unknown>; onDone: () => void; actionLabel?: string; failedText?: string; clearOfComposer?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     const timer = window.setTimeout(onDone, TOAST_MS);
     return () => window.clearTimeout(timer);
   }, [onDone]);
+  const place = clearOfComposer ? TOAST_CLEAR_OF_COMPOSER : "fixed bottom-5 left-1/2 max-w-[min(420px,calc(100vw-32px))] -translate-x-1/2";
   return createPortal(
-    <div role="status" data-access-toast className="fixed bottom-5 left-1/2 z-[70] flex max-w-[min(420px,calc(100vw-32px))] -translate-x-1/2 items-center gap-3 rounded-xl border border-hairline/50 bg-card px-3.5 py-2.5 text-[13px] text-ink shadow-xl">
+    <div role="status" data-access-toast className={`${place} z-[70] flex items-center gap-3 rounded-xl border border-hairline/50 bg-card px-3.5 py-2.5 text-[13px] text-ink shadow-xl`}>
       <span className="min-w-0 flex-1">{failed ? failedText : text}</span>
       {!failed && (
         <button type="button" onClick={() => void onUndo().then(onDone, () => setFailed(true))} className="shrink-0 rounded-md px-1.5 py-0.5 font-medium text-accent hover:bg-raised">

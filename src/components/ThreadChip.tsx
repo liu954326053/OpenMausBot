@@ -2,6 +2,7 @@ import { ChevronRight, MessagesSquare } from "lucide-react";
 import { openThread, useStore, type Message } from "@/state/store";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { activityText } from "@/lib/activity-text";
 import { cn } from "@/lib/cn";
 import { BotAvatar } from "./Avatar";
@@ -25,7 +26,7 @@ export function ThreadChip({ message, threadId }: { message: Message; threadId?:
         type="button"
         data-thread-chip={ref.threadId}
         onClick={() => openThread(dispatch, ref, state, showThreads)}
-        title={t("chat.openThread", { title: ref.title })}
+        title={t("chat.openThread", { title: localizedTaskTitle(ref.title) })}
         className={cn("ui-pill", tool.ok === false && "text-danger")}
       >
         {bot ? <BotAvatar bot={bot} state="happy" size={16} animated={false} /> : <MessagesSquare size={13} aria-hidden="true" />}

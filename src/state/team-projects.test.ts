@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
-import { archiveProject, createProject, currentTeamProjectSide, refreshTeamProjects, restoreProject, saveProjectsRoot, setTeamProjects } from "./team-projects";
+import type { TeamProjectsEvent, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
+import type { ServerFrame } from "../../shared/wire";
+import { publishLiveFrame, publishMissedFrames } from "../lib/live-events";
+import {
+  archiveProject, createProject, currentTeamProjectSide, followTeamProjectEvents, refreshTeamProjects, restoreProject, saveProjectsRoot, setTeamProjects,
+} from "./team-projects";
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
@@ -141,6 +145,32 @@ describe("reading the projects", () => {
     await calls[0]!.answer(200, list(project("bride"), project("palace")));
     await read;
     expect(names()).toEqual(["bride", "palace"]);
+  });
+});
+
+describe("the server's word", () => {
+  const folder = (folderState: TeamProjectWire["folderState"]) =>
+    publishLiveFrame({ kind: "team-projects", projectId: "bride", folderState } satisfies TeamProjectsEvent as unknown as ServerFrame);
+
+  it("reads the list again when a project's folder goes missing or comes back, and after the frames were missed", async () => {
+    const calls = server();
+    setTeamProjects(list(project("bride")));
+    const stop = followTeamProjectEvents();
+    folder("missing");
+    await soon();
+    await calls[0]!.answer(200, list(project("bride", { folderState: "missing" })));
+    expect(currentTeamProjectSide().projects.map((one) => one.folderState)).toEqual(["missing"]);
+    publishLiveFrame({ kind: "sections", sections: [] });
+    await soon();
+    expect(calls.length).toBe(1);
+    publishMissedFrames();
+    await soon();
+    await calls[1]!.answer(200, list(project("bride")));
+    expect(currentTeamProjectSide().projects.map((one) => one.folderState)).toEqual(["ready"]);
+    stop();
+    folder("missing");
+    await soon();
+    expect(calls.length).toBe(2);
   });
 });
 

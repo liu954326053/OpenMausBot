@@ -31,6 +31,8 @@ export interface SettingsContext {
   environments: boolean;
   installations: boolean;
   skills: boolean;
+  /** the place lists projects for this person: Data shows its projects' rows, in Simple too */
+  projects: boolean;
   advanced: boolean;
 }
 
@@ -50,8 +52,9 @@ const adminPage = (ctx: SettingsContext) => !ctx.client && !(ctx.team && !ctx.ad
 /** A page Simple mode leaves out: its everyday rows show elsewhere in Simple (Overview, This app, Plan & billing). */
 const advancedOnly = (when: (ctx: SettingsContext) => boolean) => (ctx: SettingsContext) => ctx.advanced && when(ctx);
 /** Simple mode's ten entries: the place (Overview, Phone & devices, AI, Vault, Spending, Import & export), Your account
- * (Plan & billing) and This app (Appearance). Advanced adds You and your bots, Desktops & browser, Data and General. */
-export const ADVANCED_PAGES: readonly SettingsPageId[] = ["bots", "desktops", "data", "general"];
+ * (Plan & billing) and This app (Appearance), and Data where the place has projects, with only their rows. Advanced
+ * adds You and your bots, Desktops & browser and General, and Data's other rows. */
+export const ADVANCED_PAGES: readonly SettingsPageId[] = ["bots", "desktops", "general"];
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: "overview", owner: "place", labelKey: "settings.page.overview", synonyms: ["overview", "place", "status", "version", "domain", "address", "sidebar"], when: () => true },
@@ -69,7 +72,7 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
     synonyms: ["spending", "usage", "cost", "costs", "tokens", "money", "runs", "export csv"] },
   { id: "transfer", owner: "place", labelKey: "settings.page.importExport", icon: ArrowLeftRight, when: adminPage,
     synonyms: ["import", "export", "backup", "backups", "restore", "grok", "grok bot", "move from", "bring"] },
-  { id: "data", owner: "place", labelKey: "settings.page.data", icon: Archive, when: advancedOnly(adminPage),
+  { id: "data", owner: "place", labelKey: "settings.page.data", icon: Archive, when: (ctx) => adminPage(ctx) && (ctx.advanced || ctx.projects),
     synonyms: ["data", "storage", "attachments", "activity", "audit"] },
   { id: "people", owner: "place", labelKey: "settings.section.people", icon: Users,
     when: (ctx) => !ctx.client && ctx.admin && (ctx.team || (!ctx.desktop && !ctx.cloud)),
@@ -145,7 +148,7 @@ export function resolveSettingsTarget(requested: AppSettingsSection, ctx: Settin
 /** A context with every page showing (Advanced mode), for tests and previews to narrow down. */
 export const fullContext = (over: Partial<SettingsContext> = {}): SettingsContext => ({
   desktop: true, here: true, home: true, cloud: false, team: false, client: false, admin: true, places: false, plan: true,
-  organization: false, environments: true, installations: false, skills: false, advanced: true, ...over,
+  organization: false, environments: true, installations: false, skills: false, projects: true, advanced: true, ...over,
 });
 
 /** One row, section or page search can open. `label` beats `labelKey` where the name is not a string of the app's. */
@@ -172,6 +175,7 @@ export interface SettingsIndexEntry {
 const desk = (ctx: SettingsContext) => ctx.desktop && !ctx.client;
 const hereOnly = (ctx: SettingsContext) => ctx.here;
 const browserAdmin = (ctx: SettingsContext) => !ctx.desktop && ctx.admin;
+const hasProjects = (ctx: SettingsContext) => ctx.projects;
 
 export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: "pair", page: "phone", anchor: "pair", labelKey: "phone.pair.button", sectionKey: "phone.pair.section", topFor: ["phone", "pair", "pairing", "qr", "iphone", "android", "this server", "pair a device", "connect your phone"],
@@ -218,10 +222,10 @@ export const SETTINGS_INDEX: readonly SettingsIndexEntry[] = [
   { id: "backup-export", page: "transfer", anchor: "take-out", labelKey: "backup.export", sectionKey: "settings.data.takeOut", topFor: ["backup", "backups", "export"], synonyms: ["full backup", "download"] },
   { id: "take-out", page: "transfer", anchor: "take-out", labelKey: "settings.data.takeOut", synonyms: ["export", "backup"] },
   { id: "move", page: "transfer", anchor: "move", labelKey: "settings.data.move", when: hereOnly, topFor: ["keep here", "move back", "bring back", "move to cloud"] },
-  { id: "projects-root", page: "data", anchor: "projects", labelKey: "teamProjects.settings.root", sectionKey: "teamProjects.settings.group", topFor: ["projects root", "project folder"], synonyms: ["project", "projects", "root", "new project"] },
-  { id: "archived-projects", page: "data", anchor: "archived-projects", labelKey: "teamProjects.settings.archived", synonyms: ["archive", "archived", "restore project"] },
-  { id: "storage", page: "data", anchor: "storage", labelKey: "settings.data.storage", synonyms: ["attachments", "clear attachments", "event log", "cleanup", "retention"] },
-  { id: "activity", page: "data", anchor: "activity", labelKey: "settings.section.activity", when: browserAdmin, topFor: ["activity", "audit", "audit log"], synonyms: ["history", "who did what"] },
+  { id: "projects-root", page: "data", anchor: "projects", labelKey: "teamProjects.settings.root", sectionKey: "teamProjects.settings.group", when: hasProjects, topFor: ["projects root", "project folder"], synonyms: ["project", "projects", "root", "new project"] },
+  { id: "archived-projects", page: "data", anchor: "archived-projects", labelKey: "teamProjects.settings.archived", when: hasProjects, synonyms: ["archive", "archived", "restore project"] },
+  { id: "storage", page: "data", anchor: "storage", labelKey: "settings.data.storage", advanced: true, synonyms: ["attachments", "clear attachments", "event log", "cleanup", "retention"] },
+  { id: "activity", page: "data", anchor: "activity", labelKey: "settings.section.activity", when: browserAdmin, advanced: true, topFor: ["activity", "audit", "audit log"], synonyms: ["history", "who did what"] },
   { id: "members", page: "people", anchor: "members", labelKey: "settings.people.members", synonyms: ["invite", "roles", "admins"] },
   { id: "bot-access", page: "people", anchor: "bot-access", labelKey: "settings.section.botAccess", synonyms: ["who can", "share", "permissions"] },
   { id: "account", page: "account", labelKey: "settings.page.account", topFor: ["sign in", "log in", "log out", "sign out", "email"], synonyms: ["account", "mausbot cloud"] },

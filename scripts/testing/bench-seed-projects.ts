@@ -53,7 +53,7 @@ export async function seedProjects(store: Store, { team, count, root, selection 
     store, routines: () => routines, teamMemory: new TeamMemory(join(DATA_DIR, "team-memory.json")), importDeps: async () => importDeps,
     deleteBot: async () => "a bench seed deletes no bot",
     exportDocument: (target, listed, carries) => share.document(target, listed, carries),
-    ownSkillNames: (botId) => listSkills(botId).map((skill) => skill.name), language: () => undefined,
+    ownSkillNames: (botId) => listSkills(botId).map((skill) => skill.name), language: () => undefined, broadcast: () => {},
   });
   setTeamProjectLookup(projects.lookup);
 
