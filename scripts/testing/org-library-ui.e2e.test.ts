@@ -9,7 +9,7 @@ import { waitForExit } from "../../server/testing/cleanup.ts";
 import { canonicalJson, parsePackageDocument } from "../../shared/package-format.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { request } from "../mcp-server.ts";
-import { OPEN_TEMPLATES, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { OPEN_TEAM_MAP, OPEN_TEMPLATES, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const FIXTURES = join(ROOT, "shared", "package-fixtures");
@@ -105,6 +105,8 @@ describe("the organization library in the real renderer", () => {
     await click("Back to templates");
 
     await click("Add Sales desk");
+    await expect.poll(snapshot, { timeout: 20_000 }).toContain('textbox "Message Morgan"');
+    await expect.poll(async () => (await ui("eval", "--js", OPEN_TEAM_MAP)).result, { timeout: 20_000 }).toBe(true);
     await expect.poll(snapshot, { timeout: 20_000 }).toContain('button "Arrange Sales desk department"');
     const bots = (await api("/api/bots")).bots.filter((bot: { section?: string }) => bot.section === "Sales desk");
     expect(bots).toHaveLength(3);

@@ -6,7 +6,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { request } from "../mcp-server.ts";
-import { fromTeamMapAdd, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { fromTeamMapAdd, OPEN_TEAM_MAP, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -79,6 +79,8 @@ describe("additive template imports in the real renderer", () => {
         await click("Add");
       }
       const section = source === "library" ? "Sales crew" : "Sales crew 2";
+      await expect.poll(() => evaluate(`!document.querySelector("[data-team-canvas]")`), { timeout: 10_000 }).toBe(true);
+      await expect.poll(() => evaluate(OPEN_TEAM_MAP), { timeout: 20_000 }).toBe(true);
       await expect.poll(snapshot, { timeout: 10_000 }).toContain(`button "Arrange ${section} department"`);
       const current = await api("/api/bots");
       expect(current.bots.filter((bot: { section?: string }) => bot.section === section)).toHaveLength(2);
