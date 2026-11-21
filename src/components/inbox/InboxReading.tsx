@@ -1,6 +1,7 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ExternalLink, MoreHorizontal, UserRound, X } from "lucide-react";
 import type { InboxRow, InboxView } from "../../../shared/inbox";
 import { t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { readInboxLine } from "@/state/inbox";
 import { ChatMarkdown } from "../ChatMarkdown";
 import { InboxSender } from "../InboxLine";
@@ -55,7 +56,7 @@ export function InboxReading({ view, row, now, position, onStep }: {
     ...(row.tab === "info" ? [{ key: "done", label: t("common.done"), icon: <Check size={16} />, onSelect: () => run(row, "done") }] : []),
     ...(askOf(row) === "question" ? [{ key: "close", label: t("inbox.action.closeQuestion"), icon: <X size={16} />, onSelect: () => answer(row, closeResponse(row)) }] : []),
   ];
-  const place = row.origin?.title || senderLabel(row);
+  const place = (row.origin?.title && localizedTaskTitle(row.origin.title)) || senderLabel(row);
   return (
     <article data-inbox-reading={row.id} aria-label={`${senderLabel(row)} · ${headline}`} className="flex min-h-0 flex-1 flex-col">
       <header className="flex items-center gap-1 px-2 py-1.5">

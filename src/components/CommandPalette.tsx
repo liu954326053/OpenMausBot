@@ -7,6 +7,7 @@ import { rankByName } from "@/lib/palette-rank";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { cn } from "@/lib/cn";
 import type { SearchHit } from "@/lib/search-hit";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { landOnSearchHit } from "@/lib/focus-message";
 import { imeComposing } from "@/lib/send-key";
 
@@ -234,7 +235,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                   <span className="flex items-center gap-2 truncate text-[13px] font-medium text-ink">
                     <MessageSquare size={13} className="shrink-0 text-ink-secondary" />
                     {hit.name}
-                    {hit.task ? <span className="font-normal text-ink-secondary"> · {hit.task}</span> : null}
+                    {hit.task ? <span className="font-normal text-ink-secondary"> · {localizedTaskTitle(hit.task)}</span> : null}
                   </span>
                   <span className="line-clamp-2 text-[13px] text-ink-secondary">
                     {before}<mark className="rounded-sm bg-accent/25 px-0.5 text-ink">{match}</mark>{after}
