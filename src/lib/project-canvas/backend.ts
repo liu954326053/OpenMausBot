@@ -1,6 +1,7 @@
 import type {
   CanvasConflict,
   CanvasFileRef,
+  CanvasGenerateResponse,
   CanvasOpsRequest,
   CanvasReadOnly,
   CanvasOpsResponse,
@@ -10,13 +11,11 @@ import type {
   CanvasUploadResponse,
 } from "../../../shared/project-canvas";
 import type {
-  GenerationJobWire,
   GenerationKind,
   GenerationModelsWire,
   GenerationSettingsWire,
   ProjectGenerationSettings,
   Refused,
-  StartGenerationInput,
 } from "../../../shared/project-generation";
 import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
 
@@ -63,8 +62,9 @@ export interface CanvasBackend {
   saveGenerationSettings(projectId: string, settings: ProjectGenerationSettings): Promise<GenerationSettingsWire | Refused>;
   /** `GET /api/team-projects/:id/generation/models`; `preview` names a server not saved yet. */
   listModels(projectId: string, kind: GenerationKind, preview?: { server: string }): Promise<GenerationModelsWire | Refused>;
-  /** `POST /api/team-projects/:id/generation/jobs`; the canvas server updates the node as the job goes. */
-  startGeneration(projectId: string, input: StartGenerationInput): Promise<GenerationJobWire | Refused>;
+  /** `POST /api/team-projects/:id/canvas/generate`: generation starts from the node's saved prompt and settings and the
+   * files connected into it, and the node shows the job as it goes. */
+  startGeneration(projectId: string, nodeId: string): Promise<CanvasGenerateResponse | Refused>;
   /** `POST /api/team-projects/:id/generation/jobs/:jobId/cancel`. */
   cancelGeneration(projectId: string, jobId: string): Promise<void>;
 }

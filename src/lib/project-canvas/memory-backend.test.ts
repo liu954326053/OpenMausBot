@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId } from "../../../shared/project-canvas";
 import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
+import { OUTPUT_GAP_Y, OUTPUT_OFFSET_X } from "./generation";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -43,13 +44,16 @@ describe("the in-memory canvas backend", () => {
     expect((await backend.readExchange(SAMPLE_PROJECT_ID, "kai")).map((message) => message.role)).toEqual(["person", "bot"]);
   });
 
-  it("generates a shot's video to its right, under the take before, and refuses what the model doesn't offer", async () => {
+  it("generates a shot from its saved prompt and settings, under the take before, and refuses what the model doesn't offer", async () => {
     const backend = sampleCanvasBackend({ delayMs: 50 });
-    const refused = await backend.startGeneration(SAMPLE_PROJECT_ID, { kind: "video", nodeId: "shot-1", prompt: "rain", overrides: { resolution: "4k" } });
-    expect(refused).toMatchObject({ refused: { code: "setting_refused" } });
-    const started = await backend.startGeneration(SAMPLE_PROJECT_ID, { kind: "video", nodeId: "shot-1", prompt: "rain", overrides: { seconds: 10 } });
-    expect("job" in started && started.job.settings).toMatchObject({ model: "kling-2", seconds: 10 });
-    expect(backend.current().nodes.find((node) => node.id === "shot-1")!.metadata).toMatchObject({ status: "loading", prompt: "rain" });
+    const setShot = (settings: Record<string, unknown>) => backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "update_node", id: "shot-1", metadata: { prompt: "rain", settings } }] });
+    await setShot({ resolution: "4k" });
+    expect(await backend.startGeneration(SAMPLE_PROJECT_ID, "shot-1")).toMatchObject({ refused: { code: "setting_refused" } });
+    await setShot({ seconds: 10 });
+    const started = await backend.startGeneration(SAMPLE_PROJECT_ID, "shot-1");
+    expect(started).toEqual({ jobId: expect.any(String) });
+    expect(backend.current().nodes.find((node) => node.id === "shot-1")!.metadata).toMatchObject({ status: "loading", jobId: "jobId" in started ? started.jobId : null });
+    await expect(backend.startGeneration(SAMPLE_PROJECT_ID, "shot-1")).rejects.toThrow("being generated already");
     await vi.advanceTimersByTimeAsync(100);
     const snapshot = backend.current();
     const shot = snapshot.nodes.find((node) => node.id === "shot-1")!;
@@ -57,7 +61,14 @@ describe("the in-memory canvas backend", () => {
     const takes = snapshot.connections.filter((connection) => connection.fromNodeId === "shot-1").map((connection) => snapshot.nodes.find((node) => node.id === connection.toNodeId)!);
     expect(shot.metadata).toMatchObject({ status: "success" });
     expect(takes).toHaveLength(2);
-    expect(takes[1]!.position).toEqual({ x: firstTake.position.x, y: firstTake.position.y + firstTake.height + 32 });
+    expect(takes[1]!.position).toEqual({ x: shot.position.x + shot.width + OUTPUT_OFFSET_X, y: firstTake.position.y + firstTake.height + OUTPUT_GAP_Y });
+  });
+
+  it("refuses to generate a node without a prompt, or one that is not a shot, image or video", async () => {
+    const backend = sampleCanvasBackend();
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "update_node", id: "shot-1", metadata: { prompt: "  " } }] });
+    await expect(backend.startGeneration(SAMPLE_PROJECT_ID, "shot-1")).rejects.toThrow("has no prompt");
+    await expect(backend.startGeneration(SAMPLE_PROJECT_ID, "logline")).rejects.toThrow("Only shot, image and video nodes");
   });
 
   it("stores project settings only when the model offers them, and lists a server's models before it is saved", async () => {

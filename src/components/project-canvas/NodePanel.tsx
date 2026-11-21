@@ -5,6 +5,7 @@ import { botIdOfNode, type CanvasNode } from "../../../shared/project-canvas";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
+import { approvalDetailText } from "@/lib/approval-summary";
 import { cn } from "@/lib/cn";
 import { t, tFromServer } from "@/lib/i18n";
 import { connectedReferences, generationReferences, mentionReferences, referenceCounts } from "@/lib/project-canvas/references";
@@ -68,6 +69,14 @@ function PromptPanel({ node }: { node: CanvasNode }) {
       setBusy(false);
     }
   };
+  const stop = async () => {
+    setRefusal(null);
+    try {
+      await ui.controller.cancelGeneration(node.id);
+    } catch (error) {
+      setRefusal(messageOf(error));
+    }
+  };
   const isShot = node.type === "shot";
   return (
     <div className={PANEL_SURFACE}>
@@ -111,7 +120,7 @@ function PromptPanel({ node }: { node: CanvasNode }) {
         {project ? <SettingsPopover node={node} kind={kind} project={project} /> : null}
         <span className="flex-1" />
         {loading ? (
-          <button type="button" className="ui-button ui-button-md" disabled={ui.readOnly} onClick={() => void ui.controller.cancelGeneration(node.id)}>
+          <button type="button" className="ui-button ui-button-md" disabled={ui.readOnly} onClick={() => void stop()}>
             <Square size={14} aria-hidden="true" />
             {t("projectCanvas.generate.stop")}
           </button>
@@ -146,6 +155,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   }, [exchangeOpen, outputId, botId, ui.controller]);
   if (!bot) return null;
   const busy = bot.status === "working" || bot.status === "queued";
+  const waitingDetail = bot.waiting ? approvalDetailText(bot.waiting.card) : "";
   const send = async () => {
     if (!text.trim()) return;
     setSending(true);
@@ -166,7 +176,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
       {bot.waiting ? (
         <div role="status" className="flex flex-col gap-2 rounded-lg border border-warning/50 p-3">
           <div className="text-[13px] font-medium leading-[18px] text-ink">{bot.waiting.card.title}</div>
-          {bot.waiting.card.subtitle ? <div className="text-[12px] leading-4 text-ink-secondary">{bot.waiting.card.subtitle}</div> : null}
+          {waitingDetail ? <div className="text-[12px] leading-4 text-ink-secondary">{waitingDetail}</div> : null}
           <button type="button" className="ui-button ui-button-sm self-start" onClick={() => ui.controller.openChat(botId, bot.waiting?.threadId)}>
             <ExternalLink size={14} aria-hidden="true" />
             {t("projectCanvas.bot.answerInChat")}

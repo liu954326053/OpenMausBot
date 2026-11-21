@@ -1,5 +1,6 @@
 import type {
   CanvasConflict,
+  CanvasGenerateResponse,
   CanvasOpsResponse,
   CanvasReadOnly,
   CanvasSnapshot,
@@ -21,7 +22,6 @@ import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 /** How many of the newest messages of a bot's conversation are read for its latest exchange. */
 const EXCHANGE_READ = 40;
 const CANVAS_REFUSALS = new Set(["canvas_conflict", "canvas_stale", "canvas_read_only"]);
-const GENERATION_NOT_WIRED = "Generating from the canvas waits for the canvas server's generate route.";
 
 const projectPath = (projectId: string) => `/api/team-projects/${encodeURIComponent(projectId)}`;
 const canvasPath = (projectId: string) => `${projectPath(projectId)}/canvas`;
@@ -45,7 +45,7 @@ const isGenerationFailure = (body: unknown): body is GenerationFailure => {
 
 async function generationCall<T>(path: string, init?: RequestInit): Promise<T | Refused> {
   try {
-    return await api<T>(path, init);
+    return await canvasCall<T>(path, init);
   } catch (error) {
     if (error instanceof ApiError && isGenerationFailure(error.body)) return { refused: error.body };
     throw error;
@@ -170,8 +170,13 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
       return generationCall<GenerationModelsWire>(`${generationPath(projectId)}/models?${query}`);
     },
 
-    startGeneration: () => Promise.reject(new Error(GENERATION_NOT_WIRED)),
+    startGeneration: (projectId, nodeId) => generationCall<CanvasGenerateResponse>(`${canvasPath(projectId)}/generate`, {
+      method: "POST",
+      body: JSON.stringify({ nodeId }),
+    }),
 
-    cancelGeneration: () => Promise.reject(new Error(GENERATION_NOT_WIRED)),
+    async cancelGeneration(projectId, jobId) {
+      await api(`${generationPath(projectId)}/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+    },
   };
 }

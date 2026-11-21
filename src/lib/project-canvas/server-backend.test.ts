@@ -130,6 +130,32 @@ describe("the project canvas on the app's server", () => {
     expect(JSON.parse(String(sent[1]!.body))).toEqual(settings);
   });
 
+  it("generates a node on the canvas's route and stops its job on generation's, resolving generation's refusals", async () => {
+    const { backend } = backendWith();
+    const unusable = { code: "server_unusable", error: "The MCP server gen can't be used.", errorKey: "serverError.generation.serverUnusable", errorParams: { server: "gen" } };
+    const archived = { code: "canvas_read_only", error: "Archived.", errorKey: "serverError.projectCanvas.archived", reason: "archived" };
+    answers.push(
+      { status: 202, body: { jobId: "job-1" } },
+      { status: 503, body: unusable },
+      { status: 409, body: archived },
+      { status: 409, body: { error: "shot-1 is being generated already" } },
+      { body: { job: { id: "job 1", status: "cancelled" } } },
+      { status: 404, body: { error: "That job is gone.", code: "job_gone" } },
+    );
+    expect(await backend.startGeneration("p1", "shot-1")).toEqual({ jobId: "job-1" });
+    expect(await backend.startGeneration("p1", "shot-1")).toEqual({ refused: unusable });
+    await expect(backend.startGeneration("p1", "shot-1")).rejects.toMatchObject({ name: "CanvasBackendError", body: { reason: "archived" } });
+    await expect(backend.startGeneration("p1", "shot-1")).rejects.toMatchObject({ status: 409, message: "shot-1 is being generated already" });
+    await backend.cancelGeneration("p1", "job 1");
+    await expect(backend.cancelGeneration("p1", "job 1")).rejects.toMatchObject({ status: 404 });
+    expect(sent.map(({ path, method }) => `${method} ${path}`)).toEqual([
+      ...Array<string>(4).fill("POST /api/team-projects/p1/canvas/generate"),
+      "POST /api/team-projects/p1/generation/jobs/job%201/cancel",
+      "POST /api/team-projects/p1/generation/jobs/job%201/cancel",
+    ]);
+    expect(JSON.parse(String(sent[0]!.body))).toEqual({ nodeId: "shot-1" });
+  });
+
   it("draws each bot as the app's store has it", async () => {
     const { backend } = backendWith([
       bot({ id: "lead", color: "purple", avatarUrl: "/api/bots/lead/avatar", avatarZoom: 1.5, avatarFocusX: 0.2, avatarFocusY: 0.8, mascotBody: null }),

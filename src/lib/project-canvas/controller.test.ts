@@ -127,6 +127,7 @@ describe("the canvas controller", () => {
     const refusal = await controller.generate("shot-1", "Night rain, close-up");
     expect(refusal).toBeNull();
     expect(backend.current().nodes.find((candidate) => candidate.id === "shot-1")!.metadata).toMatchObject({ prompt: "Night rain, close-up", status: "loading" });
+    await vi.advanceTimersByTimeAsync(100);
     await controller.saveGeneration({ ...controller.getState().generation!.settings, video: { ...controller.getState().generation!.settings.video, server: null } });
     expect(await controller.generate("shot-1", "Night rain, close-up")).toMatchObject({ code: "no_server" });
   });

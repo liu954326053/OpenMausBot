@@ -4,7 +4,7 @@ import { LoaderCircle } from "lucide-react";
 import type { CanvasNode, CanvasPoint, CanvasViewport } from "../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { nextOutputFrame, showsResultInPlace } from "@/lib/project-canvas/generation";
+import { nextOutputFrame } from "@/lib/project-canvas/generation";
 import {
   connectionDropTarget,
   draftCurve,
@@ -269,7 +269,7 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
   const activeConnections = new Set(snapshot.connections.filter((connection) => selection.has(connection.fromNodeId) || selection.has(connection.toNodeId)).map((connection) => connection.id));
   const ghosts: GhostFrame[] = displayNodes.flatMap((node) => {
     const kind = generationKindOf(node);
-    if (!kind || node.metadata?.status !== "loading" || showsResultInPlace(node)) return [];
+    if (!kind || node.metadata?.status !== "loading") return [];
     return [{ sourceId: node.id, frame: nextOutputFrame(node, kind, displayNodes, snapshot.connections) }];
   });
   let draft: string | null = null;

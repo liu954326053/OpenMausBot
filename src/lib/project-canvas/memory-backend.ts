@@ -26,7 +26,7 @@ import {
   type VideoOverrides,
 } from "../../../shared/project-generation";
 import { CanvasBackendError, type CanvasBackend } from "./backend";
-import { nextOutputFrame, showsResultInPlace } from "./generation";
+import { generationInput, nextOutputFrame } from "./generation";
 import { applyCanvasOps } from "./ops";
 import { connectedReferences } from "./references";
 import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
@@ -131,20 +131,13 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     });
     const ops: CanvasOp[] = [];
     let document = snapshot;
-    outputs.forEach((output, index) => {
+    outputs.forEach((output) => {
       if (output.url) fileUrls.set(output.file.path, output.url);
       const media = { file: output.file, ...(output.naturalWidth ? { naturalWidth: output.naturalWidth, naturalHeight: output.naturalHeight } : {}), ...(output.durationMs ? { durationMs: output.durationMs } : {}) };
-      if (index === 0 && showsResultInPlace(node)) {
-        const step: CanvasOp = { type: "update_node", id: node.id, metadata: media };
-        ops.push(step);
-        document = applyCanvasOps(document, [step]);
-        return;
-      }
-      const source = document.nodes.find((item) => item.id === node.id)!;
-      const frame = nextOutputFrame(source, job.kind, document.nodes, document.connections);
+      const frame = nextOutputFrame(node, job.kind, document.nodes, document.connections);
       const id = newId("node");
       const steps: CanvasOp[] = [
-        { type: "add_node", id, nodeType: job.kind, title: input.name ?? "", ...frame, metadata: { ...media, prompt: input.prompt, status: "success" } },
+        { type: "add_node", id, nodeType: job.kind, title: output.file.name, ...frame, metadata: media },
         { type: "connect_nodes", id: newId("connection"), fromNodeId: node.id, toNodeId: id },
       ];
       ops.push(...steps);
@@ -294,12 +287,15 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       return { models: models.filter((model) => model.kind === kind) };
     },
 
-    async startGeneration(id, input) {
+    async startGeneration(id, nodeId) {
       ensureProject(id);
-      if (snapshot.readOnly) return failure("project_unavailable", "This project is archived.");
-      const node = nodeById(input.nodeId);
-      if (!node) return failure("invalid", "That node isn't on the canvas.");
-      if (!input.prompt.trim()) return failure("invalid", "Write a prompt first.");
+      ensureWritable();
+      const node = nodeById(nodeId);
+      if (!node) throw new Error(`No node ${nodeId} on this canvas.`);
+      const input = generationInput(node, snapshot.nodes, snapshot.connections, node.metadata?.prompt?.trim() ?? "");
+      if (!input) throw new Error("Only shot, image and video nodes are generated.");
+      if (node.metadata?.status === "loading") throw new Error(`${nodeId} is being generated already.`);
+      if (!input.prompt) throw new Error(`${nodeId} has no prompt; give it one first.`);
       const kind: GenerationKind = input.kind;
       const server = generation[kind].server;
       if (!server) return failure("no_server", "Choose an MCP server for this project first.");
@@ -314,9 +310,9 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         ? { ...base, kind, settings: resolveSettings(kind, generation.image.defaults, input.overrides as ImageOverrides) }
         : { ...base, kind, settings: resolveSettings(kind, generation.video.defaults, input.overrides as VideoOverrides) };
       jobs.set(job.id, job);
-      commit([{ type: "update_node", id: node.id, metadata: { status: "loading", jobId: job.id, prompt: input.prompt, errorDetails: null } }]);
+      commit([{ type: "update_node", id: node.id, metadata: { status: "loading", jobId: job.id, errorDetails: null } }]);
       jobTimers.set(job.id, setTimeout(() => finishJob(job, input), delay * 2));
-      return { job };
+      return { jobId: job.id };
     },
 
     async cancelGeneration(id, jobId) {

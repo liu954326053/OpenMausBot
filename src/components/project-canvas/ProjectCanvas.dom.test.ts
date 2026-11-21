@@ -124,6 +124,19 @@ describe("the project canvas", () => {
     expect(buttonByText(panel()!, "Open the full chat")).toBeDefined();
   });
 
+  it("gives a bot's card to generate past its ceiling the reason in the person's language, as the chat does", async () => {
+    await mount();
+    const asked = { requestId: "r1", projectId: SAMPLE_PROJECT_ID, nodeId: "shot-1", title: "Shot 1", botId: "lena", threadId: "thread-lena", reasonKey: "serverError.projectGeneration.confirmVideos", reasonParams: { ceiling: 3, used: 3, asked: 1 }, createdAt: 1 };
+    await act(async () => backend.updateBots((snapshot) => {
+      snapshot.bots.lena!.waiting = { threadId: "thread-lena", messageId: "l-9", card: { title: "Generate “Shot 1”?", subtitle: "Words generation wrote", options: ["Confirm", "Cancel"], canvasGeneration: asked } };
+    }));
+    await settle();
+    await clickNode(botNodeId("lena"));
+    expect(panel()!.textContent).toContain("Generate “Shot 1”?");
+    expect(panel()!.textContent).toContain("A bot may start 3 videos a day without you, and this one has started 3. Confirm to let it make 1 more.");
+    expect(panel()!.textContent).not.toContain("Words generation wrote");
+  });
+
   it("never deletes a bot, deletes a content line and node, and undoes both", async () => {
     await mount();
     await clickNode(botNodeId("otto"));

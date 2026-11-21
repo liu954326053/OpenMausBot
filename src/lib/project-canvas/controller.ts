@@ -2,7 +2,6 @@ import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasSnapshot, Canva
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
 import { randomUuid } from "../random-uuid";
 import type { CanvasBackend } from "./backend";
-import { generationInput } from "./generation";
 import { emptyHistory, recordHistory, redoHistory, undoHistory } from "./history";
 import { addNodeOp, applyCanvasOps, invertCanvasOps } from "./ops";
 import { layoutBotTree } from "./tree-layout";
@@ -169,17 +168,14 @@ export class CanvasController {
     return response;
   }
 
-  /** Stores the prompt when it changed, then asks the server to generate; resolves to its refusal, if any. */
+  /** Stores the prompt when it changed, then asks the server to generate the node as it has it; resolves to its refusal,
+   * if any. */
   async generate(nodeId: string, prompt: string): Promise<GenerationFailure | null> {
-    const before = this.state.snapshot?.nodes.find((node) => node.id === nodeId);
-    if (!before) return null;
-    if ((before.metadata?.prompt ?? "") !== prompt) this.apply([{ type: "update_node", id: nodeId, metadata: { prompt } }]);
+    const node = this.state.snapshot?.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return null;
+    if ((node.metadata?.prompt ?? "") !== prompt) this.apply([{ type: "update_node", id: nodeId, metadata: { prompt } }]);
     await this.settled();
-    const shown = this.state.snapshot!;
-    const node = shown.nodes.find((candidate) => candidate.id === nodeId);
-    const input = node && generationInput(node, shown.nodes, shown.connections, prompt);
-    if (!input) return null;
-    const result = await this.backend.startGeneration(this.projectId, input);
+    const result = await this.backend.startGeneration(this.projectId, nodeId);
     return "refused" in result ? result.refused : null;
   }
 
