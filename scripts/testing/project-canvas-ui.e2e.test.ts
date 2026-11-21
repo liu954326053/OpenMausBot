@@ -1,15 +1,19 @@
-// The project canvas in a real browser on a disposable server with the scripted fake engine, inside the app's store:
-// the snapshot draws the project's bots, a change survives a reload, an upload lands in 素材, a task takes what is
-// connected to the bot, live events update the open canvas, and opening a chat and Stop go through the app.
+// The project canvas in a real browser on a disposable server with the scripted fake engine and generation's test MCP
+// server, inside the app's store: the snapshot draws the project's bots, a change survives a reload, an upload lands in
+// 素材, a task takes what is connected to the bot, live events update the open canvas, opening a chat and Stop go
+// through the app, and a node generates a picture and stops a generation.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { botNodeId, dispatchConnectionId, type CanvasOpsRequest, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import { botNodeId, dispatchConnectionId, type CanvasNode, type CanvasOpsRequest, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import type { GenerationJob } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import { closeBrowserSession, resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { removeTempDir } from "../../server/testing/cleanup.ts";
+import { startFakeGenerationMcp } from "../../server/testing/fake-generation-mcp-server.ts";
 import { hostTimeout } from "../../server/testing/host-timeout.ts";
+import { GENERATION_KEY } from "../../server/testing/project-generation-harness.ts";
 import { launchRestartableServer, type RestartableServer } from "../../server/testing/restartable-server.ts";
 import { agentBrowser, ensureUiBrowser, sessionEnv, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
@@ -20,6 +24,8 @@ const evidenceDir = process.env.OMB_UI_EVIDENCE_DIR;
 
 const TEAM = "Canvas crew";
 const BRIEF = "Episode one: the bride is swapped at the altar.";
+const IMAGE = { server: "gen", defaults: { model: "pixel-1", aspect: "1:1", quality: "standard", count: 1 } };
+const VIDEO = { server: "gen", defaults: { model: "motion-1", resolution: "720p", aspect: "16:9", seconds: 5 } };
 type Bot = { id: string; name: string; title?: string; color: string; threadId: string; mainThreadId?: string; busy?: boolean; tasks?: Array<{ threadId: string; busy?: boolean }> };
 type Line = { id: string; role?: string; kind?: string; text?: string };
 type Box = { x: number; y: number; w: number; h: number };
@@ -27,6 +33,7 @@ type Box = { x: number; y: number; w: number; h: number };
 (enabled ? it : it.skip)("draws a project's canvas from the server, keeps its changes, and follows its bots live", async () => {
   const tools = await ensureUiBrowser();
   let server: RestartableServer | undefined;
+  let fake: Awaited<ReturnType<typeof startFakeGenerationMcp>> | undefined;
   let root: string | undefined;
   let home: string | undefined;
   let preview: MountedPreview | undefined;
@@ -83,6 +90,16 @@ type Box = { x: number; y: number; w: number; h: number };
     const snapshot = async () => await api("GET", canvasPath) as CanvasSnapshot;
     const gate = join(fixture.dataDir, "gate-scene");
     const plan = (script: unknown[]) => writeFileSync(fixture.planPath, JSON.stringify({ [writer.id]: { script } }));
+    const mcp = fake = await startFakeGenerationMcp({ key: GENERATION_KEY, taskMs: 2_000 });
+    await api("POST", "/api/mcp/servers", { name: "gen", type: "http", url: mcp.url, headers: { Authorization: `Bearer ${GENERATION_KEY}` } });
+    await api("PATCH", "/api/mcp/servers/gen", { enabled: true });
+    await api("PUT", `/api/team-projects/${project.id}/generation/settings`, { image: IMAGE, video: VIDEO });
+    const results = async (id: string): Promise<CanvasNode[]> => {
+      const read = await snapshot();
+      const to = new Set(read.connections.filter((one) => one.fromNodeId === id && one.kind === "content").map((one) => one.toNodeId));
+      return read.nodes.filter((one) => to.has(one.id));
+    };
+    const jobs = async () => (await api("GET", `/api/team-projects/${project.id}/generation/jobs`)).jobs as GenerationJob[];
 
     preview = await mountPreview({ info: { url: fixture.url } }, { entry: "/scripts/testing/project-canvas-server-preview.tsx", route: "/__project-canvas.html", title: "Project canvas on a server", logLevel: "warn" });
     const pageUrl = `${preview.previewUrl}?project=${encodeURIComponent(project.id)}`;
@@ -323,6 +340,46 @@ type Box = { x: number; y: number; w: number; h: number };
       expect((await messages(conversation)).some((line) => line.text === "SEASON WRITTEN")).toBe(false);
       await shot("08-writer-stopped.png");
 
+      const beforeImage = await drawnIds();
+      await clickEmpty();
+      await clickSelector('button[aria-label="Add image"]');
+      await expect.poll(async () => (await drawnIds()).filter((id) => !beforeImage.includes(id)).length, { message: "a new image node" }).toBe(1);
+      const imageId = (await drawnIds()).find((id) => !beforeImage.includes(id))!;
+      const openImagePanel = async () => {
+        await clickEmpty();
+        const shown = await box(node(imageId));
+        await clickAt(shown!.x + shown!.w / 2, shown!.y + 30);
+        await waitFor("document.querySelector('[data-node-panel]')", "the image node's panel");
+      };
+      const generateFromPanel = async (prompt: string) => {
+        await browser("find", "role", "textbox", "fill", prompt, "--name", "Prompt", "--exact");
+        await clickButton("Generate", "[data-node-panel]");
+        await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === imageId)?.metadata?.status, { timeout: 15_000, message: `${imageId} generating` }).toBe("loading");
+        await waitFor(`[...document.querySelectorAll("[data-node-panel] button")].some((button) => button.textContent.trim() === "Stop")`, "the running generation on the open canvas");
+      };
+      await openImagePanel();
+      await generateFromPanel("The bride at the altar, night rain");
+      await shot("09-generating.png");
+      await expect.poll(async () => (await results(imageId)).length, { timeout: 30_000, message: "the generated picture on the canvas" }).toBe(1);
+      const [made] = await results(imageId);
+      expect(made).toMatchObject({ type: "image", createdBy: { kind: "person" }, metadata: { file: { mime: "image/png" } } });
+      expect(existsSync(join(project.folder, ...made!.metadata!.file!.path.split("/")))).toBe(true);
+      await waitFor(`(() => { const image = document.querySelector(${JSON.stringify(`${node(made!.id)} img`)}); return image && image.complete && image.naturalWidth > 0; })()`, "the generated picture loads on the open canvas");
+      expect((await snapshot()).nodes.find((one) => one.id === imageId)!.metadata).toMatchObject({ prompt: "The bride at the altar, night rain", status: "success" });
+      await fit();
+      await shot("10-generated.png");
+
+      await openImagePanel();
+      await generateFromPanel("[hold] The groom waits in the rain");
+      await clickButton("Stop", "[data-node-panel]");
+      await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === imageId)?.metadata?.status, { timeout: 15_000, message: "the stopped generation leaves its node" }).toBe("idle");
+      const held = (await jobs()).find((job) => job.nodeId === imageId && job.prompt.startsWith("[hold]"));
+      expect(held?.status).toBe("cancelled");
+      expect(await results(imageId)).toHaveLength(1);
+      evidence.generation = { made, held: held && { id: held.id, status: held.status }, calls: mcp.calls.map((call) => call.tool) };
+      await waitFor(`[...document.querySelectorAll("[data-node-panel] button")].some((button) => button.textContent.trim() === "Generate")`, "the panel ready to generate again");
+      await shot("11-generation-stopped.png");
+
       evidence.console = (await browser("console")).messages;
       expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
     } catch (error) {
@@ -334,6 +391,7 @@ type Box = { x: number; y: number; w: number; h: number };
     if (env) await closeBrowserSession(tools.binary, env).catch(() => false);
     await preview?.close();
     await server?.close();
+    await fake?.close();
     if (root) await removeTempDir(root);
     if (home) await removeTempDir(home);
   }
