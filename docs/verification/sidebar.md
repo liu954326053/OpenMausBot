@@ -40,8 +40,10 @@ a Chief through `/api/team-projects`, then check:
    two projects and with none.
 2. A project is one row, with no chevron and no members under it, and opens
    the project's canvas. Its mark stays on and counts all the project's bots
-   and group chats. A search lists a project's matching bots under its row,
-   the lead first; one of them opens the canvas with that bot's node chosen.
+   and group chats. A search keeps a project to that one row with nothing
+   under it. When it found bots or group chats in the project, the row names
+   them after the project's name and opens the canvas with the first bot found
+   chosen, the lead first; a project found by its own name names nothing.
 3. The + menu offers exactly New project, New bot and Add department. A bot or
    department made there, or a bot made from the team map's Add menu, opens the
    team map and is brought into view.
