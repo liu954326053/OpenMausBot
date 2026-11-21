@@ -20,31 +20,38 @@ export interface BotTree {
   parentOf(botId: string): string | undefined;
 }
 
-/** Each bot's node where nobody placed it: the flow's tree from left to right, the lead at the left, each bot at the
- * top of the band its subtree takes, with room for its lane before its subordinates' column. A bot whose superior is
- * not in the project, or that the tree does not reach from the lead, sits under the lead. */
-export function defaultBotFrames(tree: BotTree): Map<string, CanvasFrame> {
-  const frames = new Map<string, CanvasFrame>();
-  const root = tree.botIds.includes(tree.leadBotId) ? tree.leadBotId : tree.botIds[0];
-  if (root === undefined) return frames;
-  const members = new Set(tree.botIds);
+/** Each bot's superior on the canvas, the root (the lead, or the first bot when the lead is gone) having none. A bot
+ * whose superior is not in the project, or that the tree does not reach from the root, has the root. */
+export function treeParents(tree: BotTree): { root: string | undefined; parents: Map<string, string> } {
   const parents = new Map<string, string>();
+  const root = tree.botIds.includes(tree.leadBotId) ? tree.leadBotId : tree.botIds[0];
+  if (root === undefined) return { root, parents };
+  const members = new Set(tree.botIds);
   for (const id of tree.botIds) {
     if (id === root) continue;
     const parent = tree.parentOf(id);
     parents.set(id, parent !== undefined && parent !== id && members.has(parent) ? parent : root);
   }
-  const childrenOf = (id: string) => tree.botIds.filter((one) => parents.get(one) === id);
   const reached = new Set([root]);
   for (const queue = [root]; queue.length;) {
-    for (const child of childrenOf(queue.shift()!)) {
-      if (reached.has(child)) continue;
+    const parent = queue.shift()!;
+    for (const child of tree.botIds) {
+      if (parents.get(child) !== parent || reached.has(child)) continue;
       reached.add(child);
       queue.push(child);
     }
   }
   for (const id of tree.botIds) if (!reached.has(id)) parents.set(id, root);
+  return { root, parents };
+}
 
+/** Each bot's node where nobody placed it: the tree of `treeParents` from left to right, the root at the left, each
+ * bot at the top of the band its subtree takes, with room for its lane before its subordinates' column. */
+export function defaultBotFrames(tree: BotTree): Map<string, CanvasFrame> {
+  const frames = new Map<string, CanvasFrame>();
+  const { root, parents } = treeParents(tree);
+  if (root === undefined) return frames;
+  const childrenOf = (id: string) => tree.botIds.filter((one) => parents.get(one) === id);
   const place = (id: string, depth: number, top: number): number => {
     frames.set(botNodeId(id), { position: { x: depth * COLUMN, y: top }, width: BOT.width, height: BOT.height });
     let next = top;
