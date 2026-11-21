@@ -93,6 +93,16 @@ describe("adding a node", () => {
     expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "text", groupId: "brief" }], context())).code).toBe("not_found");
   });
 
+  it("gives a deleted node the person adds back its maker, when it comes back as the same type", () => {
+    const removed = (id: string) => (id === "shot-9" ? { type: "shot" as const, createdBy: WRITER } : undefined);
+    const back = (type: "shot" | "text", actor: CanvasNodeCreator = PERSON) =>
+      find(applyCanvasOps(canvas(), [{ type: "add_node", id: "shot-9", nodeType: type }], { ...context(actor), removed }).document, "shot-9")?.createdBy;
+    expect(back("shot")).toEqual(WRITER);
+    expect(back("text")).toEqual(PERSON);
+    expect(back("shot", BOARDS)).toEqual(BOARDS);
+    expect(find(applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "shot" }], { ...context(), removed }).document, "new-1")?.createdBy).toEqual(PERSON);
+  });
+
   it("stops at the most nodes a canvas holds", () => {
     const full = canvas();
     full.nodes = Array.from({ length: CANVAS_MAX_NODES }, (_, index) => node(`n${index}`));

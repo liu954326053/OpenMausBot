@@ -198,9 +198,9 @@ export class ProjectCanvasService {
     const outcome = this.deps.documents.change(project.id, {
       ...(baseRevision === undefined ? {} : { baseRevision }),
       targets: opTargets(ops),
-      apply: (document) => {
+      apply: (document, removed) => {
         const bots = botFrames(document, this.tree(project));
-        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots) });
+        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots), removed });
         if (actor.kind === "bot" && result.nodeIds.length) pinBot(result.document, result.changed, actor.botId, bots);
         return result;
       },

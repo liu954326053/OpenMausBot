@@ -104,6 +104,17 @@ describe("changing a project's canvas", () => {
     expect(events).toEqual([{ kind: "project-canvas", projectId: "p1", revision: 1, reason: "document" }]);
   });
 
+  it("keeps a bot's node the bot's when the person deletes it and adds it back, as undo does", () => {
+    const { service, project } = setup();
+    const [shotId] = service.apply(project, writer, opsOf({ type: "add_node", nodeType: "shot", title: "Shot 1", metadata: { prompt: "Veil, dawn" } })).nodeIds;
+    const made = nodeOf(service, shotId!)!;
+    service.apply(project, person, opsOf({ type: "delete_node", id: shotId }));
+    service.apply(project, person, opsOf({ type: "add_node", id: shotId, nodeType: "shot", title: made.title, position: made.position, metadata: made.metadata }));
+    expect(nodeOf(service, shotId!)?.createdBy).toEqual(writer);
+    service.apply(project, writer, opsOf({ type: "update_node", id: shotId, metadata: { prompt: "Veil, dusk" } }));
+    expect(nodeOf(service, shotId!)?.metadata?.prompt).toBe("Veil, dusk");
+  });
+
   it("refuses every change to an archived project's canvas", async () => {
     const { service, project } = setup();
     project.archivedAt = 5;

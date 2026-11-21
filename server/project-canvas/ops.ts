@@ -88,6 +88,8 @@ export interface OpsContext {
   newId(): string;
   /** Where a node added without a position goes. */
   place(document: CanvasDocument, node: CanvasNode): CanvasPoint;
+  /** A content node deleted lately, by its id: the person adding it back, as undo does, gives it back to its maker. */
+  removed?(id: string): { type: CanvasNodeType; createdBy: CanvasNodeCreator } | undefined;
 }
 
 export interface OpsResult {
@@ -253,6 +255,11 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
   const exists = (id: string) => context.bots.has(id) || nodeAt(id) >= 0;
   const isBotNode = (id: string) => botIdOfNode(id) !== null;
   const madeByActor = (node: CanvasNode) => actor.kind === "bot" && node.createdBy?.kind === "bot" && node.createdBy.botId === actor.botId;
+  const makerOf = (id: string | undefined, type: CanvasNodeType): CanvasNodeCreator => {
+    if (actor.kind === "bot") return { kind: "bot", botId: actor.botId };
+    const removed = id ? context.removed?.(id) : undefined;
+    return removed?.type === type ? removed.createdBy : { kind: "person" };
+  };
   const actorOwnsEnd = (id: string) => {
     if (actor.kind === "person") return true;
     if (id === ownBotNode) return true;
@@ -320,7 +327,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         width: op.width ?? spec.width,
         height: op.height ?? spec.height,
         ...(op.metadata && Object.keys(op.metadata).length ? { metadata: op.metadata } : {}),
-        createdBy: actor.kind === "bot" ? { kind: "bot", botId: actor.botId } : { kind: "person" },
+        createdBy: makerOf(op.id, op.nodeType),
         ...(op.groupId ? { groupId: op.groupId } : {}),
       };
       node.position = op.position ?? context.place(document, node);

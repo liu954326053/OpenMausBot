@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { CanvasDocument, CanvasOp } from "../../shared/project-canvas.ts";
-import { CanvasConflictError, CanvasDocuments, CanvasUnreadableError, CANVAS_HISTORY } from "./document-store.ts";
+import type { CanvasDocument, CanvasNodeCreator, CanvasOp } from "../../shared/project-canvas.ts";
+import { CanvasConflictError, CanvasDocuments, CanvasUnreadableError, CANVAS_HISTORY, type RemovedNode } from "./document-store.ts";
 import { applyCanvasOps, opTargets } from "./ops.ts";
 
 let dir: string;
@@ -13,13 +13,13 @@ let logged: string[];
 const store = () => new CanvasDocuments(dir, (line) => logged.push(line));
 const file = (projectId = "p1") => join(dir, `${projectId}.json`);
 
-function change(documents: CanvasDocuments, ops: CanvasOp[], baseRevision?: number, projectId = "p1") {
+function change(documents: CanvasDocuments, ops: CanvasOp[], baseRevision?: number, projectId = "p1", actor: CanvasNodeCreator = { kind: "person" }) {
   let n = 0;
   return documents.change(projectId, {
     ...(baseRevision === undefined ? {} : { baseRevision }),
     targets: opTargets(ops),
-    apply: (document: CanvasDocument) => applyCanvasOps(document, ops, {
-      actor: { kind: "person" }, bots: new Map(), newId: () => `n${document.revision}-${++n}`, place: () => ({ x: 0, y: 0 }),
+    apply: (document: CanvasDocument, removed) => applyCanvasOps(document, ops, {
+      actor, bots: new Map(), newId: () => `n${document.revision}-${++n}`, place: () => ({ x: 0, y: 0 }), removed,
     }),
   });
 }
@@ -110,6 +110,42 @@ describe("a change made against an old revision", () => {
     expect(thrown(() => change(documents, [{ type: "update_node", id: "brief", patch: { title: "x" } }], 999))).toMatchObject({ status: 400 });
     const kept = JSON.parse(readFileSync(file(), "utf8")) as { history: unknown[] };
     expect(kept.history).toHaveLength(CANVAS_HISTORY);
+  });
+});
+
+describe("a deleted node", () => {
+  const writer: CanvasNodeCreator = { kind: "bot", botId: "writer" };
+  const shot: CanvasOp = { type: "add_node", id: "shot-1", nodeType: "shot" };
+  const remove: CanvasOp = { type: "delete_node", id: "shot-1" };
+  const makerOf = (documents: CanvasDocuments) => documents.read("p1").nodes.find((node) => node.id === "shot-1")?.createdBy;
+  const removedKept = () => (JSON.parse(readFileSync(file(), "utf8")) as { removed: RemovedNode[] }).removed;
+
+  it("comes back as its maker's when the person adds it back, after a restart too, and is then no longer kept as deleted", () => {
+    const documents = store();
+    change(documents, [shot], undefined, "p1", writer);
+    change(documents, [remove]);
+    expect(removedKept()).toEqual([{ revision: 2, id: "shot-1", type: "shot", createdBy: writer }]);
+    const restarted = store();
+    change(restarted, [shot]);
+    expect(makerOf(restarted)).toEqual(writer);
+    expect(removedKept()).toEqual([]);
+  });
+
+  it("comes back as the person's once it is older than the history kept", () => {
+    const documents = store();
+    change(documents, [shot], undefined, "p1", writer);
+    change(documents, [remove]);
+    for (let i = 0; i < CANVAS_HISTORY; i += 1) change(documents, [{ type: "set_viewport", viewport: { x: i, y: 0, k: 1 } }]);
+    change(documents, [shot]);
+    expect(makerOf(documents)).toEqual({ kind: "person" });
+  });
+
+  it("reads from a file kept before deleted nodes were", () => {
+    writeFileSync(file(), JSON.stringify({ version: 1, document: { projectId: "p1", revision: 3, nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 }, backgroundMode: "dots" }, history: [] }));
+    const documents = store();
+    expect(documents.read("p1").revision).toBe(3);
+    change(documents, [shot]);
+    expect(makerOf(documents)).toEqual({ kind: "person" });
   });
 });
 
