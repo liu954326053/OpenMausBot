@@ -71,6 +71,7 @@ import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useViewerEmail, useWelcomingBot } from "@/lib/default-bot";
 import { archiveBotWithNotice, onArchiveNotice } from "./bot-archive";
+import { onBotMenuRequest, type BotMenuRequest } from "./bot-menu-request";
 import { ArchivedBotsPanel, botConfirmProps, type BotConfirmKind } from "./ArchivedBotsPanel"; import { MovedBotRows } from "./MoveToTeam"; import { MovedToMyCloudRow } from "./MoveToMyCloud";
 import { SectionPicker } from "./SidebarSectionPicker";
 
@@ -576,7 +577,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const sidebarRef = useRef<HTMLElement>(null);
   const [confirm, setConfirm] = useState<{ kind: BotConfirmKind; bot: Bot } | null>(null);
   const cancelConfirm = useCallback(() => setConfirm(null), []);
-  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [menu, setMenu] = useState<MenuState | BotMenuRequest | null>(null);
   const [renameRequest, setRenameRequest] = useState<{ botId: string; nonce: number } | null>(null);
   const [sectionPicker, setSectionPicker] = useState<MenuState | null>(null);
   const [newTeam, setNewTeam] = useState<{ botId?: string } | null>(null);
@@ -658,6 +659,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   };
   // Archives from the bot panel report here too, with the same Undo.
   useEffect(() => onArchiveNotice(setTeamFeedback), []);
+  useEffect(() => onBotMenuRequest(setMenu), []);
 
   const undoBotArchive = async (bot: { id: string; name: string }) => {
     setTeamFeedback(null);
@@ -900,7 +902,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           }}
           onNewFolder={setNewFolderBotId}
           onNewTaskFolder={setNewTaskFolderBotId}
-          onRename={(botId) => setRenameRequest((current) => ({ botId, nonce: (current?.nonce ?? 0) + 1 }))}
+          onRename={(botId) => menu && "rename" in menu ? menu.rename(botId) : setRenameRequest((current) => ({ botId, nonce: (current?.nonce ?? 0) + 1 }))}
           onNewSection={remoteClient || teamSettingsAllowed === false ? undefined : (botId) => setNewTeam({ botId })}
         />
       {showThreads && newFolderBotId && state.bots.find((bot) => bot.id === newFolderBotId) && <BotProjectDialog bot={state.bots.find((bot) => bot.id === newFolderBotId)!} onClose={() => setNewFolderBotId(null)} />}

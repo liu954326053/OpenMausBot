@@ -63,14 +63,16 @@ function layoutEffects() {
   const cleanups = fixture.effects.map((effect) => effect());
   return () => cleanups.forEach((cleanup) => cleanup?.());
 }
+const POP_IN_START_SCALE = 0.96;
 function measuredMenu(width: number, height: number) {
-  const element = { style: { top: "", left: "" }, getBoundingClientRect: () => ({ width, height }) };
+  const element = { style: { top: "", left: "" }, offsetWidth: width, offsetHeight: height,
+    getBoundingClientRect: () => ({ width: width * POP_IN_START_SCALE, height: height * POP_IN_START_SCALE }) };
   fixture.portal!.node.props.ref.current = element as unknown as HTMLDivElement;
   return element;
 }
 
 describe("bot actions menu viewport placement", () => {
-  it("measures the complete menu so bottom-row Archive stays inside the viewport", () => {
+  it("measures the complete menu, not its smaller pop-in frame, so bottom-row Archive stays inside the viewport", () => {
     const html = render();
     const element = measuredMenu(228, 468);
     const cleanup = layoutEffects();

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, FolderMinus } from "lucide-react";
 import { useStore } from "@/state/store";
 import { cn } from "@/lib/cn";
@@ -55,7 +56,7 @@ export function SectionPicker({
   const top = Math.max(8, Math.min(shown.y, window.innerHeight - 300));
   const left = Math.min(shown.x, window.innerWidth - 260);
 
-  return (
+  return createPortal(
     <div
       data-section-picker
       style={{ top, left }}
@@ -118,6 +119,7 @@ export function SectionPicker({
           </button>
         </>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
