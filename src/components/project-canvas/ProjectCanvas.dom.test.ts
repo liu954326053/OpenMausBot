@@ -119,6 +119,15 @@ describe("the project canvas", () => {
     expect(nodeElement("shot-1")!.querySelectorAll("[data-resize-corner]")).toHaveLength(0);
   });
 
+  it("opens with the node of the bot it is opened for chosen", async () => {
+    backend = sampleCanvasBackend({ delayMs: 5 });
+    await act(async () => root.render(createElement(ProjectCanvas, { projectId: SAMPLE_PROJECT_ID, backend, selectedBotId: "kai" })));
+    await settle();
+    await settle();
+    expect(["mira", "kai", "lena", "otto"].map((id) => nodeElement(botNodeId(id))!.querySelectorAll("[data-resize-corner]").length)).toEqual([0, 4, 0, 0]);
+    expect(panel()).toBeNull();
+  });
+
   it("shows a bot's waiting question, sends the answer to the conversation and unfolds the latest exchange", async () => {
     await mount();
     await clickNode(botNodeId("lena"));
