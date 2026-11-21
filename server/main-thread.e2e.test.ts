@@ -117,6 +117,7 @@ it("moves no main thread for a teammate's work or results or a team incident; re
     const teammate = (await cli("new-bot", "--name", "Teammate", "--section", "Ops")).bot;
     const chief = (await cli("new-bot", "--name", "Chief", "--section", "Ops")).bot;
     await api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true });
+    await api("PUT", "/api/team-flows/line", { botId: teammate.id, superiorId: asker.id });
     writeFileSync(join(dataDir, "room-plan.json"), JSON.stringify({
       [asker.id]: { script: [
         { key: "open", match: ["Open a side job that asks Teammate."],
