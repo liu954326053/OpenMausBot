@@ -27,10 +27,8 @@ import type { AutomationLine, RoutineRunCardData } from "./routine-run.ts";
 import type { WidgetPayload } from "./widget.ts";
 import type { AppFromRef, AppPayload, AppPointedRef } from "./app.ts";
 import type { GroupGoalRunCardData } from "./group-goal-run.ts"; import type { BurstCardData } from "./burst.ts"; import type { TeamProjectProposalCardField } from "./team-project-proposal.ts"; import type { CanvasGenerationCardField } from "./canvas-generation-card.ts";
-import type { RuntimeEvent } from "./runtime-events.ts";
-import type { NotificationLogEntry } from "./notification.ts";
-import type { Routine, RoutineRun } from "./routines.ts";
-import type { WebhookAttempt, WebhookTrigger } from "./webhooks.ts";
+import type { RuntimeEvent } from "./runtime-events.ts"; import type { NotificationLogEntry } from "./notification.ts";
+import type { Routine, RoutineRun } from "./routines.ts"; import type { WebhookAttempt, WebhookTrigger } from "./webhooks.ts";
 import type { PublishedPageCard } from "./published-page.ts";
 import type { InboxItem, InboxTask } from "./inbox.ts";
 import type { LiveCallRecord, LiveCallState } from "./live-call-wire.ts";
@@ -666,6 +664,8 @@ export interface OptionCardData extends WaitCardField, ComputerAskField, AccessR
   stopped?: boolean;
   /** Catalog key for held when it is one of the fixed notes. */
   heldCode?: string;
+  /** Values for the placeholders of `heldCode`. */
+  heldParams?: ServerTextParams;
   /** the narrow grant "always allow" remembers for a harness-native card. */
   allowKey?: string;
   /** the provider can remember an allow for the rest of its session. */

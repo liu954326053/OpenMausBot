@@ -480,7 +480,7 @@ export function ApprovalCard({
   const titled = titledCard(card);
   const routineAction = card.routineRequest?.operation.action;
   const skillAction = card.skillRequest?.action;
-  const heldNote = tFromServer(card.heldCode, card.held);
+  const heldNote = tFromServer(card.heldCode, card.held, card.heldParams);
   const outcome = approvalCardOutcome(card);
   const outbound = outboundSummary(card);
   const displayTool = isRoutineRequest

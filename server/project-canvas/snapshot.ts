@@ -103,6 +103,15 @@ function botState(bot: BotFacts, lead: boolean, placed: boolean, sees: (threadId
   };
 }
 
+/** The flow's lines between a project's bots, each from a bot's superior to the bot. */
+export function dispatchConnections(tree: BotTree): CanvasConnection[] {
+  const { parents } = treeParents(tree);
+  return tree.botIds.flatMap((child) => {
+    const parent = parents.get(child);
+    return parent === undefined ? [] : [{ id: dispatchConnectionId(parent, child), fromNodeId: botNodeId(parent), toNodeId: botNodeId(child), kind: "dispatch" as const }];
+  });
+}
+
 /** The stored canvas joined with what the server derives: a node for every bot of the project, the dispatch
  * connections of the flow, and what each bot shows, from the conversations the viewer may open. */
 export function buildSnapshot(input: SnapshotInput): CanvasSnapshot {
@@ -116,12 +125,7 @@ export function buildSnapshot(input: SnapshotInput): CanvasSnapshot {
   const content = document.nodes.filter((node) => botIdOfNode(node.id) === null);
   const nodes = [...botNodes, ...content];
   const present = new Set(nodes.map((node) => node.id));
-  const { parents } = treeParents(tree);
-  const dispatch: CanvasConnection[] = tree.botIds.flatMap((child) => {
-    const parent = parents.get(child);
-    return parent === undefined ? [] : [{ id: dispatchConnectionId(parent, child), fromNodeId: botNodeId(parent), toNodeId: botNodeId(child), kind: "dispatch" as const }];
-  });
-  const connections = [...dispatch, ...document.connections.filter((one) => present.has(one.fromNodeId) && present.has(one.toNodeId))];
+  const connections = [...dispatchConnections(tree), ...document.connections.filter((one) => present.has(one.fromNodeId) && present.has(one.toNodeId))];
   return {
     ...document,
     nodes,
