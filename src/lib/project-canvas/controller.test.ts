@@ -163,18 +163,40 @@ describe("the canvas controller", () => {
     expect(generations).toEqual([{ nodeId: "shot-1", language: "zh" }]);
   });
 
-  it("marks a text node a bot's task was written in, as the backend has it, until the reply is in beside it", async () => {
+  it("keeps the node a bot's reply beside a text node becomes, with the bot, as the backend has it, until the reply takes its place", async () => {
     const { controller } = await started({ delayMs: 100, reply: () => "Rain never stops in this city." });
     const text = node(controller, "logline")!.metadata!.content;
     await controller.sendTask({ botId: "otto", text: "a tagline", targetNodeId: "logline" });
     await vi.advanceTimersByTimeAsync(0);
-    expect(controller.getState().writing.logline).toMatchObject({ botId: "otto" });
+    const [placeholder] = controller.getState().replies;
+    expect(controller.getState().replies).toEqual([expect.objectContaining({ nodeId: "logline", botId: "otto" })]);
+    expect(controller.getState().writing.logline).toBeUndefined();
     await vi.advanceTimersByTimeAsync(100);
     await controller.refresh();
-    expect(controller.getState().writing.logline).toBeUndefined();
+    expect(controller.getState().replies).toEqual([]);
     expect(node(controller, "logline")!.metadata!.content).toBe(text);
     const beside = controller.getState().snapshot!.connections.filter((connection) => connection.fromNodeId === "logline" && connection.kind === "content").map((connection) => node(controller, connection.toNodeId));
-    expect(beside).toEqual([expect.objectContaining({ type: "text", createdBy: { kind: "bot", botId: "otto" }, metadata: { content: "Rain never stops in this city." } })]);
+    expect(beside).toEqual([expect.objectContaining({
+      id: placeholder!.id, type: "text", position: placeholder!.position, width: placeholder!.width, height: placeholder!.height,
+      createdBy: { kind: "bot", botId: "otto" }, metadata: { content: "Rain never stops in this city." },
+    })]);
+  });
+
+  it("marks an empty text node a bot's task was written in until the reply fills it, and keeps no placeholder for a node deleted meanwhile", async () => {
+    const { controller } = await started({ delayMs: 100, reply: () => "Rain never stops in this city." });
+    controller.apply([{ type: "add_node", id: "blank", nodeType: "text", position: { x: 3000, y: 0 } }]);
+    await vi.advanceTimersByTimeAsync(0);
+    await controller.sendTask({ botId: "otto", text: "a tagline", targetNodeId: "blank" });
+    await controller.sendTask({ botId: "kai", text: "a tagline", targetNodeId: "logline" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getState().writing.blank).toEqual({ botId: "otto" });
+    expect(controller.getState().replies).toHaveLength(1);
+    controller.apply([{ type: "delete_node", id: "logline" }]);
+    expect(controller.getState().replies).toEqual([]);
+    await vi.advanceTimersByTimeAsync(100);
+    await controller.refresh();
+    expect(controller.getState().writing.blank).toBeUndefined();
+    expect(node(controller, "blank")!.metadata!.content).toBe("Rain never stops in this city.");
   });
 
   it("records an upload so undo removes the node", async () => {
