@@ -235,11 +235,6 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     top: details.getBoundingClientRect().top, gap: MENU_GAP, height: details.querySelector<HTMLElement>("[data-team-menu]")?.offsetHeight ?? 0,
     scale: view.scale, bottom: bounds.bottom, inset: bottomInset,
   });
-  useEffect(() => {
-    const open = viewport.current?.querySelector<HTMLDetailsElement>("details[open]");
-    const bounds = viewport.current?.getBoundingClientRect();
-    if (open && bounds) setMenuAbove(opensAbove(open, bounds) ? open.closest<HTMLElement>("[data-team-key]")?.dataset.teamKey ?? null : null);
-  }, [view, teamSizes, bottomInset]);
 
   useEffect(() => {
     const element = viewport.current;
