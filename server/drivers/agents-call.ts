@@ -364,8 +364,14 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         ? (b.status === "available" ? "" : b.statusText)
         : (b.busy ? "busy" : "");
       const team = typeof b.section === "string" ? `, department: ${peerName(b.section) || "General"}` : "";
-      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${team}${state ? `, ${state}` : ""}]`;
+      const line = b.flow === "superior" || b.flow === "subordinate" ? `, your ${b.flow}` : "";
+      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${team}${line}${state ? `, ${state}` : ""}]`;
     });
+    if (bots.some((b) => b.flow === "superior" || b.flow === "subordinate")) {
+      return {
+        text: `Bots you can reach in your team's flow (your superior and your direct subordinates, and no other bot):\n${lines.join("\n")}\n\nHand work only to a subordinate with coordinate_bots; ask your superior or a subordinate a question with consult: true. Then end your turn: busy teammates queue and results resume you automatically.`,
+      };
+    }
     return {
       text: `Bots you can reach (every department; you can contact any of them):\n${lines.join("\n")}\n\nUse coordinate_bots for concrete work or, with consult: true, for advice, then end your turn. Busy teammates queue and results resume you automatically.`,
     };
