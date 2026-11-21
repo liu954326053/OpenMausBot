@@ -79,7 +79,7 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
   },
   {
     name: "canvas_generate",
-    description: "Generate a shot, image or video node you made, from its prompt and settings and the image and audio nodes connected into it. Its node shows the progress; what it makes lands to its right, connected from it. Past a daily allowance a card asks the person to confirm first, so generate only what the task needs.",
+    description: "Generate a shot, image or video node you made, from its prompt and settings and the image and audio nodes connected into it. An image node that already holds a picture is sent first itself, so its prompt reads as an edit of that picture. Its node shows the progress; what it makes lands to its right, connected from it. Past a daily allowance a card asks the person to confirm first, so generate only what the task needs.",
     inputSchema: {
       type: "object",
       additionalProperties: false,

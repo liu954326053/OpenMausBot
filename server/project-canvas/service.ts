@@ -318,8 +318,8 @@ export class ProjectCanvasService {
     if (targetNodeId !== undefined && document.nodes.find((node) => node.id === targetNodeId)?.type !== "text") {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
     }
-    const references = await taskReferences(document, botId, { folder: project.folder, saveImage: this.deps.saveImage, language });
-    const message = taskMessage(text, references, language);
+    const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
+    const message = taskMessage(text, references);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = await this.deps.send(auth, { botId, threadId, text: message });
     if (targetNodeId !== undefined) this.awaitReply({ projectId: project.id, botId, threadId: receipt.threadId, nodeId: targetNodeId }, receipt);
@@ -404,9 +404,10 @@ export class ProjectCanvasService {
     return started;
   }
 
-  /** A job's change, on its node: `loading` while it runs, then each file it made as a node to its right, connected from
-   * it, or its failure as the node's error. A node given another job since, or none, is left as it is. Kept for an
-   * archived project too: the job began before. */
+  /** A job's change, on its node: `loading` while it runs, then the files it made, or its failure as the node's error.
+   * An empty image or video node takes the first file of its kind; each other file becomes a node to its right,
+   * connected from it. A node given another job since, or none, is left as it is. Kept for an archived project too: the
+   * job began before. */
   jobChanged(job: GenerationJob): void {
     const project = this.deps.projects.list().find((one) => one.id === job.projectId);
     if (!project) return;
@@ -421,9 +422,13 @@ export class ProjectCanvasService {
         node.metadata = { ...without(metadata, "errorDetails", "errorKey", "errorParams"), status, ...(failure ? nodeError(failure) : {}) };
         const changed: CanvasChangeSet = { nodes: [node.id], connections: [] };
         for (const file of status === "success" ? job.files : []) {
-          if (document.nodes.length >= CANVAS_MAX_NODES) break;
           if (document.nodes.some((one) => one.metadata?.file?.path === file.path)) continue;
           const type = canvasFileNodeType(file.mime);
+          if (type === node.type && !node.metadata.file) {
+            node.metadata = { ...node.metadata, file };
+            continue;
+          }
+          if (document.nodes.length >= CANVAS_MAX_NODES) break;
           const made: CanvasNode = { id: this.deps.newId(), type, title: file.name, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE[type], metadata: { file }, ...(node.createdBy ? { createdBy: node.createdBy } : {}) };
           made.position = placeAfter(document, node, made, bots);
           const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: node.id, toNodeId: made.id, kind: "content" };

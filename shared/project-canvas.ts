@@ -261,6 +261,9 @@ export interface CanvasTaskRequest {
   botId: string;
   text: string;
   threadId?: string;
+  /** A text node of this canvas the person wrote the task in. What goes with the task is then that node's: the
+   * references `mentionReferences` gives it, labelled as its prompt panel labels them, and the other nodes connected
+   * into it. */
   targetNodeId?: string;
   /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
    * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
@@ -286,14 +289,15 @@ export interface CanvasUploadResponse {
 }
 
 /** `POST /api/team-projects/:id/canvas/generate`: the project's generation starts for a shot, image, video or config
- * node, from its prompt, its `settings` and the files of the image and audio among the references `generationInputs`
+ * node, from its prompt, its `settings` and the files of the image and audio among the references `mentionReferences`
  * gives it, so a model never rewrites the request. The prompt sent begins with which label names which of those files,
  * in the words of `language`, and ends with each text reference under its label. Answered 202; a refusal is answered
  * with generation's own `GenerationFailure`, or, for a node that is gone, has no prompt or is generating already, with
- * the canvas's `ServerErrorBody`. The node shows `loading` while the job runs. On success each file the job made becomes
- * a node to its right, connected from it, below the ones made before; on failure `errorDetails`, `errorKey` and
- * `errorParams` say why. A bot past its ceiling is asked about on a card instead (`OptionCardData.canvasGeneration`),
- * which its node shows in `waiting` until the person answers. */
+ * the canvas's `ServerErrorBody`. The node shows `loading` while the job runs. On success an empty image or video node
+ * takes the first file of its kind, and each other file the job made becomes a node to its right, connected from it,
+ * below the ones made before; on failure `errorDetails`, `errorKey` and `errorParams` say why. A bot past its ceiling
+ * is asked about on a card instead (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the
+ * person answers. */
 export interface CanvasGenerateRequest {
   nodeId: string;
   /** As in `CanvasTaskRequest`. */

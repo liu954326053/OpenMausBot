@@ -10573,6 +10573,7 @@
   "server.projectCanvas.node.config": "設定",
   "server.projectCanvas.node.file": "檔案",
   "server.projectCanvas.task.connected": "專案畫布上連到你的節點的內容：",
+  "server.projectCanvas.task.textNode": "專案畫布上文字節點 {title} 引用的內容：",
   "server.projectCanvas.task.fileGone": "（它的檔案 {path} 現在不在專案資料夾裡）",
   "activity.tool.team.canvasGetState": "讀取專案畫布",
   "activity.tool.team.canvasApplyOps": "編輯專案畫布",

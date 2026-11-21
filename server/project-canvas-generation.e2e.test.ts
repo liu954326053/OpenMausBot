@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { CanvasGenerateRequest, CanvasNode, CanvasSnapshot } from "../shared/project-canvas.ts";
+import { botNodeId, type CanvasGenerateRequest, type CanvasNode, type CanvasSnapshot, type CanvasTaskRequest } from "../shared/project-canvas.ts";
 import type { GenerationJob } from "../shared/project-generation.ts";
 import { formatServerText, type ServerTextParams } from "../shared/server-text.ts";
 import type { TeamProjectWire } from "../shared/team-projects.ts";
@@ -53,6 +53,7 @@ const script = [
   { key: "declined", match: ["MagicBot generation decision", "the person declined"], reply: "HEARD DECLINE" },
   { key: "sixth", match: ["A-SIXTH-IN-CHINESE"], reply: "ASKED FOR THE SIXTH", steps: [{ tool: "canvas_apply_ops", arguments: { ops: [take(6)] } }, generate(6)] },
   { key: "config", match: ["GENERATE-THE-CONFIG"], reply: "TRIED THE CONFIG", steps: [{ tool: "canvas_generate", arguments: { node_id: "config" }, expectError: true }] },
+  { key: "logline", match: ["WRITE-THE-LOGLINE"], reply: "WROTE THE LOGLINE" },
 ];
 
 describe("generating on a project's canvas", () => {
@@ -93,6 +94,8 @@ describe("generating on a project's canvas", () => {
     return read.nodes.filter((one) => to.has(one.id));
   };
   const onDisk = (path: string) => existsSync(join(project.folder, ...path.split("/")));
+  const sha = (one: CanvasNode) => createHash("sha256").update(readFileSync(join(project.folder, ...one.metadata!.file!.path.split("/")))).digest("hex");
+  const task = (request: CanvasTaskRequest) => api("POST", `${canvasPath()}/tasks`, request);
   const jobs = async () => (await api("GET", `/api/team-projects/${project.id}/generation/jobs`)).body.jobs as GenerationJob[];
   const bots = async () => (await api("GET", "/api/bots?messages=0")).body.bots as Bot[];
   const messages = async (threadId: string) => (await api("GET", `/api/threads/${threadId}/messages`)).body.messages as Line[];
@@ -169,7 +172,7 @@ describe("generating on a project's canvas", () => {
     if (root) await removeTempDir(root);
   });
 
-  it("puts what a person's generate makes to the right of its node, connected from it, with its files in 产出/图片 and 产出/视频", async () => {
+  it("fills an empty image node with the first picture a person's generate makes and puts the rest to its right, connected from it, with its files in 产出/图片 and 产出/视频", async () => {
     await applyOps(
       { type: "add_node", id: "poster", nodeType: "image", title: "海报", metadata: { prompt: "A lighthouse at dusk", settings: { count: 2 } } },
       { type: "add_node", id: "opening", nodeType: "shot", title: "开场", metadata: { prompt: "Waves against the lighthouse" } },
@@ -181,16 +184,14 @@ describe("generating on a project's canvas", () => {
 
     const image = await settledNode("poster");
     const video = await settledNode("opening");
-    expect(image.metadata).toMatchObject({ status: "success", jobId: poster.body.jobId });
+    expect(image).toMatchObject({ type: "image", title: "海报", metadata: { status: "success", jobId: poster.body.jobId, file: { path: expect.stringMatching(/^产出\/图片\/海报-.+-1\.png$/), mime: "image/png" } } });
     expect(video.metadata).toMatchObject({ status: "success", jobId: opening.body.jobId });
     const pictures = await results("poster");
-    expect(pictures.map((one) => [one.type, one.metadata?.file?.path])).toEqual([
-      ["image", expect.stringMatching(/^产出\/图片\/海报-.+-1\.png$/)], ["image", expect.stringMatching(/^产出\/图片\/海报-.+-2\.png$/)],
-    ]);
-    expect(pictures.map((one) => one.position.x)).toEqual([image.position.x + image.width + 80, image.position.x + image.width + 80]);
+    expect(pictures.map((one) => [one.type, one.metadata?.file?.path])).toEqual([["image", expect.stringMatching(/^产出\/图片\/海报-.+-2\.png$/)]]);
+    expect(pictures.map((one) => one.position.x)).toEqual([image.position.x + image.width + 80]);
     const films = await results("opening");
     expect(films.map((one) => [one.type, one.metadata?.file?.path])).toEqual([["video", expect.stringMatching(/^产出\/视频\/开场-.+\.mp4$/)]]);
-    for (const one of [...pictures, ...films]) {
+    for (const one of [image, ...pictures, ...films]) {
       expect(onDisk(one.metadata!.file!.path), one.metadata!.file!.path).toBe(true);
       expect(one.createdBy).toEqual({ kind: "person" });
     }
@@ -348,8 +349,8 @@ describe("generating on a project's canvas", () => {
   }, hostTimeout(90_000));
 
   it("generates a config node from its prompt, settings and references, numbered in the person's words, each result to its right", async () => {
-    const [first, second] = await results("poster");
-    const sha = (one: CanvasNode) => createHash("sha256").update(readFileSync(join(project.folder, ...one.metadata!.file!.path.split("/")))).digest("hex");
+    const first = await node("poster");
+    const [second] = await results("poster");
     await applyOps(
       { type: "add_node", id: "refs", nodeType: "group", title: "参考组" },
       { type: "add_node", id: "brief", nodeType: "text", title: "剧情", metadata: { content: "雨夜，新娘在教堂台阶上回头。" } },
@@ -398,4 +399,47 @@ describe("generating on a project's canvas", () => {
     await idle();
     keep("07-config-generates.json", { started: started.body, loading, done, made, job, mcpCall: call, failed, failingPrompts: failing, botTried: answers(turnOf("config")) });
   }, hostTimeout(120_000));
+
+  it("sends an image node's own picture first, as 图片 1 in the numbering line, and puts what it makes to its right", async () => {
+    const poster = await node("poster");
+    const [night] = await results("poster");
+    await applyOps(
+      { type: "update_node", id: night!.id, patch: { title: "夜景" }, metadata: { prompt: "把 @图片 1 改成夜景，灯塔照着 @图片 2" } },
+      { type: "connect_nodes", fromNodeId: "poster", toNodeId: night!.id },
+    );
+    const started = await generateNode(night!.id, "zh");
+    expect(started).toEqual({ status: 202, body: { jobId: expect.any(String) } });
+    const done = await settledNode(night!.id);
+    expect(done.metadata).toMatchObject({ status: "success", jobId: started.body.jobId, file: night!.metadata!.file });
+    const call = fake.calls.find((one) => String(one.arguments.prompt).includes("改成夜景"))!;
+    expect(call.arguments.prompt).toBe("参考图片编号：图片 1、图片 2。请按这些编号理解提示词中的图片引用。\n\n把 @图片 1 改成夜景，灯塔照着 @图片 2");
+    expect((call.arguments.referenceImages as Array<{ sha256: string }>).map((one) => one.sha256)).toEqual([sha(night!), sha(poster)]);
+    const job = (await jobs()).find((one) => one.id === started.body.jobId)!;
+    expect(job.references).toEqual({ images: [night!.metadata!.file!.path, poster.metadata!.file!.path], audio: [] });
+    const made = await results(night!.id);
+    expect(made.map((one) => [one.type, one.metadata?.file?.path])).toEqual([["image", expect.stringMatching(/^产出\/图片\/夜景-.+\.png$/)]]);
+    expect(made[0]!.position.x).toBe(done.position.x + done.width + 80);
+    expect(onDisk(made[0]!.metadata!.file!.path)).toBe(true);
+    keep("08-image-sends-itself-first.json", { started: started.body, done, mcpCall: call, job, made });
+  }, hostTimeout(120_000));
+
+  it("numbers a task written in a text node as that node's panel does, not as the bot's node would", async () => {
+    const [night] = (await canvas()).nodes.filter((one) => one.title === "夜景");
+    await applyOps(
+      { type: "add_node", id: "logline", nodeType: "text", title: "梗概", metadata: { content: "待写" } },
+      { type: "connect_nodes", fromNodeId: night!.id, toNodeId: "logline" },
+      { type: "connect_nodes", fromNodeId: "brief", toNodeId: "logline" },
+      { type: "connect_nodes", fromNodeId: "poster", toNodeId: botNodeId(writer.id) },
+    );
+    const sent = await task({ botId: writer.id, text: "WRITE-THE-LOGLINE：按 @图片 1 和 @文本 1 写一句梗概", targetNodeId: "logline", language: "zh" });
+    expect(sent.status, JSON.stringify(sent.body)).toBe(202);
+    expect(sent.body).toMatchObject({ threadId: writer.threadId, references: 2 });
+    await said(writer.threadId, "WROTE THE LOGLINE");
+    await idle();
+    const asked = (await messages(writer.threadId)).find((line) => line.id === sent.body.messageId)!;
+    const name = night!.metadata!.file!.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    expect(asked.text).toMatch(new RegExp(`^WRITE-THE-LOGLINE：按 @图片 1 和 @文本 1 写一句梗概\\n\\n项目画布上文本节点 "梗概" 引用的内容：\\n\\n图片 1 "夜景":\\n\\n<attached-image path="[^"]+" name="${name}"/>\\n\\n> 把 @图片 1 改成夜景，灯塔照着 @图片 2\\n\\n文本 1 "剧情":\\n\\n> 雨夜，新娘在教堂台阶上回头。$`));
+    expect(JSON.stringify(turnOf("logline").prompt)).toContain("> 雨夜，新娘在教堂台阶上回头。");
+    keep("09-text-node-task.json", { response: sent.body, message: asked, prompt: turnOf("logline").prompt });
+  }, hostTimeout(60_000));
 });
