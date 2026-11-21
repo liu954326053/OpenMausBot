@@ -18,8 +18,9 @@ const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
 type Said = { id: string; at: number; role: string; peerAsk?: boolean; relayed?: boolean; via?: string; text?: string; inbox?: unknown; replyToId?: string };
+type Listed = { id: string; name: string; threadId: string; section?: string; chiefOfStaff?: boolean; hidden?: boolean; defaultBot?: { person?: string } };
 
-function setup(over: Partial<PlaceInboxDeps> = {}, dataDir = mkdtempSync(join(tmpdir(), "place-inbox-"))) {
+function setup(over: Partial<PlaceInboxDeps> = {}, dataDir = mkdtempSync(join(tmpdir(), "place-inbox-")), roster: Listed[] = []) {
   dirs.push(dataDir);
   let clock = 1_000;
   let serial = 0;
@@ -35,6 +36,7 @@ function setup(over: Partial<PlaceInboxDeps> = {}, dataDir = mkdtempSync(join(tm
   const rooms: Record<string, { id: string; name: string; memberIds: string[] }> = { "room-main": { id: "room", name: "Team room", memberIds: ["eli", "mira"] } };
   const listeners: Array<(change: { type: string; threadId: string }) => void> = [];
   const store = {
+    bots: roster,
     bot: (id: string) => bots[id],
     botByThread: (threadId: string) => (threadId.startsWith("eli") || threadId === "guest-chat" ? bots.eli : threadId.startsWith("mira") ? bots.mira : undefined),
     taskByThread: (_botId: string, threadId: string) => (titles[threadId] ? { threadId, title: titles[threadId] } : undefined),
@@ -137,6 +139,56 @@ describe("finished work reaches the inbox once", () => {
     const posted = f.store.appendMessage("eli-main", { role: "bot", text: "All three pages are live." });
     f.inbox.route(summary, { summary: true });
     expect(f.inbox.view(OWNER).rows[0]!.origin?.messageId).toBe(posted.id);
+  });
+});
+
+describe("a department the update left without a Chief of Staff", () => {
+  const team = (): Listed[] => [
+    { id: "maus", name: "MagicBot", threadId: "maus-main", defaultBot: {}, chiefOfStaff: true },
+    { id: "guest-maus", name: "Sam's MagicBot", threadId: "guest-maus-main", defaultBot: { person: "p_guest" } },
+    { id: "nia", name: "Nia", threadId: "nia-main", section: "Night shift" },
+    { id: "ode", name: "Ode", threadId: "ode-main", section: "Night shift" },
+  ];
+  const chiefRows = (f: ReturnType<typeof setup>) => f.inbox.view(OWNER).rows.filter((row) => row.needsChief);
+  const words = "This update moved MagicBot out of departments, so Night shift has no Chief of Staff now. Choose one of its bots as Chief of Staff to make projects with this team.";
+
+  it("waits on the person in the inbox, from the main bot, until the department has a Chief again, with no notification", () => {
+    const roster = team();
+    const f = setup({ needsChief: ["Night shift"] }, undefined, roster);
+    const [row, ...more] = chiefRows(f);
+    expect(more).toEqual([]);
+    expect(row).toMatchObject({ kind: "notice", tab: "needs-you", unread: true, from: { name: "MagicBot", botId: "maus" }, needsChief: { department: "Night shift" }, text: words });
+    expect(row!.origin).toEqual({ botId: "maus", threadId: "maus-main", title: "" });
+    expect([f.inbox.count(OWNER), f.sent]).toEqual([1, []]);
+    f.inbox.seen(OWNER, "maus-main");
+    expect(chiefRows(f).map((one) => one.tab)).toEqual(["needs-you"]);
+    roster[2]!.chiefOfStaff = true;
+    expect(chiefRows(f).map((one) => one.tab)).toEqual(["done"]);
+    expect(f.inbox.count(OWNER)).toBe(0);
+  });
+
+  it("settles once the department has no bots left to choose from, or the person marks it done", () => {
+    const roster = team();
+    const f = setup({ needsChief: ["Night shift"] }, undefined, roster);
+    roster[2]!.hidden = true;
+    expect(chiefRows(f).map((one) => one.tab)).toEqual(["needs-you"]);
+    roster[3]!.section = "Day shift";
+    expect(chiefRows(f).map((one) => one.tab)).toEqual(["done"]);
+    const g = setup({ needsChief: ["Night shift"] }, undefined, team());
+    expect(g.inbox.markDone(OWNER, chiefRows(g)[0]!.id)).toBe("done");
+    expect(chiefRows(g).map((one) => one.tab)).toEqual(["done"]);
+  });
+
+  it("files one line per department, once, across a restart", () => {
+    const f = setup({ needsChief: ["Night shift"] }, undefined, team());
+    f.inbox.stop();
+    const again = setup({ needsChief: ["Night shift"] }, f.dataDir, team());
+    expect(chiefRows(again).map((one) => one.needsChief)).toEqual([{ department: "Night shift" }]);
+  });
+
+  it("files nothing without a main bot to say it", () => {
+    const f = setup({ needsChief: ["Night shift"] }, undefined, team().slice(2));
+    expect(chiefRows(f)).toEqual([]);
   });
 });
 

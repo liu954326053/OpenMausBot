@@ -3,6 +3,7 @@ import { memo, useLayoutEffect, useRef, useState, type KeyboardEvent, type Mouse
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { chiefTitle } from "./BotRole";
 import { useLiveMedia } from "@/lib/live-call-media";
 import { stateForBot } from "@/lib/mascot";
 import { useShowThreads } from "@/lib/thread-preferences";
@@ -32,7 +33,7 @@ export const SidebarBotTile = memo(function SidebarBotTile(row: BotRowProps) {
   const onLiveCall = liveBadgeFor(bot.id, liveMedia, liveCall);
   const tooltip = botTooltip(bot, instances);
   const status = waiting ? t("sidebar.preview.waiting") : working ? t("chat.activity.working") : failed ? t("sidebar.preview.failed") : teammateWait ? t("sidebar.preview.waitingOnTeammate") : queued ? t("task.queued") : "";
-  const label = [bot.name, bot.chiefOfStaff ? t("sidebar.bot.chiefOfStaff") : "", onLiveCall ? t("call.live.badge") : "", status, unread ? t("task.unread") : ""].filter(Boolean).join(" · ");
+  const label = [bot.name, bot.chiefOfStaff ? chiefTitle(bot) : "", onLiveCall ? t("call.live.badge") : "", status, unread ? t("task.unread") : ""].filter(Boolean).join(" · ");
   const open = () => openBotRow(dispatch, bot, showThreads, selected);
   const rename = (name: string) => {
     if (!remoteClient) return dispatch({ type: "updateBot", botId: bot.id, patch: { name } });

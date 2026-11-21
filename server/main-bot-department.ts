@@ -7,6 +7,7 @@ import { writeFileAtomic } from "./atomic.ts";
 type SavedBot = {
   name?: unknown;
   section?: unknown;
+  hidden?: unknown;
   defaultBot?: { person?: string };
   teamProject?: unknown;
   chiefOfStaff?: unknown;
@@ -57,6 +58,13 @@ function withoutMainBotDepartments(bots: SavedBot[]): { bots: SavedBot[]; moved:
   return { bots: next, moved };
 }
 
+/** The departments a main bot left that still have bots and now have no Chief of Staff. */
+function leftWithoutChief(bots: SavedBot[], moved: Moved[]): string[] {
+  const kept = bots.filter((bot) => bot.hidden !== true && !isMainBot(bot));
+  return [...new Set(moved.map((bot) => bot.from))].filter((department) =>
+    kept.some((bot) => sectionOf(bot) === department) && !kept.some((bot) => bot.chiefOfStaff === true && sectionOf(bot) === department));
+}
+
 export interface MainBotDepartmentRun {
   /** The bots file, read before anything else reads it. */
   file: string;
@@ -68,10 +76,10 @@ export interface MainBotDepartmentRun {
 /**
  * The main bot belongs to no department. Before the bots are read, a main bot saved in a department is moved out of it:
  * the file is backed up next to itself first, then replaced whole. When either fails nothing changes, and the next start
- * tries again.
+ * tries again. Returns the departments the move left without a Chief of Staff.
  */
-export function takeMainBotOutOfDepartments({ file, log, now = () => new Date(), write = (path, text) => writeFileAtomic(path, text, { mode: 0o600 }) }: MainBotDepartmentRun): void {
-  if (!existsSync(file)) return;
+export function takeMainBotOutOfDepartments({ file, log, now = () => new Date(), write = (path, text) => writeFileAtomic(path, text, { mode: 0o600 }) }: MainBotDepartmentRun): string[] {
+  if (!existsSync(file)) return [];
   let text: string;
   let bots: unknown;
   try {
@@ -80,10 +88,10 @@ export function takeMainBotOutOfDepartments({ file, log, now = () => new Date(),
     if (!Array.isArray(bots)) throw new Error("it does not hold a list of bots");
   } catch (error) {
     log(`main bot: ${basename(file)} could not be read, so the main bot was not checked: ${detailOf(error)}`);
-    return;
+    return [];
   }
   const { bots: next, moved } = withoutMainBotDepartments(bots as SavedBot[]);
-  if (!moved.length) return;
+  if (!moved.length) return [];
   const backup = `${file}.bak.${stampOf(now())}`;
   let backedUp = false;
   try {
@@ -93,10 +101,11 @@ export function takeMainBotOutOfDepartments({ file, log, now = () => new Date(),
   } catch (error) {
     if (backedUp) rmSync(backup, { force: true });
     for (const bot of moved) log(`main bot: ${bot.name} stays in the department ${bot.from} until the next start: ${detailOf(error)}`);
-    return;
+    return [];
   }
   for (const bot of moved) {
     const chief = bot.yieldedTo ? ` and is no longer a Chief of Staff, since ${bot.yieldedTo} already leads the general area` : "";
     log(`main bot: ${bot.name} left the department ${bot.from}${chief}; ${basename(file)} was backed up to ${basename(backup)}`);
   }
+  return leftWithoutChief(next, moved);
 }

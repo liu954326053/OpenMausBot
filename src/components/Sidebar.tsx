@@ -10,7 +10,7 @@ import { SidebarWorkingStep } from "./SidebarWorkingStep"; import { FadeLine } f
 import { openBotRow } from "@/state/thread-navigation";
 
 import { BotAvatar } from "./Avatar";
-import { BotEngineMark, BotModelBadge, botTooltip } from "./BotModelBadge"; import { SidebarBotRole } from "./BotRole";
+import { BotEngineMark, BotModelBadge, botTooltip } from "./BotModelBadge"; import { chiefTitle, SidebarBotRole } from "./BotRole";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { useRememberedDisclosure } from "@/lib/remembered-disclosure";
@@ -362,7 +362,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   const visible = useVisibleMessages(bot);
   const last = lastNonReceipt(visible);
   const title = bot.title.trim();
-  const details = [props.held ? t("pause.badge") : "", title, bot.chiefOfStaff ? t("sidebar.bot.chiefOfStaff") : ""].filter(Boolean);
+  const details = [props.held ? t("pause.badge") : "", title, bot.chiefOfStaff ? chiefTitle(bot) : ""].filter(Boolean);
   const rowClass = cn(
     "flex w-full items-center rounded-xl text-left transition-colors duration-150", SIMPLE_ROW_FOCUS,
     iconOnly
@@ -404,8 +404,8 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
         {!simpleRow && <AvatarCornerDot activity={failed ? "failed" : teammateWait ? "teammate" : queued && !waiting && !working ? "queued" : null} large={iconOnly} />}
         {bot.chiefOfStaff && (iconOnly || simpleRow) && (
           <span className="absolute -left-1 -top-1 flex rounded-full bg-raised p-[3px]">
-            <Crown size={11} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={t("sidebar.bot.chiefOfStaff")} data-testid="chief-crown">
-              <title>{t("sidebar.bot.chiefOfStaff")}</title>
+            <Crown size={11} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={chiefTitle(bot)} data-testid="chief-crown">
+              <title>{chiefTitle(bot)}</title>
             </Crown>
           </span>
         )}
@@ -440,8 +440,8 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
               inputClassName={cn("w-full rounded bg-inset px-1 py-0.5", simpleRow ? "text-[14px] font-medium" : "text-[15px] font-semibold")}
             />
             {!simpleList && bot.chiefOfStaff && !renaming && (
-              <Crown size={13} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={t("sidebar.bot.chiefOfStaff")} data-testid="chief-crown">
-                <title>{t("sidebar.bot.chiefOfStaff")}</title>
+              <Crown size={13} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={chiefTitle(bot)} data-testid="chief-crown">
+                <title>{chiefTitle(bot)}</title>
               </Crown>
             )}
             {onLiveCall && !iconOnly && !renaming && (
@@ -508,7 +508,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
           !renaming && iconOnly
             ? deleting
               ? t("sidebar.bot.deletingAria", { name: bot.name })
-              : `${bot.name}${bot.title?.trim() ? ` · ${bot.title.trim()}` : ""}${bot.chiefOfStaff ? ` · ${t("sidebar.bot.chiefOfStaff")}` : ""}${onLiveCall ? ` · ${t("call.live.badge")}` : ""}${waiting ? ` · ${t("sidebar.preview.waiting")}` : working ? ` · ${t("chat.activity.working")}` : failed ? ` · ${t("sidebar.preview.failed")}` : teammateWait ? ` · ${t("sidebar.preview.waitingOnTeammate")}` : queued ? ` · ${t("task.queued")}` : ""}${unread ? ` · ${t("task.unread")}` : ""}`
+              : `${bot.name}${bot.title?.trim() ? ` · ${bot.title.trim()}` : ""}${bot.chiefOfStaff ? ` · ${chiefTitle(bot)}` : ""}${onLiveCall ? ` · ${t("call.live.badge")}` : ""}${waiting ? ` · ${t("sidebar.preview.waiting")}` : working ? ` · ${t("chat.activity.working")}` : failed ? ` · ${t("sidebar.preview.failed")}` : teammateWait ? ` · ${t("sidebar.preview.waitingOnTeammate")}` : queued ? ` · ${t("task.queued")}` : ""}${unread ? ` · ${t("task.unread")}` : ""}`
             : undefined
         }
         aria-busy={deleting || undefined}
