@@ -1,10 +1,9 @@
 import { useContext } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, FolderClosed } from "lucide-react";
 import type { TeamProjectProposal } from "../../../shared/team-project-proposal";
 import { t } from "@/lib/i18n";
-import { useShowThreads } from "@/lib/thread-preferences";
-import { openBotRow, openThread, StoreContext, type Bot } from "@/state/store";
-import { BotAvatar } from "../Avatar";
+import { StoreContext } from "@/state/store";
+import { useTeamProjectSide } from "@/state/team-projects";
 
 const LABEL = "text-[12px] font-medium leading-4 text-ink-tertiary";
 
@@ -27,38 +26,25 @@ function teamOf(proposal: TeamProjectProposal): { name: string; members: Member[
   return { name: template.name, members: roles.map((role) => ({ key: role.key, name: role.name, title: role.title, lead: role.key === template.lead })) };
 }
 
-/** The lead's thread the main bot handed the person's request into: the first one it opened on the lead. */
-function handedOverThread(lead: Bot, mainBotId: string): string | undefined {
-  return (lead.tasks ?? [])
-    .filter((task) => task.openedBy?.botId === mainBotId && task.archivedAt === undefined)
-    .sort((a, b) => a.openedBy!.at - b.openedBy!.at)[0]?.threadId;
-}
-
-function OpenProject({ leadBotId, mainBotId }: { leadBotId: string; mainBotId: string }) {
+function OpenProject({ projectId }: { projectId: string }) {
   const store = useContext(StoreContext);
-  const showThreads = useShowThreads();
-  const lead = store?.state.bots.find((bot) => bot.id === leadBotId);
-  if (!store || !lead) return null;
-  const open = () => {
-    const threadId = handedOverThread(lead, mainBotId);
-    if (threadId) openThread(store.dispatch, { botId: lead.id, threadId }, store.state, showThreads);
-    else openBotRow(store.dispatch, lead, showThreads, false);
-  };
+  const side = useTeamProjectSide();
+  if (!store || (side.shown && !side.projects.some((project) => project.id === projectId))) return null;
   return (
     <button
       type="button"
-      data-team-project-open={lead.id}
-      onClick={open}
+      data-team-project-open={projectId}
+      onClick={() => store.dispatch({ type: "showProject", projectId })}
       className="ui-pill mt-3"
     >
-      <BotAvatar bot={lead} state="happy" size={16} animated={false} />
+      <FolderClosed size={14} aria-hidden="true" />
       <span className="max-w-[480px] truncate">{t("teamProjectProposal.open")}</span>
       <ChevronRight size={13} aria-hidden="true" className="rtl:-scale-x-100" />
     </button>
   );
 }
 
-/** What a proposed project will be, and once it is made the way into it: its lead's chat, on the person's request. */
+/** What a proposed project will be, and once it is made the way into it: its canvas. */
 export function TeamProjectProposalDetails({ proposal }: { proposal: TeamProjectProposal }) {
   const { result } = proposal;
   const team = teamOf(proposal);
@@ -89,7 +75,7 @@ export function TeamProjectProposalDetails({ proposal }: { proposal: TeamProject
           </dd>
         </div>
       </dl>
-      {result?.state === "created" && <OpenProject leadBotId={result.leadBotId} mainBotId={proposal.botId} />}
+      {result?.state === "created" && <OpenProject projectId={result.projectId} />}
     </div>
   );
 }
