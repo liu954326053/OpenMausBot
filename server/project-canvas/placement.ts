@@ -76,7 +76,7 @@ function obstacles(document: CanvasDocument, bots: ReadonlyMap<string, CanvasFra
 }
 
 /** The first free spot at `x` from `y` down. */
-function freeBelow(x: number, y: number, node: CanvasNode, blocking: readonly Rect[]): CanvasPoint {
+function freeBelow(x: number, y: number, node: Pick<CanvasFrame, "width" | "height">, blocking: readonly Rect[]): CanvasPoint {
   let top = y;
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const candidate = { x, y: top, width: node.width, height: node.height };
@@ -85,6 +85,11 @@ function freeBelow(x: number, y: number, node: CanvasNode, blocking: readonly Re
     top = hit.y + hit.height + NODE_GAP;
   }
   return { x, y: top };
+}
+
+/** `frame` moved down until it overlaps none of `taken`. */
+export function clearBelow(frame: CanvasFrame, taken: readonly CanvasFrame[]): CanvasFrame {
+  return { ...frame, position: freeBelow(frame.position.x, frame.position.y, frame, taken.map(rectOf)) };
 }
 
 /** To the right of `anchor`, below the lane members already there, clear of every other node. */

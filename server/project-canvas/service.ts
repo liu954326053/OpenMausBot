@@ -32,6 +32,7 @@ import type { ProjectPathError } from "./paths.ts";
 import { placeAfter, placeForActor, type BotTree } from "./placement.ts";
 import { taskMessage, taskReferences } from "./references.ts";
 import { botFrames, buildSnapshot, dispatchConnections } from "./snapshot.ts";
+import { replyText, TaskTargets, type TaskTarget } from "./task-targets.ts";
 
 /** A request the canvas does not carry out, and what it is answered with. */
 export class CanvasRefusal extends Error {
@@ -147,6 +148,7 @@ function handedFile(message: Message) {
 export class ProjectCanvasService {
   readonly facts: BotFactsReader;
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly targets = new TaskTargets();
   private readonly deps: ProjectCanvasServiceDeps;
   private lastLines = new Map<string, string>();
 
@@ -191,13 +193,20 @@ export class ProjectCanvasService {
   }
 
   private view(project: TeamProjectWire, sees: (threadId: string) => boolean): CanvasSnapshot {
-    return buildSnapshot({
+    const snapshot = buildSnapshot({
       document: this.deps.documents.read(project.id),
       project: { id: project.id, name: project.name, leadBotId: project.leadBotId, archived: project.archivedAt !== undefined, folderState: project.folderState },
       bots: this.facts.facts(project.botIds),
       parentOf: (botId) => this.deps.parentOf(project.id, botId),
       sees,
     });
+    const queued = this.deps.queuedThreads();
+    for (const target of this.targets.of(project.id)) {
+      const bot = snapshot.bots[target.botId];
+      const running = queued.has(target.threadId) || this.deps.threadBusy(target.botId, target.threadId);
+      if (bot && running && snapshot.nodes.some((node) => node.id === target.nodeId)) bot.writingInto = [...(bot.writingInto ?? []), target.nodeId];
+    }
+    return snapshot;
   }
 
   snapshot(projectId: string, auth: RequestAuth): CanvasSnapshot {
@@ -224,9 +233,9 @@ export class ProjectCanvasService {
     const outcome = this.deps.documents.change(project.id, {
       ...(baseRevision === undefined ? {} : { baseRevision }),
       targets: opTargets(ops),
-      apply: (document) => {
+      apply: (document, removed) => {
         const bots = botFrames(document, this.tree(project));
-        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots) });
+        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots), removed });
         if (actor.kind === "bot" && result.nodeIds.length) pinBot(result.document, result.changed, actor.botId, bots);
         return result;
       },
@@ -313,9 +322,35 @@ export class ProjectCanvasService {
     const message = taskMessage(text, references);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = await this.deps.send(auth, { botId, threadId, text: message });
+    if (targetNodeId !== undefined) this.awaitReply({ projectId: project.id, botId, threadId: receipt.threadId, nodeId: targetNodeId }, receipt);
     return "queued" in receipt
       ? { threadId: receipt.threadId, queued: true, references: references.count }
       : { threadId: receipt.threadId, messageId: receipt.message.id, references: references.count };
+  }
+
+  private awaitReply(where: Omit<TaskTarget, "requestId" | "requestAt" | "queueId">, receipt: DirectSendReceipt): void {
+    if ("queued" in receipt) this.targets.add({ ...where, queueId: receipt.queueId });
+    else if (!receipt.steered) this.targets.add({ ...where, requestId: receipt.message.id, requestAt: receipt.message.at });
+  }
+
+  /** A line of a conversation: the bot's reply to a task with a text node becomes the node's text. */
+  taskLine(threadId: string, message: Message): void {
+    const settled = this.targets.heard(threadId, message);
+    if (!settled?.reply) return;
+    const { projectId, nodeId } = settled.target;
+    const project = this.deps.projects.list().find((one) => one.id === projectId);
+    if (!project || project.archivedAt !== undefined) return;
+    const content = replyText(settled.reply);
+    try {
+      this.serverChange(project, (document) => {
+        const node = document.nodes.find((one) => one.id === nodeId);
+        if (node?.type !== "text") return null;
+        node.metadata = { ...node.metadata, content };
+        return { nodes: [node.id], connections: [] };
+      });
+    } catch (error) {
+      this.deps.log(`[project-canvas] ${projectId}: a reply could not go into ${nodeId} (${error instanceof Error ? error.message : "unknown"})`);
+    }
   }
 
   nodeOf(projectId: string, nodeId: string): CanvasNode | undefined {

@@ -2,27 +2,38 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-import type { CanvasConflict, CanvasDocument } from "../../shared/project-canvas.ts";
+import { CANVAS_MAX_NODES, type CanvasConflict, type CanvasDocument, type CanvasNodeCreator, type CanvasNodeType } from "../../shared/project-canvas.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { userError } from "../user-errors.ts";
 import type { CanvasChangeSet, OpsResult } from "./ops.ts";
 
-/** How many revisions back a change can still be merged. */
+/** How many revisions back a change can still be merged, and a deleted node still comes back as its maker's. */
 export const CANVAS_HISTORY = 200;
+
+/** A content node deleted within the history kept, and who made it. */
+export interface RemovedNode {
+  revision: number;
+  id: string;
+  type: CanvasNodeType;
+  createdBy: CanvasNodeCreator;
+}
 
 const SAFE_ID = /^[\w-]{1,128}$/;
 const point = z.object({ x: z.number(), y: z.number() });
+const nodeType = z.enum(["bot", "shot", "text", "image", "video", "audio", "file", "config", "group"]);
+const creator = z.union([z.object({ kind: z.literal("person") }), z.object({ kind: z.literal("bot"), botId: z.string().min(1) })]);
 const nodeSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(["bot", "shot", "text", "image", "video", "audio", "file", "config", "group"]),
+  type: nodeType,
   title: z.string(),
   position: point,
   width: z.number(),
   height: z.number(),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  createdBy: z.union([z.object({ kind: z.literal("person") }), z.object({ kind: z.literal("bot"), botId: z.string().min(1) })]).optional(),
+  createdBy: creator.optional(),
   groupId: z.string().optional(),
 });
+const removedSchema = z.object({ revision: z.number().int().min(1), id: z.string().min(1), type: nodeType, createdBy: creator });
 const connectionSchema = z.object({ id: z.string().min(1), fromNodeId: z.string().min(1), toNodeId: z.string().min(1), kind: z.literal("content") });
 const changeSchema = z.object({
   revision: z.number().int().min(1), nodes: z.array(z.string()), connections: z.array(z.string()), viewport: z.literal(true).optional(), backgroundMode: z.literal(true).optional(),
@@ -38,15 +49,23 @@ const fileSchema = z.object({
     backgroundMode: z.enum(["lines", "dots", "blank"]),
   }),
   history: z.array(changeSchema),
+  removed: z.array(removedSchema).optional(),
 });
 
-type Stored = { document: CanvasDocument; history: Array<CanvasChangeSet & { revision: number }> };
+type Stored = { document: CanvasDocument; history: Array<CanvasChangeSet & { revision: number }>; removed: RemovedNode[] };
 type FileRead = { state: "ok"; data: Stored } | { state: "unreadable"; reason: string };
 
 const empty = (projectId: string): Stored => ({
   document: { projectId, revision: 0, nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 }, backgroundMode: "dots" },
   history: [],
+  removed: [],
 });
+
+function removedSince(before: readonly RemovedNode[], current: CanvasDocument, next: CanvasDocument, revision: number): RemovedNode[] {
+  const present = new Set(next.nodes.map((node) => node.id));
+  const gone = current.nodes.flatMap((node) => (present.has(node.id) || node.type === "bot" || !node.createdBy ? [] : [{ revision, id: node.id, type: node.type, createdBy: node.createdBy }]));
+  return [...before.filter((one) => !present.has(one.id) && one.revision > revision - CANVAS_HISTORY), ...gone].slice(-CANVAS_MAX_NODES);
+}
 
 function readCanvasFile(file: string, projectId: string): FileRead {
   let text: string;
@@ -64,7 +83,7 @@ function readCanvasFile(file: string, projectId: string): FileRead {
   }
   const checked = fileSchema.safeParse(parsed);
   if (!checked.success || checked.data.document.projectId !== projectId) return { state: "unreadable", reason: "not a canvas" };
-  return { state: "ok", data: { document: checked.data.document as CanvasDocument, history: checked.data.history } };
+  return { state: "ok", data: { document: checked.data.document as CanvasDocument, history: checked.data.history, removed: checked.data.removed ?? [] } };
 }
 
 export class CanvasUnreadableError extends Error {
@@ -96,7 +115,8 @@ export interface CanvasChangeRequest {
   baseRevision?: number;
   /** What the change touches, compared with what changed since `baseRevision`. */
   targets: CanvasChangeSet;
-  apply(document: CanvasDocument): OpsResult;
+  /** `removed` finds a content node deleted within the history kept, by its id. */
+  apply(document: CanvasDocument, removed: (id: string) => RemovedNode | undefined): OpsResult;
 }
 
 export interface CanvasChangeOutcome {
@@ -171,12 +191,14 @@ export class CanvasDocuments {
       if (!Number.isInteger(base) || base < 0 || base > current.revision) throw new CanvasRequestError(400, `baseRevision must be a revision this canvas had (it is at ${current.revision})`);
       if (base < current.revision) this.checkSince(stored, base, request.targets);
     }
-    const result = request.apply(structuredClone(current));
+    const removed = new Map(stored.removed.map((one) => [one.id, one]));
+    const result = request.apply(structuredClone(current), (id) => removed.get(id));
     if (isEmpty(result.changed)) return { document: structuredClone(current), revision: current.revision, changed: result.changed, nodeIds: result.nodeIds, connectionIds: result.connectionIds };
     const revision = current.revision + 1;
     const next: Stored = {
       document: { ...result.document, projectId, revision },
       history: [...stored.history, { revision, ...result.changed }].slice(-CANVAS_HISTORY),
+      removed: removedSince(stored.removed, current, result.document, revision),
     };
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     writeFileAtomic(this.file(projectId), `${JSON.stringify({ version: 1, ...next })}\n`, { mode: 0o600 });

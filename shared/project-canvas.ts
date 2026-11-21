@@ -224,9 +224,11 @@ export interface CanvasBotState {
   output?: { text: string; truncated?: true; threadId: string; messageId: string; at: number };
   /** The question or approval card it waits on the person with. */
   waiting?: { threadId: string; messageId: string; card: OptionCardData };
-  /** The person or a bot set its node's position. False: the position is the server's default layout, which the
-   * app may replace with its own by storing positions. */
+  /** The person or a bot set its node's position. False: the position is the server's default layout, moved down
+   * clear of the canvas's other nodes, which the app may replace with its own by storing positions. */
   placed: boolean;
+  /** Text nodes its reply to a task running or waiting in its queue goes into. */
+  writingInto?: string[];
 }
 
 /** `GET /api/team-projects/:id/canvas`. `nodes` hold a node for every bot of the project, `connections` the
@@ -252,7 +254,9 @@ export interface ProjectCanvasEvent {
 /** `POST /api/team-projects/:id/canvas/tasks`: the person's task for one bot of the project. What is connected into
  * the bot's node goes with it, each reference named by the label `connectedReferences` gives it and its title: a text
  * node's text, a shot's fields, media and other files as attachments. Without `threadId` it goes to the conversation
- * the bot has open. */
+ * the bot has open. With `targetNodeId`, a text node of this canvas, the bot's reply to the task becomes the node's
+ * text once its turn ends well, secrets redacted, cut to `CANVAS_CONTENT_MAX_CHARS`. A stopped or failed turn, a turn
+ * the task joined while it ran, or a server restart before the reply leaves the node as it was. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;

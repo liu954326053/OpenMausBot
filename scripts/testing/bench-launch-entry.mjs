@@ -194,7 +194,17 @@ async function finish() {
       for (const [key, value] of Object.entries(${JSON.stringify(config.prime.storage ?? {})})) localStorage.setItem(key, value);
       const until = async (test, ms) => { const end = performance.now() + ms; while (performance.now() < end) { if (test()) return true; await new Promise((r) => setTimeout(r, 50)); } return false; };
       const row = () => document.querySelector(${JSON.stringify(`[data-sidebar-bot-row="${config.prime.botId}"]`)});
-      const hasRow = await until(() => Boolean(row()), 15000);
+      const name = ${JSON.stringify(config.prime.botName ?? "")};
+      const search = () => {
+        if (!document.querySelector("[data-sidebar] input")) document.querySelector("[data-sidebar-search-toggle]")?.click();
+        const input = document.querySelector("[data-sidebar] input");
+        if (input && name && input.value !== name) {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, name);
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+        return false;
+      };
+      const hasRow = await until(() => Boolean(row()) || search(), 15000);
       if (hasRow) row().click();
       const drawn = await until(() => Boolean(document.querySelector(${JSON.stringify(`[data-mid="${config.target?.lastMessageId}"]`)})), 15000);
       return { hasRow, drawn, keys: Object.keys(localStorage) };
