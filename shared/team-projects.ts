@@ -138,6 +138,14 @@ export interface TeamProjectWire extends TeamProjectRecord {
   teamChanges?: TeamProjectChanges;
 }
 
+/** The live event the owner's and admins' open apps get when a project's folder goes missing or comes back, within a
+ * few seconds. They read the list again. */
+export interface TeamProjectsEvent {
+  kind: "team-projects";
+  projectId: string;
+  folderState: TeamProjectWire["folderState"];
+}
+
 /**
  * Why a team cannot be made into a project:
  * - `empty`: it has no bots.

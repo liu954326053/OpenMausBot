@@ -144,13 +144,16 @@ describe("control-omb ui drives the real renderer", () => {
     await ui("type", info.ui, "--name", "Find in this conversation", "--text", "fake claude");
     await expect.poll(highlighted, { timeout: 10_000 }).toBe("fake claude");
     await ui("press", info.ui, "--keys", "Escape");
-    // The sidebar's search opens from its button into a field of the same name.
-    await ui("click", info.ui, "--name", "Search bots and messages");
-    const [searchField] = refsNamed(await ui("snapshot", info.ui, "--interactive"), "Search bots and messages", "textbox");
+    await ui("click", info.ui, "--name", "Search projects");
+    const [searchField] = refsNamed(await ui("snapshot", info.ui, "--interactive"), "Search projects", "textbox");
     expect(searchField).toBeDefined();
     await ui("type", info.ui, "--ref", searchField, "--text", "zebra");
-    await expect.poll(async () => (await ui("eval", info.ui, "--js", "[...document.querySelectorAll('mark')].some(mark => mark.textContent === 'zebra')")).result, { timeout: 10_000 }).toBe(true);
-    await ui("eval", info.ui, "--js", "[...document.querySelectorAll('mark')].find(mark => mark.textContent === 'zebra').closest('button').click(); true");
+    await expect.poll(async () => (await ui("eval", info.ui, "--js", "document.querySelector('[data-sidebar-no-project-match]')?.textContent ?? null")).result, { timeout: 10_000 }).toBe("No project matches “zebra”");
+    expect((await ui("eval", info.ui, "--js", "document.querySelector('aside mark') === null")).result).toBe(true);
+    await ui("press", info.ui, "--keys", "Control+k");
+    await ui("type", info.ui, "--name", "Search bots, group chats and messages", "--text", "zebra");
+    await expect.poll(async () => (await ui("eval", info.ui, "--js", "[...document.querySelectorAll('[role=dialog] mark')].some(mark => mark.textContent === 'zebra')")).result, { timeout: 10_000 }).toBe(true);
+    await ui("eval", info.ui, "--js", "[...document.querySelectorAll('[role=dialog] mark')].find(mark => mark.textContent === 'zebra').closest('button').click(); true");
     await expect.poll(highlighted, { timeout: 10_000 }).toBe("zebra");
     await waitForExit(launched.child, { signal: "SIGINT", graceMs: 30_000 });
     expect(launched.child.exitCode).toBe(0);

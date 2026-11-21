@@ -57,8 +57,8 @@ export const fromTeamMapAdd = (label: string): string => `(() => {
   return Boolean(item);
 })()`;
 export const OPEN_TEMPLATES = fromTeamMapAdd("Templates");
-/** The sidebar lists the main bot and the projects; its search also finds a bot in no project and a room outside projects. */
-export const findInSidebar = (query: string): string => `(() => {
+/** Types into the sidebar's search, which finds projects by name; "" clears it. */
+export const searchSidebar = (query: string): string => `(() => {
   if (!document.querySelector("[data-sidebar] input")) document.querySelector("[data-sidebar-search-toggle]")?.click();
   const input = document.querySelector("[data-sidebar] input");
   if (!input) return false;
@@ -67,6 +67,29 @@ export const findInSidebar = (query: string): string => `(() => {
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
   return true;
+})()`;
+/** What the command palette lists for `query`, as `bot:<id>`, `room:<id>` and `msg:<thread id>:<message id>`. It opens the
+ * palette and types first, a step a call: poll it until it returns a list. */
+export const searchPalette = (query: string): string => `(() => {
+  const input = document.querySelector("[data-command-palette] input");
+  if (!input) { window.dispatchEvent(new Event("omb:open-command-palette")); return null; }
+  if (input.value !== ${JSON.stringify(query)}) {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(query)});
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return null;
+  }
+  return [...document.querySelectorAll("[data-command-palette] [data-palette-entry]")].map((entry) => entry.dataset.paletteEntry);
+})()`;
+/** Opens a bot or a group chat from the command palette, found by `name`, a step a call: poll it until it returns true. */
+export const openFromPalette = (name: string, entry: `bot:${string}` | `room:${string}`): string => `(() => {
+  const row = ${searchPalette(name)} && document.querySelector(${JSON.stringify(`[data-command-palette] [data-palette-entry="${entry}"]`)});
+  row?.click();
+  return Boolean(row);
+})()`;
+/** Closes the command palette; poll it until it returns true. */
+export const CLOSE_PALETTE = `(() => {
+  document.querySelector("[data-command-palette] input")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  return !document.querySelector("[data-command-palette]");
 })()`;
 
 const ENTRIES = {

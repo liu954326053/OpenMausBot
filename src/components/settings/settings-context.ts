@@ -8,6 +8,7 @@ import { useAdvancedMode } from "@/lib/interface-mode";
 import { railShown, usePlaces, type RailPlace } from "@/lib/places";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 import { useStore } from "@/state/store";
+import { refreshTeamProjects, useTeamProjectSide } from "@/state/team-projects";
 import { workspacesAvailable } from "../WorkspacesSection";
 import type { SettingsContext } from "./settings-index";
 
@@ -17,6 +18,8 @@ export function useSettingsContext(): SettingsContext {
   const admin = useOwnerOrAdmin() === true;
   const places = usePlaces();
   const known = useKnownPlaceCount();
+  const projects = useTeamProjectSide().shown;
+  useEffect(() => { void refreshTeamProjects({ background: true }); }, []);
   const ogb = typeof window === "undefined" ? undefined : window.ogb;
   const client = ogb?.remoteClient?.active === true;
   const cloud = state.config?.cloudHome === true;
@@ -36,6 +39,7 @@ export function useSettingsContext(): SettingsContext {
     environments: Boolean(ogb?.environments),
     installations: workspacesAvailable(state.config),
     skills: skillsLibraryEnabled(state.config),
+    projects,
     advanced,
   };
 }

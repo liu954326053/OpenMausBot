@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeamChangesInput, TeamChangesResult, TeamProjectsListWire, TeamProjectWire } from "../../../shared/team-projects";
 import type { AppState, Bot, Group } from "@/state/store";
 
-type Shown = Pick<AppState, "bots" | "groups" | "sections" | "selectedId" | "activeView" | "project">;
+type Shown = Pick<AppState, "bots" | "groups" | "sections" | "selectedId" | "activeView" | "project" | "pendingQueued">;
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: {} as Shown }));
 vi.mock("@/state/store-select", () => ({
   useStoreSelector: (selector: (state: Shown) => unknown) => selector(fixture.state),
@@ -19,6 +19,7 @@ vi.mock("../MenuMotion", () => ({
 
 import { setLocale } from "@/lib/i18n";
 import { setTeamProjects, useTeamProjectSide } from "@/state/team-projects";
+import { TOAST_CLEAR_OF_COMPOSER } from "../NoticeCard";
 import { SidebarTeamProjects, type SidebarTeamProjectsMode } from "./SidebarTeamProjects";
 
 const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
@@ -51,7 +52,7 @@ let refuse = false;
 let decided: TeamChangesInput[] = [];
 let decide: (project: TeamProjectWire) => TeamChangesResult = (project) => ({ project: { ...project, teamChanges: undefined }, skipped: [] });
 let gate: Promise<void> | null = null;
-let mode: SidebarTeamProjectsMode = { density: "comfortable", advanced: false, tight: true, remote: false, followed: true };
+let mode: SidebarTeamProjectsMode = { density: "comfortable", advanced: false, tight: true, remote: false };
 let query = "";
 const onError = vi.fn();
 const onNew = vi.fn();
@@ -64,21 +65,16 @@ const click = async (element: HTMLElement | null) => { expect(element).toBeTruth
 const block = (id: string) => q(`[data-sidebar-team-project="${id}"]`);
 const row = (id: string) => q(`[data-sidebar-project-row="${id}"]`);
 const under = (id: string) => [...block(id)!.children].slice(1);
-const found = (id: string) => row(id)!.querySelector("[data-sidebar-project-found]")?.textContent ?? null;
 const listed = () => all("[data-sidebar-team-project]").map((one) => one.dataset.sidebarTeamProject);
 const chevron = (id: string) => block(id)!.querySelector<HTMLElement>("button[aria-expanded]:not([aria-haspopup])");
 const mark = (id: string) => row(id)!.querySelector<HTMLElement>("[data-section-mark]");
+const noMatch = () => q("[data-sidebar-no-project-match]")?.textContent ?? null;
 const posts = () => calls.filter((call) => call.method === "POST").map((call) => call.path);
-const shown = (id: string, botId?: string) => ({ type: "showProject", projectId: id, ...(botId ? { botId } : {}) });
+const shown = (id: string) => ({ type: "showProject", projectId: id });
 
 function Harness() {
   const side = useTeamProjectSide();
-  const matches = (name: string) => !query || name.toLowerCase().includes(query);
-  return createElement(SidebarTeamProjects, {
-    side, mode, query, onError, onNew,
-    all: { bots, groups: rooms },
-    found: { bots: bots.filter((one) => matches(one.name)), groups: rooms.filter((one) => matches(one.name)) },
-  });
+  return createElement(SidebarTeamProjects, { side, mode, query, onError, onNew, all: { bots, groups: rooms } });
 }
 
 async function draw(): Promise<void> {
@@ -99,9 +95,9 @@ beforeEach(() => {
   decided = [];
   decide = (project) => ({ project: { ...project, teamChanges: undefined }, skipped: [] });
   gate = null;
-  mode = { density: "comfortable", advanced: false, tight: true, remote: false, followed: true };
+  mode = { density: "comfortable", advanced: false, tight: true, remote: false };
   query = "";
-  fixture.state = { bots, groups: rooms, sections: ["The bride", "The heir", "Sales"], selectedId: "main", activeView: "chat" };
+  fixture.state = { bots, groups: rooms, sections: ["The bride", "The heir", "Sales"], selectedId: "main", activeView: "chat", pendingQueued: {} };
   fixture.dispatch.mockClear();
   onError.mockClear();
   onNew.mockClear();
@@ -148,11 +144,11 @@ describe("the projects in the sidebar", () => {
     expect(listed()).toEqual(["The bride", "The heir"]);
   });
 
-  it("is one row per project, with no chevron and nothing under it, and a click on one opens the project's canvas", async () => {
+  it("is one row per project, with no chevron and no team under it, and a click on one opens the project's canvas", async () => {
     await draw();
     expect([listed(), under("The bride"), under("The heir")]).toEqual([["The bride", "The heir"], [], []]);
-    expect([chevron("The bride"), chevron("The heir"), q("[data-sidebar-bot-row]")]).toEqual([null, null, null]);
-    expect([row("The bride")!.textContent, found("The bride"), row("The bride")!.title]).toEqual(["The bride", null, ""]);
+    expect([chevron("The bride"), chevron("The heir")]).toEqual([null, null]);
+    expect(row("The bride")!.textContent).toBe("The bride");
     await click(row("The heir"));
     expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
   });
@@ -176,6 +172,29 @@ describe("the projects in the sidebar", () => {
     fixture.state = { ...fixture.state, project: { id: "The bride", botId: "bride-writer" } };
     await draw();
     expect([row("The bride")!.getAttribute("aria-current"), under("The bride")]).toEqual(["page", []]);
+  });
+
+  it("marks the project whose bot's or group chat's conversation is open, in the rail too", async () => {
+    const current = () => [row("The bride")!.getAttribute("aria-current"), row("The heir")!.getAttribute("aria-current")];
+    for (const open of ["bride-writer", "bride-room"]) {
+      fixture.state = { ...fixture.state, activeView: "chat", selectedId: open };
+      await draw();
+      expect([open, ...current()]).toEqual([open, "page", null]);
+    }
+    mode = { ...mode, density: "icons" };
+    await draw();
+    expect(block("The bride")!.querySelector('[aria-current="page"]')).toBeTruthy();
+  });
+
+  it("leaves the mark to the conversation's own row, and to a view that is not that conversation", async () => {
+    bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, pinned: true } : one));
+    fixture.state = { ...fixture.state, activeView: "chat", selectedId: "bride-writer" };
+    await draw();
+    expect(row("The bride")!.getAttribute("aria-current")).toBeNull();
+    bots = team();
+    fixture.state = { ...fixture.state, activeView: "team-map", selectedId: "bride-editor" };
+    await draw();
+    expect(row("The bride")!.getAttribute("aria-current")).toBeNull();
   });
 
   it("leaves archived projects out", async () => {
@@ -213,75 +232,49 @@ describe("the projects in the sidebar", () => {
 });
 
 describe("a search", () => {
-  it("keeps each project with a match as its one row, with nothing under it", async () => {
-    query = "writer";
+  it("finds projects by a part of their name in any case, each one row with nothing under it", async () => {
+    query = "HEIR";
+    await draw();
+    expect([listed(), under("The heir"), noMatch()]).toEqual([["The heir"], [], null]);
+    query = "the";
     await draw();
     expect([listed(), under("The bride"), under("The heir")]).toEqual([["The bride", "The heir"], [], []]);
-    expect([chevron("The bride"), chevron("The heir"), q("[data-sidebar-bot-row]"), q("[data-team-project-new]")]).toEqual([null, null, null, null]);
-    query = "editor";
-    await draw();
-    expect([listed(), under("The bride")]).toEqual([["The bride"], []]);
+    expect([chevron("The bride"), chevron("The heir"), q("[data-sidebar-bot-row], [data-row]")]).toEqual([null, null, null]);
   });
 
-  it("names on the row the bots it found there, the lead first, then the members in the server's order, then the group chats", async () => {
-    query = "bride-";
-    await draw();
-    expect([listed(), found("The bride"), under("The bride")]).toEqual([["The bride"], "· bride-lead, bride-writer, bride-editor, bride-room", []]);
-    expect(row("The bride")!.title).toBe("The bride · bride-lead, bride-writer, bride-editor, bride-room");
-    expect(fixture.dispatch).not.toHaveBeenCalled();
+  it("finds no project by a bot's name, a group chat's or a message's text, and says so in one muted line", async () => {
+    bots = bots.map((one): Bot => (one.id === "bride-writer" ? { ...one, messages: [{ id: "m1", role: "bot", kind: "text", at: 1, text: "The striped zebra is drafted" }] } : one));
+    for (const asked of ["writer", "bride-lead", "bride-room", "zebra"]) {
+      query = asked;
+      await draw();
+      expect([asked, listed(), noMatch(), q("[data-sidebar-bot-row]")]).toEqual([asked, [], `No project matches “${asked}”`, null]);
+    }
+    expect(q("[data-sidebar-no-project-match]")!.className).toContain("text-ink-secondary");
+    expect(all("[data-sidebar-no-project-match]")).toHaveLength(1);
   });
 
-  it("opens the project's canvas from the row with the bot it found chosen, the lead first when it found several", async () => {
-    query = "writer";
+  it("opens the canvas of a project it found as a click does without a search", async () => {
+    query = "bride";
     await draw();
-    expect(found("The heir")).toBe("· heir-writer");
-    await click(row("The heir"));
-    query = "bride-";
-    await draw();
-    await click(row("The bride"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir", "heir-writer")], [shown("The bride", "bride-lead")]]);
-  });
-
-  it("names a group chat it found, and just opens the canvas when that is all it found", async () => {
-    query = "bride-room";
-    await draw();
-    expect([listed(), found("The bride"), under("The bride")]).toEqual([["The bride"], "· bride-room", []]);
     await click(row("The bride"));
     expect(fixture.dispatch.mock.calls).toEqual([[shown("The bride")]]);
   });
 
-  it("names nothing on a project its own name matches, though its bots match too, and opens its canvas with no bot chosen", async () => {
-    query = "heir";
+  it("offers no New project while it runs, and gives the whole list back when it is cleared", async () => {
+    query = "zzz";
     await draw();
-    expect([listed(), found("The heir"), row("The heir")!.textContent, row("The heir")!.title, under("The heir")]).toEqual([["The heir"], null, "The heir", "", []]);
-    await click(row("The heir"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
-  });
-
-  it("marks the project whose canvas is open, whichever bot it found, and no project while a chat is open", async () => {
-    fixture.state = { ...fixture.state, activeView: "project", project: { id: "The bride", botId: "bride-writer" } };
-    query = "writer";
-    await draw();
-    expect([row("The bride")!.getAttribute("aria-current"), row("The heir")!.getAttribute("aria-current")]).toEqual(["page", null]);
-    fixture.state = { ...fixture.state, activeView: "chat", selectedId: "bride-writer" };
-    await draw();
-    expect([row("The bride")!.getAttribute("aria-current"), row("The heir")!.getAttribute("aria-current")]).toEqual([null, null]);
-  });
-
-  it("keeps the project's mark for all its bots and group chats, not only those it found", async () => {
-    bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, unread: true } : one));
-    rooms = rooms.map((one) => (one.id === "bride-room" ? { ...one, unread: true } : one));
-    query = "editor";
-    await draw();
-    expect([found("The bride"), mark("The bride")!.getAttribute("data-section-mark"), mark("The bride")!.title]).toEqual(["· bride-editor", "unread", "2 unread"]);
-  });
-
-  it("gives back the plain list once it is cleared", async () => {
-    query = "editor";
-    await draw();
+    expect([listed(), q("[data-team-project-new]") === null, noMatch()]).toEqual([[], true, "No project matches “zzz”"]);
     query = "";
     await draw();
-    expect([listed(), found("The bride"), found("The heir"), q("[data-team-project-new]") !== null]).toEqual([["The bride", "The heir"], null, null, true]);
+    expect([listed(), q("[data-team-project-new]") === null, noMatch()]).toEqual([["The bride", "The heir"], false, null]);
+  });
+
+  it("keeps the project's mark for all its bots and group chats", async () => {
+    bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, unread: true } : one));
+    rooms = rooms.map((one) => (one.id === "bride-room" ? { ...one, unread: true } : one));
+    query = "bride";
+    await draw();
+    expect([under("The bride"), mark("The bride")!.getAttribute("data-section-mark"), mark("The bride")!.title]).toEqual([[], "unread", "2 unread"]);
   });
 });
 
@@ -329,6 +322,13 @@ describe("the project's menu", () => {
     await click(toast.querySelector("button"));
     expect(posts()).toEqual(["/api/team-projects/The%20bride/archive", "/api/team-projects/The%20bride/restore"]);
     expect([listed(), q('[role="status"]')]).toEqual([["The bride", "The heir"], null]);
+  });
+
+  it("offers Undo in the notices' corner, clear of the composer", async () => {
+    await draw();
+    await click(menuButton("The bride"));
+    await click(q("[data-team-project-archive]"));
+    expect(q("[data-access-toast]")!.className).toContain(TOAST_CLEAR_OF_COMPOSER);
   });
 
   it("leaves the chat of a project it archives for the main bot, and comes back to it on Undo", async () => {
@@ -445,7 +445,7 @@ describe("a project whose team changed", () => {
   });
 
   it("is a named mark in the narrow column of icons", async () => {
-    mode = { density: "icons", advanced: false, tight: false, remote: false, followed: true };
+    mode = { density: "icons", advanced: false, tight: false, remote: false };
     await draw();
     const mark = block("The bride")!.querySelector<HTMLElement>("[data-team-project-changes]")!;
     expect([mark.getAttribute("aria-label"), mark.getAttribute("title")]).toEqual(["The bride: team changed", "The bride: team changed"]);
@@ -455,7 +455,7 @@ describe("a project whose team changed", () => {
 });
 
 describe("the narrow column of icons", () => {
-  beforeEach(() => { mode = { density: "icons", advanced: false, tight: false, remote: false, followed: true }; });
+  beforeEach(() => { mode = { density: "icons", advanced: false, tight: false, remote: false }; });
 
   it("draws each project as a square named for it that opens its view, with no team under it, and New project as a named button", async () => {
     await draw();
@@ -473,18 +473,7 @@ describe("the narrow column of icons", () => {
     expect(row("The heir")!.getAttribute("aria-label")).toBe("The heir, 1 unread");
   });
 
-  it("names on a square what a search found there, and opens its canvas with that bot chosen", async () => {
-    query = "writer";
-    await draw();
-    expect([row("The heir")!.getAttribute("aria-label"), row("The heir")!.title, under("The heir")]).toEqual(["The heir · heir-writer", "The heir · heir-writer", []]);
-    await click(row("The heir"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir", "heir-writer")]]);
-  });
-
-  it("parts the projects from what is above and what follows", async () => {
-    await draw();
-    expect(all("[data-sidebar-rail-separator]")).toHaveLength(2);
-    mode = { ...mode, followed: false };
+  it("parts the projects from what is above", async () => {
     await draw();
     expect(all("[data-sidebar-rail-separator]")).toHaveLength(1);
   });

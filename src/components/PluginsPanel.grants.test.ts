@@ -48,6 +48,7 @@ vi.mock("./EmailCard", () => ({
 vi.mock("./Avatar", () => ({ BotAvatar: () => null }));
 
 import { AppGrantNotice, connectAppFromBot, showAppGrantNotice } from "./AppGrantPrompt";
+import { TOAST_CLEAR_OF_COMPOSER } from "./NoticeCard";
 const { PluginsPanel } = await import("./PluginsPanel");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -116,6 +117,13 @@ describe("after connecting an app", () => {
     expect(prompt()).toBeNull();
     expect(writes()).toEqual([]);
     expect(toast()?.textContent).toBe("Your bots can now use Apollo.Change");
+  });
+
+  it("says so in the notices' corner, clear of the chat's composer", async () => {
+    fixture.state.bots = [bot("scout")];
+    await open();
+    await connectApollo();
+    expect(toast()!.className).toContain(TOAST_CLEAR_OF_COMPOSER);
   });
 
   it("adds it to a bot with its own app list or tool list, by the same write as the bot's switch", async () => {

@@ -3,6 +3,7 @@ import type { InboxRow, InboxTab, InboxView } from "../../../shared/inbox";
 import type { NeedsYouItem } from "../../../shared/today";
 import { liveCardKind } from "../../../shared/live-approval";
 import { t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { dismissResponse, type CardResponse } from "@/lib/card-answer";
 import { accessRequestWords, cardAnswerFor } from "../bot-access/access-card";
 
@@ -39,7 +40,7 @@ export function senderLabel(row: Pick<InboxRow, "from" | "workingFor" | "askedBy
 }
 
 /** The conversation a line came from, when its subject doesn't already say it. */
-export const placeOf = (row: Pick<InboxRow, "kind" | "origin">): string | null => (row.kind !== "message" && row.origin?.title ? t("inbox.in", { title: row.origin.title }) : null);
+export const placeOf = (row: Pick<InboxRow, "kind" | "origin">): string | null => (row.kind !== "message" && row.origin?.title ? t("inbox.in", { title: localizedTaskTitle(row.origin.title) }) : null);
 
 /** What an ask asks: an approval, a question, or something to review where it was asked; null for anything else or an
  * ask already settled. */
@@ -50,7 +51,7 @@ export function subjectOf(row: InboxRow): string {
   if (row.kind === "ask") return row.card?.tool ? t("inbox.subject.approval") : row.card?.requestType === "question" || row.card?.questionRequest ? t("inbox.subject.question") : row.card?.title || t("inbox.subject.approval");
   if (row.kind === "result") return t("inbox.subject.result");
   if (row.kind === "notice") return t("inbox.subject.notice");
-  return row.origin?.title ?? t("inbox.subject.message");
+  return row.origin ? localizedTaskTitle(row.origin.title) : t("inbox.subject.message");
 }
 
 /** The choices a question offers as buttons, when one tap answers it: a single question, one pick. */

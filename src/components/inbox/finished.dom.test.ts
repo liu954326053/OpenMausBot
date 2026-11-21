@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Group, Task } from "@/state/store";
-import { t } from "@/lib/i18n";
+import { loadLocale, setLocale, t } from "@/lib/i18n";
 import { FinishedThreads } from "./FinishedThreads";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -45,5 +45,18 @@ describe("the finished list", () => {
     expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual(["page", null]);
     expect(rows.map((row) => row.hasAttribute("data-open-thread"))).toEqual([true, false]);
     expect(rows[0]!.className.split(" ")).toContain("bg-raised");
+  });
+
+  it("names a conversation that has no title yet in the person's language", async () => {
+    await loadLocale("zh");
+    try {
+      await mount([bot("eli", [task("t1", { title: "New thread", lastReadMessageId: "m1" })])]);
+      const row = document.querySelector<HTMLElement>("[data-inbox-finished] button")!;
+      expect(row.textContent).toContain("未命名对话");
+      expect(row.textContent).not.toContain("New thread");
+      expect(row.getAttribute("aria-label")).toContain("未命名对话");
+    } finally {
+      setLocale("en");
+    }
   });
 });

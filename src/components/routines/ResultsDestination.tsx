@@ -2,6 +2,7 @@ import { Lock, Users } from "lucide-react";
 import { useId } from "react";
 import { RESULTS_JUST_ME } from "../../../shared/routines";
 import { t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import type { Bot } from "@/state/store";
 import { useTeamPeople } from "@/state/team-people";
 import { Select } from "../Select";
@@ -65,7 +66,7 @@ export function ResultsDestination({ bot, value, allowCurrent = false, team, onC
       {groups.map((group) => {
         const members = tasks.filter((task) => group.id ? task.projectId === group.id : !bot?.projects?.some((project) => project.id === task.projectId));
         return members.length ? <optgroup key={group.id} label={group.name}>
-          {members.map((task) => <option key={task.threadId} value={task.threadId}>{task.title}</option>)}
+          {members.map((task) => <option key={task.threadId} value={task.threadId}>{localizedTaskTitle(task.title)}</option>)}
         </optgroup> : null;
       })}
     </Select>

@@ -19,7 +19,7 @@ const bot = (extra: Partial<Bot> = {}): Bot => ({
 });
 const dispatch = vi.fn();
 const onMenu = vi.fn();
-const props = (candidate: Bot, selected = false) => botRowProps({ ...initialState, bots: [candidate], selectedId: selected ? candidate.id : "", activeView: "chat" }, dispatch, candidate, { density: "comfortable", query: "", onMenu });
+const props = (candidate: Bot, selected = false) => botRowProps({ ...initialState, bots: [candidate], selectedId: selected ? candidate.id : "", activeView: "chat" }, dispatch, candidate, { density: "comfortable", onMenu });
 const tile = (SidebarBotTile as MemoExoticComponent<(props: Parameters<typeof SidebarBotTile>[0]) => ReactNode>).type;
 
 type Props = { children?: ReactNode; [key: string]: unknown };
@@ -109,7 +109,7 @@ describe("a tile with a dot", () => {
 describe("the tile grid", () => {
   it("draws the main bot as the one tile, centred", () => {
     const main = bot({ chiefOfStaff: true });
-    const row = (candidate: Bot) => botRowProps({ ...initialState, bots: [main], selectedId: "", activeView: "chat" }, dispatch, candidate, { density: "comfortable", query: "", onMenu });
+    const row = (candidate: Bot) => botRowProps({ ...initialState, bots: [main], selectedId: "", activeView: "chat" }, dispatch, candidate, { density: "comfortable", onMenu });
     const html = renderToStaticMarkup(createElement(SidebarTileGrid, { primary: main, row }));
     expect([...html.matchAll(/data-sidebar-bot-row="([^"]+)" data-sidebar-tile="([^"]+)"/g)].map(([, id, kind]) => `${kind}:${id}`)).toEqual(["primary:mausbot"]);
     expect(html).toMatch(/^<div data-sidebar-tiles="" class="flex max-h-\[40vh\] flex-wrap justify-center gap-1 overflow-y-auto /);

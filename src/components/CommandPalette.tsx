@@ -7,6 +7,7 @@ import { rankByName } from "@/lib/palette-rank";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { cn } from "@/lib/cn";
 import type { SearchHit } from "@/lib/search-hit";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { landOnSearchHit } from "@/lib/focus-message";
 import { imeComposing } from "@/lib/send-key";
 
@@ -135,6 +136,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   const row = (key: string, index: number, onPick: () => void, children: React.ReactNode, twoLine = false) => (
     <button
       key={key}
+      data-palette-entry={key}
       ref={index === selected ? selectedRef : undefined}
       onClick={onPick}
       // mousemove, not mouseenter: rows shifting under a resting pointer must not steal the keyboard selection.
@@ -156,7 +158,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
       onKeyDown={onKeyDown}
     >
       <div
-        role="dialog" data-look="dialog"
+        role="dialog" data-look="dialog" data-command-palette=""
         aria-modal="true"
         aria-label={t("palette.label")}
         className="popover-surface flex max-h-[min(480px,70vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-menu)] border border-hairline/50 bg-menu shadow-2xl shadow-black/60"
@@ -234,7 +236,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                   <span className="flex items-center gap-2 truncate text-[13px] font-medium text-ink">
                     <MessageSquare size={13} className="shrink-0 text-ink-secondary" />
                     {hit.name}
-                    {hit.task ? <span className="font-normal text-ink-secondary"> · {hit.task}</span> : null}
+                    {hit.task ? <span className="font-normal text-ink-secondary"> · {localizedTaskTitle(hit.task)}</span> : null}
                   </span>
                   <span className="line-clamp-2 text-[13px] text-ink-secondary">
                     {before}<mark className="rounded-sm bg-accent/25 px-0.5 text-ink">{match}</mark>{after}

@@ -147,7 +147,7 @@ describe("sidebar top row", () => {
     expect(buttons).toBeGreaterThan(slot);
     expect(classesOf(row, "data-sidebar-top-buttons")).toEqual(expect.arrayContaining(["shrink-0", "pointer-events-auto"]));
     expect(row.slice(buttons).match(/<button/g)).toHaveLength(2);
-    expect(row).toMatch(/data-sidebar-search-toggle="true" aria-label="Search bots and messages" aria-expanded="false" title="Search bots and messages" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b[^"]*\btext-ink-secondary\b/);
+    expect(row).toMatch(/data-sidebar-search-toggle="true" aria-label="Search projects" aria-expanded="false" title="Search projects" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b[^"]*\btext-ink-secondary\b/);
     expect(row, "no round box round either").not.toContain("bg-composer");
     expect(html).toMatch(/aria-label="New" class="[^"]*\bsize-\[26px\][^"]*\brounded-lg\b/);
     expect(html).not.toContain("data-sidebar-edge-toggle");
@@ -220,7 +220,8 @@ describe("sidebar top row", () => {
     expect(top).not.toContain("data-traffic-light-space");
     expect(top).not.toContain("data-sidebar-top-buttons");
     expect(top).not.toContain("data-workspace-switcher");
-    expect(top.indexOf('aria-label="Search bots and messages"')).toBeLessThan(top.indexOf('aria-label="New"'));
+    expect(top.indexOf('aria-label="Search projects"')).toBeGreaterThan(-1);
+    expect(top.indexOf('aria-label="Search projects"')).toBeLessThan(top.indexOf('aria-label="New"'));
     expect(top).toMatch(/data-sidebar-rail-top="true" class="flex flex-col items-center gap-2 pt-1"/);
     expect(top).toMatch(/aria-label="New" class="[^"]*\bsize-9\b[^"]*\brounded-full\b/);
     const foot = html.slice(html.indexOf("data-sidebar-rail-footer"));
@@ -230,7 +231,7 @@ describe("sidebar top row", () => {
       return index;
     };
     expect(html).not.toContain("data-sidebar-edge-toggle");
-    expect(foot).not.toContain('aria-label="Search bots and messages"');
+    expect(foot).not.toMatch(/aria-label="Search (projects|bots and messages)"/);
     const positions = [
       at('data-sidebar-nav="apps"'),
       at("data-sidebar-account"),
@@ -333,7 +334,7 @@ describe("sidebar head and foot", () => {
       };
       const head = at('data-glass-bar="top"');
       const topRow = at("data-sidebar-top-row");
-      const search = at('aria-label="Search bots and messages"');
+      const search = at('aria-label="Search projects"');
       const list = at('data-scroll-fade-frame=""');
       const foot = at('data-glass-bar="bottom"');
       const automations = at('data-sidebar-nav="automations"');

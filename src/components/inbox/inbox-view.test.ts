@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { loadLocale, setLocale, t } from "@/lib/i18n";
 import { approvalRow, inboxView, messageRow, questionRow, reportRow, settledRow } from "@/testing/inbox-fixture";
-import { askOf, choiceResponse, choicesOf, closeResponse, listedRows, quickActions, rowsIn, subjectOf, tabCounts } from "./inbox-view";
+import { matchesSearch } from "./inbox-answer";
+import { askOf, choiceResponse, choicesOf, closeResponse, listedRows, placeOf, quickActions, rowsIn, subjectOf, tabCounts } from "./inbox-view";
 
 describe("the inbox's lines", () => {
   it("lists what waits on the person and their news as one list, newest first, and leaves settled lines out", () => {
@@ -43,6 +45,19 @@ describe("a row's actions", () => {
     expect([approvalRow, questionRow, reportRow].map(subjectOf)).toEqual(["Approval", "Question", "Routine report"]);
     expect(subjectOf(messageRow)).toBe("Message");
     expect(subjectOf({ ...messageRow, origin: { botId: "scout", threadId: "scout-main", title: "Launch" } })).toBe("Launch");
+  });
+
+  it("names a conversation that has no title yet in the person's language, wherever a line shows or finds it", async () => {
+    await loadLocale("zh");
+    try {
+      const origin = { botId: "scout", threadId: "scout-main", title: "New thread" };
+      expect(subjectOf({ ...messageRow, origin })).toBe("未命名对话");
+      expect(placeOf({ ...questionRow, origin })).toBe(t("inbox.in", { title: "未命名对话" }));
+      expect(matchesSearch({ ...messageRow, origin }, "未命名")).toBe(true);
+      expect(matchesSearch({ ...messageRow, origin }, "new thread")).toBe(true);
+    } finally {
+      setLocale("en");
+    }
   });
 
   it("taps a question's choice as its answer, in the card's own format, and closes it without one", () => {

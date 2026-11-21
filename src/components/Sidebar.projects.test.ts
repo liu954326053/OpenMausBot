@@ -50,6 +50,8 @@ import { useTeamMapTarget } from "@/state/team-map-focus";
 import { SIDEBAR_DENSITY_KEY } from "@/lib/sidebar-preferences";
 import { PHONE_LAYOUT } from "@/lib/use-media-query";
 import { BotContextMenu, BotListItem, Sidebar } from "./Sidebar";
+import { MovedBotRows } from "./MoveToTeam";
+import { OtherPlaceBots } from "./OtherPlaceBots";
 const drawSidebar = (Sidebar as unknown as { type: (props: import("react").ComponentProps<typeof Sidebar>) => import("react").ReactNode }).type;
 import { SidebarFooter } from "./SidebarFooter";
 import { SidebarInboxRow } from "./SidebarInboxRow";
@@ -174,40 +176,44 @@ describe("the sidebar from top to bottom", () => {
     expect(render().filter((node) => node.props["data-sidebar-section-id"])).toEqual([]);
   });
 
-  it("leaves out a main bot hidden from the sidebar, which a search still finds", () => {
+  it("leaves out a main bot hidden from the sidebar, with a search too", () => {
     fixture.advanced = true;
     fixture.state = { ...fixture.state, bots: fixture.state.bots.map((one) => (one.id === "magic" ? { ...one, sidebarHidden: true } : one)) };
     expect(listed()).toEqual([]);
     search("magic");
-    expect((render().find((node) => node.type === PhoneHero)!.props.bot as Bot).id).toBe("magic");
+    expect(render().some((node) => node.type === PhoneHero)).toBe(false);
   });
 
   it("tells the projects how the sidebar is drawn", () => {
     withProject();
-    expect(projects().mode).toEqual({ density: "comfortable", advanced: false, tight: true, remote: false, followed: false });
+    expect(projects().mode).toEqual({ density: "comfortable", advanced: false, tight: true, remote: false });
     fixture.advanced = true;
     fixture.storage.set(SIDEBAR_DENSITY_KEY, "avatars");
-    expect(projects().mode).toEqual({ density: "icons", advanced: true, tight: true, remote: false, followed: false });
+    expect(projects().mode).toEqual({ density: "icons", advanced: true, tight: true, remote: false });
   });
 });
 
 describe("a search", () => {
-  it("lists bots in no project and group chats outside projects under their own heading", () => {
+  const type = (text: string) => (render().find((node) => node.type === "input" && node.props["aria-label"] === "Search projects")!.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: text } });
+
+  it("hands the projects what was typed, trimmed, below the main bot and the inbox", () => {
     withProject();
-    search("a");
-    const outside = marked("data-sidebar-outside-projects")!;
-    expect(nodes(outside.props.children).filter((node) => node.type === SidebarSectionHeader).map((node) => node.props.name)).toEqual(["Outside projects"]);
-    expect(nodes(outside.props.children).filter((node) => node.type === BotListItem).map((node) => (node.props as unknown as RowProps).bot.id)).toEqual(["atlas", "bea"]);
-    expect(nodes(outside.props.children).map((node) => (node.props.group as Group | undefined)?.id).filter(Boolean)).toEqual(["room"]);
-    expect(projects().mode.followed).toBe(true);
+    search(" Wor ");
+    expect(projects().query).toBe("Wor");
+    expect((render().find((node) => node.type === PhoneHero)!.props.bot as Bot).id).toBe("magic");
+    expect(at(PhoneHero)).toBeLessThan(at(SidebarInboxRow));
+    expect(at(SidebarInboxRow)).toBeLessThan(at(SidebarTeamProjects));
   });
 
-  it("hands a project's bots to the project, never to the list outside", () => {
+  it("lists no bot but the main one, no group chat and none of the other place's bots", () => {
+    fixture.advanced = true;
     withProject();
-    search("ECHO ");
-    expect([projects().query, projects().found.bots.map((one) => one.id)]).toEqual(["echo", ["echo"]]);
-    expect(marked("data-sidebar-outside-projects")).toBeUndefined();
-    expect(projects().mode.followed).toBe(false);
+    expect(render().some((node) => node.type === OtherPlaceBots)).toBe(true);
+    type("a");
+    expect([projects().query, listed(), render().some((node) => node.props.group !== undefined), render().some((node) => node.type === OtherPlaceBots)]).toEqual(["a", ["magic"], false, false]);
+    expect([at(SidebarInboxRow) >= 0, render().some((node) => node.type === MovedBotRows)]).toEqual([true, true]);
+    type("");
+    expect([projects().query, render().some((node) => node.type === OtherPlaceBots)]).toEqual(["", true]);
   });
 });
 

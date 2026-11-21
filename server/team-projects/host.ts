@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { watchFile } from "node:fs";
 import { join } from "node:path";
 
-import type { TeamProjectLookup, TeamProjectsApi } from "../../shared/team-projects.ts";
+import type { TeamProjectLookup, TeamProjectsApi, TeamProjectsEvent } from "../../shared/team-projects.ts";
 import { DATA_DIR } from "../config.ts";
 import type { PackageImportDeps } from "../package-import.ts";
 import { createTeamProjectRoutes } from "../routes/team-projects.ts";
@@ -14,6 +14,7 @@ import type { BotRecord, Store } from "../store.ts";
 import type { TeamMemory } from "../team-memory.ts";
 import { ensureWorkspace } from "../workspace.ts";
 import type { ExportedTeam } from "./create.ts";
+import { onTeamProjectFolderChange, watchProjectFolders } from "./folder-watch.ts";
 import { TeamProjectRegistry } from "./registry.ts";
 import { TeamProjects } from "./service.ts";
 
@@ -30,6 +31,8 @@ export interface TeamProjectsHostDeps {
   ownSkillNames(botId: string): readonly string[];
   /** The app's language, for the first lines of a new bot's memory. */
   language(): string | undefined;
+  /** Reaches the open apps of the owner and admins. */
+  broadcast(event: TeamProjectsEvent): void;
 }
 
 export interface TeamProjectsHost {
@@ -53,8 +56,9 @@ const TEAM_MEMORY_FILE = join(DATA_DIR, "team-memory.json");
 /** Projects for this installation: the list in `<data dir>/projects.json`, followed from the moment this returns. */
 export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjectsHost {
   let timer: NodeJS.Timeout | undefined;
+  const registry = new TeamProjectRegistry(join(DATA_DIR, "projects.json"));
   const projects = new TeamProjects({
-    registry: new TeamProjectRegistry(join(DATA_DIR, "projects.json")),
+    registry,
     store: deps.store,
     dataDir: DATA_DIR,
     routines: deps.routines,
@@ -79,6 +83,8 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
   // path keeps seeing them (Node.js docs, fs.watch caveats, "Inodes").
   watchFile(SECTION_CONTEXTS_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.contextsChanged());
   watchFile(TEAM_MEMORY_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.touchAll());
+  onTeamProjectFolderChange((change) => deps.broadcast({ kind: "team-projects", ...change }));
+  watchProjectFolders(() => (registry.readable ? registry.projects() : []), SOURCE_POLL_MS);
   return {
     api: projects, root: () => projects.listWire().root, lookup: projects.lookup, routes: createTeamProjectRoutes(projects),
     checkSetupChange: (before, fields) => projects.checkSetupChange(before, fields),
