@@ -134,6 +134,8 @@ export const VITEST_SUBSETS = {
       "server/one-home-two-desks.e2e.test.ts",
       "server/one-home.e2e.test.ts",
       "server/parked-cards.e2e.test.ts",
+      "server/project-canvas-generation.e2e.test.ts",
+      "server/project-canvas-privacy.e2e.test.ts",
       "server/question-cards.e2e.test.ts",
       "server/shared-computers.e2e.test.ts",
       "server/shared-computers.gate.test.ts",
@@ -216,6 +218,7 @@ export const SRC_OUTSIDE_RENDERER = [
   "src/components/app/app-frame-host.ts",
   "src/lib/citations.ts",
   "src/lib/composer-attachments.ts",
+  "src/lib/last-conversation.ts",
   "src/lib/random-uuid.ts",
   "src/lib/receipts.ts",
 ];

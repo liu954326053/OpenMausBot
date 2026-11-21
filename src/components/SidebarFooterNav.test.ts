@@ -28,7 +28,7 @@ function nodes(value: ReactNode): ReactElement<Props>[] {
     return [node, ...nodes(node.props.children)];
   });
 }
-function render(density: SidebarDensity, { toolsLayout = "rows", ...extra }: { collapsed?: boolean; onToggleCollapsed?: () => void; toolsLayout?: SidebarToolsLayout } = {}) {
+function render(density: SidebarDensity, { toolsLayout = "rows", ...extra }: { collapsed?: boolean; onToggleCollapsed?: () => void; toolsLayout?: SidebarToolsLayout; teamMapUnread?: boolean } = {}) {
   fixture.toolsLayout = toolsLayout;
   let tree!: ReturnType<typeof SidebarFooterNav>;
   function Capture() { tree = SidebarFooterNav({ density, onToggleCollapsed: () => {}, ...extra }); return tree; }
@@ -77,6 +77,17 @@ describe("sidebar footer places", () => {
     expect(html).toContain('data-tour="tools"');
     expect(html).not.toContain('data-sidebar-nav="automations"');
     expect(html).not.toContain('data-sidebar-nav="team-map"');
+  });
+
+  it.each(["comfortable", "icons"] as const)("keeps Team map's name while something on the map is unread, and gives Unread as its description (%s)", (density) => {
+    fixture.advanced = true;
+    const { html } = render(density, { teamMapUnread: true });
+    const button = html.match(/<button[^>]*data-sidebar-nav="team-map"[^>]*>[\s\S]*?<\/button>/)![0];
+    if (density === "icons") expect(button).toContain('aria-label="Team map"');
+    else expect(button.replace(/<[^>]+>/g, "")).toBe("Team map");
+    expect(button).toContain("data-sidebar-nav-unread");
+    const described = button.match(/aria-describedby="([^"]+)"/)![1]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    expect(html).toMatch(new RegExp(`id="${described}"[^>]*>Unread<`));
   });
 
   it("opens the Automations page through the store, and marks it current while open", () => {

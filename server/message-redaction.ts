@@ -45,6 +45,7 @@ export function redactBotAuthored<T extends Omit<WireMessage, "id" | "at"> & { a
     if (card.summaryParams) card.summaryParams = redactParams(card.summaryParams);
     if (typeof card.summary === "string") card.summary = redactSecretsInText(card.summary);
     if (typeof card.held === "string") card.held = redactSecretsInText(card.held);
+    if (card.heldParams) card.heldParams = redactParams(card.heldParams);
     if (typeof card.answeredText === "string") card.answeredText = redactSecretsInText(card.answeredText);
     if (card.commandAllowlist && (
       redactSecretsInText(card.commandAllowlist.command) !== card.commandAllowlist.command ||

@@ -256,7 +256,7 @@ service. It does not drive the People settings UI through `control-omb`.
 
 The [sidebar fixture](sidebar.md) checks archive and delete confirmations, their
 default focus, keyboard wrapping and focus return against two disposable bots;
-its departments recipe drags bots to reorder them and into new departments.
+its department recipe deletes departments from the team map.
 
 The [sidebar attention geometry fixture](sidebar-attention.md) measures the
 Active Threads popover's width and inset in the open sidebar and its column of

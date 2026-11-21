@@ -16,7 +16,7 @@ import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
 import { healthAnswerer, launchRestartableServer, type RestartableServer, webhookPortRefusal } from "../../server/testing/restartable-server.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { agentBrowser, ensureUiBrowser, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, findInSidebar, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
 import { mountPreview } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -165,6 +165,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
   /** Opens a bot's chat; with `thread`, that conversation, as a person would from the bot's thread list. */
   const openChat = async (bot: string, thread?: string) => {
     const id = options.bots[bot];
+    await expect.poll(() => evaluate(findInSidebar(bot)), { timeout: 15_000 }).toBe(true);
     await expect.poll(() => evaluate(`(() => { const row = document.querySelector('[data-sidebar-bot-row="${id}"]'); row?.click(); return Boolean(row); })()`), { timeout: 15_000 }).toBe(true);
     await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 15_000 }).toBe(`Message ${bot}`);
     if (!thread || (await text()).includes(thread)) return;

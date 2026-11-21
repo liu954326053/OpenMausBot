@@ -14,7 +14,7 @@ import { SPOTLIGHTS } from "../../src/lib/first-conversation.ts";
 import { TOUR_STEPS } from "../../src/lib/guided-tour.ts";
 import { NOTICES } from "../../src/lib/notices.ts";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "./cloud-send-fixture.ts";
-import { agentBrowser, ensureUiBrowser, sessionEnv } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, OPEN_TEAM_MAP, sessionEnv } from "./control-omb-ui.ts";
 import { mountPreview, REPO_ROOT } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -71,7 +71,9 @@ async function openAs(who: Who, size: readonly [string, string]) {
     },
     async openScout(on: "me" | "team") {
       await evaluate(DISMISS);
-      await expect.poll(() => evaluate<boolean>(`(() => { const row = document.querySelector('[data-sidebar-bot-row="${scout}"]'); row?.click(); return Boolean(row); })()`), { timeout: 60_000, interval: 500 }).toBe(true);
+      // Scout is in no project: it opens from its card on the team map.
+      await expect.poll(() => evaluate<boolean>(OPEN_TEAM_MAP), { timeout: 60_000, interval: 500 }).toBe(true);
+      await expect.poll(() => evaluate<boolean>(`(() => { const open = document.querySelector('button[aria-label="Open chat with Scout"]'); open?.click(); return Boolean(open); })()`), { timeout: 60_000, interval: 500 }).toBe(true);
       await expect.poll(async () => (await audience())?.split(":")[0], { timeout: 30_000 }).toBe(on);
     },
     async say(text: string) {

@@ -9,10 +9,12 @@ import { useTeamPeople } from "@/state/team-people";
 import { inboxFixes, waitingCount } from "./inbox/inbox-view";
 import { inboxAttentionEntries, unreadConversations } from "./inbox/InboxActive";
 
-export function SidebarInboxRow({ icons, large, running, onOpened }: {
+export function SidebarInboxRow({ icons, large, flush = false, running, onOpened }: {
   icons: boolean;
   /** Simple's row, sized as its bots' rows are. */
   large: boolean;
+  /** Inside a list that has its own side padding. */
+  flush?: boolean;
   running: boolean;
   onOpened?: () => void;
 }) {
@@ -41,7 +43,7 @@ export function SidebarInboxRow({ icons, large, running, onOpened }: {
     );
   }
   return (
-    <div className="px-3 pb-1">
+    <div className={flush ? "pb-1" : "px-3 pb-1"}>
       <button type="button" data-sidebar-inbox={count} aria-label={label} title={label} aria-pressed={open} onClick={toggle}
         className={cn("flex w-full min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none hover:bg-raised/60 focus-visible:ring-2 focus-visible:ring-accent/60")}>
         <span className={cn("relative grid shrink-0 place-items-center rounded-full", open ? "bg-ink/[0.16] text-ink" : "bg-raised text-ink-secondary", large ? "size-9" : "size-8")}>

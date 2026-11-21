@@ -1,8 +1,11 @@
-import { t } from "@/lib/i18n";
+import { t, tFromServer } from "@/lib/i18n";
 import type { OptionCardData } from "@/state/store";
 import { noticeText } from "./activity-text";
 
-export function approvalDetailText(card: Pick<OptionCardData, "subtitle" | "summaryCode" | "summaryParams">): string {
+export function approvalDetailText(card: Pick<OptionCardData, "subtitle" | "summaryCode" | "summaryParams" | "canvasGeneration">): string {
+  const generation = card.canvasGeneration;
+  // Security: a stored card shows generation's own words in the person's language, never another catalog string.
+  if (generation?.reasonKey.startsWith("serverError.projectGeneration.")) return tFromServer(generation.reasonKey, card.subtitle, generation.reasonParams);
   return noticeText(card.summaryCode, card.subtitle, card.summaryParams);
 }
 

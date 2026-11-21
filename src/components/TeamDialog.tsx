@@ -7,10 +7,12 @@ import { t } from "@/lib/i18n";
 import { imeComposing } from "@/lib/send-key";
 import { useTeamProjectSide } from "@/state/team-projects";
 
-export function TeamDialog({ section, rename = false, onClose, onRenamed }: {
+export function TeamDialog({ section, rename = false, onClose, onRenamed, onCreated }: {
   section?: string;
   rename?: boolean;
   onRenamed?: (oldName: string, newName: string) => void;
+  /** A new department was made, with this name. */
+  onCreated?: (name: string) => void;
   onClose: () => void;
 }) {
   const { state, dispatch } = useStore();
@@ -51,6 +53,7 @@ export function TeamDialog({ section, rename = false, onClose, onRenamed }: {
       dispatch({ type: "sections", sections: result.sections });
       for (const bot of result.bots ?? []) dispatch({ type: "botPatched", bot });
       if (rename && section !== undefined) onRenamed?.(section, name.trim());
+      if (section === undefined) onCreated?.(name.trim());
       onCloseRef.current();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));

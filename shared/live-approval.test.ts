@@ -17,6 +17,7 @@ describe("liveCardKind", () => {
     // them as an approval
     expect(liveCardKind(card({ requestId: "r1", tool: "update_model", modelRequest: {} as OptionCardData["modelRequest"] }))).toBe("review");
     expect(liveCardKind(card({ requestId: "r1", tool: "lending_lift", lendingLift: { requestMessageId: "m1" } }))).toBe("review");
+    expect(liveCardKind(card({ requestId: "r1", tool: "canvas_generate", canvasGeneration: {} as OptionCardData["canvasGeneration"] }))).toBe("review");
     expect(liveDecisionRefusal(card({ requestId: "r1", tool: "update_model", modelRequest: {} as OptionCardData["modelRequest"] })))
       .toBe("This request is reviewed on screen.");
   });

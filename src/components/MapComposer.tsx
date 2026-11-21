@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, X } from "lucide-react";
 import { openBot, useStore, type Bot } from "@/state/store";
 import { cn } from "@/lib/cn";
+import { messageBoxHeight } from "@/lib/composer-dock";
 import { t } from "@/lib/i18n";
 import { mentionChoicesForQuery, mentionQueryAt } from "@/lib/mentions";
 import { mapDelivery, mapMessageTargets, sentToSummary } from "@/lib/map-composer";
@@ -15,18 +16,31 @@ import { randomUuid } from "@/lib/random-uuid";
 
 /** Message bots from the Team map: tag bots, a team or @everyone; each bot it goes to gets it as a normal message in its own
  * chat. @everyone goes to the Chief, which passes it on (mapDelivery). */
-export function MapComposer({ bots, teams, onTagged, onSent }: {
+export function MapComposer({ bots, teams, onTagged, onSent, onHeight }: {
   bots: Bot[];
   teams: Array<{ key: string; name: string; count: number }>;
   onTagged: (botIds: string[]) => void;
   /** The bots a message just went to, so their cards can acknowledge it. */
   onSent: (botIds: string[]) => void;
+  /** How far up from the bottom of the map the message box reaches, with what it shows above and below it. */
+  onHeight?: (height: number) => void;
 }) {
   const { dispatch } = useStore();
   const showThreads = useShowThreads();
   const sendKey = useSendKey();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const columnRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const column = columnRef.current;
+    const map = column?.parentElement?.offsetParent;
+    if (!column || !map || !onHeight) return;
+    const measure = () => onHeight(messageBoxHeight(map.getBoundingClientRect(), column.getBoundingClientRect()));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, [onHeight]);
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
@@ -98,7 +112,7 @@ export function MapComposer({ bots, teams, onTagged, onSent }: {
 
   return <>
     <div className="pointer-events-none absolute inset-x-0 bottom-5 z-30 flex justify-center px-4">
-      <div className="pointer-events-auto w-full max-w-[620px]">
+      <div ref={columnRef} data-map-composer className="pointer-events-auto w-full max-w-[620px]">
         {sent && (chief || names.length > 0) && <p role="status" className="mb-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 rounded-xl bg-panel/95 px-3 py-1.5 text-[12px] text-ink-secondary shadow-sm ring-1 ring-hairline/50">
           {chief && <span>{t("mapComposer.sentViaChief", { name: chief.name })}{names.length > 0 ? " ·" : ""}</span>}
           {names.length > 0 && <span>{t("mapComposer.sentTo")}</span>}

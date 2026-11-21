@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { launchCloudSendFixture } from "./testing/cloud-send-fixture.ts";
+import { findInSidebar } from "./testing/control-omb-ui.ts";
 import { mountPreview, type MountedPreview } from "./testing/preview-fixture.ts";
 
 const at = process.argv.indexOf("--shots");
@@ -134,6 +135,7 @@ try {
   const page = chrome;
   const row = `[data-sidebar-bot-row="${payroll.id}"]`;
   const openPayroll = async () => {
+    await page.until(findInSidebar("Payroll"), "the sidebar search");
     await page.click(row, "Payroll's row");
     await page.until("document.querySelector('[data-chathead-identity]')?.textContent.includes('Payroll') === true", "Payroll's chat");
   };

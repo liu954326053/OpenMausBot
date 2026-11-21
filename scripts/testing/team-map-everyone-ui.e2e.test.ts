@@ -52,9 +52,9 @@ type Bot = { id: string; name: string; threadId: string; chiefOfStaff?: boolean;
       await call("PATCH", `/api/bots/${first.id}`, { chiefOfStaff: true, acknowledgePeerScope: true });
       chief = { ...first, chiefOfStaff: true };
     }
-    await expect.poll(pageText, { timeout: 20_000 }).toContain("Calendar");
     if (!await press("Team map")) await press("Tools");
     await expect.poll(() => press("Team map").then(() => evaluate("Boolean(document.querySelector('textarea[aria-label=\"Message bots on the map\"]'))")), { timeout: 20_000 }).toBe(true);
+    await expect.poll(pageText, { timeout: 20_000 }).toContain("Calendar");
     const before = new Map(await Promise.all((await bots()).map(async (bot) => [bot.id, (await linesTo(bot)).length] as const)));
     const say = async (text: string) => {
       await ui("type", "--name", "Message bots on the map", "--text", text);
