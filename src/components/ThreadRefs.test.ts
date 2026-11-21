@@ -1,6 +1,7 @@
 import { Children, createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { loadLocale, setLocale } from "@/lib/i18n";
 import type { Bot, Group } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), selectedId: "scout", showThreads: true }));
@@ -121,6 +122,20 @@ describe("ThreadLink", () => {
     const target = { botId: "ada", threadId: "ada-qa", title: "QA PR 245", botName: "Ada" };
     expect(renderToStaticMarkup(createElement(ThreadLink, { target, ambiguous: true }, "#QA PR 245"))).toContain('title="Open #QA PR 245 on Ada"');
     expect(renderToStaticMarkup(createElement(ThreadLink, { target, ambiguous: false }, "#QA PR 245"))).toContain('title="Open #QA PR 245"');
+  });
+
+  it("names a conversation that has no title yet in the person's language in the tooltip", async () => {
+    await loadLocale("zh");
+    try {
+      const target = { botId: "ada", threadId: "ada-new", title: "New thread", botName: "Ada" };
+      for (const ambiguous of [true, false]) {
+        const markup = renderToStaticMarkup(createElement(ThreadLink, { target, ambiguous }, "#New thread"));
+        expect(markup).toMatch(/title="[^"]*未命名对话[^"]*"/);
+        expect(markup).not.toMatch(/title="[^"]*New thread[^"]*"/);
+      }
+    } finally {
+      setLocale("en");
+    }
   });
 
   it("reads a thread link back out of the markdown span props, and nothing out of a plain span", () => {

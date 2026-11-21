@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Group, GroupTask, Task } from "@/state/store";
-import { t } from "@/lib/i18n";
+import { loadLocale, setLocale, t } from "@/lib/i18n";
 import type { AttentionThread } from "../SidebarBotActivity";
 import { PinnedThreads, pinnedThreadRows } from "./PinnedThreads";
 
@@ -38,6 +38,17 @@ describe("the pinned section", () => {
   it("lists only the pinned conversations", async () => {
     await mount([bot("eli", [task("pinned", { pinned: true }), task("loose")])]);
     expect(rowTitles()).toEqual(["pinned"]);
+  });
+
+  it("names a conversation that has no title yet in the person's language", async () => {
+    await loadLocale("zh");
+    try {
+      await mount([bot("eli", [task("t1", { pinned: true, title: "New thread" })])]);
+      expect(rowTitles()).toEqual(["未命名对话"]);
+      expect(document.querySelector("[data-pinned-row]")!.getAttribute("aria-label")).toContain("未命名对话");
+    } finally {
+      setLocale("en");
+    }
   });
 
   it("puts the most recently active conversation first, the order its label reads in", async () => {

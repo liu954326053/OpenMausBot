@@ -12,6 +12,7 @@ import {
   teamProjectBotFolder,
   teamProjectFilesAway,
   teamProjectFolderReady,
+  teamProjectFolderReadyAsync,
   teamProjectStop,
 } from "./team-project-folders.ts";
 
@@ -81,6 +82,13 @@ describe("whether a project folder is there", () => {
     expect(teamProjectFolderReady(join(root, "a-file"))).toBe(false);
     expect(teamProjectFolderReady("drama")).toBe(false);
     expect(teamProjectFolderReady("")).toBe(false);
+  });
+
+  it("answers the same without holding up the server", async () => {
+    writeFileSync(join(root, "a-file"), "");
+    for (const folder of [project, join(root, "unplugged", "drama"), join(root, "a-file"), "drama", ""]) {
+      expect(await teamProjectFolderReadyAsync(folder), folder).toBe(teamProjectFolderReady(folder));
+    }
   });
 });
 

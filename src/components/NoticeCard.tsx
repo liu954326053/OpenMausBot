@@ -44,10 +44,12 @@ export function NotNowButton({ onClick, label = t("notice.notNow") }: { onClick:
   return <button type="button" className="py-2 text-[12px] text-ink-secondary hover:text-ink" onClick={onClick}>{label}</button>;
 }
 
+export const TOAST_CLEAR_OF_COMPOSER = "fixed bottom-4 left-[calc(var(--rail-beside,0px)_+_1rem)] w-[300px] max-w-[calc(100vw_-_var(--rail-beside,0px)_-_32px)]";
+
 export function NoticeToast({ text, onDone }: { text: string; onDone: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onDone, 5_000);
     return () => clearTimeout(timer);
   }, [text]);
-  return <p role="status" data-notice-toast className="fixed bottom-4 left-[calc(var(--rail-beside,0px)_+_1rem)] z-[60] w-[300px] max-w-[calc(100vw_-_var(--rail-beside,0px)_-_32px)] rounded-xl border border-hairline/40 bg-panel px-3.5 py-2.5 text-[13px] text-ink shadow-2xl shadow-black/20">{text}</p>;
+  return <p role="status" data-notice-toast className={`${TOAST_CLEAR_OF_COMPOSER} z-[60] rounded-xl border border-hairline/40 bg-panel px-3.5 py-2.5 text-[13px] text-ink shadow-2xl shadow-black/20`}>{text}</p>;
 }
