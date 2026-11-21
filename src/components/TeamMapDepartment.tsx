@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ProjectTeamUnusable } from "../../shared/team-projects";
 import { cn } from "@/lib/cn";
@@ -8,6 +8,8 @@ import { unusableKey } from "@/lib/team-projects";
 import { listProjectTeams } from "@/lib/team-projects-api";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 import type { LocaleKey } from "@/locales";
+import { api, useStore } from "@/state/store";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { ShareDepartmentDialog } from "./lazy-screens";
 import { TeamMenuItems } from "./SidebarTeamMenu";
 import { TeamSettingsDialog } from "./TeamSettingsDialog";
@@ -71,4 +73,22 @@ export function TeamMapDepartmentDialogs() {
   if (open?.kind === "share") return <ShareDepartmentDialog department={open.department} onClose={() => openDialog(null)} />;
   if (open?.kind === "settings") return <TeamSettingsDialog team={open.department} onClose={() => openDialog(null)} />;
   return null;
+}
+
+export function DeleteDepartmentDialog({ department, onClose, onError }: { department: string | null; onClose: () => void; onError: (message: string) => void }) {
+  const { dispatch } = useStore();
+  const [pending, setPending] = useState(false);
+  const running = useRef(false);
+  return <ConfirmDialog open={department !== null} title={t("team.deleteTitle", { name: department ?? "" })}
+    body={t("team.deleteKeepBotsDescription")} confirmLabel={t("team.delete")} pending={pending}
+    onCancel={() => { if (!running.current) onClose(); }}
+    onConfirm={() => {
+      if (department === null || running.current) return;
+      running.current = true;
+      setPending(true);
+      void api<{ sections: string[] }>(`/api/sidebar-sections?section=${encodeURIComponent(department)}`, { method: "DELETE" })
+        .then(({ sections }) => { dispatch({ type: "sectionDeleted", section: department, sections }); onClose(); })
+        .catch((cause) => onError(cause instanceof Error ? cause.message : String(cause)))
+        .finally(() => { running.current = false; setPending(false); });
+    }} />;
 }

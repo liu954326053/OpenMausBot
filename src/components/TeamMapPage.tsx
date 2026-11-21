@@ -21,7 +21,7 @@ import { useTeamProjectSide } from "@/state/team-projects";
 import { TeamCanvas } from "./TeamCanvas";
 import { TeamDialog } from "./TeamDialog";
 import { useTeamMapAdd } from "./TeamMapAdd";
-import { TeamMapDepartmentDialogs } from "./TeamMapDepartment";
+import { DeleteDepartmentDialog, TeamMapDepartmentDialogs } from "./TeamMapDepartment";
 import { TeamMapRooms } from "./TeamMapRooms";
 import { TeamMemoryDialog } from "./TeamMemoryDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -441,16 +441,7 @@ export function TeamMapPage() {
           setPendingMove(null);
           void moveBot(move.bot, move.destination).then(() => move.resolve(true), () => move.resolve(false));
         }} />
-      <ConfirmDialog open={deletingTeam !== null} title={t("team.deleteTitle", { name: deletingTeam ?? "" })}
-        body={t("team.deleteKeepBotsDescription")}
-        confirmLabel={t("team.delete")} onCancel={() => setDeletingTeam(null)} onConfirm={() => {
-          const name = deletingTeam;
-          setDeletingTeam(null);
-          if (!name) return;
-          void api(`/api/sidebar-sections?section=${encodeURIComponent(name)}`, { method: "DELETE" })
-            .then(({ sections: names }) => dispatch({ type: "sections", sections: names }))
-            .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
-        }} />
+      <DeleteDepartmentDialog department={deletingTeam} onClose={() => setDeletingTeam(null)} onError={setError} />
     </main>
   );
 }
