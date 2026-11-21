@@ -1205,7 +1205,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           {!q && <NeedsYouButton compact={rail} />}
           <SidebarTeamProjects side={projectSide} all={sideLists} found={{ bots: matchingBots, groups: visibleGroups }} query={q}
             mode={{ density, advanced, tight: advanced || simpleDesk, remote: remoteClient, followed: Boolean(outside?.bots.length || outside?.groups.length) }}
-            roomRow={roomRow} onNew={() => setNewProject(true)} onError={(text) => setTeamFeedback({ error: true, text })} />
+            onNew={() => setNewProject(true)} onError={(text) => setTeamFeedback({ error: true, text })} />
           {outside && outside.bots.length + outside.groups.length > 0 && (
             <div data-sidebar-outside-projects="" className={cn("flex flex-col", advanced || simpleDesk ? "gap-0.5" : "gap-1")}>
               {density !== "icons" && <SidebarSectionHeader name={t("sidebarProjects.outside")} line={simple} collapsed={false} reorderable={false} dragging={false} />}

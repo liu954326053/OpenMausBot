@@ -1,11 +1,11 @@
 import { Archive, FolderX, Plus, UsersRound } from "lucide-react";
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
-import { t } from "@/lib/i18n";
+import { activeLocale, t } from "@/lib/i18n";
 import { sidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
 import { teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
@@ -20,7 +20,7 @@ import { MENU_ITEM, MENU_SHEET } from "../menu-recipe";
 import { useHeldMenuMotion } from "../MenuMotion";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
 import { SIMPLE_RAIL_BUTTON } from "../SidebarSimpleTop";
-import { SidebarProjectMember, SidebarProjectRow, SidebarProjectTile } from "./SidebarProjectRow";
+import { SidebarProjectRow, SidebarProjectTile } from "./SidebarProjectRow";
 import { TeamChangesDialog } from "./TeamChangesDialog";
 import { dataSettingsPlace } from "./where-in-settings";
 
@@ -40,12 +40,19 @@ interface Lists {
   groups: Group[];
 }
 
-const MENU_WIDTH = 200;
-const NO_HITS: Lists = { bots: [], groups: [] };
+interface Match {
+  names?: string;
+  botId?: string;
+}
 
-/** One row per project; a click opens its canvas. A search also lists under a project the bots and group chats it found
- * there, the lead first, and a click on a bot opens the canvas with that bot's node chosen. */
-export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, onNew, onError }: {
+const MENU_WIDTH = 200;
+const NO_MATCH: Match = {};
+const listed = (names: string[]) => new Intl.ListFormat(activeLocale(), { type: "conjunction", style: "narrow" }).format(names);
+
+/** One row per project, with nothing under it; a click opens its canvas. A search keeps the projects whose name, bots or
+ * group chats match. Where it matched inside a project, the row names what it found there, and a click chooses the
+ * first bot it found on the canvas, the lead first. */
+export function SidebarTeamProjects({ side, all, found, query, mode, onNew, onError }: {
   side: TeamProjectSide;
   /** Every bot and group chat the sidebar lists on this side, and those a search found (all of them without a search). */
   all: Lists;
@@ -53,8 +60,6 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
   /** Trimmed and in lower case. */
   query: string;
   mode: SidebarTeamProjectsMode;
-  /** A group chat of a project a search found. */
-  roomRow: (group: Group) => ReactNode;
   onNew: () => void;
   onError: (text: string) => void;
 }) {
@@ -63,9 +68,7 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
   const viewer = useViewerEmail();
   useTeamProjectsLoader(useStoreSelector((state) => teamProjectsVersion(state.bots, state.sections)));
   const selectedId = useStoreSelector((state) => state.selectedId);
-  const activeView = useStoreSelector((state) => state.activeView);
   const shownProject = useStoreSelector((state) => (state.activeView === "project" ? state.project : undefined));
-  const queued = useStoreSelector((state) => state.pendingQueued);
   const latest = useRef({ selectedId, shownProject });
   latest.current = { selectedId, shownProject };
   const [menu, setMenu] = useState<{ project: TeamProjectWire; x: number; y: number } | null>(null);
@@ -121,18 +124,13 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
 
   const listedBots = all.bots.filter((bot) => !bot.hidden);
   const shownProjects = side.projects.flatMap((project) => {
-    const whole: Lists = { bots: side.team(project, listedBots), groups: side.teamRooms(project, all.groups) };
-    const attention = sidebarSectionAttention(whole.bots, whole.groups);
-    if (!query) return [{ project, attention, hits: NO_HITS }];
-    const named = project.name.toLowerCase().includes(query);
-    const hits: Lists = named ? whole : { bots: side.team(project, found.bots), groups: side.teamRooms(project, found.groups) };
-    return named || hits.bots.length + hits.groups.length > 0 ? [{ project, attention, hits }] : [];
+    const attention = sidebarSectionAttention(side.team(project, listedBots), side.teamRooms(project, all.groups));
+    if (!query || project.name.toLowerCase().includes(query)) return [{ project, attention, match: NO_MATCH }];
+    const bots = side.team(project, found.bots), groups = side.teamRooms(project, found.groups);
+    if (bots.length + groups.length === 0) return [];
+    return [{ project, attention, match: { names: listed([...bots, ...groups].map((one) => one.name)), botId: bots[0]?.id } }];
   });
   const mayCreate = !remote && !query;
-  const projectSelected = (project: TeamProjectWire, hits: Lists) =>
-    shownProject?.id === project.id && !hits.bots.some((bot) => bot.id === shownProject.botId);
-  const memberSelected = (project: TeamProjectWire, bot: Bot) =>
-    shownProject ? shownProject.id === project.id && shownProject.botId === bot.id : activeView === "chat" && selectedId === bot.id;
 
   const floating = (
     <>
@@ -169,14 +167,14 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
     return (
       <div data-sidebar-team-projects="" className={cn("flex flex-col", gap)}>
         {shownProjects.length > 0 && <SidebarRailSeparator />}
-        {shownProjects.map(({ project, attention }) => {
+        {shownProjects.map(({ project, attention, match }) => {
           const missing = project.folderState === "missing";
           const missingText = t("teamProjects.folderMissingNamed", { name: project.name });
           const changedText = t("teamProjects.changes.noticeNamed", { name: project.name });
           return (
             <div key={project.id} role="group" aria-label={project.name} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-              <SidebarProjectTile project={project} attention={attention} selected={shownProject?.id === project.id}
-                onOpen={() => show(project)} onMenu={openMenu?.(project)} />
+              <SidebarProjectTile project={project} attention={attention} found={match.names} selected={shownProject?.id === project.id}
+                onOpen={() => show(project, match.botId)} onMenu={openMenu?.(project)} />
               {missing && (
                 <span role="img" data-team-project-missing="" aria-label={missingText} title={missingText} className="mx-auto flex size-6 shrink-0 items-center justify-center text-warning">
                   <FolderX size={16} aria-hidden="true" />
@@ -205,13 +203,13 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
 
   return (
     <div data-sidebar-team-projects="" className={cn("flex flex-col", gap, advanced && mode.followed && "pb-3")}>
-      {shownProjects.map(({ project, attention, hits }) => {
+      {shownProjects.map(({ project, attention, match }) => {
         const missing = project.folderState === "missing";
         return (
           <div key={project.id} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-            <SidebarProjectRow project={project} attention={attention} simple={simple}
-              selected={projectSelected(project, hits)} menuOpen={menu?.project.id === project.id}
-              onOpen={() => show(project)} onMenu={openMenu?.(project)} />
+            <SidebarProjectRow project={project} attention={attention} found={match.names} simple={simple}
+              selected={shownProject?.id === project.id} menuOpen={menu?.project.id === project.id}
+              onOpen={() => show(project, match.botId)} onMenu={openMenu?.(project)} />
             {missing && (
               <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
                 <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
@@ -222,15 +220,6 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
                 className={cn("flex items-center gap-1.5 rounded-md pb-1 text-start text-[12px] leading-4 text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-focus", simple ? "px-2" : "px-3")}>
                 <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
               </button>
-            )}
-            {hits.bots.length + hits.groups.length > 0 && (
-              <div role="group" aria-label={project.name} data-team-project-team="" className={cn("flex flex-col", gap, missing && "opacity-50")}>
-                {hits.bots.map((bot) => (
-                  <SidebarProjectMember key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} queued={queued}
-                    selected={memberSelected(project, bot)} onOpen={() => show(project, bot.id)} />
-                ))}
-                {hits.groups.map(roomRow)}
-              </div>
             )}
           </div>
         );
