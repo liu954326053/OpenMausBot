@@ -12,6 +12,7 @@ import {
   type CanvasPoint,
   type CanvasViewport,
 } from "../../../shared/project-canvas";
+import { useCaptionChrome, WindowDragStrip } from "@/components/DesktopCapabilities";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { t } from "@/lib/i18n";
 import type { CanvasBackend } from "@/lib/project-canvas/backend";
@@ -67,7 +68,8 @@ export function ProjectCanvas({ projectId, selectedBotId, backend, topBarSlot }:
 
 function CanvasMessage({ busy, error, onRetry }: { busy?: boolean; error?: string; onRetry?: () => void }) {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 bg-app p-6 text-center">
+    <div className="relative flex h-full flex-col items-center justify-center gap-3 bg-app p-6 text-center">
+      <WindowDragStrip />
       {busy ? <LoaderCircle size={16} aria-label={t("projectCanvas.loading")} className="animate-spin text-ink-tertiary motion-reduce:animate-none" /> : null}
       {error ? (
         <>
@@ -95,6 +97,7 @@ type OpenMenu =
 function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { controller: CanvasController; state: CanvasState; selectedBotId?: string; topBarSlot?: ReactNode }) {
   const snapshot = state.snapshot!;
   const readOnly = Boolean(snapshot.readOnly);
+  const { dragProps } = useCaptionChrome();
   const [selection, setSelection] = useState<ReadonlySet<string>>(() => new Set());
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [panelNodeId, setPanelNodeId] = useState<string | null>(null);
@@ -371,7 +374,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
   return (
     <CanvasUiContext.Provider value={ui}>
       <div className="flex h-full min-h-0 flex-col bg-app text-ink" data-project-canvas="">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-edge px-4">
+        <header {...dragProps} className="flex h-12 shrink-0 items-center gap-2 border-b border-edge px-4 max-md:ps-12">
           <h1 className="min-w-0 truncate text-[17px] font-semibold leading-6" title={snapshot.project.name}>{snapshot.project.name}</h1>
           {readOnly ? (
             <span className="ui-chip gap-1"><Archive size={14} aria-hidden="true" />{t("projectCanvas.archived")}</span>
@@ -391,7 +394,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
             <Settings size={16} aria-hidden="true" />
           </button>
         </header>
-        <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div className="relative isolate min-h-0 flex-1 overflow-hidden">
           <CanvasStage
             tool={tool}
             panning={spaceHeld}
