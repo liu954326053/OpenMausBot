@@ -11514,7 +11514,6 @@
   "projectCanvas.saveFailed": "有一處修改沒有儲存：{reason}",
   "projectCanvas.uploadFailed": "{name} 沒有加入：{reason}",
   "projectCanvas.archived": "已封存",
-  "projectCanvas.folderMissing": "資料夾不見了",
   "projectCanvas.folderMissingHint": "專案資料夾不在原處。在它回來之前，不能加入或生成檔案。",
   "projectCanvas.tidy": "整理",
   "projectCanvas.tidyHint": "依團隊排列機器人，並把各自的產出放在旁邊",

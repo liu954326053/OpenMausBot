@@ -68,12 +68,13 @@ describe("the in-memory canvas backend", () => {
     await expect(backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "bot:kai" })).rejects.toThrow("text node");
   });
 
-  it("queues a bot's tasks, giving two revisions of a node two placeholders that do not overlap, each taken by its own reply", async () => {
+  it("queues a bot's tasks, giving two revisions of a node two placeholders that overlap neither each other nor a node, each taken by its own reply", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
+    const take = backend.current().nodes.find((node) => node.id === "shot-1-take-1")!;
     await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "shorter", targetNodeId: "logline" });
     await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "darker", targetNodeId: "logline" });
     const [first, second] = backend.current().bots.kai!.writingBeside!;
-    expect(second!.position).toEqual({ x: first!.position.x, y: first!.position.y + first!.height + OUTPUT_GAP_Y });
+    expect(second!.position).toEqual({ x: first!.position.x, y: take.position.y + take.height + OUTPUT_GAP_Y });
     await vi.advanceTimersByTimeAsync(100);
     expect(backend.current().bots.kai).toMatchObject({ status: "working", writingBeside: [second] });
     await vi.advanceTimersByTimeAsync(100);
@@ -101,6 +102,24 @@ describe("the in-memory canvas backend", () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(backend.current().nodes).toEqual(before.nodes);
     expect(backend.current().connections).toEqual(before.connections);
+  });
+
+  it("keeps a bot's reply unread until its conversation is read, and tells listeners once it is", async () => {
+    const backend = sampleCanvasBackend({ delayMs: 100 });
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "otto", text: "Cut the teaser" });
+    expect((await backend.readBotLooks(SAMPLE_PROJECT_ID)).otto).toEqual({ color: "teal" });
+    await vi.advanceTimersByTimeAsync(100);
+    expect((await backend.readBotLooks(SAMPLE_PROJECT_ID)).otto).toEqual({ color: "teal", unread: true });
+    let told = 0;
+    backend.subscribe(SAMPLE_PROJECT_ID, () => {
+      told += 1;
+    });
+    backend.readConversation(SAMPLE_PROJECT_ID, "otto", "thread-otto");
+    backend.readConversation(SAMPLE_PROJECT_ID, "otto", "thread-otto");
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await backend.readBotLooks(SAMPLE_PROJECT_ID)).otto).toEqual({ color: "teal" });
+    expect(told).toBe(1);
+    expect(backend.readConversations).toEqual([{ botId: "otto", threadId: "thread-otto" }, { botId: "otto", threadId: "thread-otto" }]);
   });
 
   it("decides when a task is sent whether its reply fills the node, so what the person types meanwhile stays", async () => {

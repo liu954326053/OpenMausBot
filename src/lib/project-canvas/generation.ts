@@ -37,12 +37,31 @@ export function previousOutputs(source: CanvasNode, nodes: readonly CanvasNode[]
 
 type OutputFrame = { position: CanvasPoint; width: number; height: number };
 
-/** Where the next result of `source` lands: right of it, level with its top, under the results made before and the
- * frames in `taken` of results still to come in its column. */
+const overlaps = (a: OutputFrame, b: OutputFrame) =>
+  a.position.x < b.position.x + b.width && b.position.x < a.position.x + a.width && a.position.y < b.position.y + b.height && b.position.y < a.position.y + a.height;
+
+/** Where the next result of `source` lands, as the server puts it: right of it, level with its top or under the results
+ * made before, then down past every node and every frame in `taken` of results still to come that is in the way. */
 export function nextOutputFrame(source: CanvasNode, type: CanvasNodeType, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[], taken: readonly OutputFrame[] = []): OutputFrame {
   const size = CANVAS_NODE_SIZE[type];
-  const x = outputColumn(source);
-  const coming = taken.filter((frame) => frame.position.x < x + CANVAS_NODE_SIZE.video.width && frame.position.x + frame.width > x);
-  const y = [...previousOutputs(source, nodes, connections), ...coming].reduce((lowest, frame) => Math.max(lowest, frame.position.y + frame.height + OUTPUT_GAP_Y), source.position.y);
-  return { position: { x, y }, width: size.width, height: size.height };
+  const frame = {
+    position: { x: outputColumn(source), y: previousOutputs(source, nodes, connections).reduce((lowest, node) => Math.max(lowest, node.position.y + node.height + OUTPUT_GAP_Y), source.position.y) },
+    width: size.width,
+    height: size.height,
+  };
+  const blocking = [...nodes.filter((node) => node.type !== "group"), ...taken];
+  for (;;) {
+    const hits = blocking.filter((one) => overlaps(one, frame));
+    if (!hits.length) return frame;
+    frame.position = { x: frame.position.x, y: Math.max(...hits.map((one) => one.position.y + one.height)) + OUTPUT_GAP_Y };
+  }
+}
+
+/** The frames the results of the generations running now will take, each with the node it comes from. */
+export function comingOutputs(nodes: readonly CanvasNode[], connections: readonly CanvasConnection[], taken: readonly OutputFrame[]): Array<{ sourceId: string; frame: OutputFrame }> {
+  return nodes.flatMap((node) => {
+    const kind = generationKindOf(node);
+    if (!kind || node.metadata?.status !== "loading" || takesResultInPlace(node)) return [];
+    return [{ sourceId: node.id, frame: nextOutputFrame(node, kind, nodes, connections, taken) }];
+  });
 }

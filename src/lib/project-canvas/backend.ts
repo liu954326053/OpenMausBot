@@ -64,6 +64,8 @@ export interface CanvasBackend {
   readExchange(projectId: string, botId: string): Promise<CanvasExchangeMessage[]>;
   /** Opens the bot's conversation of this project in the app: `threadId`, or the one it has open. */
   openChat(projectId: string, botId: string, threadId?: string): void;
+  /** Reads the bot's conversation of this project as opening it in the app does: `threadId`, or its main one. */
+  readConversation(projectId: string, botId: string, threadId?: string): void;
 
   /** `GET /api/team-projects/:id/generation/settings`. */
   readGenerationSettings(projectId: string): Promise<GenerationSettingsWire>;
