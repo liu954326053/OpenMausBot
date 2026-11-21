@@ -9137,7 +9137,7 @@
   "shortcuts.command-palette": "打开命令面板（切换器与对话记录搜索）",
   "shortcuts.new-bot": "创建新机器人",
   "shortcuts.new-thread": "与所选机器人开始新对话",
-  "shortcuts.jump-bot": "跳到列表中第 1–9 个机器人",
+  "shortcuts.jump-number": "跳到主机器人（1）或前 8 个项目之一（2–9）",
   "shortcuts.switch-bot": "切换到上一个 / 下一个机器人",
   "shortcuts.find-conversation": "在对话中查找",
   "shortcuts.send-message": "发送消息",

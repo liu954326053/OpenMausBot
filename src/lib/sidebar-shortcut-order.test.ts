@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
 
-import { nextShortcutBot, shortcutBots, shownBotIds } from "./sidebar-shortcut-order";
+import { inSidebarOrder, nextShortcutBot, numberShortcutTarget, shownBotIds, shownProjectIds } from "./sidebar-shortcut-order";
 
 const bot = (id: string) => ({ id });
 
@@ -38,19 +38,56 @@ describe("shownBotIds", () => {
   });
 });
 
-describe("shortcutBots", () => {
+describe("shownProjectIds", () => {
+  it("reads the project rows in the order the sidebar renders them, not the bot rows", () => {
+    const root = sidebar(`
+      <div data-sidebar-bot-row="magic"></div>
+      <div data-sidebar-team-projects=""><div data-sidebar-team-project="bride"></div><div data-sidebar-team-project="work"></div></div>
+    `);
+    expect(shownProjectIds(root)).toEqual(["bride", "work"]);
+    expect(shownBotIds(root)).toEqual(["magic"]);
+  });
+
+  it("is empty without a sidebar", () => {
+    expect(shownProjectIds(undefined)).toEqual([]);
+  });
+});
+
+describe("inSidebarOrder", () => {
   const bots = [bot("a"), bot("b"), bot("c"), bot("d")];
 
-  it("orders the bots like the sidebar, so ⌘1 opens the first row on screen", () => {
-    expect(shortcutBots(bots, ["d", "b", "a"]).map((b) => b.id)).toEqual(["d", "b", "a"]);
+  it("orders the bots like the sidebar, so ⌘⇧] starts from the first row on screen", () => {
+    expect(inSidebarOrder(bots, ["d", "b", "a"]).map((b) => b.id)).toEqual(["d", "b", "a"]);
   });
 
   it("drops ids that are not among the bots, such as a hidden bot", () => {
-    expect(shortcutBots([bot("a")], ["x", "a"]).map((b) => b.id)).toEqual(["a"]);
+    expect(inSidebarOrder([bot("a")], ["x", "a"]).map((b) => b.id)).toEqual(["a"]);
   });
 
   it("keeps the bots' own order when no sidebar is on screen", () => {
-    expect(shortcutBots(bots, []).map((b) => b.id)).toEqual(["a", "b", "c", "d"]);
+    expect(inSidebarOrder(bots, []).map((b) => b.id)).toEqual(["a", "b", "c", "d"]);
+  });
+});
+
+describe("numberShortcutTarget", () => {
+  const main = bot("magic");
+  const projects = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"].map(bot);
+
+  it("opens the main bot on ⌘1", () => {
+    expect(numberShortcutTarget("1", main, projects)).toEqual({ bot: main });
+  });
+
+  it("opens the first eight projects on ⌘2 to ⌘9, and never a ninth", () => {
+    expect(numberShortcutTarget("2", main, projects)).toEqual({ project: projects[0] });
+    expect(numberShortcutTarget("9", main, projects)).toEqual({ project: projects[7] });
+    expect(["2", "3", "4", "5", "6", "7", "8", "9"].map((key) => numberShortcutTarget(key, main, projects))).not.toContainEqual({ project: projects[8] });
+  });
+
+  it("opens nothing for a number with no project, without a main bot, or for any other key", () => {
+    expect(numberShortcutTarget("4", main, projects.slice(0, 2))).toBeUndefined();
+    expect(numberShortcutTarget("1", undefined, projects)).toBeUndefined();
+    expect(numberShortcutTarget("2", undefined, projects)).toEqual({ project: projects[0] });
+    for (const key of ["0", "n", "!", "10"]) expect(numberShortcutTarget(key, main, projects)).toBeUndefined();
   });
 });
 

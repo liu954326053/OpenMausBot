@@ -8759,7 +8759,7 @@
   "shortcuts.category.groups": "管理與群組",
   "shortcuts.command-palette": "開啟指令面板（切換器與對話紀錄搜尋）",
   "shortcuts.new-bot": "建立新機器人",
-  "shortcuts.jump-bot": "跳到名單中的第 1–9 個機器人",
+  "shortcuts.jump-number": "跳到主機器人（1）或前 8 個專案之一（2–9）",
   "shortcuts.switch-bot": "切換到上一個／下一個機器人",
   "shortcuts.find-conversation": "在對話中尋找",
   "shortcuts.send-message": "傳送訊息",

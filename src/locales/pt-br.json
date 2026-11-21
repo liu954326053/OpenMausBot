@@ -9137,7 +9137,7 @@
   "shortcuts.command-palette": "Abrir a paleta de comandos (troca rápida e busca nas conversas)",
   "shortcuts.new-bot": "Criar um novo bot",
   "shortcuts.new-thread": "Iniciar uma nova conversa com o bot selecionado",
-  "shortcuts.jump-bot": "Ir para o bot 1–9 da lista",
+  "shortcuts.jump-number": "Ir para o bot principal (1) ou um dos oito primeiros projetos (2–9)",
   "shortcuts.switch-bot": "Ir para o bot anterior / seguinte",
   "shortcuts.find-conversation": "Buscar na conversa",
   "shortcuts.send-message": "Enviar mensagem",

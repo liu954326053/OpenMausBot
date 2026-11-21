@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronLeft, Loader2, Menu } from "lucide-react";
 import { CLOUD_LINK_SETTINGS, openBot, StoreProvider, useStore } from "@/state/store";
-import { nextShortcutBot, shortcutBots, shownBotIds } from "@/lib/sidebar-shortcut-order";
+import { inSidebarOrder, nextShortcutBot, numberShortcutTarget, shownBotIds, shownProjectIds } from "@/lib/sidebar-shortcut-order";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { useWelcomeViewer, WelcomeGate } from "@/components/onboarding/WelcomeGate";
 import { MagicBotWelcome } from "@/components/MagicBotWelcome";
@@ -83,7 +83,8 @@ import { usePresence } from "@/hooks/use-presence";
 import { ChatNotice } from "@/components/ChatErrorBanner";
 import { loadingLine } from "@/lib/app-loading";
 import { useAiSwitchKeeper } from "@/lib/ai-switch";
-import { useChiefStepOpen } from "@/lib/default-bot";
+import { myDefaultBot, useChiefStepOpen, useViewerEmail } from "@/lib/default-bot";
+import { currentTeamProjectSide } from "@/state/team-projects";
 import { useSessionEnded } from "@/lib/session-ended";
 import { PairPage } from "./pair/PairPage";
 import { WebPanelPage } from "@/components/WebPanelPage";
@@ -102,6 +103,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   // A Switch AI pick lands once its stopped turn's chat is idle, wherever the person is by then.
   useAiSwitchKeeper({ bots: state.bots, dispatch });
   const showThreads = useShowThreads();
+  const viewerEmail = useViewerEmail();
   const { capabilities } = useDesktopCapabilities();
   const captionChrome = useCaptionChrome();
   const unreadCount =
@@ -210,8 +212,11 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
 
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
-      const bots = shortcutBots(state.bots.filter((b) => !b.hidden), shownBotIds(document.querySelector("[data-sidebar-root]")));
+      const sidebar = document.querySelector("[data-sidebar-root]");
+      const shownBots = state.bots.filter((b) => !b.hidden);
+      const bots = inSidebarOrder(shownBots, shownBotIds(sidebar));
       const step = e.shiftKey ? botCycleStep(e) : null;
+      const numbered = numberShortcutTarget(e.key, myDefaultBot(shownBots, viewerEmail), inSidebarOrder(currentTeamProjectSide().projects, shownProjectIds(sidebar)));
       if (e.key.toLowerCase() === "n" && !e.altKey) {
         e.preventDefault();
         if (e.shiftKey) {
@@ -220,12 +225,10 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
         } else {
           dispatch(newBotOnTeamMap(dispatch));
         }
-      } else if (/^[1-9]$/.test(e.key)) {
-        const target = bots[Number(e.key) - 1];
-        if (target) {
-          e.preventDefault();
-          openBot(dispatch, target, showThreads);
-        }
+      } else if (numbered) {
+        e.preventDefault();
+        if ("bot" in numbered) openBot(dispatch, numbered.bot, showThreads);
+        else dispatch({ type: "showProject", projectId: numbered.project.id });
       } else if (step !== null) {
         const next = nextShortcutBot(bots, state.selectedId, step);
         if (next) {
@@ -236,7 +239,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [state.bots, state.selectedId, state.shortcutsOpen, showThreads, dispatch]);
+  }, [state.bots, state.selectedId, state.shortcutsOpen, showThreads, viewerEmail, dispatch]);
 
   useReadShownChatOnFocus();
   useEffect(() => {
