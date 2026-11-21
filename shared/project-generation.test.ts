@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   COMMON_CHOICES,
   DEFAULT_GENERATION_SETTINGS,
+  fitSettings,
   GENERATION_OUTPUT_FOLDERS,
   modelOffers,
   nodeStatusOf,
@@ -117,6 +118,33 @@ describe("settings a model does not offer", () => {
       { key: "referenceImages", value: 1, offered: [] },
       { key: "referenceAudio", value: 2, offered: [] },
     ]);
+  });
+});
+
+describe("settings fitted to a model", () => {
+  it("keep every value the model offers", () => {
+    expect(fitSettings("image", projectImage, flux)).toEqual(projectImage);
+    expect(fitSettings("video", projectVideo, kling)).toEqual(projectVideo);
+  });
+
+  it("take the model's first choice for a value it does not offer, and the nearest count or length", () => {
+    expect(fitSettings("image", { model: "flux", aspect: "21:9", quality: "auto", count: 4 }, flux)).toEqual({ model: "flux", aspect: "1:1", quality: "standard", count: 2 });
+    expect(fitSettings("video", { model: "kling", resolution: "4k", aspect: "1:1", seconds: 8 }, kling)).toEqual({ model: "kling", resolution: "720p", aspect: "16:9", seconds: 10 });
+  });
+
+  it("fall back to the common choices where the model gives no list", () => {
+    expect(fitSettings("image", { model: "plain", aspect: "5:1", quality: "auto", count: 9 }, plain)).toEqual({ model: "plain", aspect: COMMON_CHOICES.image.aspects[0], quality: "auto", count: 4 });
+  });
+
+  it("are settings the model offers, whatever they were", () => {
+    const images: ImageSettings[] = [projectImage, DEFAULT_GENERATION_SETTINGS.image.defaults, { model: "", aspect: "7:3", quality: "ultra", count: 10 }];
+    for (const settings of images) {
+      for (const model of [flux, plain]) expect(settingProblems("image", fitSettings("image", { ...settings, model: model.id }, model), [model])).toEqual([]);
+    }
+    const videos: VideoSettings[] = [projectVideo, DEFAULT_GENERATION_SETTINGS.video.defaults, { model: "", resolution: "8k", aspect: "2:1", seconds: 60 }];
+    for (const settings of videos) {
+      for (const model of [kling, silent]) expect(settingProblems("video", fitSettings("video", { ...settings, model: model.id }, model), [model])).toEqual([]);
+    }
   });
 });
 
