@@ -9,16 +9,16 @@
 ## 这一块定下的细节
 
 1. **数据只经过 `CanvasBackend`。** 画布从它读快照、发操作、订阅变化、上传文件、给机器人发任务、停止机器人、列模型、读写项目的生成设置、开始和取消生成。浏览器里不存任何东西。
-2. **操作**沿用 infinite-canvas 的 `canvas_apply_ops` 的名字：`add_node`、`update_node`、`delete_node`、`connect_nodes`、`delete_connections`、`set_viewport`、`set_background`。`update_node` 的 `metadata` 按键合并，值为 `null` 的键删掉；`groupId: null` 去掉分组。
-3. **本地先改，再交给后端。** 拖动和缩放节点时只改本地，松手时发一次操作。后端答复之前收到的新快照，会把还没确认的操作叠上去，画面不会跳回去。
+2. **类型和操作用两个负责人提交的契约**：`shared/project-canvas.ts`（`canvas-server`）和 `shared/project-generation.ts`（`generation`），原样拿进来，不改。操作是 `add_node`（`nodeType`，不能是机器人）、`update_node`（`patch` 和 `metadata`，`null` 删掉键，`settings` 和 `file` 整个替换）、`delete_node`、`connect_nodes`、`delete_connections`、`set_viewport`、`set_background`。契约里没有的（机器人的头像、文本节点的回复写回哪里、最近的来往、打开对话）放在 `src/lib/project-canvas/types.ts` 和 `CanvasBackend` 里，在报告里列出来。
+3. **本地先改，再交给后端。** 拖动和缩放节点时只改本地，松手时发一次操作。后端答复之前收到的新快照，会把还没确认的操作叠上去，画面不会跳回去。普通的修改不带 `baseRevision`（按字段后写的为准），生成中服务器改状态时不会把人的拖动整批拒掉。
 4. **撤销和重做**按 infinite-canvas 的规则：最多 50 步，视口不算，撤销后清空选择。但记的是“操作和它的反向操作”，不是整份快照：文档在服务器上，机器人也会改，撤销只撤自己的改动。
 5. **视口**改了 500 毫秒后保存（同 infinite-canvas），不进撤销。
-6. **机器人节点**的编号是 `bot:<botId>`。快照里每个机器人都有名字、头衔、是否负责人、状态、正在做什么、最新输出、等你回复的卡片。没有存过位置的机器人按树排好显示，人或机器人挪过以后才存位置。机器人节点不能删除、复制、打组，面板里不选模型。
+6. **机器人节点**的编号是 `bot:<botId>`，快照里每个机器人都有节点和推出来的状态（`CanvasBotState`）。没人摆过的（`placed: false`）用服务器的默认布局，和程序的树是同一条规则，所以打开时照快照的位置画，不写回。机器人节点不能删除、复制、打组，只能挪和改大小，面板里不选模型。
 7. **派发线**来自快照里 `kind: "dispatch"` 的连线：虚线、另一种颜色、没有连接点、点不中、删不掉。
-8. **自动排列**：负责人在最左，下级在右边一列，每棵子树占自己的一段高度；机器人做出来的节点（`createdBy` 是它、或者从它连出来）排在它右边。“整理”只排机器人和它们做出来的节点。
-9. **文本节点**的面板是“要写什么”和选一个机器人，发出去由机器人写；双击正文仍然可以直接改。
-10. **生成**：空节点在原地出结果；有内容的节点在右边 96 像素处新建节点并连上；数量大于 1 时每个结果一个节点，往下排。分镜每次都在右边新建视频节点，再生成时排在上一个视频下面。生成中可以取消，失败显示原因并可以重试。
-11. **设置的继承**：节点的 `settings` 只存它改过的项，其余跟项目设置走。面板里改过的项带“已改”的标记和“恢复默认”；项目设置改了，没改过的项跟着变。
+8. **自动排列**：负责人在最左，下级在右边一列，每棵子树占自己的一段高度；机器人做出来的节点（`createdBy` 是它、或者从它连出来）排在它右边，从这些节点生成出来的跟着走。“整理”只排机器人和它们做出来的节点，把位置存回去，可以撤销。
+9. **文本节点**的面板是“要写什么”和选一个机器人，发出去由机器人写，回复填进这个文本节点（`CanvasBotTask.targetNodeId`，契约里没有，报告里列出）；双击正文仍然可以直接改。
+10. **生成**：程序只把节点的提示词、改过的设置和连进来的图片、音频交给 `startGeneration`；结果放在哪里由服务器定（空节点在原地，其余在右边新建并连上，排在之前生成的下面）。分镜生成中，程序在它右边将要出结果的地方画一个虚线的“生成中”视频节点。生成中可以取消，失败显示原因并可以重试，被拒绝时显示服务器的原因。
+11. **设置的继承**用契约里的 `resolveSettings`、`modelOffers`、`settingProblems`：节点的 `settings` 只存它改过的项，其余跟项目设置走。面板里改过的项带“已改”的标记和“恢复默认”（删掉这个键）；项目设置改了，没改过的项跟着变。模型不提供的设置标出来。
 12. **没有选 MCP 服务器**时生成按钮不能点，旁边说明要先在项目设置里选服务器，并给一个打开项目设置的按钮。
 13. **`@` 引用**用 app 自己的 `MentionTextarea`：引用写成 `@图片 1` 这样的文字并高亮，不搬 infinite-canvas 的可编辑芯片输入框。
 14. **不新增确认框。** infinite-canvas 的“清空画布”确认改成直接清空、可以撤销，并提示“已清空 · 撤销”。
@@ -31,24 +31,25 @@
 - 页面组件 `ProjectCanvasPage` 的属性是 `{ projectId: string; selectedBotId?: string; backend: CanvasBackend }`。
 - 每个新文件不超过 1,000 行（`file-size-ratchet`）。
 - 新文字都在 `projectCanvas.` 前缀下，四个语言文件（英文、简体、繁体、巴西葡萄牙语）各加在一处，不动原有的键。
-- `shared/project-canvas.ts`（`canvas-server`）和 `shared/project-generation.ts`（`generation`）还没有提交，类型先按章程写在 `src/lib/project-canvas/types.ts`，名字和章程一致，集成时换成共享的类型。
+- `shared/project-canvas.ts` 和 `shared/project-generation.ts` 按负责人提交的原样单独提交一次，之后不改。
 
 ## 文件
 
 | 文件 | 内容 |
 |---|---|
-| `src/lib/project-canvas/types.ts` | 画布文档、快照、机器人状态、操作、生成设置、模型、任务的类型（章程的契约） |
+| `shared/project-canvas.ts`、`shared/project-generation.ts` | 两个负责人的契约，原样 |
+| `src/lib/project-canvas/types.ts` | 契约里没有、只在程序里用的类型：机器人的样子、从文本节点发的任务、最近的来往 |
 | `src/lib/project-canvas/backend.ts` | `CanvasBackend` 接口 |
-| `src/lib/project-canvas/memory-backend.ts` | 内存里的实现：操作、修订号、订阅、模拟生成和机器人回复 |
+| `src/lib/project-canvas/memory-backend.ts` | 内存里的实现：操作、修订号、事件、照服务器的规则模拟生成结果的位置和机器人回复 |
 | `src/lib/project-canvas/ops.ts` | 把操作应用到文档、算反向操作 |
 | `src/lib/project-canvas/history.ts` | 撤销和重做 |
 | `src/lib/project-canvas/geometry.ts` | 节点范围、分组、连线规则、曲线、视口换算、聚焦（搬自 infinite-canvas） |
 | `src/lib/project-canvas/nodes.ts` | 默认尺寸、新建节点、复制粘贴 |
 | `src/lib/project-canvas/selection.ts` | 框选、多选、相关高亮 |
 | `src/lib/project-canvas/references.ts` | 连进来的参考内容和它们的标签 |
-| `src/lib/project-canvas/settings.ts` | 设置的继承、常见选项 |
+| `src/lib/project-canvas/settings.ts` | 面板里每一项是继承还是改过、恢复默认（在 `resolveSettings` 之上） |
 | `src/lib/project-canvas/tree-layout.ts` | 机器人树的排列和“整理” |
-| `src/lib/project-canvas/generation.ts` | 生成结果放在哪里 |
+| `src/lib/project-canvas/generation.ts` | 交给生成的参数、分镜“生成中”占位的位置 |
 | `src/lib/project-canvas/controller.ts` | 画布的小 store（`useSyncExternalStore`） |
 | `src/components/project-canvas/*.tsx` | 页面、视口、节点外壳、连线、各类节点和面板、工具栏、小地图、缩放条、节点列表、右键菜单、项目设置 |
 | `src/testing/project-canvas-sample.ts`、`scripts/testing/project-canvas-preview.tsx` | 预览页和样例数据（负责人、三个成员、一个分镜和它的视频、一张上传的图片、一个文本节点） |
