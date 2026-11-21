@@ -48,6 +48,9 @@ export interface CanvasViewport {
   k: number;
 }
 
+/** The view of a canvas nobody has set a view on. */
+export const CANVAS_UNSET_VIEWPORT: Readonly<CanvasViewport> = { x: 0, y: 0, k: 1 };
+
 export type CanvasBackgroundMode = "lines" | "dots" | "blank";
 
 /** Who put a node there. A bot changes and deletes only nodes it made; the person changes any content node. */

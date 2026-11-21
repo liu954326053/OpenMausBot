@@ -11498,7 +11498,6 @@
   "projectCanvas.saveFailed": "有一处修改没有保存：{reason}",
   "projectCanvas.uploadFailed": "{name} 没有添加：{reason}",
   "projectCanvas.archived": "已归档",
-  "projectCanvas.folderMissing": "文件夹不见了",
   "projectCanvas.folderMissingHint": "项目文件夹不在原处。在它回来之前，不能添加或生成文件。",
   "projectCanvas.tidy": "整理",
   "projectCanvas.tidyHint": "按团队排列机器人，并把各自的产出放在旁边",

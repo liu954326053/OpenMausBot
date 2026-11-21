@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { CANVAS_MAX_NODES, type CanvasConflict, type CanvasDocument, type CanvasNodeCreator, type CanvasNodeType } from "../../shared/project-canvas.ts";
+import { CANVAS_MAX_NODES, CANVAS_UNSET_VIEWPORT, type CanvasConflict, type CanvasDocument, type CanvasNodeCreator, type CanvasNodeType } from "../../shared/project-canvas.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { userError } from "../user-errors.ts";
 import type { CanvasChangeSet, OpsResult } from "./ops.ts";
@@ -56,7 +56,7 @@ type Stored = { document: CanvasDocument; history: Array<CanvasChangeSet & { rev
 type FileRead = { state: "ok"; data: Stored } | { state: "unreadable"; reason: string };
 
 const empty = (projectId: string): Stored => ({
-  document: { projectId, revision: 0, nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 }, backgroundMode: "dots" },
+  document: { projectId, revision: 0, nodes: [], connections: [], viewport: { ...CANVAS_UNSET_VIEWPORT }, backgroundMode: "dots" },
   history: [],
   removed: [],
 });
