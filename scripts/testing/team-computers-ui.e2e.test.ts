@@ -60,8 +60,8 @@ type Computer = { id: string; name: string; section: string | null; state: strin
     await api("POST", "/api/bots", { name: "Ben", section: "Research", modelSelection: { instanceId: "claude", model: "claude-sonnet-5" } });
     const before = (await api("GET", "/api/bots?messages=10")).bots;
     await evaluate("location.reload(); true");
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Actions for Ada");
     await openMap();
+    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Open chat with Ada");
     await click("Desktops");
     await expect.poll(snapshot).toContain('complementary "Desktops"');
     expect((await receipts()).calls.every((call: { method: string }) => call.method === "GET")).toBe(true);
@@ -159,8 +159,8 @@ type Computer = { id: string; name: string; section: string | null; state: strin
     expect(await evaluate("(() => { const action = [...document.querySelectorAll('[data-testid=place-action]')].find(button => button.textContent === 'Open Team map'); action?.click(); return Boolean(action); })()")).toBe(true);
     expect((await receipts()).calls.filter((call: { method: string; path: string }) => call.method === "POST" && call.path === "/sandboxes")).toHaveLength(1);
     await evaluate("location.reload(); true");
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Actions for Ada");
     await openMap();
+    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Open chat with Ada");
     await expect.poll(snapshot).toContain("Desktop for Research department: Engineering desktop");
     await click("Desktop for Research department: Engineering desktop");
     await click("Open desktop");
