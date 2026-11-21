@@ -1,5 +1,5 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node-prompt-panel.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
 import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, mentionReferences, referenceCounts, referenceFiles } from "../../../shared/project-canvas-references";
@@ -10,7 +10,6 @@ import { CitationBadge } from "@/components/CitationUI";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
 import { ThreadRefText } from "@/components/ThreadRefs";
-import { approvalDetailText } from "@/lib/approval-summary";
 import { splitTranscriptCitations } from "@/lib/citations";
 import { cn } from "@/lib/cn";
 import { splitTranscriptAttachments } from "@/lib/composer-attachments";
@@ -21,6 +20,7 @@ import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
 import { ModelPicker, PANEL_SURFACE, PanelLabel, problemText, PromptInput, ReferenceBar, SettingsPopover } from "./panel-parts";
+import { WaitingCard } from "./WaitingCard";
 
 export function NodePanel({ node }: { node: CanvasNode }) {
   switch (node.type) {
@@ -141,6 +141,18 @@ function PromptPanel({ node }: { node: CanvasNode }) {
   );
 }
 
+/** Reads a bot's conversation as its chat would: when its panel opens, and as replies come in while the panel stays open
+ * and the person is at the window. */
+function useReadsConversation(botId: string) {
+  const ui = useCanvasUi();
+  const unread = ui.state.looks[botId]?.unread;
+  const opening = useRef(true);
+  useEffect(() => {
+    if (unread && (opening.current || document.hasFocus())) ui.controller.readConversation(botId);
+    opening.current = false;
+  }, [botId, unread, ui.controller]);
+}
+
 function BotPanel({ node }: { node: CanvasNode }) {
   const ui = useCanvasUi();
   const botId = botIdOfNode(node.id) ?? "";
@@ -151,6 +163,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [exchange, setExchange] = useState<CanvasExchangeMessage[] | null>(null);
   const outputId = bot?.output?.messageId;
+  useReadsConversation(botId);
   useEffect(() => {
     if (!exchangeOpen) return;
     let live = true;
@@ -162,7 +175,6 @@ function BotPanel({ node }: { node: CanvasNode }) {
   if (!bot) return null;
   const references = connectedReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
   const busy = bot.status === "working" || bot.status === "queued";
-  const waitingDetail = bot.waiting ? approvalDetailText(bot.waiting.card) : "";
   const send = async () => {
     if (!text.trim()) return;
     setSending(true);
@@ -180,16 +192,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   return (
     <div className={PANEL_SURFACE}>
       <ReferenceBar node={node} references={references} />
-      {bot.waiting ? (
-        <div role="status" className="flex flex-col gap-2 rounded-lg border border-warning/50 p-3">
-          <div className="text-[13px] font-medium leading-[18px] text-ink">{bot.waiting.card.title}</div>
-          {waitingDetail ? <div className="text-[12px] leading-4 text-ink-secondary">{waitingDetail}</div> : null}
-          <button type="button" className="ui-button ui-button-sm self-start" onClick={() => ui.controller.openChat(botId, bot.waiting?.threadId)}>
-            <ExternalLink size={14} aria-hidden="true" />
-            {t("projectCanvas.bot.answerInChat")}
-          </button>
-        </div>
-      ) : null}
+      {bot.waiting ? <WaitingCard bot={bot} waiting={bot.waiting} onOpenChat={() => ui.controller.openChat(botId, bot.waiting?.threadId)} /> : null}
       <PromptInput
         value={text}
         onChange={setText}

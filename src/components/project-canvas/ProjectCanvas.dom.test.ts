@@ -2,12 +2,16 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botNodeId } from "../../../shared/project-canvas";
+
+vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
+
+import { botNodeId, type CanvasBotState } from "../../../shared/project-canvas";
 import { loadLocale, setLocale } from "@/lib/i18n";
 import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
 import { PLACEMENT_GAP } from "@/lib/project-canvas/placement";
-import { SAMPLE_EXCHANGES, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "@/testing/project-canvas-sample";
+import { initialState, StoreContext, type AppState, type Bot } from "@/state/store";
+import { SAMPLE_EXCHANGES, SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "@/testing/project-canvas-sample";
 import { ProjectCanvas } from "./ProjectCanvas";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -76,12 +80,26 @@ async function choose(select: HTMLSelectElement, value: string) {
   });
 }
 
-async function mount(options: Parameters<typeof sampleCanvasBackend>[0] = {}) {
+async function mount(options: Parameters<typeof sampleCanvasBackend>[0] = {}, store?: { bots: Bot[]; dispatch: () => void }) {
   backend = sampleCanvasBackend({ delayMs: 5, ...options });
-  await act(async () => root.render(createElement(ProjectCanvas, { projectId: SAMPLE_PROJECT_ID, backend })));
+  const canvas = createElement(ProjectCanvas, { projectId: SAMPLE_PROJECT_ID, backend });
+  const value = store && { state: { ...initialState, bots: store.bots } as AppState, dispatch: store.dispatch, flushBotPatches: vi.fn(), refreshInstances: vi.fn(), refreshModels: vi.fn() };
+  await act(async () => root.render(value ? createElement(StoreContext.Provider, { value: value as never }, canvas) : canvas));
   await settle();
   await settle();
 }
+
+const unreadDot = (botId: string) => nodeElement(botNodeId(botId))!.querySelector<HTMLElement>("[data-bot-unread]");
+const approvalCard = () => panel()!.querySelector<HTMLElement>('[data-ask-card="approval"]');
+
+async function waitOn(card: NonNullable<CanvasBotState["waiting"]>["card"]) {
+  await act(async () => backend.updateBots((snapshot) => {
+    snapshot.bots.lena!.waiting = { threadId: "thread-lena", messageId: "l-9", card };
+  }));
+  await settle();
+}
+
+const RM_DRAFTS = { title: "Approval needed", subtitle: "rm -rf drafts", options: ["Allow", "Deny"], requestId: "req-rm", tool: "Bash", requestType: "permission" as const };
 
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", sizedObserver(4000, 3000));
@@ -161,6 +179,99 @@ describe("the project canvas", () => {
     expect(panel()!.textContent).toContain("Generate “Shot 1”?");
     expect(panel()!.textContent).toContain("A bot may start 3 videos a day without you, and this one has started 3. Confirm to let it make 1 more.");
     expect(panel()!.textContent).not.toContain("Words generation wrote");
+  });
+
+  it("words a bot's approval as the chat does in the person's language, answered in the conversation where the page has no app store", async () => {
+    await loadLocale("zh");
+    try {
+      await mount();
+      await waitOn(RM_DRAFTS);
+      await clickNode(botNodeId("lena"));
+      const card = approvalCard()!;
+      expect(card.textContent).toContain("Lena 想执行命令");
+      expect(card.textContent).toContain("rm -rf drafts");
+      expect(panel()!.textContent).not.toContain("Approval needed");
+      expect(card.querySelector("[data-canvas-action]")).toBeNull();
+      await act(async () => buttonByText(card, "到对话里回答")!.click());
+      expect(backend.openedChats).toEqual([{ botId: "lena", threadId: "thread-lena" }]);
+    } finally {
+      setLocale("en");
+    }
+  });
+
+  it("puts the chat's own approve and deny on a bot's approval card in the app", async () => {
+    const dispatch = vi.fn();
+    await mount({}, { bots: [{ id: "lena", name: "Lena", color: "coral", threadId: "thread-lena", tasks: [] } as unknown as Bot], dispatch });
+    await waitOn(RM_DRAFTS);
+    await clickNode(botNodeId("lena"));
+    const card = approvalCard()!;
+    expect(buttonByText(card, "Answer in the conversation")).toBeUndefined();
+    expect(card.querySelector("[data-canvas-action=allow]")!.textContent).toBe("Allow once");
+    await act(async () => card.querySelector<HTMLElement>("[data-canvas-action=allow]")!.click());
+    await act(async () => card.querySelector<HTMLElement>("[data-canvas-action=deny]")!.click());
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
+      { type: "decideRequest", threadId: "thread-lena", requestId: "req-rm", behavior: "allow" },
+      { type: "decideRequest", threadId: "thread-lena", requestId: "req-rm", behavior: "deny", message: "Denied by the user." },
+    ]);
+  });
+
+  it("names a bot's question as the chat does, not by the server's title", async () => {
+    await mount();
+    await waitOn({ title: "Your bot has a question", subtitle: "Which page first?", options: ["Home", "Pricing"], requestId: "req-q", requestType: "question" });
+    await clickNode(botNodeId("lena"));
+    expect(panel()!.textContent).toContain("Lena has a question");
+    expect(panel()!.textContent).toContain("Which page first?");
+    expect(panel()!.textContent).not.toContain("Your bot has a question");
+  });
+
+  it("marks a bot with an unread reply with the app's unread dot, and reads its conversation when its panel opens", async () => {
+    await mount({ looks: { ...SAMPLE_LOOKS, mira: { ...SAMPLE_LOOKS.mira!, unread: true } } });
+    expect(unreadDot("mira")!.getAttribute("aria-label")).toBe("Unread");
+    expect(["kai", "lena", "otto"].map(unreadDot)).toEqual([null, null, null]);
+    await clickNode(botNodeId("mira"));
+    await settle();
+    expect(backend.readConversations).toEqual([{ botId: "mira", threadId: "thread-mira" }]);
+    expect(unreadDot("mira")).toBeNull();
+  });
+
+  it("reads a reply that comes while the bot's panel is open, and leaves one that comes after it closed unread", async () => {
+    await mount({ delayMs: 40 });
+    const ask = async (text: string) => {
+      await type(panel()!.querySelector("textarea")!, text);
+      await act(async () => buttonByText(panel()!, "Send")!.click());
+    };
+    await clickNode(botNodeId("otto"));
+    await ask("Cut the teaser");
+    await settle(80);
+    expect(nodeElement(botNodeId("otto"))!.textContent).toContain("Done: Cut the teaser");
+    expect(unreadDot("otto")).toBeNull();
+    expect(backend.readConversations).toEqual([{ botId: "otto", threadId: "thread-otto" }]);
+
+    await ask("Make it shorter");
+    await key({ key: "Escape" });
+    expect(panel()).toBeNull();
+    await settle(80);
+    expect(nodeElement(botNodeId("otto"))!.textContent).toContain("Done: Make it shorter");
+    expect(unreadDot("otto")).not.toBeNull();
+    expect(backend.readConversations).toHaveLength(1);
+  });
+
+  it("reads a bot's conversation on opening its panel with the window in the background, and leaves what comes in while the person is away unread", async () => {
+    const away = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    try {
+      await mount({ delayMs: 40, looks: { ...SAMPLE_LOOKS, otto: { ...SAMPLE_LOOKS.otto!, unread: true } } });
+      await clickNode(botNodeId("otto"));
+      await settle();
+      expect(unreadDot("otto")).toBeNull();
+      await type(panel()!.querySelector("textarea")!, "Cut the teaser");
+      await act(async () => buttonByText(panel()!, "Send")!.click());
+      await settle(80);
+      expect(nodeElement(botNodeId("otto"))!.textContent).toContain("Done: Cut the teaser");
+      expect(unreadDot("otto")).not.toBeNull();
+      expect(backend.readConversations).toEqual([{ botId: "otto" }]);
+    } finally {
+      away.mockRestore();
+    }
   });
 
   it("never deletes a bot, deletes a content line and node, and undoes both", async () => {

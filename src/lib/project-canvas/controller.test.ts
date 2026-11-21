@@ -104,6 +104,13 @@ describe("the canvas controller", () => {
     expect(controller.getState().looks.mira).toEqual({ color: "green" });
   });
 
+  it("reads a bot's conversation where its newest reply on the canvas is, or its main one", async () => {
+    const { backend, controller } = await started();
+    controller.readConversation("mira");
+    controller.readConversation("kai");
+    expect(backend.readConversations).toEqual([{ botId: "mira", threadId: "thread-mira" }, { botId: "kai" }]);
+  });
+
   it("undoes and redoes a deletion with its connections, and drops redo after a new change", async () => {
     const { backend, controller } = await started();
     controller.apply([{ type: "delete_node", id: "city-night" }]);

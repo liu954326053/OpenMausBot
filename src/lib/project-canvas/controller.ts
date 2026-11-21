@@ -211,6 +211,10 @@ export class CanvasController {
     this.backend.openChat(this.projectId, botId, threadId);
   }
 
+  readConversation(botId: string): void {
+    this.backend.readConversation(this.projectId, botId, this.state.snapshot?.bots[botId]?.output?.threadId);
+  }
+
   fileUrl(file: Parameters<CanvasBackend["fileUrl"]>[1]): string {
     return this.backend.fileUrl(this.projectId, file);
   }

@@ -169,14 +169,18 @@ describe("the project canvas on the app's server", () => {
     expect(canvasErrorText(new Error("Disk full"))).toBe("Disk full");
   });
 
-  it("draws each bot as the app's store has it", async () => {
+  it("draws each bot as the app's store has it, unread as its row shows it", async () => {
     const { backend } = backendWith([
       bot({ id: "lead", color: "purple", avatarUrl: "/api/bots/lead/avatar", avatarZoom: 1.5, avatarFocusX: 0.2, avatarFocusY: 0.8, mascotBody: null }),
       bot({ id: "writer", color: "teal", mascotFaceColor: "light" as Bot["mascotFaceColor"] }),
+      bot({ id: "editor", tasks: [{ threadId: "e-1" }, { threadId: "e-2", unread: true }] as Bot["tasks"] }),
+      bot({ id: "runner", unread: true, tasks: [{ threadId: "r-1", unread: true, routineRunId: "run-1" }] as Bot["tasks"] }),
     ]);
     expect(await backend.readBotLooks("p1")).toEqual({
       lead: { color: "purple", avatarUrl: "/api/bots/lead/avatar", avatarZoom: 1.5, avatarFocusX: 0.2, avatarFocusY: 0.8, mascotBody: null },
       writer: { color: "teal", mascotFaceColor: "light" },
+      editor: { color: "blue", unread: true },
+      runner: { color: "blue" },
     });
     expect(sent).toEqual([]);
   });
@@ -191,10 +195,31 @@ describe("the project canvas on the app's server", () => {
     expect(onChange).not.toHaveBeenCalled();
     backend.followBots([{ ...lead, color: "red" }]);
     backend.followBots([lead, bot({ id: "writer" })]);
-    expect(onChange).toHaveBeenCalledTimes(2);
+    backend.followBots([{ ...lead, unread: true }]);
+    expect(onChange).toHaveBeenCalledTimes(3);
     stop();
     backend.followBots([{ ...lead, color: "green" }]);
-    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenCalledTimes(3);
+  });
+
+  it("reads the conversation named, or the bot's main one, as opening it does, and only while it is unread", async () => {
+    const { backend } = backendWith([
+      bot({ id: "writer", threadId: "t-open", mainThreadId: "t-main", tasks: [{ threadId: "t-main", unread: true }, { threadId: "t-reply", unread: true }, { threadId: "t-open" }] as Bot["tasks"] }),
+      bot({ id: "solo", unread: true }),
+      bot({ id: "quiet" }),
+    ]);
+    backend.readConversation("p1", "writer", "t-reply");
+    backend.readConversation("p1", "writer");
+    backend.readConversation("p1", "writer", "t-open");
+    backend.readConversation("p1", "solo");
+    backend.readConversation("p1", "quiet");
+    backend.readConversation("p1", "nobody");
+    await vi.waitFor(() => expect(sent).toHaveLength(3));
+    expect(sent.map(({ method, path, body }) => [`${method} ${path}`, JSON.parse(String(body))])).toEqual([
+      ["POST /api/bots/writer/read", { threadId: "t-reply" }],
+      ["POST /api/bots/writer/read", { threadId: "t-main" }],
+      ["POST /api/bots/solo/read", { threadId: "solo-open" }],
+    ]);
   });
 
   it("reads a bot's latest exchange from the conversation its tasks go to", async () => {

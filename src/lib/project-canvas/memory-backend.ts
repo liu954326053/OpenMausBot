@@ -69,6 +69,7 @@ export interface MemoryCanvasBackend extends CanvasBackend {
   /** Changes what the server derives (bots, members) and tells listeners, as a `bots` event does. */
   updateBots(change: (snapshot: CanvasSnapshot) => void): void;
   readonly openedChats: Array<{ botId: string; threadId?: string }>;
+  readonly readConversations: Array<{ botId: string; threadId?: string }>;
 }
 
 /** A task a bot is on or has queued, with the node its reply becomes when it was written in a text node with text. */
@@ -93,6 +94,7 @@ function uniquePath(folder: string, name: string, taken: ReadonlySet<string>): s
 /** A `CanvasBackend` that keeps one project's canvas in memory and plays the server's part, for previews and tests. */
 export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryCanvasBackend {
   let snapshot = structuredClone(options.snapshot);
+  let looks = structuredClone(options.looks ?? {});
   let generation = structuredClone(options.generation.settings);
   const projectId = snapshot.project.id;
   const fileUrls = new Map(Object.entries(options.fileUrls ?? {}));
@@ -104,6 +106,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const jobs = new Map<string, GenerationJob>();
   const delay = options.delayMs ?? 900;
   const openedChats: Array<{ botId: string; threadId?: string }> = [];
+  const readConversations: Array<{ botId: string; threadId?: string }> = [];
   let counter = 0;
   const newId = (prefix: string) => `${prefix}-${++counter}`;
 
@@ -158,6 +161,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     if (into && (beside || into.metadata?.content?.trim())) addReply(into, task, text, beside ?? replyNode(into));
     else if (into) commit([{ type: "update_node", id: into.id, metadata: { content: text } }]);
     if (rest.length) botTimers.set(botId, setTimeout(() => finishTask(botId), delay));
+    looks = { ...looks, [botId]: { ...(looks[botId] ?? { color: "silver" }), unread: true } };
     showTasks(botId, { ...(rest.length ? {} : { status: "idle" as const, doing: undefined }), output: { text, threadId, messageId: replyId, at: Date.now() } });
   };
 
@@ -203,6 +207,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
 
   const backend: MemoryCanvasBackend = {
     openedChats,
+    readConversations,
     current: () => structuredClone(snapshot),
     updateBots(change) {
       const next = structuredClone(snapshot);
@@ -268,7 +273,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
 
     async readBotLooks(id) {
       ensureProject(id);
-      return structuredClone(options.looks ?? {});
+      return structuredClone(looks);
     },
 
     async sendTask(id, task) {
@@ -312,6 +317,16 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ensureProject(id);
       openedChats.push({ botId, ...(threadId ? { threadId } : {}) });
       options.onOpenChat?.(botId, threadId);
+    },
+
+    readConversation(id, botId, threadId) {
+      ensureProject(id);
+      readConversations.push({ botId, ...(threadId ? { threadId } : {}) });
+      const look = looks[botId];
+      if (!look?.unread) return;
+      const { unread: _read, ...read } = look;
+      looks = { ...looks, [botId]: read };
+      emit();
     },
 
     async readGenerationSettings(id) {

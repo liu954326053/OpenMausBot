@@ -104,6 +104,24 @@ describe("the in-memory canvas backend", () => {
     expect(backend.current().connections).toEqual(before.connections);
   });
 
+  it("keeps a bot's reply unread until its conversation is read, and tells listeners once it is", async () => {
+    const backend = sampleCanvasBackend({ delayMs: 100 });
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "otto", text: "Cut the teaser" });
+    expect((await backend.readBotLooks(SAMPLE_PROJECT_ID)).otto).toEqual({ color: "teal" });
+    await vi.advanceTimersByTimeAsync(100);
+    expect((await backend.readBotLooks(SAMPLE_PROJECT_ID)).otto).toEqual({ color: "teal", unread: true });
+    let told = 0;
+    backend.subscribe(SAMPLE_PROJECT_ID, () => {
+      told += 1;
+    });
+    backend.readConversation(SAMPLE_PROJECT_ID, "otto", "thread-otto");
+    backend.readConversation(SAMPLE_PROJECT_ID, "otto", "thread-otto");
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await backend.readBotLooks(SAMPLE_PROJECT_ID)).otto).toEqual({ color: "teal" });
+    expect(told).toBe(1);
+    expect(backend.readConversations).toEqual([{ botId: "otto", threadId: "thread-otto" }, { botId: "otto", threadId: "thread-otto" }]);
+  });
+
   it("decides when a task is sent whether its reply fills the node, so what the person types meanwhile stays", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: () => "The bot's line" });
     await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "text", position: { x: 3000, y: 0 } }] });
