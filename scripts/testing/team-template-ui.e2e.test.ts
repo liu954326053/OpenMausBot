@@ -6,7 +6,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { request } from "../mcp-server.ts";
-import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { fromTeamMapAdd, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -66,28 +66,26 @@ describe("additive template imports in the real renderer", () => {
       return true;
     })()`);
     for (const source of ["library", "folder"]) {
-      await click("New or share");
+      await expect.poll(() => evaluate(fromTeamMapAdd(source === "library" ? "Templates" : "Import…")), { timeout: 20_000 }).toBe(true);
       if (source === "library") {
-        await click("Templates");
         await expect.poll(snapshot, { timeout: 10_000 }).toContain('button "Add Sales crew"');
         await click("Add Sales crew");
         await expect.poll(snapshot, { timeout: 10_000 }).toContain("Outreach writer");
         await click("Add team");
       } else {
-        await click("Import…");
         // A browser chooses a folder through the input's change handler, not the OS picker; a folder holding the legacy team file.
         await evaluate(`(() => { const input = document.querySelector('[role=dialog] input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([JSON.stringify(window.templateFixture)], 'team.mausteam.json', { type: 'application/json' })); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await expect.poll(snapshot, { timeout: 10_000 }).toContain("Outreach writer");
         await click("Add");
       }
       const section = source === "library" ? "Sales crew" : "Sales crew 2";
-      await expect.poll(snapshot, { timeout: 10_000 }).toContain(`button "${section}"`);
+      await expect.poll(snapshot, { timeout: 10_000 }).toContain(`button "Arrange ${section} department"`);
       const current = await api("/api/bots");
       expect(current.bots.filter((bot: { section?: string }) => bot.section === section)).toHaveLength(2);
       for (const bot of original.bots) expect(withoutReadState(current.bots.find((value: { id: string }) => value.id === bot.id))).toEqual(withoutReadState(bot));
       expect(withoutReadState(await control("messages", "--bot", info!.botId, "--limit", "10"))).toEqual(withoutReadState(transcript));
-      expect(await snapshot()).toContain('button "Existing work"');
-      expect(await snapshot()).toContain('button "Personal"');
+      expect(await snapshot()).toContain('button "Arrange Existing work department"');
+      expect(await snapshot()).toContain('button "Arrange Personal department"');
     }
     const evidence = join(ROOT, ".omb-scratch", "verify-evidence", "template-import-sections.png");
     await ui("screenshot", "--out", evidence);

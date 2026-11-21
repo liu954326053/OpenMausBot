@@ -8,7 +8,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { BOT_ROLES } from "../../src/lib/bot-roles.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { OPEN_TEMPLATES, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -69,8 +69,7 @@ describe("bot setup and tools in the real renderer", () => {
       await expect.poll(snapshot, { timeout: 10_000 }).toContain("Connect another app");
     };
     const reviewReadyBot = async (name: string, title: string) => {
-      await click("New or share");
-      await click("Templates");
+      await expect.poll(() => evaluate(OPEN_TEMPLATES), { timeout: 20_000 }).toBe(true);
       await expect.poll(snapshot, { timeout: 20_000 }).toContain(`Add ${name}, ${title}`);
       await click(`Add ${name}, ${title}`);
       await expect.poll(snapshot, { timeout: 10_000 }).toContain("Starting role");
@@ -106,9 +105,11 @@ describe("bot setup and tools in the real renderer", () => {
     expect(original.map((bot) => bot.name)).not.toContain(created[0].name);
     expect(created[0].computer).toBe(original[0].computer);
     expect(created[0].browser).toBe(original[0].browser);
-    // Its chat is open, ready for the first message.
-    await expect.poll(() => evaluate("document.activeElement?.getAttribute('aria-label')"), { timeout: 10_000 }).toBe(`Message ${created[0].name}`);
+    // The team map shows it, and its chat opens from its card.
+    await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-bot-id="${created[0].id}"]'))`), { timeout: 10_000 }).toBe(true);
     expect(await dialogCount()).toBe(0);
+    await click(`Open chat with ${created[0].name}`);
+    await expect.poll(() => evaluate(`Boolean(document.querySelector('textarea[aria-label="Message ${created[0].name}"]'))`), { timeout: 10_000 }).toBe(true);
 
     // Give the selected disposable bot real usage so its header shortcut
     // exercises the same external open action as the shipped chat header.
@@ -197,8 +198,8 @@ describe("bot setup and tools in the real renderer", () => {
     await openApps();
     await expect.poll(fixtureSwitch, { timeout: 10_000 }).toBe("false");
 
-    // New bot from above settings puts the new bot's chat in front: no
-    // modal is left behind to hold the focus.
+    // New bot from above settings puts the team map in front: no modal is
+    // left behind to hold the focus.
     const beforeShortcut = await bots();
     await press("Control+n");
     await expect.poll(async () => (await bots()).length, { timeout: 10_000 }).toBe(beforeShortcut.length + 1);

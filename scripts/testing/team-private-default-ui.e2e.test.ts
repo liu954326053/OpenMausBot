@@ -16,7 +16,7 @@ import { SPOTLIGHTS } from "../../src/lib/first-conversation.ts";
 import { TOUR_STEPS } from "../../src/lib/guided-tour.ts";
 import { NOTICES } from "../../src/lib/notices.ts";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "./cloud-send-fixture.ts";
-import { agentBrowser, ensureUiBrowser, sessionEnv } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, findInSidebar, OPEN_TEAM_MAP, OPEN_TEMPLATES, sessionEnv } from "./control-omb-ui.ts";
 import { mountPreview, REPO_ROOT } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -71,7 +71,14 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     who, evaluate, until, click, browser,
     side: () => evaluate<string | null>("document.querySelector('[data-team-side]')?.dataset.teamSide ?? null"),
     audience: () => evaluate<string | null>("(() => { const label = document.querySelector('[data-team-audience]'); return label ? label.dataset.teamAudience + ':' + label.textContent : null; })()"),
-    listed: () => evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)"),
+    /** The bots a sidebar search for `name` lists; the search is cleared again. */
+    async listed(name: string) {
+      await evaluate(findInSidebar(name));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const rows = await evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)");
+      await evaluate(findInSidebar(""));
+      return rows;
+    },
     words: () => evaluate<string>("document.body.innerText"),
     /** Who the header says the bot is shared with: "private", "people", "everyone" or "added". */
     sharedWith: () => evaluate<string | null>("document.querySelector('[data-header-share]')?.dataset.headerShare ?? null"),
@@ -96,9 +103,18 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
       await click(`[data-team-side-option="${next}"]`);
       await expect.poll(app.side, { timeout: 30_000 }).toBe(next);
     },
-    async openBot(id: string) {
+    async openBot(bot: Pick<Bot, "id" | "name">) {
       await evaluate(DISMISS);
-      await click(`[data-sidebar-bot-row="${id}"]`);
+      await evaluate(findInSidebar(bot.name));
+      await click(`[data-sidebar-bot-row="${bot.id}"]`);
+      await until(`document.querySelector('textarea[placeholder^="Message"]')`);
+      await evaluate(findInSidebar(""));
+    },
+    /** A bot in no project opens from its card on the team map. */
+    async openFromMap(bot: Pick<Bot, "id" | "name">) {
+      await evaluate(DISMISS);
+      await expect.poll(() => evaluate<boolean>(OPEN_TEAM_MAP), { timeout: 30_000, interval: 400 }).toBe(true);
+      await click(`button[aria-label="Open chat with ${bot.name}"]`);
       await until(`document.querySelector('textarea[placeholder^="Message"]')`);
     },
     async openList() {
@@ -168,11 +184,14 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     const rui = await openAs("rui", DESKTOP);
     await rui.ready();
     const before = new Set((await botsOf("rui")).map((bot) => bot.id));
-    await rui.click('button[aria-label="New or share"]');
+    await expect.poll(() => rui.evaluate<boolean>(OPEN_TEAM_MAP), { timeout: 30_000, interval: 400 }).toBe(true);
+    expect(await rui.evaluate<string>("document.querySelector('[data-team-map-rooms]')?.parentElement.textContent ?? ''"), "a User is offered a new group chat on the team map").toContain("New group chat");
+    expect(await rui.evaluate<boolean>(`Boolean(document.querySelector('summary[aria-label="Add to team map"]'))`), "and no Templates, which stay an admin's").toBe(false);
+    await rui.click('button[aria-label="New"]');
     await rui.until(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].some((item) => /^new bot$/i.test(item.textContent.trim()))`);
     const offered = await rui.evaluate<string[]>(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((item) => item.textContent.trim())`);
-    expect(offered, "a User is offered New bot").toEqual(expect.arrayContaining(["New bot", "New group chat"]));
-    expect(offered, "and no Templates, which stay an admin's").not.toContain("Templates");
+    expect(offered, "a User is offered New bot").toContain("New bot");
+    expect(offered, "and no Templates").not.toContain("Templates");
     await rui.shot("00-rui-user-plus-menu-desktop");
     await rui.evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((item) => /^new bot$/i.test(item.textContent.trim())).click(); true`);
     await rui.type("[data-new-bot-name] input", "Quotes");
@@ -184,7 +203,8 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     expect([(quotes as Bot & { createdBy?: string }).createdBy, quotes.yourAccess], "he looks after it").toEqual([address("rui"), "edit"]);
     for (const admin of ["olive", "ada"] as const) expect((await botsOf(admin)).find((bot) => bot.id === quotes.id)?.yourAccess, admin).toBe("edit");
 
-    await rui.until(`document.querySelector('[data-sidebar-bot-row="${quotes.id}"]') && document.querySelector('textarea[placeholder^="Message"]')`);
+    await rui.until(`document.querySelector('[data-bot-id="${quotes.id}"]')`);
+    await rui.openFromMap(quotes);
     await expect.poll(rui.audience, { timeout: 30_000 }).toBe("me:Private · only you");
     await expect.poll(rui.sharedWith, { timeout: 30_000 }).toBe("private");
     expect(await rui.faces(), "no face and no mark beside Share").toEqual([]);
@@ -192,11 +212,11 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     expect(await rui.fits("[data-header-share] [data-share-bot-button]"), "Share is at the top of the chat").toBe(true);
     await rui.shot("01-rui-new-bot-private-desktop");
     await rui.choose("team");
-    expect(await rui.listed(), "a bot nobody else can use is not on the Team side").not.toContain(quotes.id);
-    expect(await rui.listed()).toContain(scout);
+    expect(await rui.listed(quotes.name), "a bot nobody else can use is not on the Team side").not.toContain(quotes.id);
+    expect(await rui.listed("Scout")).toContain(scout);
     await rui.shot("02-rui-team-side-without-it-desktop");
     await rui.choose("me");
-    expect(await rui.listed()).toContain(quotes.id);
+    expect(await rui.listed(quotes.name)).toContain(quotes.id);
 
     for (const who of ["marta", "ben"] as const) {
       expect((await botsOf(who)).some((bot) => bot.id === quotes.id), `${who}'s list`).toBe(false);
@@ -205,10 +225,10 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     }
     const marta = await openAs("marta", DESKTOP);
     await marta.ready();
-    expect(await marta.listed()).not.toContain(quotes.id);
+    expect(await marta.listed(quotes.name)).not.toContain(quotes.id);
     expect(await marta.words()).not.toContain(quotes.name);
     await marta.choose("team");
-    expect(await marta.listed()).not.toContain(quotes.id);
+    expect(await marta.listed(quotes.name)).not.toContain(quotes.id);
     expect(await marta.words()).not.toContain(quotes.name);
     await marta.shot("03-marta-cannot-see-it-desktop");
     await marta.close();
@@ -218,7 +238,7 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
   it("Rui shares it with Marta from the header's Share: her face shows there, she is told once in her inbox and can chat", async () => {
     const rui = await openAs("rui", DESKTOP);
     await rui.ready();
-    await rui.openBot(quotes.id);
+    await rui.openBot(quotes);
     await rui.openShare();
     expect(await rui.evaluate<string>("document.querySelector('[data-share-bot] [data-share-general]').dataset.shareGeneral")).toBe("none");
     await rui.shot("04-rui-share-dialog-desktop");
@@ -232,7 +252,7 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     expect(await rui.fits(`[data-header-share] [data-access-face="${address("marta")}"]`)).toBe(true);
     await rui.shot("05-rui-shared-with-marta-desktop");
     await rui.choose("team");
-    expect(await rui.listed(), "shared with someone, it is on the Team side now").toContain(quotes.id);
+    expect(await rui.listed(quotes.name), "shared with someone, it is on the Team side now").toContain(quotes.id);
     await rui.choose("me");
 
     expect(await notices("marta")).toEqual([`Rui shared ${quotes.name} with you.`]);
@@ -241,12 +261,12 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
 
     const marta = await openAs("marta", DESKTOP);
     await marta.ready();
-    await marta.until(`document.querySelector('[data-sidebar-bot-row="${quotes.id}"]')`);
+    await expect.poll(() => marta.listed(quotes.name), { timeout: 60_000, interval: 500 }).toContain(quotes.id);
     const line = `document.body.innerText.includes(${JSON.stringify(`Rui shared ${quotes.name} with you.`)})`;
     if (!(await marta.evaluate<boolean>(line))) await marta.evaluate(`[...document.querySelectorAll('button')].find((button) => /inbox/i.test(button.getAttribute('aria-label') ?? button.textContent ?? ''))?.click(); true`);
     await marta.until(line);
     await marta.shot("06-marta-inbox-line-desktop");
-    await marta.openBot(quotes.id);
+    await marta.openBot(quotes);
     await expect.poll(marta.audience, { timeout: 30_000 }).toBe("me:Private · only you");
     await marta.say("What does a quote for ten seats cost?");
     await expect.poll(marta.sharedWith, { timeout: 30_000 }).toBe("added");
@@ -258,7 +278,7 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     expect(mine.access, "the server sends her no list").toBeUndefined();
     await marta.close();
 
-    await rui.openBot(quotes.id);
+    await rui.openBot(quotes);
     await rui.openShare();
     await rui.click('[data-share-bot] button[aria-label="General access"]');
     await rui.click('[role="menu"] [data-menu-key="everyone"]');
@@ -279,7 +299,8 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     const scratch = made.body.bot.id as string;
     const rui = await openAs("rui", DESKTOP);
     await rui.ready();
-    const menu = async (id: string) => {
+    const menu = async (id: string, name: string) => {
+      await rui.evaluate(findInSidebar(name));
       await rui.until(`document.querySelector('[data-sidebar-bot-row="${id}"]')`);
       await rui.evaluate(`(() => { const row = document.querySelector('[data-sidebar-bot-row="${id}"]'); const box = row.getBoundingClientRect();
         row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + 20, clientY: box.top + 10 })); return true; })()`);
@@ -288,13 +309,13 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     };
     const closeMenu = async () => { await rui.browser("press", "Escape"); await rui.until("!document.querySelector('[data-bot-menu]')"); };
 
-    expect((await menu(quotes.id)).find(([label]) => label === "Delete"), "shared with everyone: shown, with why").toEqual(["Delete", true, "Only an admin can delete a shared bot. Stop sharing it first."]);
+    expect((await menu(quotes.id, quotes.name)).find(([label]) => label === "Delete"), "shared with everyone: shown, with why").toEqual(["Delete", true, "Only an admin can delete a shared bot. Stop sharing it first."]);
     await rui.shot("17-rui-menu-shared-bot-delete-is-admins-desktop");
     await closeMenu();
-    expect((await menu(scout)).some(([label]) => label === "Delete"), "no Delete on a bot he does not look after").toBe(false);
+    expect((await menu(scout, "Scout")).some(([label]) => label === "Delete"), "no Delete on a bot he does not look after").toBe(false);
     await closeMenu();
 
-    expect((await menu(scratch)).find(([label]) => label === "Delete")?.slice(0, 2)).toEqual(["Delete", false]);
+    expect((await menu(scratch, "Scratchpad")).find(([label]) => label === "Delete")?.slice(0, 2)).toEqual(["Delete", false]);
     await rui.shot("18-rui-menu-own-bot-delete-desktop");
     await rui.evaluate(`[...document.querySelectorAll('[data-bot-menu] button')].find((item) => item.textContent.trim() === "Delete").click(); true`);
     await rui.until(`document.querySelector('[role="alertdialog"]')`);
@@ -312,8 +333,8 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     const rui = await openAs("rui", PHONE);
     await rui.ready();
     await rui.openList();
-    await rui.click(`[data-sidebar-bot-row="${quotes.id}"]`);
-    await rui.until("document.querySelector('textarea[placeholder^=\"Message\"]') && document.querySelector('[data-header-share]')");
+    await rui.openFromMap(quotes);
+    await rui.until("document.querySelector('[data-header-share]')");
     await expect.poll(rui.sharedWith, { timeout: 30_000 }).toBe("people");
     expect(await rui.faces(), "one count for the two people").toEqual(["more:Marta, Ben"]);
     expect(await rui.fits("[data-header-share]"), "who it is shared with and Share are on screen").toBe(true);
@@ -330,7 +351,7 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     const marta = await openAs("marta", PHONE);
     await marta.ready();
     await marta.openList();
-    await marta.click(`[data-sidebar-bot-row="${quotes.id}"]`);
+    await marta.openFromMap(quotes);
     await marta.until("document.querySelector('[data-header-share] [data-shared-with-marker]')");
     expect(await marta.marker()).toBe("Only people added");
     expect(await marta.fits("[data-header-share]")).toBe(true);
@@ -344,9 +365,7 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     await rui.ready();
     const addFromTemplates = async (everyone: boolean) => {
       const before = new Set((await botsOf("ada")).map((bot) => bot.id));
-      await rui.click('button[aria-label="New or share"]');
-      await rui.until(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].some((item) => /templates/i.test(item.textContent))`);
-      await rui.evaluate(`[...document.querySelectorAll('[role="menu"] [role="menuitem"]')].find((item) => /templates/i.test(item.textContent)).click(); true`);
+      await expect.poll(() => rui.evaluate<boolean>(OPEN_TEMPLATES), { timeout: 30_000, interval: 400 }).toBe(true);
       await rui.click("[data-ready-bot] button");
       await rui.until("document.querySelector('[data-new-bot-shared]')");
       expect(await rui.evaluate<string>("document.querySelector('[data-new-bot-shared]').dataset.newBotShared"), "preset to Just me").toBe("me");

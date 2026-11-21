@@ -36,6 +36,37 @@ export const ENABLE_ADVANCED_UI = `(() => {
 })()`;
 /** The sidebar's Tools section starts open, and a click on its header closes it. */
 export const OPEN_SIDEBAR_TOOLS = "(() => { document.querySelector('[data-tour=tools] button[aria-expanded=false]')?.click(); return true; })()";
+/** The team map is a Tools entry in Advanced mode, an account menu item in Simple mode and a Tools menu item on a phone. */
+const SHOW_TEAM_MAP = `const nav = document.querySelector('[data-sidebar-nav="team-map"]');
+  const item = [...document.querySelectorAll("[role=menuitem]")].find((node) => node.textContent.trim() === "Team map");
+  const menu = document.querySelector('button[aria-label="Tools"]') ?? document.querySelector("[data-sidebar-account]")?.closest("button");
+  (nav ?? item ?? menu)?.click();`;
+/** Opens the team map, one step a call: poll it until it returns true. */
+export const OPEN_TEAM_MAP = `(() => {
+  if (document.querySelector("[data-team-canvas]")) return true;
+  ${SHOW_TEAM_MAP}
+  return false;
+})()`;
+/** Picks an item of the team map's Add menu, one step a call: poll it until it returns true. */
+export const fromTeamMapAdd = (label: string): string => `(() => {
+  const add = document.querySelector('summary[aria-label="Add to team map"]');
+  if (!add) { ${SHOW_TEAM_MAP} return false; }
+  const item = [...add.parentElement.querySelectorAll("button")].find((button) => button.textContent.trim() === ${JSON.stringify(label)});
+  item?.click();
+  return Boolean(item);
+})()`;
+export const OPEN_TEMPLATES = fromTeamMapAdd("Templates");
+/** The sidebar lists the main bot and the projects; its search also finds a bot in no project and a room outside projects. */
+export const findInSidebar = (query: string): string => `(() => {
+  if (!document.querySelector("[data-sidebar] input")) document.querySelector("[data-sidebar-search-toggle]")?.click();
+  const input = document.querySelector("[data-sidebar] input");
+  if (!input) return false;
+  if (input.value !== ${JSON.stringify(query)}) {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(query)});
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  return true;
+})()`;
 
 const ENTRIES = {
   threads: { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Isolated OpenMaus Chat" },

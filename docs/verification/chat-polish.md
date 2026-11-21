@@ -29,7 +29,8 @@ No personal provider account, real credentials, or user workspace is used.
 5. Open Settings: search has focus. General uses aligned language
    rows; Appearance retains the existing skins and flattens simple switches.
    Search for Appearance, press Escape to clear search, then Escape to close.
-   New or share displays the actual platform shortcut next to New bot.
+   In Advanced mode the sidebar's New menu displays the actual platform
+   shortcut next to New bot.
 6. Check 1280×900 and 390×844, in Midnight and Atelier. Controls must remain
    reachable, filenames/results wrap or truncate within their surfaces, and the
    document must not overflow horizontally. Restore the viewport afterward.

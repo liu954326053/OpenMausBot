@@ -13,7 +13,7 @@ import { SPOTLIGHTS } from "../../src/lib/first-conversation.ts";
 import { TOUR_STEPS } from "../../src/lib/guided-tour.ts";
 import { NOTICES } from "../../src/lib/notices.ts";
 import { launchCloudSendFixture, type CloudSendFixture, type CloudTeamFixture } from "./cloud-send-fixture.ts";
-import { agentBrowser, ensureUiBrowser, sessionEnv } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, findInSidebar, OPEN_TEAM_MAP, sessionEnv } from "./control-omb-ui.ts";
 import { mountPreview, REPO_ROOT } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -62,7 +62,14 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
   const audience = () => evaluate<string | null>("(() => { const label = document.querySelector('[data-team-audience]'); return label ? label.dataset.teamAudience + ':' + label.textContent : null; })()");
   const app = {
     who, evaluate, side, audience,
-    listed: () => evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)"),
+    /** The bots the sidebar lists, or a sidebar search for `name` lists; the search is cleared again. */
+    async listed(name?: string) {
+      if (name) await evaluate(findInSidebar(name));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const rows = await evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)");
+      if (name) await evaluate(findInSidebar(""));
+      return rows;
+    },
     words: () => evaluate<string>("document.body.innerText"),
     async shot(name: string) {
       await new Promise((resolve) => setTimeout(resolve, 400));
@@ -70,7 +77,9 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     },
     async openScout(on: "me" | "team") {
       await evaluate(DISMISS);
-      await expect.poll(() => evaluate<boolean>(`(() => { const row = document.querySelector('[data-sidebar-bot-row="${scout}"]'); row?.click(); return Boolean(row); })()`), { timeout: 60_000, interval: 500 }).toBe(true);
+      // Scout is in no project: it opens from its card on the team map.
+      await expect.poll(() => evaluate<boolean>(OPEN_TEAM_MAP), { timeout: 60_000, interval: 500 }).toBe(true);
+      await expect.poll(() => evaluate<boolean>(`(() => { const open = document.querySelector('button[aria-label="Open chat with Scout"]'); open?.click(); return Boolean(open); })()`), { timeout: 60_000, interval: 500 }).toBe(true);
       await expect.poll(async () => `${await evaluate<string>("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''")} ${(await audience())?.split(":")[0]}`, { timeout: 30_000 }).toBe(`Message Scout ${on}`);
     },
     async openList() {
@@ -102,7 +111,7 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     saved: () => evaluate<string | null>(`localStorage.getItem("omb.team-side.team-acme-switch." + ${JSON.stringify(`${who}@acme.test`)})`),
     async reload() {
       await evaluate("location.reload(); true");
-      await expect.poll(() => evaluate<boolean>(`Boolean(document.querySelector('[data-sidebar-bot-row="${scout}"]'))`), { timeout: 60_000, interval: 500 }).toBe(true);
+      await expect.poll(() => evaluate<boolean>(`Boolean(document.querySelector('textarea[placeholder="Message Scout"]'))`), { timeout: 60_000, interval: 500 }).toBe(true);
     },
     async close() {
       await browser("close").catch(() => {});
@@ -154,7 +163,8 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
 
     const bots = (await team.as(tokens.ada, "GET", "/api/bots?messages=0")).body.bots as Array<Bot & { defaultBot?: { person?: string } }>;
     mine = bots.find((bot) => bot.defaultBot?.person === "ada@acme.test")!.id;
-    expect(await ada.listed(), "Just me lists her own MagicBot and the bots she can chat with").toEqual(expect.arrayContaining([scout, mine]));
+    expect(await ada.listed(), "Just me lists her own MagicBot").toContain(mine);
+    expect(await ada.listed("Scout"), "and finds the bots she can chat with").toContain(scout);
     const own = (await scoutAs("ada")).tasks.filter((task) => task.private === true);
     expect(own.length, "one private conversation, made by the click").toBe(1);
     adaOwn = own[0]!.threadId;
@@ -165,7 +175,7 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     await ada.choose("team");
     expect(await ada.audience()).toBe("team:Shared · everyone in Acme can see");
     expect(await ada.listed(), "a private-only bot is not on the Team side").not.toContain(mine);
-    expect(await ada.listed()).toContain(scout);
+    expect(await ada.listed("Scout")).toContain(scout);
     expect(await ada.words(), "nothing of the private chat on the Team side: not the transcript, not the sidebar").not.toContain(PRIVATE);
     await ada.say(SHARED);
     await ada.shot("02-ada-team-desktop");
@@ -235,8 +245,8 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     expect(await fits("[data-team-side] [role=radiogroup]"), "the whole switch is on screen in the bot list").toBe(true);
     await ada.evaluate(`document.querySelector('[data-team-side-option="team"]').click(); true`);
     await expect.poll(ada.side, { timeout: 30_000 }).toBe("team");
-    expect(await ada.listed(), "the list changed and stayed open").toContain(scout);
-    expect(await ada.listed()).not.toContain(mine);
+    expect(await ada.listed(), "the list changed").not.toContain(mine);
+    expect(await ada.evaluate<boolean>(`Boolean(document.querySelector('button[aria-label="Open bot list"][aria-expanded="true"]'))`), "and stayed open").toBe(true);
     await ada.shot("04-ada-list-team-phone");
     await ada.openScout("team");
     await expect.poll(ada.audience, { timeout: 30_000 }).toBe("team:Shared · everyone in Acme can see");
