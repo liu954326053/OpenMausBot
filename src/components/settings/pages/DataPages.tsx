@@ -43,11 +43,13 @@ export function DataPage() {
   const { ctx } = useSettingsShell();
   return <>
     <TeamProjectsSettings />
-    <SettingsGroup label={t("settings.data.storage")} block="storage">
-      <SettingsRows><AttachmentStorageSettings /></SettingsRows>
-    </SettingsGroup>
-    {ctx.advanced && <ThreadCleanupSettings />}
-    {!ctx.desktop && ctx.admin && <ActivitySection />}
+    {ctx.advanced && <>
+      <SettingsGroup label={t("settings.data.storage")} block="storage">
+        <SettingsRows><AttachmentStorageSettings /></SettingsRows>
+      </SettingsGroup>
+      <ThreadCleanupSettings />
+      {!ctx.desktop && ctx.admin && <ActivitySection />}
+    </>}
   </>;
 }
 
