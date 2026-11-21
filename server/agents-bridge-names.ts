@@ -3,14 +3,19 @@ import { AGENTS_TOOL_ALIASES } from "../shared/agents-tool-names.ts";
 import { WATCHER_OPTIONS_CARD_BOT_ID } from "../shared/options-card.ts";
 
 import { bridgedCallTitle } from "./drivers/agents-bridge.ts";
-import { availableTools } from "./drivers/agents-catalog.ts";
+import { availableTools, type CatalogProfile } from "./drivers/agents-catalog.ts";
+
+const EVERY_SWITCH_ON: CatalogProfile = {
+  skillAuthoring: true, sharedComputers: true, voiceNotes: true, xResearch: true, research: true, team: true,
+  computerSelection: true, cloudHome: false, localVm: true, chief: true, botId: WATCHER_OPTIONS_CARD_BOT_ID,
+  teamProjects: true,
+};
 
 /** Every catalog tool's name, whoever may call it, and every alias a call may still use. */
-export const CATALOG_TOOL_NAMES: ReadonlySet<string> = new Set([...availableTools({
-  skillAuthoring: true, sharedComputers: true, voiceNotes: true, xResearch: true, research: true, team: true,
-  computerSelection: true, cloudHome: false, localVm: true, chief: true, mausbot: true, botId: WATCHER_OPTIONS_CARD_BOT_ID,
-  teamProjects: true,
-}).map((tool) => tool.name), ...Object.keys(AGENTS_TOOL_ALIASES)]);
+export const CATALOG_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...[true, false].flatMap((mausbot) => availableTools({ ...EVERY_SWITCH_ON, mausbot })).map((tool) => tool.name),
+  ...Object.keys(AGENTS_TOOL_ALIASES),
+]);
 
 /** A call's name with a bridged call read as the tool it ran. With `serverNamed`, only a title that names
  * the agents server is read: a bare `use_tool` on an engine that omits the server (Codex) could be any server's. */
