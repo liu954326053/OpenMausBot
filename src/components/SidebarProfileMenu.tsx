@@ -544,8 +544,8 @@ export function useSimpleAccount(place: WorkspacePlace, owner: string | null, ar
   return { place, owner, automationsNeedYou: useAutomationsNeedYou(), archived, teamMapUnread };
 }
 
-/** `circle` is the phone's round avatar button at the top of the bot list. */
-/** `teamMapUnread`: for the menus that hold the team map without the Simple account (the phone's and the narrow column's). */
+/** `circle` is the phone's round avatar button at the top of the bot list. `teamMapUnread` is for the menus that hold the
+ * team map without the Simple account (the phone's and the narrow column's). */
 export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = false, simple: account, teamMapUnread: unreadHere = false }: {
   iconOnly?: boolean; rail?: boolean; circle?: boolean; simple?: SimpleAccount; teamMapUnread?: boolean;
 } = {}) {
