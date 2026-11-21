@@ -18,7 +18,6 @@ vi.mock("../MenuMotion", () => ({
 }));
 
 import { setLocale } from "@/lib/i18n";
-import { SIDEBAR_OPEN_PROJECTS_KEY } from "@/lib/sidebar-projects";
 import { setTeamProjects, useTeamProjectSide } from "@/state/team-projects";
 import { SidebarTeamProjects, type SidebarTeamProjectsMode } from "./SidebarTeamProjects";
 
@@ -42,7 +41,8 @@ const team = () => [
   bot("heir-writer", { section: "The heir" }), bot("heir-lead", { section: "The heir", chiefOfStaff: true }),
 ];
 let bots = team();
-const rooms = [room("bride-room", "The bride"), room("sales-room", "Sales")];
+const teamRooms = () => [room("bride-room", "The bride"), room("sales-room", "Sales")];
+let rooms = teamRooms();
 
 interface Call { path: string; method: string }
 let calls: Call[] = [];
@@ -66,8 +66,8 @@ const row = (id: string) => q(`[data-sidebar-project-row="${id}"]`);
 const member = (id: string) => q(`[data-sidebar-project-member="${id}"]`);
 const drawn = (id: string) => [...block(id)!.querySelectorAll<HTMLElement>("[data-sidebar-project-member], [data-row]")].map((one) => one.dataset.sidebarProjectMember ?? one.dataset.row);
 const listed = () => all("[data-sidebar-team-project]").map((one) => one.dataset.sidebarTeamProject);
-const TOGGLE = "button[aria-expanded]:not([aria-haspopup])";
-const toggle = (id: string) => block(id)!.querySelector<HTMLElement>(TOGGLE);
+const chevron = (id: string) => block(id)!.querySelector<HTMLElement>("button[aria-expanded]:not([aria-haspopup])");
+const mark = (id: string) => row(id)!.querySelector<HTMLElement>("[data-section-mark]");
 const posts = () => calls.filter((call) => call.method === "POST").map((call) => call.path);
 const shown = (id: string, botId?: string) => ({ type: "showProject", projectId: id, ...(botId ? { botId } : {}) });
 
@@ -94,6 +94,7 @@ beforeEach(() => {
   localStorage.clear();
   calls = [];
   bots = team();
+  rooms = teamRooms();
   list = { root: "/dramas", projects: [bride, heir] };
   refuse = false;
   decided = [];
@@ -148,69 +149,34 @@ describe("the projects in the sidebar", () => {
     expect(listed()).toEqual(["The bride", "The heir"]);
   });
 
-  it("is one closed row per project, and a click on one opens the project's view", async () => {
+  it("is one row per project, with no chevron and no team under it, and a click on one opens the project's canvas", async () => {
     await draw();
     expect([listed(), drawn("The bride"), drawn("The heir")]).toEqual([["The bride", "The heir"], [], []]);
+    expect([chevron("The bride"), chevron("The heir"), q("[data-team-project-team]")]).toEqual([null, null, null]);
     expect(row("The bride")!.textContent).toBe("The bride");
     await click(row("The heir"));
     expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
   });
 
-  it("opens a project's team under its row: the lead, then the members in the server's order", async () => {
+  it("is one row per project in Advanced mode too", async () => {
+    mode = { ...mode, advanced: true };
     await draw();
-    expect([toggle("The bride")!.getAttribute("aria-expanded"), toggle("The bride")!.getAttribute("aria-label")]).toEqual(["false", "Expand The bride"]);
-    await click(toggle("The bride"));
-    expect(drawn("The bride")).toEqual(["bride-lead", "bride-writer", "bride-editor"]);
-    expect(member("bride-lead")!.querySelector('[aria-label="Chief of Staff"]')).not.toBeNull();
-    expect([q('[data-sidebar-project-member="sales"]'), drawn("The heir")]).toEqual([null, []]);
-    expect(block("The bride")!.querySelector('[role="group"]')!.getAttribute("aria-label")).toBe("The bride");
-    expect(fixture.dispatch).not.toHaveBeenCalled();
+    expect([listed(), drawn("The bride"), drawn("The heir"), chevron("The bride"), chevron("The heir")]).toEqual([["The bride", "The heir"], [], [], null, null]);
   });
 
-  it("opens the project with a member chosen when the member is clicked", async () => {
+  it("draws a project this device once kept open as one row too", async () => {
+    localStorage.setItem("openmausbot.sidebarOpenProjects.v1", JSON.stringify(["The bride"]));
     await draw();
-    await click(toggle("The bride"));
-    await click(member("bride-writer"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The bride", "bride-writer")]]);
+    expect([drawn("The bride"), chevron("The bride")]).toEqual([[], null]);
   });
 
-  it("remembers on this device which projects are open", async () => {
-    await draw();
-    await click(toggle("The heir"));
-    expect(JSON.parse(localStorage.getItem(SIDEBAR_OPEN_PROJECTS_KEY)!)).toEqual(["The heir"]);
-    await act(async () => root.unmount());
-    root = createRoot(container);
-    await draw();
-    expect(drawn("The heir")).toEqual(["heir-lead", "heir-writer"]);
-    await click(toggle("The heir"));
-    expect([drawn("The heir"), JSON.parse(localStorage.getItem(SIDEBAR_OPEN_PROJECTS_KEY)!)]).toEqual([[], []]);
-  });
-
-  it("marks the project whose view is open, or the member chosen in it", async () => {
+  it("marks the project whose canvas is open, whichever of its bots is chosen there", async () => {
     fixture.state = { ...fixture.state, activeView: "project", project: { id: "The bride" } };
     await draw();
     expect([row("The bride")!.getAttribute("aria-current"), row("The heir")!.getAttribute("aria-current")]).toEqual(["page", null]);
     fixture.state = { ...fixture.state, project: { id: "The bride", botId: "bride-writer" } };
     await draw();
-    expect(row("The bride")!.getAttribute("aria-current")).toBe("page");
-    await click(toggle("The bride"));
-    expect([row("The bride")!.getAttribute("aria-current"), member("bride-writer")!.getAttribute("aria-current"), member("bride-lead")!.getAttribute("aria-current")]).toEqual([null, "page", null]);
-  });
-
-  it("marks the member whose chat is open", async () => {
-    fixture.state = { ...fixture.state, selectedId: "bride-editor" };
-    await draw();
-    await click(toggle("The bride"));
-    expect([member("bride-editor")!.getAttribute("aria-current"), row("The bride")!.getAttribute("aria-current")]).toEqual(["page", null]);
-  });
-
-  it("shows what each member is doing", async () => {
-    bots = bots.map((one) => one.id === "bride-lead" ? { ...one, busy: true } : one.id === "bride-writer" ? { ...one, activity: "waiting-on-you" as const } : one.id === "bride-editor" ? { ...one, unread: true } : one);
-    await draw();
-    await click(toggle("The bride"));
-    expect(member("bride-lead")!.querySelector('[data-testid="working-dot"]')).not.toBeNull();
-    expect([member("bride-writer")!.querySelector('[data-testid="waiting-dot"]') !== null, member("bride-writer")!.textContent]).toEqual([true, "bride-writerWaiting for you…"]);
-    expect([member("bride-editor")!.querySelector('[data-testid="unread-dot"]') !== null, member("bride-editor")!.textContent]).toEqual([true, "bride-editorUnread"]);
+    expect([row("The bride")!.getAttribute("aria-current"), drawn("The bride")]).toEqual(["page", []]);
   });
 
   it("leaves archived projects out", async () => {
@@ -231,32 +197,32 @@ describe("the projects in the sidebar", () => {
     expect(onNew).toHaveBeenCalledTimes(1);
   });
 
-  it("says on the row when the project's folder is not there, and shows its team as unavailable", async () => {
+  it("says on the row when the project's folder is not there, and shows the bots a search finds in it as unavailable", async () => {
     list = { root: "/dramas", projects: [bride, { ...heir, folderState: "missing" }] };
     await draw();
     expect(block("The bride")!.querySelector("[data-team-project-missing]")).toBeNull();
     expect(block("The heir")!.querySelector("[data-team-project-missing]")!.textContent).toBe("Project folder not found");
-    await click(toggle("The heir"));
+    query = "heir";
+    await draw();
     expect([block("The heir")!.querySelector<HTMLElement>("[data-team-project-team]")!.className.includes("opacity-50"), drawn("The heir")]).toEqual([true, ["heir-lead", "heir-writer"]]);
   });
 
-  it("marks a closed project when something in it is unread, and leaves the mark to the members once it is open", async () => {
+  it("marks a project with what goes on among all its bots and group chats", async () => {
     bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, unread: true } : one));
+    rooms = rooms.map((one) => (one.id === "bride-room" ? { ...one, unread: true } : one));
     await draw();
-    expect(block("The bride")!.querySelector("[data-section-mark]")!.getAttribute("data-section-mark")).toBe("unread");
-    expect(block("The heir")!.querySelector("[data-section-mark]")).toBeNull();
-    await click(toggle("The bride"));
-    expect(row("The bride")!.querySelector("[data-section-mark]")).toBeNull();
+    expect([mark("The bride")!.getAttribute("data-section-mark"), mark("The bride")!.title, mark("The heir")]).toEqual(["unread", "2 unread", null]);
+    expect(row("The bride")!.textContent).toBe("The bride2 unread");
   });
 });
 
 describe("a search", () => {
-  it("keeps the projects that have a match, open, with only what matches", async () => {
+  it("keeps the projects that have a match, with only what matches under them", async () => {
     query = "writer";
     await draw();
     expect(listed()).toEqual(["The bride", "The heir"]);
     expect([drawn("The bride"), drawn("The heir")]).toEqual([["bride-writer"], ["heir-writer"]]);
-    expect([toggle("The bride"), q("[data-team-project-new]")]).toEqual([null, null]);
+    expect([chevron("The bride"), chevron("The heir"), q("[data-team-project-new]")]).toEqual([null, null, null]);
   });
 
   it("shows the whole team of a project whose name matches, and a group chat that matches", async () => {
@@ -266,6 +232,54 @@ describe("a search", () => {
     query = "bride-room";
     await draw();
     expect([listed(), drawn("The bride")]).toEqual([["The bride"], ["bride-room"]]);
+  });
+
+  it("lists the bots it found under their project: the lead first, with its crown, then the members in the server's order", async () => {
+    query = "bride-";
+    await draw();
+    expect([listed(), drawn("The bride")]).toEqual([["The bride"], ["bride-lead", "bride-writer", "bride-editor", "bride-room"]]);
+    expect(member("bride-lead")!.querySelector('[aria-label="Chief of Staff"]')).not.toBeNull();
+    expect(member("bride-writer")!.querySelector('[aria-label="Chief of Staff"]')).toBeNull();
+    expect(block("The bride")!.querySelector('[role="group"]')!.getAttribute("aria-label")).toBe("The bride");
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("opens the project's canvas with a bot it found chosen when the bot is clicked", async () => {
+    query = "writer";
+    await draw();
+    await click(member("bride-writer"));
+    expect(fixture.dispatch.mock.calls).toEqual([[shown("The bride", "bride-writer")]]);
+  });
+
+  it("marks the bot it found that is chosen on its project's canvas, in place of the project", async () => {
+    fixture.state = { ...fixture.state, activeView: "project", project: { id: "The bride", botId: "bride-writer" } };
+    query = "writer";
+    await draw();
+    expect([row("The bride")!.getAttribute("aria-current"), member("bride-writer")!.getAttribute("aria-current"), member("heir-writer")!.getAttribute("aria-current")]).toEqual([null, "page", null]);
+  });
+
+  it("marks the bot it found whose chat is open", async () => {
+    fixture.state = { ...fixture.state, selectedId: "bride-editor" };
+    query = "editor";
+    await draw();
+    expect([member("bride-editor")!.getAttribute("aria-current"), row("The bride")!.getAttribute("aria-current")]).toEqual(["page", null]);
+  });
+
+  it("shows what each bot it found is doing", async () => {
+    bots = bots.map((one) => one.id === "bride-lead" ? { ...one, busy: true } : one.id === "bride-writer" ? { ...one, activity: "waiting-on-you" as const } : one.id === "bride-editor" ? { ...one, unread: true } : one);
+    query = "bride-";
+    await draw();
+    expect(member("bride-lead")!.querySelector('[data-testid="working-dot"]')).not.toBeNull();
+    expect([member("bride-writer")!.querySelector('[data-testid="waiting-dot"]') !== null, member("bride-writer")!.textContent]).toEqual([true, "bride-writerWaiting for you…"]);
+    expect([member("bride-editor")!.querySelector('[data-testid="unread-dot"]') !== null, member("bride-editor")!.textContent]).toEqual([true, "bride-editorUnread"]);
+  });
+
+  it("keeps the project's mark for all its bots and group chats, not only those it found", async () => {
+    bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, unread: true } : one));
+    rooms = rooms.map((one) => (one.id === "bride-room" ? { ...one, unread: true } : one));
+    query = "editor";
+    await draw();
+    expect([drawn("The bride"), mark("The bride")!.getAttribute("data-section-mark"), mark("The bride")!.title]).toEqual([["bride-editor"], "unread", "2 unread"]);
   });
 });
 
@@ -365,8 +379,6 @@ describe("the project's menu", () => {
     mode = { ...mode, remote: true };
     await draw();
     expect([menuButton("The bride"), q("[data-team-project-new]")]).toEqual([null, null]);
-    await click(toggle("The bride"));
-    expect(drawn("The bride")).toHaveLength(3);
   });
 });
 

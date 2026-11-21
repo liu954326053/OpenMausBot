@@ -5,7 +5,7 @@
 // page in Chinese, its references numbered in Chinese and its failure said in Chinese, a task asked from a text node
 // writes its reply there, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
-// drawn clear of the others, a member row chooses its bot, and a project archived while open gives way to the main bot.
+// drawn clear of the others, and a project archived while open gives way to the main bot.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -537,17 +537,6 @@ type Box = { x: number; y: number; w: number; h: number };
       expect(under).toEqual([]);
       await fit();
       await shot("19-team-change-adds-a-bot.png");
-
-      const toggle = `[data-sidebar-team-project=${JSON.stringify(project.id)}] button[aria-expanded="false"]:not([aria-haspopup])`;
-      if (await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(toggle)}))`)) await clickSelector(toggle);
-      const writerRow = `[data-sidebar-project-member=${JSON.stringify(writer.id)}]`;
-      await waitFor(`document.querySelector(${JSON.stringify(writerRow)})`, "the project's members in the sidebar");
-      await clickSelector(writerRow);
-      const corners = (selector: string) => `document.querySelectorAll(${JSON.stringify(`${view} ${selector} [data-resize-corner]`)}).length`;
-      await waitFor(`${corners(writerNode)} === 4`, "the writer chosen on the canvas");
-      expect(await evaluate(corners(leadNode))).toBe(0);
-      expect(await evaluate(`document.querySelector(${JSON.stringify(writerRow)}).getAttribute("aria-current")`)).toBe("page");
-      await shot("20-member-row-chooses-its-bot.png");
 
       await api("POST", `/api/team-projects/${project.id}/archive`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
