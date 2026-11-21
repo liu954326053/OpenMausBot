@@ -1,4 +1,4 @@
-import { botIdOfNode, type CanvasBackgroundMode, type CanvasOp, type CanvasPoint, type CanvasReplyPlaceholder, type CanvasSnapshot, type CanvasTaskRequest, type CanvasUploadResponse, type CanvasViewport } from "../../../shared/project-canvas";
+import { botIdOfNode, type CanvasBackgroundMode, type CanvasNode, type CanvasOp, type CanvasPoint, type CanvasReplyPlaceholder, type CanvasSnapshot, type CanvasTaskRequest, type CanvasUploadResponse, type CanvasViewport } from "../../../shared/project-canvas";
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
 import { activeLocale } from "../i18n";
 import { randomUuid } from "../random-uuid";
@@ -173,6 +173,13 @@ export class CanvasController {
       this.recompute();
     }
     return response;
+  }
+
+  /** Shows a picture's node at the frame its picture needs, outside undo. The server lays out the bots nobody placed
+   * below every node in their way, so they are stored where they are first. */
+  fitPicture(nodeId: string, frame: Pick<CanvasNode, "position" | "width" | "height">, natural: { naturalWidth: number; naturalHeight: number }): void {
+    this.pinBots();
+    this.apply([{ type: "update_node", id: nodeId, patch: frame, metadata: natural }], { record: false });
   }
 
   /** Stores the prompt when it changed, then asks the server to generate the node as it has it, its references named in
