@@ -44,9 +44,14 @@ describe("additive template imports in the real renderer", () => {
     await control("send", "--bot", info!.botId, "--text", "Keep this original conversation after importing templates.");
     expect(await control("wait", "--bot", info!.botId, "--timeout", "30")).toMatchObject({ status: "settled" });
     const original = await api("/api/bots");
-    // Viewing a chat marks it read at any moment; an import must leave everything else as it was.
+    expect(original.bots.filter((bot: { defaultBot?: unknown }) => bot.defaultBot)).toHaveLength(1);
+    // Viewing a chat marks it read at any moment; an import must leave everything else as it was, but for the main bot,
+    // in charge of every department, also taking charge of each imported one.
     const withoutReadState = (value: unknown) => JSON.parse(JSON.stringify(value, (key, field) => key === "unread" || key === "lastReadMessageId" ? undefined : field));
     const transcript = await control("messages", "--bot", info!.botId, "--limit", "10");
+    const imported: string[] = [];
+    const inChargeOfImported = (bot: { defaultBot?: unknown; managedSections?: string[] }) =>
+      bot.defaultBot ? { ...bot, managedSections: [...(bot.managedSections ?? []), ...imported] } : bot;
     const manifest = { format: "openmaus.team", version: 2, team: { name: "Sales crew", members: [
       { key: "researcher", name: "Lead finder", appearance: { color: "cyan" } },
       { key: "writer", name: "Outreach writer", appearance: { color: "purple" } },
@@ -75,16 +80,18 @@ describe("additive template imports in the real renderer", () => {
         await click("Add team");
       } else {
         await click("Import…");
+        await expect.poll(snapshot, { timeout: 10_000 }).toContain('dialog "Import"');
         // A browser chooses a folder through the input's change handler, not the OS picker; a folder holding the legacy team file.
         await evaluate(`(() => { const input = document.querySelector('[role=dialog] input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([JSON.stringify(window.templateFixture)], 'team.mausteam.json', { type: 'application/json' })); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await expect.poll(snapshot, { timeout: 10_000 }).toContain("Outreach writer");
         await click("Add");
       }
       const section = source === "library" ? "Sales crew" : "Sales crew 2";
+      imported.push(section);
       await expect.poll(snapshot, { timeout: 10_000 }).toContain(`button "${section}"`);
       const current = await api("/api/bots");
       expect(current.bots.filter((bot: { section?: string }) => bot.section === section)).toHaveLength(2);
-      for (const bot of original.bots) expect(withoutReadState(current.bots.find((value: { id: string }) => value.id === bot.id))).toEqual(withoutReadState(bot));
+      for (const bot of original.bots) expect(withoutReadState(current.bots.find((value: { id: string }) => value.id === bot.id))).toEqual(withoutReadState(inChargeOfImported(bot)));
       expect(withoutReadState(await control("messages", "--bot", info!.botId, "--limit", "10"))).toEqual(withoutReadState(transcript));
       expect(await snapshot()).toContain('button "Existing work"');
       expect(await snapshot()).toContain('button "Personal"');

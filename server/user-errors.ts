@@ -1,6 +1,7 @@
 import { PAIRING_INPUT_PROBLEM_TEXT } from "../shared/pairing-code.ts";
 import { redactParams } from "../shared/redact.ts";
 import { formatServerText, type ServerErrorBody, type ServerTextParams } from "../shared/server-text.ts";
+import { PROJECT_GENERATION_ERRORS } from "./project-generation/error-text.ts";
 
 /** The client translates by key and falls back to this English, which the server keeps sending for older clients. */
 export const USER_ERROR = {
@@ -273,6 +274,7 @@ export const USER_ERROR = {
   "serverError.teamFlow.self": "A bot can't be its own superior.",
   "serverError.teamFlow.chief": "{bot} is the Chief of Staff of {team}, at the top of its flow, so it can't be anyone's subordinate.",
   "serverError.teamFlow.loop": "{superior} is already below {bot}, so {bot} can't go under {superior}: that would make a loop.",
+  ...PROJECT_GENERATION_ERRORS,
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;

@@ -592,7 +592,7 @@ import { createGroupOrderRoutes } from "./routes/group-order.ts";
 import { createBotLifecycleRoutes } from "./routes/bot-lifecycle.ts";
 import { createBotSkillsRoutes } from "./routes/bot-skills.ts";
 import { createTeamProjectProposals } from "./team-project-proposal-routes.ts";
-import { createTeamProjectsHost } from "./team-projects/host.ts"; import { createTeamFlowsHost } from "./team-flow/host.ts";
+import { createTeamProjectsHost } from "./team-projects/host.ts"; import { createProjectGeneration } from "./project-generation/host.ts"; import { createTeamFlowsHost } from "./team-flow/host.ts";
 import { createSkillShareRoutes } from "./routes/skill-share.ts";
 import { createTeamContextRoutes } from "./routes/team-context.ts";
 import { createAppSuggestions } from "./host/app-suggestions.ts"; import { createAppFindRoute, createAppSuggestionRoutes } from "./routes/app-suggestions.ts"; import { appPickAvailable } from "./decider/app-picks.ts"; import { managedConnectorUnavailableReason } from "../shared/connector-availability.ts"; import { createDeciderRoutes } from "./routes/decider.ts"; import { createCloudSendRoutes } from "./routes/cloud-send.ts"; import { claudeCodeSkillInputs } from "./setup-import.ts"; import { createCloudConnectionsHost } from "./cloud-connections-host.ts";
@@ -12193,6 +12193,7 @@ ROUTES.push(createBotCreateRoutes({
 }), createTeamOwnerRoutes({ team: CLOUD_TEAM, people: teamOwners.people, store, presence: teamPresence.of, record: (auth, row) => appendAdminAction(DATA_DIR, { ...row, actor: decisionActorFor(auth) }), sees: (auth, botId) => visibleTo(viewerFor(auth)).bot(botId), publicBot,
   profileOf: (email) => teamHost.people.profile(personKey({ id: "", email })) }));
 const teamProjects = createTeamProjectsHost({ store, routines: () => routines, teamMemory, importDeps: async () => packageImportDeps(await defaultSelection()), deleteBot: async (botId) => { const deleted = await deleteBotWithLifecycle(botId); return deleted.status < 300 ? null : deleted.body.error ?? `the deletion answered ${deleted.status}`; }, exportDocument: (target, listed, carries) => share.host.document(target, listed, carries), ownSkillNames: (botId) => listSkills(botId).map((skill) => skill.name), language: appLanguage }); setTeamProjectLookup(teamProjects.lookup); ROUTES.push(teamProjects.routes);
+const projectGeneration = createProjectGeneration({ dataDir: DATA_DIR, lookup: teamProjects.lookup, storedServers: () => cfg.mcpServers ?? {}, keys: mcpKeys, oauth: mcpOAuth, personMcp: teamConnections.personMcp, policyRefusal: mcpPolicyRefusal, probeAs: (server) => mcpServersHost.probeAs(server) }); ROUTES.push(projectGeneration.routes);
 ROUTES.push(createTeamFlowsHost({ store }).routes);
 ROUTES.push(createBotSettingsRoutes({
   store, cfg, registry, commandAllowlist, commandAllowlistDrivers: COMMAND_ALLOWLIST_DRIVERS,
