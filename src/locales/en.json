@@ -3293,6 +3293,7 @@
   "task.chip": "Thread",
   "task.newShort": "New thread",
   "task.sharedChat": "Shared chat",
+  "task.chooseChief": "Choose a Chief of Staff",
   "task.untitledConversation": "New conversation",
   "task.untitledChat": "Untitled chat",
   "task.matching": "{count} matching threads",

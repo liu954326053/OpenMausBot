@@ -3293,6 +3293,7 @@
   "task.chip": "Conversa",
   "task.newShort": "Nova conversa",
   "task.sharedChat": "Conversa compartilhada",
+  "task.chooseChief": "Escolher um chefe de gabinete",
   "task.untitledConversation": "Nova conversa",
   "task.untitledChat": "Conversa sem título",
   "task.matching": "Conversas encontradas: {count}",

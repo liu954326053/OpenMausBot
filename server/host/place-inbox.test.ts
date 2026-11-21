@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { CHOOSE_CHIEF_TITLE } from "../../shared/inbox.ts";
 import type { Notification } from "../../shared/notification.ts";
 import type { PersonWait } from "../../shared/person-wait.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
@@ -47,6 +48,11 @@ function setup(over: Partial<PlaceInboxDeps> = {}, dataDir = mkdtempSync(join(tm
       return posted;
     },
     patchTask: () => undefined, patchGroup: () => undefined,
+    createTask: (botId: string, title: string) => {
+      const threadId = `${botId}-t${++serial}`;
+      titles[threadId] = title;
+      return { threadId, title };
+    },
     messagesFor: (threadId: string) => said.get(threadId) ?? [],
     activePath: (threadId: string) => said.get(threadId) ?? [],
     onChange: (listener: (change: { type: string; threadId: string }) => void) => { listeners.push(listener); return () => undefined; },
@@ -158,9 +164,12 @@ describe("a department the update left without a Chief of Staff", () => {
     const [row, ...more] = chiefRows(f);
     expect(more).toEqual([]);
     expect(row).toMatchObject({ kind: "notice", tab: "needs-you", unread: true, from: { name: "MagicBot", botId: "maus" }, needsChief: { department: "Night shift" }, text: words });
-    expect(row!.origin).toEqual({ botId: "maus", threadId: "maus-main", title: "" });
+    const asking = row!.origin!.threadId;
+    expect(row!.origin).toEqual({ botId: "maus", threadId: asking, title: CHOOSE_CHIEF_TITLE });
+    expect(asking, "a conversation of its own, not the main bot's main one").not.toBe("maus-main");
+    expect(f.said.get(asking)).toMatchObject([{ id: row!.id, role: "bot", text: words }]);
     expect([f.inbox.count(OWNER), f.sent]).toEqual([1, []]);
-    f.inbox.seen(OWNER, "maus-main");
+    f.inbox.seen(OWNER, asking);
     expect(chiefRows(f).map((one) => one.tab)).toEqual(["needs-you"]);
     roster[2]!.chiefOfStaff = true;
     expect(chiefRows(f).map((one) => one.tab)).toEqual(["done"]);
@@ -184,6 +193,16 @@ describe("a department the update left without a Chief of Staff", () => {
     f.inbox.stop();
     const again = setup({ needsChief: ["Night shift"] }, f.dataDir, team());
     expect(chiefRows(again).map((one) => one.needsChief)).toEqual([{ department: "Night shift" }]);
+    expect(again.said.size, "no second conversation asks again").toBe(0);
+  });
+
+  it("asks for every department in the one conversation", () => {
+    const f = setup({ needsChief: ["Night shift", "Day shift"] }, undefined, [...team(), { id: "dax", name: "Dax", threadId: "dax-main", section: "Day shift" }]);
+    const rows = chiefRows(f);
+    expect(rows.map((one) => one.needsChief!.department).sort()).toEqual(["Day shift", "Night shift"]);
+    const threads = new Set(rows.map((one) => one.origin!.threadId));
+    expect(threads.size).toBe(1);
+    expect(f.said.get([...threads][0]!)).toHaveLength(2);
   });
 
   it("files nothing without a main bot to say it", () => {
