@@ -21,6 +21,7 @@ export async function teamFlowsInstallation() {
 
   const store = new Store(() => ({ instanceId: "claude", model: "default-model" }));
   const logged: string[] = [];
+  const changed = vi.fn<() => void>();
   const file = join(DATA_DIR, "team-flows.json");
   const deps: TeamFlowsDeps = {
     store, file,
@@ -28,6 +29,7 @@ export async function teamFlowsInstallation() {
     ensureTeamKey: sections.ensureSectionMemoryKey,
     teamOfKey: sections.sectionOfMemoryKey,
     log: (line) => logged.push(line),
+    changed,
   };
   const flows = new TeamFlows(deps);
   const stop = flows.start();
@@ -44,7 +46,7 @@ export async function teamFlowsInstallation() {
   };
   const restarted = () => new TeamFlows(deps);
 
-  return { home, dataDir: DATA_DIR, store, sections, file, flows, stop, logged, bot, team, restarted, deps };
+  return { home, dataDir: DATA_DIR, store, sections, file, flows, stop, logged, changed, bot, team, restarted, deps };
 }
 
 export async function closeTeamFlowsInstallation(app: TeamFlowsTestApp | undefined): Promise<void> {

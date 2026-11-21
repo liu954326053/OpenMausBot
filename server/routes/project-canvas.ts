@@ -33,7 +33,8 @@ export function createProjectCanvasRoutes(service: ProjectCanvasService): RouteH
       if (part === "tasks" && method === "POST") return json(res, 202, await service.task(projectId, auth, await readBody(req)));
       if (part === "generate" && method === "POST") {
         const project = service.project(projectId);
-        const outcome = await service.generate(project, { kind: "person" }, record(await readBody(req)).nodeId);
+        const body = record(await readBody(req));
+        const outcome = await service.generate(project, { kind: "person" }, body.nodeId, body.language);
         return "refused" in outcome ? json(res, statusOf(outcome.refused), outcome.refused) : json(res, 202, { jobId: outcome.job.id } satisfies CanvasGenerateResponse);
       }
       req.resume();

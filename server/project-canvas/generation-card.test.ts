@@ -3,15 +3,20 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { GenerationFailure, GenerationJob } from "../../shared/project-generation.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
 import { addServerLinePacks, setConversationLanguage } from "../server-lines.ts";
+import { userError } from "../user-errors.ts";
 import { CanvasGenerationCards, resumeCanvasGeneration, type CanvasCardStore } from "./generation-card.ts";
 import { CanvasOpRefusal } from "./ops.ts";
-import type { ProjectCanvasService } from "./service.ts";
+import { CanvasRefusal, type ProjectCanvasService } from "./service.ts";
 
 const PAST: GenerationFailure = {
   code: "confirmation_needed", error: "A bot may start 3 videos a day without you, and this one has started 3. Confirm to let it make 1 more.",
   errorKey: "serverError.projectGeneration.confirmVideos", errorParams: { ceiling: 3, used: 3, asked: 1 }, allowance: { used: 3, ceiling: 3, asked: 1 },
 };
 const NO_SERVER: GenerationFailure = { code: "no_server", error: "Choose an MCP server for videos in this project's settings first.", errorKey: "serverError.projectGeneration.noVideoServer" };
+const TOO_MANY: GenerationFailure = {
+  code: "too_many", error: "This project already has 50 generations waiting or running. Wait for some of them to finish.",
+  errorKey: "serverError.projectGeneration.tooMany", errorParams: { count: 50 },
+};
 
 type Generated = Awaited<ReturnType<ProjectCanvasService["generate"]>>;
 
@@ -89,6 +94,7 @@ describe("the card that asks the person about a bot's generation past its ceilin
     expect(refused.lines[0]!.card).toMatchObject({
       answered: "allow", held: NO_SERVER.error, heldCode: NO_SERVER.errorKey, canvasGeneration: { result: { state: "refused", code: "no_server", error: NO_SERVER.error } },
     });
+    expect(refused.lines[0]!.card).not.toHaveProperty("heldParams");
     expect(refused.heard).toEqual([expect.stringContaining(`but generation refused "Poster" (shot-1) (no_server): ${NO_SERVER.error}`)]);
     const moved = setup(undefined, "p2");
     await moved.cards.answer("t1", moved.ask().requestId, "allow");
@@ -96,14 +102,31 @@ describe("the card that asks the person about a bot's generation past its ceilin
     expect(moved.lines[0]!.card).toMatchObject({ heldCode: "serverError.projectCanvas.notMember", canvasGeneration: { result: { state: "refused", code: "not_member" } } });
   });
 
-  it("tells the person in their own words when the node changed before they confirmed, and the bot in the canvas's", async () => {
-    const changed = setup(async () => { throw new CanvasOpRefusal("not_found", "no node shot-1 on this canvas"); });
+  it("keeps the values of a refusal's line beside its key, so the person reads it whole in their language", async () => {
+    const crowded = setup(async () => ({ refused: TOO_MANY }));
+    await crowded.cards.answer("t1", crowded.ask().requestId, "allow");
+    expect(crowded.lines[0]!.card).toMatchObject({ held: TOO_MANY.error, heldCode: TOO_MANY.errorKey, heldParams: { count: 50 } });
+  });
+
+  it("shows the canvas's own line when it refuses the node at Confirm", async () => {
+    const busy = setup(async () => { throw new CanvasRefusal(409, { code: "generating", ...userError("serverError.projectCanvas.alreadyGenerating") }); });
+    await busy.cards.answer("t1", busy.ask().requestId, "allow");
+    expect(busy.lines[0]!.card).toMatchObject({
+      answered: "allow", held: "This node is being generated already.", heldCode: "serverError.projectCanvas.alreadyGenerating",
+      canvasGeneration: { result: { state: "refused", code: "generating", error: "This node is being generated already." } },
+    });
+    expect(busy.lines[0]!.card).not.toHaveProperty("heldParams");
+    expect(busy.heard).toEqual([expect.stringContaining('but generation refused "Poster" (shot-1) (generating): This node is being generated already.')]);
+  });
+
+  it("tells the person the node changed when the canvas refuses it at Confirm without a line of its own, and the bot the canvas's words", async () => {
+    const changed = setup(async () => { throw new CanvasOpRefusal("not_yours", "shot-1 was not put there by you; ask the person to generate it"); });
     await changed.cards.answer("t1", changed.ask().requestId, "allow");
     expect(changed.lines[0]!.card).toMatchObject({
       answered: "allow", held: "That node changed after the bot asked, so nothing was generated.", heldCode: "serverError.projectCanvas.generationChanged",
-      canvasGeneration: { result: { state: "refused", code: "not_found", error: "no node shot-1 on this canvas" } },
+      canvasGeneration: { result: { state: "refused", code: "not_yours", error: "shot-1 was not put there by you; ask the person to generate it" } },
     });
-    expect(changed.heard).toEqual([expect.stringContaining('but generation refused "Poster" (shot-1) (not_found): no node shot-1 on this canvas')]);
+    expect(changed.heard).toEqual([expect.stringContaining('but generation refused "Poster" (shot-1) (not_yours): shot-1 was not put there by you')]);
   });
 
   it("starts the node once when the person answers twice at the same time", async () => {

@@ -2,7 +2,9 @@
 // app's language packs, under "server.", in the language of the person they are for (host/person-languages.ts). This
 // module reads English; server-line-packs.ts adds every other language when the server starts. The packaged server
 // bundles only the "server." keys (scripts/server-locale-plugin.mjs). Text only a model reads stays English and never
-// comes from here. A guard beside the packs (server-lines.test.ts) fails on an English line written straight into one.
+// comes from here, save a generation prompt's numbering of a canvas's references: it is in the words the person's own
+// prompt names them in. A guard beside the packs (server-lines.test.ts) fails on an English line written straight into
+// one.
 import en from "../src/locales/en.json" with { type: "json" };
 import { byLanguage } from "./language.ts";
 

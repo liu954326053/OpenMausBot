@@ -1,5 +1,6 @@
 import type { CanvasGenerationConfirmation, CanvasGenerationDecision } from "../../shared/project-canvas.ts";
 import type { GenerationFailure } from "../../shared/project-generation.ts";
+import type { ServerErrorBody } from "../../shared/server-text.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
 import { newId } from "../contracts.ts";
 import { conversationLanguage, serverLine } from "../server-lines.ts";
@@ -24,6 +25,8 @@ export interface CanvasGenerationCardsDeps {
 }
 
 const isOpen = (card: OptionCardData) => !card.answered && !card.dismissed && !card.expired;
+
+type NoteForPerson = Required<Pick<ServerErrorBody, "error" | "errorKey">> & Pick<ServerErrorBody, "errorParams">;
 
 /** What the bot hears once its card is answered. Only a model reads it. */
 export function canvasGenerationDecisionText(asked: CanvasGenerationConfirmation, result: CanvasGenerationDecision): string {
@@ -102,14 +105,15 @@ export class CanvasGenerationCards {
     const { result, noteForPerson } = allowed ? await this.confirm(asked) : { result: { state: "declined" } as const };
     const current = find()?.card;
     if (!current?.canvasGeneration) return;
+    const held = noteForPerson && { held: noteForPerson.error, heldCode: noteForPerson.errorKey, ...(noteForPerson.errorParams ? { heldParams: noteForPerson.errorParams } : {}) };
     this.deps.store.patchMessage(threadId, messageId, { card: {
-      ...current, answered: allowed ? "allow" : "deny", ...(noteForPerson ? { held: noteForPerson.error, heldCode: noteForPerson.errorKey } : {}),
+      ...current, answered: allowed ? "allow" : "deny", ...held,
       canvasGeneration: { ...current.canvasGeneration, result },
     } });
   }
 
-  private async confirm(asked: CanvasGenerationConfirmation): Promise<{ result: CanvasGenerationDecision; noteForPerson?: { error: string; errorKey: string } }> {
-    const refused = (code: string, error: string, noteForPerson: { error: string; errorKey: string }) => ({ result: { state: "refused", code, error } as const, noteForPerson });
+  private async confirm(asked: CanvasGenerationConfirmation): Promise<{ result: CanvasGenerationDecision; noteForPerson?: NoteForPerson }> {
+    const refused = (code: string, error: string, noteForPerson: NoteForPerson) => ({ result: { state: "refused", code, error } as const, noteForPerson });
     try {
       const project = this.deps.service.projectOfBot(asked.botId);
       if (project.id !== asked.projectId) {
@@ -121,10 +125,10 @@ export class CanvasGenerationCards {
     } catch (error) {
       const canvas = canvasRefusalOf(error);
       if (!canvas) throw error;
-      const { code, errorKey } = canvas.body as { code?: unknown; errorKey?: unknown };
+      const { code, errorKey, errorParams } = canvas.body as Partial<ServerErrorBody>;
       const forBot = canvas.body.error;
       return refused(typeof code === "string" ? code : String(canvas.status), forBot,
-        typeof errorKey === "string" ? { error: forBot, errorKey } : userError("serverError.projectCanvas.generationChanged"));
+        typeof errorKey === "string" ? { error: forBot, errorKey, ...(errorParams ? { errorParams } : {}) } : userError("serverError.projectCanvas.generationChanged"));
     }
   }
 }

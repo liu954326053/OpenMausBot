@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DATA_DIR } from "../config.ts";
 import type { RouteHandler } from "../routes/table.ts";
 import { ensureSectionMemoryKey, sectionMemoryKey, sectionOfMemoryKey } from "../section-context.ts";
-import { installTeamFlows } from "./flows.ts";
+import { installTeamFlows, teamFlowsChanged } from "./flows.ts";
 import { createTeamFlowRoutes } from "./routes.ts";
 import { TeamFlows, type TeamFlowsDeps } from "./service.ts";
 
@@ -17,6 +17,7 @@ export function createTeamFlowsHost(deps: { store: TeamFlowsDeps["store"] }): { 
     store: deps.store, file,
     teamKey: sectionMemoryKey, ensureTeamKey: ensureSectionMemoryKey, teamOfKey: sectionOfMemoryKey,
     log: (line) => console.warn(`[team-flow] ${line}`),
+    changed: teamFlowsChanged,
   });
   flows.start();
   installTeamFlows(flows);

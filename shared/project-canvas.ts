@@ -24,6 +24,7 @@
  * SOFTWARE.
  */
 
+import type { ServerTextParams } from "./server-text.ts";
 import type { OptionCardData } from "./wire.ts";
 
 export type { CanvasGenerationConfirmation, CanvasGenerationDecision } from "../packages/phone-protocol/src/canvas-generation-card.ts";
@@ -77,8 +78,8 @@ export interface CanvasNodeSettings {
  * - text: `content`, `fontSize`;
  * - image, video, audio, file: `file`; image and video also `naturalWidth`, `naturalHeight`; audio and video
  *   `durationMs`;
- * - image, video, shot and config: `prompt`, `status`, `errorDetails`, `jobId`, `settings`; config also
- *   `generationMode`;
+ * - image, video, shot and config: `prompt`, `status`, `errorDetails`, `errorKey`, `errorParams`, `jobId`, `settings`;
+ *   config also `generationMode`;
  * - bot and group: none. */
 export interface CanvasNodeMetadata {
   content?: string;
@@ -89,7 +90,13 @@ export interface CanvasNodeMetadata {
   durationMs?: number;
   prompt?: string;
   status?: CanvasGenerationStatus;
+  /** The English line: what a bot reads, and what a client shows when it doesn't know `errorKey`. */
   errorDetails?: string;
+  /** A `serverError.projectGeneration.*` or `serverError.projectCanvas.*` key a client shows instead of `errorDetails`.
+   * The three error fields change together: setting or clearing any of them drops the others. */
+  errorKey?: string;
+  /** Values for the placeholders of `errorKey`. */
+  errorParams?: ServerTextParams;
   jobId?: string;
   settings?: CanvasNodeSettings;
   generationMode?: "image" | "video";
@@ -235,7 +242,8 @@ export interface CanvasSnapshot extends CanvasDocument {
 }
 
 /** On `/api/events`, to the owner and admins, when a project's canvas changes. `document`: the stored canvas has a new
- * revision. `bots`: what the snapshot derives changed (a status, an output, a member). Read the snapshot again. */
+ * revision. `bots`: what the snapshot derives changed (a status, an output, a member, a line of the team's flow). Read
+ * the snapshot again. */
 export interface ProjectCanvasEvent {
   kind: "project-canvas";
   projectId: string;
@@ -244,16 +252,19 @@ export interface ProjectCanvasEvent {
 }
 
 /** `POST /api/team-projects/:id/canvas/tasks`: the person's task for one bot of the project. What is connected into
- * the bot's node goes with it: a text node's text, a shot's fields, media and other files as attachments. Without
- * `threadId` it goes to the conversation the bot has open. With `targetNodeId`, a text node of this canvas, the bot's
- * reply to the task becomes the node's text once its turn ends well, secrets redacted, cut to
- * `CANVAS_CONTENT_MAX_CHARS`. A stopped or failed turn, a turn the task joined while it ran, or a server restart before
- * the reply leaves the node as it was. */
+ * the bot's node goes with it, each reference named by the label `connectedReferences` gives it and its title: a text
+ * node's text, a shot's fields, media and other files as attachments. Without `threadId` it goes to the conversation
+ * the bot has open. With `targetNodeId`, a text node of this canvas, the bot's reply to the task becomes the node's
+ * text once its turn ends well, secrets redacted, cut to `CANVAS_CONTENT_MAX_CHARS`. A stopped or failed turn, a turn
+ * the task joined while it ran, or a server restart before the reply leaves the node as it was. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;
   threadId?: string;
   targetNodeId?: string;
+  /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
+   * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
+  language?: string;
 }
 
 export interface CanvasTaskResponse {
@@ -274,12 +285,21 @@ export interface CanvasUploadResponse {
   file: CanvasFileRef;
 }
 
-/** `POST /api/team-projects/:id/canvas/generate {nodeId}`: the project's generation starts for a shot, image or video
- * node, from its prompt, its `settings` and the files of the image and audio nodes connected into it, so a model never
- * rewrites the request. Answered 202; a refusal is answered with generation's own `GenerationFailure`. The node shows
- * `loading` while the job runs. On success each file the job made becomes a node to its right, connected from it, below
- * the ones made before; on failure `errorDetails` says why. A bot past its ceiling is asked about on a card instead
- * (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the person answers. */
+/** `POST /api/team-projects/:id/canvas/generate`: the project's generation starts for a shot, image, video or config
+ * node, from its prompt, its `settings` and the files of the image and audio among the references `generationInputs`
+ * gives it, so a model never rewrites the request. The prompt sent begins with which label names which of those files,
+ * in the words of `language`, and ends with each text reference under its label. Answered 202; a refusal is answered
+ * with generation's own `GenerationFailure`, or, for a node that is gone, has no prompt or is generating already, with
+ * the canvas's `ServerErrorBody`. The node shows `loading` while the job runs. On success each file the job made becomes
+ * a node to its right, connected from it, below the ones made before; on failure `errorDetails`, `errorKey` and
+ * `errorParams` say why. A bot past its ceiling is asked about on a card instead (`OptionCardData.canvasGeneration`),
+ * which its node shows in `waiting` until the person answers. */
+export interface CanvasGenerateRequest {
+  nodeId: string;
+  /** As in `CanvasTaskRequest`. */
+  language?: string;
+}
+
 export interface CanvasGenerateResponse {
   jobId: string;
 }
