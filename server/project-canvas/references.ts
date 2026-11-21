@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
-import { connectedReferences, REFERENCE_KIND_KEYS, referenceLabel, type CanvasReference } from "../../shared/project-canvas-references.ts";
-import { botNodeId, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeSettings } from "../../shared/project-canvas.ts";
+import { connectedReferences, isReferenceNode, mentionReferences, REFERENCE_KIND_KEYS, referenceLabel, type CanvasReference } from "../../shared/project-canvas-references.ts";
+import { botIdOfNode, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeSettings } from "../../shared/project-canvas.ts";
 import { IMAGE_MAX_BYTES } from "../attachments.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import { TURN_IMAGE_MAX_BYTES, TURN_IMAGE_MAX_COUNT } from "../turn-images.ts";
@@ -43,30 +43,35 @@ type ContentNode = CanvasNode & { type: keyof typeof NODE_WORD };
 const isContent = (node: CanvasNode): node is ContentNode => node.type !== "bot" && node.type !== "group";
 type Entry = { node: CanvasNode; reference: CanvasReference } | { node: ContentNode; reference?: undefined };
 
-/** What went into the bot's node, in the order it was connected: each reference the app numbered on the node, a group
- * as its members, and each other node with a file, a prompt or settings to pass on. */
+/** The references as the app's panel for the node numbers them: a bot's by what is connected into its node, a text
+ * node's by what its prompt can name. Then each other node connected in with a file, a prompt or settings to pass on. */
 function entries(document: CanvasDocument, nodeId: string): Entry[] {
-  const references = connectedReferences(nodeId, document.nodes, document.connections);
-  const byId = new Map(document.nodes.map((node) => [node.id, node]));
-  const seen = new Set<string>();
-  return document.connections.flatMap((connection): Entry[] => {
-    const source = connection.kind === "content" && connection.toNodeId === nodeId && !seen.has(connection.fromNodeId) ? byId.get(connection.fromNodeId) : undefined;
-    if (!source) return [];
-    seen.add(source.id);
-    const numbered = references.flatMap((reference) => {
-      const node = reference.sourceNodeId === source.id ? byId.get(reference.nodeId) : undefined;
-      return node ? [{ node, reference }] : [];
-    });
-    if (numbered.length || references.some((one) => one.nodeId === source.id)) return numbered;
-    const meta = source.metadata ?? {};
-    return isContent(source) && (meta.file || meta.prompt || settingsLine(meta.settings)) ? [{ node: source }] : [];
+  const { nodes, connections } = document;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const references = botIdOfNode(nodeId) === null ? mentionReferences(nodeId, nodes, connections) : connectedReferences(nodeId, nodes, connections);
+  const numbered = references.flatMap((reference): Entry[] => {
+    const node = byId.get(reference.nodeId);
+    return node ? [{ node, reference }] : [];
   });
+  const sources = new Set(connections.flatMap((connection) => (connection.kind === "content" && connection.toNodeId === nodeId ? [connection.fromNodeId] : [])));
+  const others = [...sources].flatMap((id): Entry[] => {
+    const node = byId.get(id);
+    const meta = node?.metadata ?? {};
+    return node && isContent(node) && !isReferenceNode(node, nodes) && (meta.file || meta.prompt || settingsLine(meta.settings)) ? [{ node }] : [];
+  });
+  return [...numbered, ...others];
 }
 
-/** The references connected into the bot's node, as lines of the person's message, each named by its label and title as
- * the app numbered them: words quoted, images as the model's own input while the turn's image limits allow, other files
- * by their path. */
-export async function taskReferences(document: CanvasDocument, botId: string, deps: ReferenceDeps): Promise<TaskReferences> {
+function heading(document: CanvasDocument, nodeId: string, language: string | undefined): string {
+  if (botIdOfNode(nodeId) !== null) return serverLine(language, "server.projectCanvas.task.connected");
+  const title = document.nodes.find((node) => node.id === nodeId)?.title || nodeId;
+  return serverLine(language, "server.projectCanvas.task.textNode", { title: JSON.stringify(title) });
+}
+
+/** The references of the node a task was written in, a bot's node or a text node, under a line saying whose they are:
+ * each named by its label and title as the app numbered them, words quoted, images as the model's own input while the
+ * turn's image limits allow, other files by their path. */
+export async function taskReferences(document: CanvasDocument, nodeId: string, deps: ReferenceDeps): Promise<TaskReferences> {
   const word = (key: ServerLineKey) => serverLine(deps.language, key);
   let images = 0;
   let imageBytes = 0;
@@ -95,7 +100,7 @@ export async function taskReferences(document: CanvasDocument, botId: string, de
   }
 
   const parts: string[] = [];
-  for (const entry of entries(document, botNodeId(botId))) {
+  for (const entry of entries(document, nodeId)) {
     const { node } = entry;
     const meta = node.metadata ?? {};
     const [name, title] = entry.reference ? [referenceLabel(entry.reference, word), node.title] : [word(NODE_WORD[entry.node.type]), node.title || node.id];
@@ -107,11 +112,9 @@ export async function taskReferences(document: CanvasDocument, botId: string, de
     if (settings) lines.push(settings);
     parts.push(lines.join("\n\n"));
   }
-  return { text: parts.join("\n\n"), count: parts.length };
+  return { text: parts.length ? [heading(document, nodeId, deps.language), ...parts].join("\n\n") : "", count: parts.length };
 }
 
-export function taskMessage(text: string, references: TaskReferences, language: string | undefined): string {
-  const said = text.trim();
-  if (!references.count) return said;
-  return [said, serverLine(language, "server.projectCanvas.task.connected"), references.text].filter(Boolean).join("\n\n");
+export function taskMessage(text: string, references: TaskReferences): string {
+  return [text.trim(), references.text].filter(Boolean).join("\n\n");
 }

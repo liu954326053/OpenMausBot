@@ -10555,6 +10555,7 @@
   "server.projectCanvas.node.config": "配置",
   "server.projectCanvas.node.file": "文件",
   "server.projectCanvas.task.connected": "项目画布上连到你的节点的内容：",
+  "server.projectCanvas.task.textNode": "项目画布上文本节点 {title} 引用的内容：",
   "server.projectCanvas.task.fileGone": "（它的文件 {path} 现在不在项目文件夹里）",
   "activity.tool.team.canvasGetState": "读取项目画布",
   "activity.tool.team.canvasApplyOps": "编辑项目画布",

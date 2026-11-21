@@ -10555,6 +10555,7 @@
   "server.projectCanvas.node.config": "Configuração",
   "server.projectCanvas.node.file": "Arquivo",
   "server.projectCanvas.task.connected": "Conectado ao seu nó no canvas do projeto:",
+  "server.projectCanvas.task.textNode": "O que o nó de texto {title} no canvas do projeto referencia:",
   "server.projectCanvas.task.fileGone": "(o arquivo {path} não está mais na pasta do projeto)",
   "activity.tool.team.canvasGetState": "Ler o canvas do projeto",
   "activity.tool.team.canvasApplyOps": "Editar o canvas do projeto",

@@ -113,20 +113,14 @@ export function connectedReferences(nodeId: string, nodes: readonly CanvasNode[]
   return label(expand(inputNodes(nodeId, nodes, connections), nodes));
 }
 
-/** What a node's prompt can name with "@": the inputs of a config it feeds, else its own inputs, else itself. */
+/** What a node's prompt can name with "@", and so the references generating from it hands over and a task written in it
+ * numbers, in this order: an image node's own picture first, since generating from it edits that picture; then the
+ * inputs of a config the node feeds, else its own inputs; groups opened up, each node once. */
 export function mentionReferences(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): CanvasReference[] {
-  const config = expand(configInputNodes(nodeId, nodes, connections), nodes);
-  if (config.length) return label(config);
-  const own = expand(inputNodes(nodeId, nodes, connections), nodes);
-  if (own.length) return label(own);
   const node = nodes.find((item) => item.id === nodeId);
-  return node && resourceKind(node) ? label([{ node, sourceNodeId: node.id }]) : [];
-}
-
-/** What a generation for this node takes: the inputs of a config it feeds, else its own inputs, groups opened up. */
-export function generationInputs(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): CanvasReference[] {
   const config = configInputNodes(nodeId, nodes, connections);
-  return label(expand(config.length ? config : inputNodes(nodeId, nodes, connections), nodes));
+  const inputs = config.length ? config : inputNodes(nodeId, nodes, connections);
+  return label(expand(node && resourceKind(node) === "image" ? [node, ...inputs] : inputs, nodes));
 }
 
 /** The project files of the images and audio among `references`, in their numbering's order. */
@@ -137,7 +131,7 @@ export function referenceFiles(references: readonly CanvasReference[]): Generati
 
 /** The project files a generation for this node hands over as references. */
 export function generationReferences(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): GenerationReferences {
-  return referenceFiles(generationInputs(nodeId, nodes, connections));
+  return referenceFiles(mentionReferences(nodeId, nodes, connections));
 }
 
 export const referenceCounts = (references: GenerationReferences): ReferenceCounts => ({ images: references.images.length, audio: references.audio.length });
