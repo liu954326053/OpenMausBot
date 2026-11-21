@@ -16,7 +16,7 @@ import { computerStepLine } from "@/lib/computer-step";
 import { localizedTaskTitle } from "@/lib/task-title";
 import type { MapComputer, MapComputerState } from "../../shared/map-computer";
 import { BotAvatar } from "./Avatar";
-import { botRoleLine } from "./BotRole";
+import { botRoleLine, chiefTitle } from "./BotRole";
 import { ComputerNode } from "./ComputerNode";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 import { openBotSettings } from "./bot-panel/panel-link";
@@ -69,7 +69,7 @@ function BotCard({ bot, selected, moving, connected, tagged = false, sent, onCom
       <BotAvatar bot={bot} size={38} motion="none" motionKey={0} animated={false} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-semibold">{name}</span>
-          {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={t("chat.chiefOfStaff")} />}
+          {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={chiefTitle(bot)} />}
           {botShowsUnread(bot) && <span data-card-unread="" role="img" aria-label={t("task.unread")} className="size-2 shrink-0 rounded-full bg-accent" />}</span>
         <span className="mt-1 block truncate text-[11px] text-ink-secondary">{botRoleLine(bot) || t("canvas.bot")}</span>
       </span>
