@@ -65,7 +65,7 @@ function ProjectTopBar({ project }: { project: TeamProjectWire }) {
   return (
     <>
       {project.folderState === "ready" && (
-        <span dir="ltr" title={project.folder} data-project-folder="" className="min-w-0 truncate text-start text-[12px] leading-4 text-ink-tertiary">{project.folder}</span>
+        <span dir="ltr" title={project.folder} data-project-folder="" className="min-w-0 truncate text-start font-mono text-[12px] leading-4 text-ink-tertiary">{project.folder}</span>
       )}
       <span className="flex-1" />
       {changes && (

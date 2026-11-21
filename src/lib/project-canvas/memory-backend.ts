@@ -28,7 +28,7 @@ import {
   type VideoOverrides,
 } from "../../../shared/project-generation";
 import { CanvasBackendError, type CanvasBackend } from "./backend";
-import { generationInput, nextOutputFrame } from "./generation";
+import { generationInput, nextOutputFrame, takesResultInPlace } from "./generation";
 import { applyCanvasOps } from "./ops";
 import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
@@ -133,9 +133,15 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     });
     const ops: CanvasOp[] = [];
     let document = snapshot;
+    let inPlace = takesResultInPlace(node);
     outputs.forEach((output) => {
       if (output.url) fileUrls.set(output.file.path, output.url);
       const media = { file: output.file, ...(output.naturalWidth ? { naturalWidth: output.naturalWidth, naturalHeight: output.naturalHeight } : {}), ...(output.durationMs ? { durationMs: output.durationMs } : {}) };
+      if (inPlace) {
+        inPlace = false;
+        ops.push({ type: "update_node", id: node.id, metadata: media });
+        return;
+      }
       const frame = nextOutputFrame(node, job.kind, document.nodes, document.connections);
       const id = newId("node");
       const steps: CanvasOp[] = [

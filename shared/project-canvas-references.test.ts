@@ -82,6 +82,16 @@ describe("the numbering of a canvas's references", () => {
     expect(listed("img1", [link("img1", "cfg"), link("note", "cfg")])).toEqual([["img1", "image", 1], ["note", "text", 1]]);
   });
 
+  it("names on a node that generates only what a generation takes in, while a text node's task takes a clip too", () => {
+    const clip = node("clip", "video", { metadata: { file: file("素材/c.mp4", "video/mp4") } });
+    const all = [...nodes, clip];
+    const listed = (nodeId: string, connections: CanvasConnection[]) => mentionReferences(nodeId, all, connections).map((reference) => [reference.nodeId, reference.kind, reference.index]);
+    expect(listed("img1", [link("clip", "img1"), link("note", "img1"), link("g", "img1")])).toEqual([["img1", "image", 1], ["note", "text", 1], ["img2", "image", 2], ["song", "audio", 1]]);
+    for (const nodeId of ["shot", "clip", "cfg"]) expect(listed(nodeId, [link("clip", "shot"), link("img2", "clip"), link("clip", "cfg")]).map(([, kind]) => kind)).not.toContain("video");
+    expect(listed("out", [link("out", "cfg"), link("clip", "cfg"), link("img1", "cfg")])).toEqual([["img1", "image", 1]]);
+    expect(listed("note", [link("clip", "note"), link("img1", "note")])).toEqual([["clip", "video", 1], ["img1", "image", 1]]);
+  });
+
   it("never lists any other node itself, since nothing else sends itself", () => {
     const clip = node("clip", "video", { metadata: { file: file("素材/c.mp4", "video/mp4") } });
     for (const nodeId of ["note", "song", "empty", "clip"]) expect(mentionReferences(nodeId, [...nodes, clip], [])).toEqual([]);

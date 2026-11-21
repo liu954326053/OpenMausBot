@@ -8,6 +8,7 @@ import {
   connectionCurve,
   connectionDropTarget,
   curveInView,
+  fitNodeSize,
   focusViewportForNode,
   gridBackground,
   groupWrapRect,
@@ -164,6 +165,13 @@ describe("resizing", () => {
     const frame = resizeFrame({ ...start, ratio: 2 }, 200, 10);
     expect(frame.width).toBe(600);
     expect(frame.height).toBe(300);
+  });
+
+  it("fits a node to its picture's shape, no larger than 640 and no smaller than a node can be resized to", () => {
+    expect(fitNodeSize(320, 180)).toEqual({ width: 320, height: 180 });
+    expect(fitNodeSize(2000, 1000)).toEqual({ width: 640, height: 320 });
+    expect(fitNodeSize(48, 48)).toEqual({ width: 220, height: 220 });
+    expect(fitNodeSize(48, 24)).toEqual({ width: 320, height: 160 });
   });
 });
 

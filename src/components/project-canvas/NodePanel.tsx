@@ -1,7 +1,7 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node-prompt-panel.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
 import { useEffect, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
-import { botIdOfNode, type CanvasNode } from "../../../shared/project-canvas";
+import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, generationReferences, mentionReferences, referenceCounts } from "../../../shared/project-canvas-references";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { Select } from "@/components/Select";
@@ -10,7 +10,7 @@ import { approvalDetailText } from "@/lib/approval-summary";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { canvasErrorText } from "@/lib/project-canvas/backend";
-import { generationKindOf, referenceProblems } from "@/lib/project-canvas/settings";
+import { referenceProblems } from "@/lib/project-canvas/settings";
 import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
@@ -89,7 +89,7 @@ function PromptPanel({ node }: { node: CanvasNode }) {
           onChange={(generationMode) => ui.updateMetadata(node.id, { generationMode })}
         />
       ) : null}
-      <ReferenceBar node={node} filter={isShot ? (reference) => reference.kind === "image" || reference.kind === "audio" : undefined} />
+      <ReferenceBar node={node} references={isShot ? mentions.filter((reference) => reference.kind === "image" || reference.kind === "audio") : mentions} />
       <div className={cn("flex flex-col", expanded && "[&_textarea]:min-h-72")} onBlur={keepPrompt}>
         <PromptInput
           value={prompt}
@@ -154,6 +154,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
     };
   }, [exchangeOpen, outputId, botId, ui.controller]);
   if (!bot) return null;
+  const references = connectedReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
   const busy = bot.status === "working" || bot.status === "queued";
   const waitingDetail = bot.waiting ? approvalDetailText(bot.waiting.card) : "";
   const send = async () => {
@@ -172,7 +173,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   };
   return (
     <div className={PANEL_SURFACE}>
-      <ReferenceBar node={node} />
+      <ReferenceBar node={node} references={references} />
       {bot.waiting ? (
         <div role="status" className="flex flex-col gap-2 rounded-lg border border-warning/50 p-3">
           <div className="text-[13px] font-medium leading-[18px] text-ink">{bot.waiting.card.title}</div>
@@ -186,7 +187,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
       <PromptInput
         value={text}
         onChange={setText}
-        references={connectedReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections)}
+        references={references}
         label={t("projectCanvas.bot.message", { name: bot.name })}
         placeholder={t("projectCanvas.bot.placeholder", { name: bot.name })}
         disabled={ui.readOnly}
@@ -242,6 +243,7 @@ function TextPanel({ node }: { node: CanvasNode }) {
   const [sending, setSending] = useState(false);
   const writing = Boolean(ui.state.writing[node.id]);
   const bot = ui.snapshot.bots[botId];
+  const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
   const send = async () => {
     if (!request.trim() || !bot) return;
     setSending(true);
@@ -257,7 +259,7 @@ function TextPanel({ node }: { node: CanvasNode }) {
   };
   return (
     <div className={PANEL_SURFACE}>
-      <ReferenceBar node={node} />
+      <ReferenceBar node={node} references={mentions} />
       <div className="flex items-center gap-2">
         <PanelLabel>{t("projectCanvas.text.writer")}</PanelLabel>
         <Select size="sm" aria-label={t("projectCanvas.text.writer")} value={botId} disabled={ui.readOnly || !bots.length} onChange={(event) => setBotId(event.target.value)}>
@@ -267,7 +269,7 @@ function TextPanel({ node }: { node: CanvasNode }) {
       <PromptInput
         value={request}
         onChange={setRequest}
-        references={mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections)}
+        references={mentions}
         label={t("projectCanvas.text.request")}
         placeholder={t("projectCanvas.text.requestPlaceholder", { name: bot?.name ?? "" })}
         disabled={ui.readOnly || !bot}

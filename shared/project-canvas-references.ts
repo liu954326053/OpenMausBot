@@ -24,7 +24,7 @@
  * SOFTWARE.
  */
 
-import type { CanvasConnection, CanvasFileRef, CanvasNode } from "./project-canvas.ts";
+import { generationKindOf, type CanvasConnection, type CanvasFileRef, type CanvasNode } from "./project-canvas.ts";
 import type { GenerationReferences, ReferenceCounts } from "./project-generation.ts";
 
 export type CanvasResourceKind = "image" | "video" | "audio" | "text";
@@ -113,14 +113,19 @@ export function connectedReferences(nodeId: string, nodes: readonly CanvasNode[]
   return label(expand(inputNodes(nodeId, nodes, connections), nodes));
 }
 
+/** What a generation takes in: the files of image and audio references, and the words of text ones in its prompt. */
+const GENERATION_TAKES: ReadonlySet<CanvasResourceKind> = new Set(["image", "audio", "text"]);
+
 /** What a node's prompt can name with "@", and so the references generating from it hands over and a task written in it
  * numbers, in this order: an image node's own picture first, since generating from it edits that picture; then the
- * inputs of a config the node feeds, else its own inputs; groups opened up, each node once. */
+ * inputs of a config the node feeds, else its own inputs; groups opened up, each node once. A node that generates names
+ * only what a generation takes in. */
 export function mentionReferences(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): CanvasReference[] {
   const node = nodes.find((item) => item.id === nodeId);
   const config = configInputNodes(nodeId, nodes, connections);
   const inputs = config.length ? config : inputNodes(nodeId, nodes, connections);
-  return label(expand(node && resourceKind(node) === "image" ? [node, ...inputs] : inputs, nodes));
+  const references = label(expand(node && resourceKind(node) === "image" ? [node, ...inputs] : inputs, nodes));
+  return node && generationKindOf(node) ? references.filter((reference) => GENERATION_TAKES.has(reference.kind)) : references;
 }
 
 /** The project files of the images and audio among `references`, in their numbering's order. */
