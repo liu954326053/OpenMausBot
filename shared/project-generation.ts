@@ -41,7 +41,7 @@ export interface GenerationTools {
 }
 
 export interface GenerationKindSettings<S> {
-  /** The MCP server's name, as in Plugins → MCP servers. Null: none chosen, and generation is refused until one is. */
+  /** The MCP server's name, as in Apps → MCP servers. Null: none chosen, and generation is refused until one is. */
   server: string | null;
   tools: GenerationTools;
   /** What a node that overrides nothing generates with. */
