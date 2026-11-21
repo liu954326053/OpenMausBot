@@ -228,3 +228,25 @@ describe("a remote client", () => {
     expect(items()).toEqual(["Copy conversation ID"]);
   });
 });
+
+describe("the list in a narrow window", () => {
+  const openAt = (box: { left: number; right: number }, windowWidth: number) => {
+    const details = q("details") as HTMLDetailsElement;
+    const list = details.querySelector<HTMLElement>("summary + div")!;
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({ ...box, top: 40, bottom: 200, width: box.right - box.left, height: 160, x: box.left, y: 40, toJSON: () => ({}) });
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(windowWidth);
+    details.open = false;
+    details.open = true;
+    flushSync(() => details.dispatchEvent(new Event("toggle")));
+    return list.style.translate;
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("moves sideways to stay 8px inside the window, its left edge first when it can't fit", () => {
+    expect(openAt({ left: -100, right: 156 }, 640)).toBe("108px");
+    expect(openAt({ left: 69, right: 325 }, 320)).toBe("-13px");
+    expect(openAt({ left: 20, right: 276 }, 260)).toBe("-12px");
+    expect(openAt({ left: 10, right: 266 }, 260)).toBe("-2px");
+    expect(openAt({ left: 505, right: 761 }, 1024)).toBe("");
+  });
+});

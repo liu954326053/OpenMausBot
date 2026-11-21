@@ -57,6 +57,15 @@ export function TeamMapRoomList({ rooms, menuFor, onOpen, onMenu, onNew }: {
 const insideListOrItsMenus = (details: HTMLElement, next: EventTarget | null) =>
   details.contains(next as Node | null) || (next instanceof Element && next.closest("[data-room-menu], [role=alertdialog]") !== null);
 
+const WINDOW_MARGIN = 8;
+
+function keepInWindow(list: HTMLElement) {
+  list.style.translate = "";
+  const box = list.getBoundingClientRect();
+  const shift = Math.max(WINDOW_MARGIN - box.left, Math.min(0, window.innerWidth - WINDOW_MARGIN - box.right));
+  if (shift) list.style.translate = `${shift}px`;
+}
+
 /** The group chats and bot chats outside projects: the sidebar lists only the projects' own. */
 export function TeamMapRooms() {
   const { state, dispatch } = useStore();
@@ -65,11 +74,13 @@ export function TeamMapRooms() {
   const [menu, setMenu] = useState<RoomMenuAt | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const toggleRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const deleting = deletingId ? state.groups.find((group) => group.id === deletingId) : undefined;
   const unread = rooms.some((room) => room.unread);
   return <>
-    <details className="relative" onBlur={(event) => { if (!insideListOrItsMenus(event.currentTarget, event.relatedTarget)) event.currentTarget.removeAttribute("open"); }} onKeyDown={(event) => {
+    <details className="relative" onToggle={(event) => { if (event.currentTarget.open && listRef.current) keepInWindow(listRef.current); }}
+      onBlur={(event) => { if (!insideListOrItsMenus(event.currentTarget, event.relatedTarget)) event.currentTarget.removeAttribute("open"); }} onKeyDown={(event) => {
       if (event.key === "Escape") { event.currentTarget.removeAttribute("open"); event.currentTarget.querySelector("summary")?.focus(); }
     }}>
       <summary ref={toggleRef} data-team-map-rooms="" className="relative flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-hairline/60 bg-panel px-3 py-2 text-[12px] font-medium hover:bg-control [&::-webkit-details-marker]:hidden">
@@ -77,7 +88,7 @@ export function TeamMapRooms() {
         <span className="tabular-nums text-ink-secondary">{rooms.length}</span>
         {unread && <span data-team-map-rooms-unread="" role="img" aria-label={t("task.unread")} className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-app" />}
       </summary>
-      <div className="absolute end-0 top-full z-40 mt-2 max-h-80 w-64 overflow-y-auto max-sm:start-0 max-sm:end-auto rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
+      <div ref={listRef} className="absolute end-0 top-full z-40 mt-2 max-h-80 w-64 overflow-y-auto rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
         const details = event.currentTarget.closest("details"); details?.querySelector("summary")?.focus(); details?.removeAttribute("open");
       }}>
         <TeamMapRoomList rooms={rooms} menuFor={menu?.groupId} onOpen={(id) => dispatch({ type: "select", id })} onMenu={setMenu} onNew={() => setCreating(true)} />
