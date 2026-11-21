@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 
-import { botNodeId, type CanvasBotState } from "../../../shared/project-canvas";
+import { botNodeId, CANVAS_NODE_SIZE, type CanvasBotState } from "../../../shared/project-canvas";
 import { loadLocale, setLocale } from "@/lib/i18n";
 import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
-import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
+import { fitNodeSize } from "@/lib/project-canvas/geometry";
+import type { MemoryCanvasBackend, MemoryWork } from "@/lib/project-canvas/memory-backend";
 import { PLACEMENT_GAP } from "@/lib/project-canvas/placement";
 import { initialState, StoreContext, type AppState, type Bot } from "@/state/store";
 import { SAMPLE_EXCHANGES, SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "@/testing/project-canvas-sample";
@@ -87,6 +88,25 @@ async function mount(options: Parameters<typeof sampleCanvasBackend>[0] = {}, st
   await act(async () => root.render(value ? createElement(StoreContext.Provider, { value: value as never }, canvas) : canvas));
   await settle();
   await settle();
+}
+
+function heldWork() {
+  const held: Array<{ work: MemoryWork; finish: () => void }> = [];
+  return {
+    schedule: (finish: () => void, _ms: number, work: MemoryWork) => {
+      const entry = { work, finish };
+      held.push(entry);
+      return () => { if (held.includes(entry)) held.splice(held.indexOf(entry), 1); };
+    },
+    pending: () => held.map((entry) => entry.work.kind),
+    async finish(kind: MemoryWork["kind"]) {
+      const at = held.findIndex((entry) => entry.work.kind === kind);
+      expect(at, `no ${kind} is being worked on`).toBeGreaterThanOrEqual(0);
+      const [entry] = held.splice(at, 1);
+      await act(async () => entry!.finish());
+      await settle();
+    },
+  };
 }
 
 const unreadDot = (botId: string) => nodeElement(botNodeId(botId))!.querySelector<HTMLElement>("[data-bot-unread]");
@@ -316,7 +336,8 @@ describe("the project canvas", () => {
   });
 
   it("asks a bot to revise a text node's text, draws the node its reply becomes beside it while the bot writes, and the reply takes exactly that place", async () => {
-    await mount({ delayMs: 150 });
+    const work = heldWork();
+    await mount({ schedule: work.schedule });
     const text = shown("logline")!.metadata?.content;
     await clickNode("logline");
     const open = panel()!;
@@ -336,7 +357,7 @@ describe("the project canvas", () => {
     expect(host.querySelector(`[data-ghost-connection="${placeholder!.id}"]`)).not.toBeNull();
     expect(nodeElement(placeholder!.id)).toBeNull();
     expect(nodeElement("logline")!.textContent).not.toContain("is writing");
-    await settle(250);
+    await work.finish("task");
     expect(host.querySelector("[data-reply-placeholder]")).toBeNull();
     expect(host.querySelector("[data-ghost-connection]")).toBeNull();
     expect(shown("logline")!.metadata?.content).toBe(text);
@@ -441,7 +462,8 @@ describe("the project canvas", () => {
   });
 
   it("generates an empty image node into itself with no placeholder beside it, and draws the next picture's placeholder to its right", async () => {
-    await mount({ delayMs: 40 });
+    const work = heldWork();
+    await mount({ schedule: work.schedule });
     await act(async () => {
       await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "image", position: { x: 2400, y: 600 }, metadata: { prompt: "A bride at dawn" } }] });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -452,7 +474,7 @@ describe("the project canvas", () => {
     await settle();
     expect(nodeElement("blank")!.textContent).toContain("Generating…");
     expect(host.querySelector('[data-generation-ghost="blank"]')).toBeNull();
-    await settle(120);
+    await work.finish("generation");
     expect(shown("blank")!.metadata).toMatchObject({ status: "success", file: { mime: "image/png" } });
     expect(nodeElement("blank")!.querySelector("img")).not.toBeNull();
     expect(madeFromBlank()).toEqual([]);
@@ -460,13 +482,14 @@ describe("the project canvas", () => {
     await act(async () => buttonByText(panel()!, "Generate")!.click());
     await settle();
     expect(host.querySelector('[data-generation-ghost="blank"]')).not.toBeNull();
-    await settle(120);
+    await work.finish("generation");
     expect(host.querySelector('[data-generation-ghost="blank"]')).toBeNull();
     expect(madeFromBlank()).toHaveLength(1);
   });
 
   it("draws a reply's placeholder and its connection as it draws the next picture's, and takes them away when the bot is stopped, leaving the node as it was", async () => {
-    await mount({ delayMs: 150 });
+    const work = heldWork();
+    await mount({ schedule: work.schedule });
     await act(async () => {
       await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "poster", nodeType: "image", position: { x: 2400, y: 600 }, metadata: { prompt: "A bride at dawn", file: { path: "素材/poster.png", name: "poster.png", mime: "image/png", bytes: 1 } } }] });
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -492,7 +515,8 @@ describe("the project canvas", () => {
     await settle();
     expect(host.querySelector("[data-reply-placeholder]")).toBeNull();
     expect(host.querySelector(`[data-ghost-connection="${reply.dataset.replyPlaceholder}"]`)).toBeNull();
-    await settle(400);
+    expect(work.pending(), "the stopped task will never finish").toEqual(["generation"]);
+    await work.finish("generation");
     expect(shown("logline")).toEqual(before.nodes.find((node) => node.id === "logline"));
     expect(backend.current().connections.filter((connection) => connection.fromNodeId === "logline")).toEqual(before.connections.filter((connection) => connection.fromNodeId === "logline"));
     expect(backend.current().nodes.filter((node) => node.type === "text")).toEqual(before.nodes.filter((node) => node.type === "text"));
@@ -685,6 +709,34 @@ describe("the project canvas", () => {
     }
     expect(bots()).toEqual(botsBefore);
     expect(Object.values(backend.current().bots).every((bot) => bot.placed)).toBe(true);
+  });
+
+  it("moves a picture that grows as it loads off the node below it into free space, and never moves a bot", async () => {
+    await mount();
+    const bots = () => backend.current().nodes.filter((node) => node.type === "bot").map((node) => ({ id: node.id, position: node.position }));
+    const botsBefore = bots();
+    const below = { x: 2400, y: 600 + CANVAS_NODE_SIZE.image.height + PLACEMENT_GAP };
+    await act(async () => {
+      await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [
+        { type: "add_node", id: "tall", nodeType: "image", position: { x: 2400, y: 600 }, metadata: { file: { path: "outputs/tall.png", mime: "image/png", bytes: 900, name: "tall.png" } } },
+        { type: "add_node", id: "under", nodeType: "text", position: below, metadata: { content: "Scene two" } },
+      ] });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await settle(20);
+    const picture = nodeElement("tall")!.querySelector("img")!;
+    Object.defineProperty(picture, "naturalWidth", { value: 27 });
+    Object.defineProperty(picture, "naturalHeight", { value: 48 });
+    await act(async () => { picture.dispatchEvent(new Event("load")); });
+    await settle(20);
+    const tall = shown("tall")!;
+    expect(tall).toMatchObject({ ...fitNodeSize(27, 48), metadata: { naturalWidth: 27, naturalHeight: 48 } });
+    expect(shown("under")!.position).toEqual(below);
+    const crowding = backend.current().nodes.filter((other) => other.id !== tall.id && !(
+      tall.position.x >= other.position.x + other.width + PLACEMENT_GAP || other.position.x >= tall.position.x + tall.width + PLACEMENT_GAP
+      || tall.position.y >= other.position.y + other.height + PLACEMENT_GAP || other.position.y >= tall.position.y + tall.height + PLACEMENT_GAP));
+    expect(crowding.map((other) => other.id)).toEqual([]);
+    expect(bots()).toEqual(botsBefore);
   });
 
   it("says a project's folder is missing in the sidebar's words", async () => {

@@ -2389,6 +2389,7 @@
   "task.chip": "Conversazione",
   "task.newShort": "Nuova conversazione",
   "task.sharedChat": "Chat condivisa",
+  "task.chooseChief": "Scegliere un capo di gabinetto",
   "task.matching": "{count} conversazioni corrispondenti",
   "task.list": "Conversazioni",
   "task.namedList": "Conversazioni di {name}",

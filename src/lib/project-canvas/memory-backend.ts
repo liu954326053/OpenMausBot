@@ -45,6 +45,9 @@ export interface MemoryGenerationOutput {
   durationMs?: number;
 }
 
+/** A bot's task or a generation the backend is working on. */
+export type MemoryWork = { kind: "task"; botId: string } | { kind: "generation"; nodeId: string };
+
 export interface MemoryCanvasOptions {
   snapshot: CanvasSnapshot;
   looks?: Record<string, CanvasBotLook>;
@@ -60,6 +63,8 @@ export interface MemoryCanvasOptions {
   fail?: (input: StartGenerationInput) => string | undefined;
   /** How long a bot or a generation takes, in milliseconds. */
   delayMs?: number;
+  /** Calls `finish` when the work is done and returns what calls it off; by default `ms` later, on a timer. */
+  schedule?: (finish: () => void, ms: number, work: MemoryWork) => () => void;
   onOpenChat?: (botId: string, threadId?: string) => void;
 }
 
@@ -100,11 +105,16 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const fileUrls = new Map(Object.entries(options.fileUrls ?? {}));
   const exchanges = new Map(Object.entries(structuredClone(options.exchanges ?? {})));
   const listeners = new Set<() => void>();
-  const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const cancelTask = new Map<string, () => void>();
   const botTasks = new Map<string, BotTask[]>();
-  const jobTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const cancelJob = new Map<string, () => void>();
   const jobs = new Map<string, GenerationJob>();
   const delay = options.delayMs ?? 900;
+  const schedule = options.schedule ?? ((finish: () => void, ms: number) => {
+    const timer = setTimeout(finish, ms);
+    return () => clearTimeout(timer);
+  });
+  const scheduleTask = (botId: string) => cancelTask.set(botId, schedule(() => finishTask(botId), delay, { kind: "task", botId }));
   const openedChats: Array<{ botId: string; threadId?: string }> = [];
   const readConversations: Array<{ botId: string; threadId?: string }> = [];
   let counter = 0;
@@ -148,7 +158,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     emit();
   };
   const finishTask = (botId: string) => {
-    botTimers.delete(botId);
+    cancelTask.delete(botId);
     const [done, ...rest] = botTasks.get(botId) ?? [];
     const bot = snapshot.bots[botId];
     if (!done || !bot) return;
@@ -160,13 +170,13 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     const into = task.targetNodeId ? nodeById(task.targetNodeId) : undefined;
     if (into && (beside || into.metadata?.content?.trim())) addReply(into, task, text, beside ?? replyNode(into));
     else if (into) commit([{ type: "update_node", id: into.id, metadata: { content: text } }]);
-    if (rest.length) botTimers.set(botId, setTimeout(() => finishTask(botId), delay));
+    if (rest.length) scheduleTask(botId);
     looks = { ...looks, [botId]: { ...(looks[botId] ?? { color: "silver" }), unread: true } };
     showTasks(botId, { ...(rest.length ? {} : { status: "idle" as const, doing: undefined }), output: { text, threadId, messageId: replyId, at: Date.now() } });
   };
 
   const finishJob = (job: GenerationJob, input: StartGenerationInput) => {
-    jobTimers.delete(job.id);
+    cancelJob.delete(job.id);
     const node = nodeById(job.nodeId);
     const reason = options.fail?.(input);
     if (!node || reason) {
@@ -291,18 +301,18 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: messageId, role: "person", text: task.text, at: Date.now() }]);
       const queue = botTasks.get(task.botId) ?? [];
       botTasks.set(task.botId, [...queue, { task, threadId, ...(target?.metadata?.content?.trim() ? { beside: replyNode(target) } : {}) }]);
-      if (!queue.length) botTimers.set(task.botId, setTimeout(() => finishTask(task.botId), delay));
+      if (!queue.length) scheduleTask(task.botId);
       showTasks(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined });
       return { threadId, messageId, references };
     },
 
     async stopBot(id, botId) {
       ensureProject(id);
-      clearTimeout(botTimers.get(botId));
-      botTimers.delete(botId);
+      cancelTask.get(botId)?.();
+      cancelTask.delete(botId);
       const queued = (botTasks.get(botId) ?? []).slice(1);
       botTasks.set(botId, queued);
-      if (queued.length) botTimers.set(botId, setTimeout(() => finishTask(botId), delay));
+      if (queued.length) scheduleTask(botId);
       showTasks(botId, queued.length ? {} : { status: "idle", doing: undefined });
     },
 
@@ -380,14 +390,14 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         : { ...base, kind, settings: resolveSettings(kind, generation.video.defaults, input.overrides as VideoOverrides) };
       jobs.set(job.id, job);
       commit([{ type: "update_node", id: node.id, metadata: { status: "loading", jobId: job.id, errorDetails: null, errorKey: null, errorParams: null } }]);
-      jobTimers.set(job.id, setTimeout(() => finishJob(job, input), delay * 2));
+      cancelJob.set(job.id, schedule(() => finishJob(job, input), delay * 2, { kind: "generation", nodeId: node.id }));
       return { jobId: job.id };
     },
 
     async cancelGeneration(id, jobId) {
       ensureProject(id);
-      clearTimeout(jobTimers.get(jobId));
-      jobTimers.delete(jobId);
+      cancelJob.get(jobId)?.();
+      cancelJob.delete(jobId);
       const job = jobs.get(jobId);
       if (!job) return;
       jobs.set(jobId, { ...job, status: "cancelled", updatedAt: Date.now() });

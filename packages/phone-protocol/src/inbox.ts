@@ -71,6 +71,10 @@ export interface InboxRow {
   needsChief?: { department: string };
 }
 
+/** The title of the main bot's conversation that asks for each department's Chief of Staff; clients show it in the
+ * person's language. */
+export const CHOOSE_CHIEF_TITLE = "Choose a Chief of Staff";
+
 /** A person's inbox: where its lines live (none yet before the first arrives), and the line the inbox's card in that
  * conversation sits under (the newest that needed them, else the newest). Off a team `botId` and `threadId` are null: its
  * lines stay in the conversations they came from, each answered through its `origin`. */

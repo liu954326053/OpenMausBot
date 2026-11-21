@@ -83,6 +83,18 @@ describe("the canvas controller", () => {
     expect(node(controller, nodeId)).toBeDefined();
   });
 
+  it("stores those places before a picture's node takes its picture's frame, which stays out of undo", async () => {
+    const { backend, controller, sent } = await started();
+    const bots = backend.current().nodes.filter((candidate) => candidate.type === "bot");
+    controller.fitPicture("city-night", { position: { x: 1200, y: 640 }, width: 220, height: 391 }, { naturalWidth: 27, naturalHeight: 48 });
+    await controller.settled();
+    await controller.refresh();
+    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([bots.map(() => "update_node"), ["update_node"]]);
+    expect(node(controller, "city-night")).toMatchObject({ position: { x: 1200, y: 640 }, width: 220, height: 391, metadata: { naturalWidth: 27, naturalHeight: 48 } });
+    expect(backend.current().nodes.filter((candidate) => candidate.type === "bot").map((bot) => bot.position)).toEqual(bots.map((bot) => bot.position));
+    expect(controller.getState().canUndo).toBe(false);
+  });
+
   it("shows a view without storing it when asked to", async () => {
     const { backend, controller } = await started();
     controller.setViewport({ x: 40, y: 50, k: 0.5 }, { save: false });

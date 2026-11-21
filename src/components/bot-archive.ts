@@ -5,7 +5,14 @@ import { api, openBot, type Action, type Bot } from "@/state/store";
 export interface ArchiveNotice {
   error: boolean;
   text: string;
-  restoreBot?: { id: string; name: string };
+  restoreBot?: ArchivedBot;
+}
+
+/** What Undo brings back; `inPlace` when it was archived where the person stays, so Undo opens no chat. */
+export interface ArchivedBot {
+  id: string;
+  name: string;
+  inPlace?: boolean;
 }
 
 const listeners = new Set<(notice: ArchiveNotice | null) => void>();
@@ -33,7 +40,8 @@ export function archivableChief(bots: readonly Bot[], id: string): Bot | undefin
 
 /**
  * Archives a bot already checked with currentArchivableBot (or archivableChief), moves to another bot when it was the open one, and reports
- * through `notify`: nothing first, then the Undo notice or the error.
+ * through `notify`: nothing first, then the Undo notice or the error. `inPlace`, for an archive asked for where the person stays (a team
+ * map card), opens no other bot.
  */
 export async function archiveBotWithNotice(bot: Bot, context: {
   bots: readonly Bot[];
@@ -41,6 +49,7 @@ export async function archiveBotWithNotice(bot: Bot, context: {
   dispatch: (action: Action) => void;
   showThreads: boolean;
   notify: (notice: ArchiveNotice | null) => void;
+  inPlace?: boolean;
 }): Promise<void> {
   const { dispatch, notify } = context;
   const activeBots = context.bots.filter((candidate) => !candidate.hidden);
@@ -52,14 +61,14 @@ export async function archiveBotWithNotice(bot: Bot, context: {
       body: JSON.stringify({ hidden: true, ...(bot.chiefOfStaff ? { chiefOfStaff: false } : {}) }),
     });
     dispatch({ type: "botPatched", bot: response.bot });
-    if (context.selectedId === bot.id) {
+    if (!context.inPlace && context.selectedId === bot.id) {
       const next = activeBots.find((candidate) => candidate.id !== bot.id);
       if (next) openBot(dispatch, next, context.showThreads);
     }
     notify({
       error: false,
       text: t("sidebar.bot.archived", { name: bot.name }),
-      restoreBot: { id: bot.id, name: bot.name },
+      restoreBot: { id: bot.id, name: bot.name, ...(context.inPlace && { inPlace: true }) },
     });
   } catch (cause) {
     notify({ error: true, text: cause instanceof Error ? cause.message : String(cause) });

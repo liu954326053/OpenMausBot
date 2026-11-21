@@ -2305,6 +2305,7 @@
   "task.chip": "Hilo",
   "task.newShort": "Nuevo hilo",
   "task.sharedChat": "Chat compartido",
+  "task.chooseChief": "Elegir un jefe de gabinete",
   "task.matching": "{count} hilos coincidentes",
   "task.list": "Hilos",
   "task.namedList": "Hilos de {name}",

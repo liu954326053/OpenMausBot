@@ -45,6 +45,7 @@ vi.mock("@/state/store", async (importOriginal) => {
 import { initialState } from "@/state/store";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ArchivedBotsPanel, BotContextMenu, Sidebar } from "./Sidebar";
+import { requestBotMenu } from "./bot-menu-request";
 const drawSidebar = (Sidebar as unknown as { type: (props: ComponentProps<typeof Sidebar>) => ReactNode }).type;
 
 const left = (id: string, extra: Partial<Bot> = {}): Bot => ({
@@ -127,5 +128,44 @@ describe.each([false, true])("with threads shown: %s", (shown) => {
     panel().find((node) => node.type === "button" && label(node) === "Restore all")!.props.onClick!();
     await flush();
     expect(actions()).toEqual([opened("scout")]);
+  });
+});
+
+describe("a bot's menu asked for away from its sidebar row, as a team map card asks", () => {
+  const ledger = left("ledger", { section: "Ops" });
+  const sidebar = () => render(() => drawSidebar({ open: false, onClose: () => {} }));
+  let stop: Array<void | (() => void)> = [];
+  beforeEach(() => {
+    fixture.showThreads = false;
+    fixture.state = { ...initialState, bots: [left("scout"), ledger], selectedId: "scout", activeView: "team-map" };
+    sidebar();
+    stop = fixture.effects.map((effect) => effect());
+  });
+  afterEach(() => { for (const cleanup of stop) cleanup?.(); });
+  const menu = () => sidebar().find((node) => node.type === BotContextMenu)!;
+
+  it("opens the sidebar's own menu there, asks before deleting in the same dialog, and renames the card's way", () => {
+    const rename = vi.fn();
+    requestBotMenu({ botId: "ledger", x: 300, y: 140, rename });
+    expect(menu().props.menu).toEqual({ botId: "ledger", x: 300, y: 140, rename });
+    (menu().props.onRename as (botId: string) => void)("ledger");
+    expect(rename).toHaveBeenCalledWith("ledger");
+    (menu().props.onDelete as (bot: Bot) => void)(ledger);
+    const dialog = sidebar().find((node) => node.type === ConfirmDialog && node.props.open)!;
+    expect(dialog.props.title).toBe("Delete ledger?");
+    expect(dialog.props.body).toContain("automations");
+    dialog.props.onConfirm!();
+    expect(actions()).toEqual([{ type: "deleteBot", botId: "ledger" }]);
+  });
+
+  it("archives from there with the sidebar's Undo notice", async () => {
+    fixture.api.mockImplementation(async (_path: string, init: RequestInit) => ({ bot: { ...ledger, ...JSON.parse(String(init.body)) } }));
+    requestBotMenu({ botId: "ledger", x: 300, y: 140, rename: vi.fn() });
+    expect(menu().props.menu).toMatchObject({ botId: "ledger" });
+    menu().props.onArchive!(ledger);
+    sidebar().find((node) => node.type === ConfirmDialog && node.props.open)!.props.onConfirm!();
+    await flush();
+    expect(fixture.api).toHaveBeenCalledWith("/api/bots/ledger", expect.objectContaining({ body: JSON.stringify({ hidden: true }) }));
+    expect(sidebar().some((node) => node.type === "button" && label(node) === "Undo")).toBe(true);
   });
 });

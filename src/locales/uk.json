@@ -1254,6 +1254,7 @@
   "task.chip": "Гілка",
   "task.newShort": "Нова гілка",
   "task.sharedChat": "Спільний чат",
+  "task.chooseChief": "Вибір керівника штабу",
   "task.matching": "{count} відповідних гілок",
   "task.list": "Гілки",
   "task.namedList": "Гілки {name}",

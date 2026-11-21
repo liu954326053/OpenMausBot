@@ -127,6 +127,7 @@ export function createGenerationMcp(deps: GenerationMcpDeps): GenerationMcp {
           if (!current.signedIn) deps.oauth.requireSignIn(name, remote.url);
           throw refused("sign_in", "signIn", { server: name });
         }
+        if (error instanceof McpHttpError && error.kind === "network") throw refused("unreachable", "unreachableNetwork", { server: name });
         const detail = status ? `it answered HTTP ${status}` : maskedServerText(error instanceof Error ? error.message : String(error), current.configured);
         throw refused("unreachable", "unreachable", { server: name, detail: detail || "no answer" });
       }

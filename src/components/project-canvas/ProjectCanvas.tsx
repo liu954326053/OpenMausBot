@@ -24,6 +24,7 @@ import {
   canGroupSelection,
   canUngroupSelection,
   collectGroupMemberNodes,
+  fitNodeSize,
   focusViewportForNode,
   groupWrapRect,
   nodeBounds,
@@ -33,7 +34,7 @@ import {
   type CanvasSize,
 } from "@/lib/project-canvas/geometry";
 import { addNodeOp, diffCanvasOps } from "@/lib/project-canvas/ops";
-import { freeSpot, uploadedNodeSize } from "@/lib/project-canvas/placement";
+import { freeSpot, grownSpot, uploadedNodeSize } from "@/lib/project-canvas/placement";
 import { copySelection, duplicateNode, isContentNode, pasteClipboard, type CanvasClipboard } from "@/lib/project-canvas/selection";
 import { randomUuid } from "@/lib/random-uuid";
 import { CanvasUiContext, nodeById, type CanvasTool, type CanvasUi, type CreatableNodeType } from "./canvas-ui";
@@ -212,6 +213,14 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
     })();
   }, [center, controller, occupied, readOnly]);
 
+  const fitPicture = useCallback((nodeId: string, naturalWidth: number, naturalHeight: number) => {
+    const node = controller.getState().snapshot?.nodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    const size = fitNodeSize(naturalWidth, naturalHeight);
+    const taken = occupied().filter((frame) => !("id" in frame) || (frame.id !== node.id && frame.id !== node.groupId));
+    controller.fitPicture(nodeId, { position: grownSpot(node, size, taken), ...size }, { naturalWidth, naturalHeight });
+  }, [controller, occupied]);
+
   const pasteNodes = useCallback((source: CanvasClipboard, at?: CanvasPoint) => {
     const bounds = nodeBounds(source.nodes);
     const size = { width: bounds.right - bounds.left, height: bounds.bottom - bounds.top };
@@ -380,10 +389,11 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
       focusFrame(node, false);
     },
     previewImage: (url, title) => setPreview({ url, title }),
+    fitPicture,
     uploadFiles,
     showNotice: setNotice,
     openSettings: () => setSettingsOpen(true),
-  }), [apply, connect, controller, createNode, deleteNodes, drafts, focusFrame, panelNodeId, pickingFor, readOnly, selectedConnectionId, selection, snapshot, state, uploadFiles]);
+  }), [apply, connect, controller, createNode, deleteNodes, drafts, fitPicture, focusFrame, panelNodeId, pickingFor, readOnly, selectedConnectionId, selection, snapshot, state, uploadFiles]);
 
   const openUpload = (at?: CanvasPoint) => {
     uploadAt.current = at;
