@@ -16,6 +16,8 @@ import { BotAvatar } from "./Avatar";
 import { ComputerNode } from "./ComputerNode";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 import { openBotSettings } from "./bot-panel/panel-link";
+import { TeamFlowTree } from "./team-flow/TeamFlowTree";
+import { useTeamFlowMap } from "@/state/team-flows";
 
 type Gesture = {
   id: number;
@@ -151,7 +153,8 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     // Rounded so a small window resize never reshuffles the teams.
     return { sizes, columns: bestColumns(sizes, { width: Math.round(viewportSize.width / 200) * 200, height: Math.round(viewportSize.height / 200) * 200 }) };
   }, [geometries, sections, viewportSize]);
-  const tiles = useMemo(() => layoutTeams(sections, positions, columnsFor), [sections, positions, columnsFor]);
+  const flowMap = useTeamFlowMap(sections, canManage, botOrders);
+  const tiles = useMemo(() => layoutTeams(sections, positions, columnsFor ?? flowMap.sizes), [sections, positions, columnsFor, flowMap.sizes]);
   const current = useRef({ view, positions, tiles, selectedId: state.selectedId, settingsOpen: state.settingsOpen, bottomInset });
   current.current = { view, positions, tiles, selectedId: state.selectedId, settingsOpen: state.settingsOpen, bottomInset };
 
@@ -486,7 +489,8 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
                 state={shownState(computer)} activity={currentActivity(users.find((bot) => bot.busy), state.instances)}
                 onOpen={onOpenComputer ? () => onOpenComputer(computer) : undefined} />;
             })}
-          </> : <div className="flex items-center px-5 pb-5">
+          </> : flowMap.layouts[index] ? <TeamFlowTree section={section} flow={flowMap.flowOf(section.key)!} layout={flowMap.layouts[index]} canDraw={canManage} readable={flowMap.readable} renderBot={renderBot} onLine={flowMap.setLine} />
+          : <div className="flex items-center px-5 pb-5">
             {section.chiefs.length > 0 && <div className="flex flex-col gap-4">{orderBots(section.chiefs, personalOrder(section.key)).map(renderBot)}</div>}
             {hierarchy && <div className="flex w-10 shrink-0 justify-center text-ink-secondary/35" aria-hidden="true"><ArrowRight size={22} strokeWidth={1} /></div>}
             {section.members.length > 0 && <div className="flex flex-col gap-4">{orderBots(section.members, personalOrder(section.key)).map(renderBot)}</div>}
