@@ -1,0 +1,123 @@
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+
+import type { ProjectCanvasEvent } from "../../shared/project-canvas.ts";
+import type { TeamProjectsApi } from "../../shared/team-projects.ts";
+import { saveImage } from "../attachments.ts";
+import { DATA_DIR } from "../config.ts";
+import type { DirectSendReceipt } from "../direct-send.ts";
+import { openCardRows } from "../message-db.ts";
+import type { RequestAuth } from "../request-auth.ts";
+import { createProjectCanvasRoutes } from "../routes/project-canvas.ts";
+import type { RouteHandler } from "../routes/table.ts";
+import { onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
+import type { Store } from "../store.ts";
+import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
+import { CanvasDocuments } from "./document-store.ts";
+import { CanvasRefusal, ProjectCanvasService, type StartGeneration } from "./service.ts";
+import { setProjectCanvasToolRoutes } from "./tool-route.ts";
+
+export interface ProjectCanvasHostDeps {
+  store: Store;
+  projects: Pick<TeamProjectsApi, "list">;
+  /** Reaches the open apps of the owner and admins. */
+  broadcast(event: ProjectCanvasEvent): void;
+  visibleFor(auth: RequestAuth): { thread(threadId: string): boolean };
+  threadBusy(botId: string, threadId: string): boolean;
+  mainThread(botId: string): string | undefined;
+  send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
+  /** A bot's superior in its project's flow; without it the project's lead is every other bot's superior. */
+  parentOf?(projectId: string, botId: string): string | undefined;
+  /** Without it, generation is refused as not set up. */
+  startGeneration?: StartGeneration;
+  dataDir?: string;
+}
+
+export interface ProjectCanvasHost {
+  routes: RouteHandler;
+  service: ProjectCanvasService;
+}
+
+const BOTS_SETTLE_MS = 500;
+
+const generationNotSetUp: StartGeneration = async () => {
+  throw new CanvasRefusal(503, { error: "Generation is not set up yet.", code: "generation_not_set_up" });
+};
+
+function queuedThreads(): Set<string> {
+  return new Set(Object.entries(queuedSteerSnapshot(() => true)).filter(([, items]) => items.length > 0).map(([threadId]) => threadId));
+}
+
+/** Makes the canvases, answers their routes and the bots' canvas tools, and tells open apps when a canvas or the state
+ * of a project's bots changes. */
+export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCanvasHost {
+  const service = new ProjectCanvasService({
+    store: deps.store,
+    projects: deps.projects,
+    documents: new CanvasDocuments(join(deps.dataDir ?? DATA_DIR, "project-canvases"), (line) => console.error(line)),
+    broadcast: deps.broadcast,
+    visibleFor: deps.visibleFor,
+    threadBusy: deps.threadBusy,
+    mainThread: deps.mainThread,
+    send: deps.send,
+    parentOf: deps.parentOf ?? (() => undefined),
+    startGeneration: deps.startGeneration ?? generationNotSetUp,
+    openCards: openCardRows,
+    queuedThreads,
+    saveImage: (bytes, mime) => saveImage(bytes, mime),
+    newId: randomUUID,
+    log: (line) => console.error(line),
+  });
+
+  const settling = new Map<string, NodeJS.Timeout>();
+  const botsChanged = (projectId: string | undefined) => {
+    if (!projectId || settling.has(projectId)) return;
+    const timer = setTimeout(() => {
+      settling.delete(projectId);
+      const revision = service.revisionOf(projectId);
+      if (revision !== null) deps.broadcast({ kind: "project-canvas", projectId, revision, reason: "bots" });
+    }, BOTS_SETTLE_MS);
+    timer.unref();
+    settling.set(projectId, timer);
+  };
+  const projectOf = new Map(deps.store.bots.flatMap((bot) => (bot.teamProject ? [[bot.id, bot.teamProject.id] as const] : [])));
+  const botChanged = (botId: string | undefined) => {
+    if (!botId) return;
+    const before = projectOf.get(botId);
+    const now = service.projectIdOfBot(botId);
+    if (now) projectOf.set(botId, now);
+    else projectOf.delete(botId);
+    botsChanged(now);
+    if (before !== now) botsChanged(before);
+  };
+  const threadChanged = (threadId: string, botId?: string) => {
+    service.facts.forget(threadId);
+    botChanged(botId ?? deps.store.botByThread(threadId)?.id);
+  };
+
+  deps.store.onChange((change) => {
+    if (change.type === "message") {
+      threadChanged(change.threadId, change.message.from?.botId);
+      void service.handOverLine(change.threadId, change.message);
+    } else if (change.type === "message.patch") threadChanged(change.threadId, change.message.from?.botId);
+    else if (change.type === "thread") threadChanged(change.threadId);
+    else if (change.type === "thread.deleted") {
+      service.facts.forget(change.threadId);
+      for (const projectId of new Set(projectOf.values())) botsChanged(projectId);
+    } else if (change.type === "bot") botChanged(change.botId);
+    else if (change.type === "bot.deleted") {
+      botsChanged(projectOf.get(change.botId));
+      projectOf.delete(change.botId);
+    }
+  });
+
+  let queued = queuedThreads();
+  onSteeredQueueChange(() => {
+    const now = queuedThreads();
+    for (const threadId of new Set([...queued, ...now])) if (queued.has(threadId) !== now.has(threadId)) botChanged(deps.store.botByThread(threadId)?.id);
+    queued = now;
+  });
+
+  setProjectCanvasToolRoutes(createProjectCanvasToolRoutes(service));
+  return { routes: createProjectCanvasRoutes(service), service };
+}

@@ -1,6 +1,7 @@
 import { PAIRING_INPUT_PROBLEM_TEXT } from "../shared/pairing-code.ts";
 import { redactParams } from "../shared/redact.ts";
 import { formatServerText, type ServerErrorBody, type ServerTextParams } from "../shared/server-text.ts";
+import { PROJECT_GENERATION_ERRORS } from "./project-generation/error-text.ts";
 
 /** The client translates by key and falls back to this English, which the server keeps sending for older clients. */
 export const USER_ERROR = {
@@ -228,6 +229,15 @@ export const USER_ERROR = {
   "serverError.voice.fishTranscribeConnection": "Couldn't reach Fish Audio to hear you — check your connection.",
   "serverError.voice.elevenLabsTranscribeConnection": "Couldn't reach ElevenLabs to hear you — check your connection.",
   "serverError.file.tooLarge": "This file is {size}, over the {limit} limit for opening files from chat. The file itself is still saved as {name}.",
+  "serverError.projectCanvas.unreadable": "This project's canvas couldn't be read, so nothing was changed. Restore its file in the project-canvases folder of MagicBot's data folder from a backup, then try again.",
+  "serverError.projectCanvas.conflict": "Someone changed this part of the canvas after you last saw it, so your change wasn't made. Look at it again and redo your change.",
+  "serverError.projectCanvas.stale": "The canvas changed a lot since you last saw it, so your change wasn't made. Reload the canvas and redo your change.",
+  "serverError.projectCanvas.archived": "This project is archived, so its canvas can't be changed. Restore the project to change it.",
+  "serverError.projectCanvas.folderMissing": "This project's folder was not found at {folder}. Reconnect the drive or put the folder back, then try again.",
+  "serverError.projectCanvas.outsideFolder": "That file isn't inside the project's folder, so it can't be used here.",
+  "serverError.projectCanvas.fileMissing": "That file is no longer in the project's folder.",
+  "serverError.projectCanvas.tooLarge": "That file is over the {limit} limit.",
+  "serverError.projectCanvas.notMember": "That bot isn't in this project.",
   "serverError.teamProjectBot.folderMissing": "This bot's project folder was not found at {folder}. Reconnect the drive or put the folder back, then try again.",
   "serverError.teamProjectBot.unknown": "MagicBot has no record of this bot's project. Restore projects.json in MagicBot's data folder from a backup, then try again.",
   "serverError.teamProjectBot.ownFolderBlocked": "This bot's own folder could not be used: {path} is not a regular folder. Remove or rename it, then try again.",
@@ -260,6 +270,7 @@ export const USER_ERROR = {
   "serverError.teamProject.contextFollows": "{department} takes its shared instructions from {team}. Change them in {team} instead.",
   "serverError.mainBot.noDepartment": "{bot} belongs to no department, so it can't be moved into one.",
   "serverError.teamProject.teamChangesInvalid": "Choose which of the team's changes to make, then try again.",
+  ...PROJECT_GENERATION_ERRORS,
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;

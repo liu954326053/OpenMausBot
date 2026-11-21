@@ -69,6 +69,7 @@ a hand edit races the next save.
 | Where a bot's files go, and how to get them out | `files.md`, `bot-box.md` |
 | Browser and computer control | `computer-use-integration.md`, `browser-packaging.md` |
 | Voice, images, meeting notes | `voice-mode.md`, `image-generation.md`, `meeting-notes.md` |
+| A project's pictures and videos, and the MCP server that makes them | `project-generation-mcp.md` |
 
 ## Rules that hold everywhere
 

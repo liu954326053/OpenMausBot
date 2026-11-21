@@ -182,6 +182,8 @@ export interface CanvasOpsResponse {
 export interface CanvasConflict {
   code: "canvas_conflict" | "canvas_stale";
   error: string;
+  /** A `serverError.*` catalog key a client may show instead of `error`. */
+  errorKey?: string;
   revision: number;
   changed: { nodes: string[]; connections: string[]; viewport?: true; backgroundMode?: true };
 }
@@ -190,6 +192,8 @@ export interface CanvasConflict {
 export interface CanvasReadOnly {
   code: "canvas_read_only";
   error: string;
+  /** A `serverError.*` catalog key a client may show instead of `error`. */
+  errorKey?: string;
   reason: "archived";
 }
 
