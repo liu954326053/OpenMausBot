@@ -45,9 +45,9 @@ type Receipts = { calls: Array<{ method: string; path: string }>; shots: Record<
     const screens = () => evaluate("[...document.querySelectorAll('[data-computer-node]')].map(node => ({ id: node.dataset.computerNode, src: node.querySelector('img')?.getAttribute('src') ?? null, text: node.textContent }))") as Promise<Array<{ id: string; src: string | null; text: string }>>;
     const press = (label: string) => evaluate(`(() => { const target = [...document.querySelectorAll('button, a, [role=menuitem]')].find(button => button.getAttribute('aria-label') === ${JSON.stringify(label)} || button.textContent.trim() === ${JSON.stringify(label)}); target?.click(); return Boolean(target); })()`);
     const openMap = async () => {
+      await expect.poll(() => snapshot().then((text) => text.includes('region "Team canvas"')
+        || press("Team map").then((pressed) => pressed || press("Tools")).then(() => false)), { timeout: 15_000 }).toBe(true);
       await expect.poll(snapshot, { timeout: 15_000 }).toContain("Iris");
-      if (!await press("Team map")) await press("Tools");
-      await expect.poll(() => snapshot().then((text) => text.includes('region "Team canvas"') || press("Team map").then(() => false)), { timeout: 15_000 }).toBe(true);
     };
 
     const before = await receipts();
