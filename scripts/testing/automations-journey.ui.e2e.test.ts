@@ -13,7 +13,7 @@ import { cloudHomeChildEnvironments, spawnWithSecrets } from "../../server/cloud
 import { cloudHomeConfiguration, cloudPairingSignature } from "../../server/cloud-home.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
-import { launchRestartableServer, type RestartableServer } from "../../server/testing/restartable-server.ts";
+import { healthAnswerer, launchRestartableServer, type RestartableServer, webhookPortRefusal } from "../../server/testing/restartable-server.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { agentBrowser, ensureUiBrowser, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
 import { mountPreview } from "./preview-fixture.ts";
@@ -481,10 +481,16 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
   child.stdout?.pipe(log);
   child.stderr?.pipe(log);
   const url = `http://127.0.0.1:${port}`;
+  const close = async () => { await waitForExit(child, { signal: "SIGTERM", graceMs: 15_000 }); log.end(); await removeTempDir(home); };
   const deadline = Date.now() + 30_000;
   for (;;) {
+    const answerer = await healthAnswerer(url, child.pid);
+    if (answerer === "ours") break;
+    if (answerer === "theirs") {
+      await close();
+      throw new Error(`port ${port} is taken by another process: it answers /api/health there, not this Cloud home (pid ${child.pid}); see ${logPath}`);
+    }
     if (child.exitCode !== null) throw new Error(`the Cloud home exited; see ${logPath}`);
-    try { if ((await fetch(`${url}/api/health`)).ok) break; } catch { /* not listening yet */ }
     if (Date.now() > deadline) throw new Error(`the Cloud home did not start; see ${logPath}`);
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
@@ -495,10 +501,12 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     "x-omb-cloud-timestamp": timestamp, "x-omb-cloud-nonce": nonce, "x-omb-cloud-signature": `v1=${cloudPairingSignature(secret, timestamp, nonce, body)}` }, body })).json() as { code: string };
   const paired = await (await fetch(`${url}/api/auth/pair`, { method: "POST", headers: { ...edge, origin: `https://${CLOUD_HOST}`, "content-type": "application/json" }, body: JSON.stringify({ code: granted.code }) })).json() as { token: string };
   const owner = { ...edge, origin: `https://${CLOUD_HOST}`, authorization: `Bearer ${paired.token}` };
-  return {
-    url, port, dataDir: home, logPath, planPath, hooksUrl: `http://127.0.0.1:${port + 1}`, owner,
-    close: async () => { await waitForExit(child, { signal: "SIGTERM", graceMs: 15_000 }); log.end(); await removeTempDir(home); },
-  };
+  const refusal = await webhookPortRefusal(url, port + 1, owner);
+  if (refusal) {
+    await close();
+    throw new Error(`${refusal}; see ${logPath}`);
+  }
+  return { url, port, dataDir: home, logPath, planPath, hooksUrl: `http://127.0.0.1:${port + 1}`, owner, close };
 }
 
 (enabled ? it : it.skip)("on a Cloud: its public address, no keep-open hint, the same off/on, calls and cleanup, and each routine at the level it was made at", async () => {
