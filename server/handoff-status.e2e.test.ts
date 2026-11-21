@@ -20,6 +20,7 @@ it("moves the Sent-to row through claimed, working, waiting on a teammate and do
     const coder = (await cli("new-bot", "--name", "Coder", "--section", "Team")).bot;
     const writer = (await cli("new-bot", "--name", "Writer", "--section", "Team")).bot;
     await api(`/api/bots/${lead.id}`, { method: "PATCH", body: { chiefOfStaff: true, managedSections: ["Team"], acknowledgePeerScope: true } });
+    await api("/api/team-flows/line", { method: "PUT", body: { botId: writer.id, superiorId: coder.id } });
     writeFileSync(plan, JSON.stringify({
       [lead.id]: { steps: [{ arguments: { bot_ids: [coder.id], message: "Build the page" } }], reply: "Asked Coder", resumeReply: "All done" },
       [coder.id]: { steps: [{ arguments: { bot_ids: [writer.id], message: "Write the copy" } }], gateFile: coderGate, reply: "Asked Writer", resumeReply: "Page built" },
