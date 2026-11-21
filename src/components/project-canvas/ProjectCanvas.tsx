@@ -5,7 +5,7 @@ import { AlertCircle, Archive, FolderX, List, LoaderCircle, Network, Settings, X
 import {
   botNodeId,
   CANVAS_NODE_SIZE,
-  canvasFileNodeType,
+  CANVAS_UNSET_VIEWPORT,
   type CanvasNode,
   type CanvasNodeMetadata,
   type CanvasOp,
@@ -17,6 +17,7 @@ import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { t } from "@/lib/i18n";
 import { canvasErrorText, type CanvasBackend } from "@/lib/project-canvas/backend";
 import { CanvasController, type CanvasState } from "@/lib/project-canvas/controller";
+import { comingOutputs } from "@/lib/project-canvas/generation";
 import {
   applyGroupSelection,
   applyUngroupSelection,
@@ -32,6 +33,7 @@ import {
   type CanvasSize,
 } from "@/lib/project-canvas/geometry";
 import { addNodeOp, diffCanvasOps } from "@/lib/project-canvas/ops";
+import { freeSpot, uploadedNodeSize } from "@/lib/project-canvas/placement";
 import { copySelection, duplicateNode, isContentNode, pasteClipboard, type CanvasClipboard } from "@/lib/project-canvas/selection";
 import { randomUuid } from "@/lib/random-uuid";
 import { CanvasUiContext, nodeById, type CanvasTool, type CanvasUi, type CreatableNodeType } from "./canvas-ui";
@@ -134,9 +136,9 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
 
   const center = useCallback((): CanvasPoint => screenToWorld(controller.getState().viewport, { x: sizeRef.current.width / 2, y: sizeRef.current.height / 2 }), [controller]);
 
-  const focusFrame = useCallback((frame: Pick<CanvasNode, "position" | "width" | "height">, withPanel: boolean) => {
+  const focusFrame = useCallback((frame: Pick<CanvasNode, "position" | "width" | "height">, withPanel: boolean, options?: { save?: boolean }) => {
     if (!sizeRef.current.width) return;
-    controller.setViewport(focusViewportForNode(frame, sizeRef.current, { above: 28, below: withPanel ? PANEL_ROOM_BELOW : 0, bottomInset: 72 }));
+    controller.setViewport(focusViewportForNode(frame, sizeRef.current, { above: 28, below: withPanel ? PANEL_ROOM_BELOW : 0, bottomInset: 72 }), options);
   }, [controller]);
 
   const focusedBot = useRef<string | null>(null);
@@ -168,13 +170,18 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
     apply([{ type: "connect_nodes", id: randomUuid(), fromNodeId, toNodeId }]);
   }, [apply, snapshot]);
 
+  const occupied = useCallback(() => {
+    const { snapshot: shown, replies } = controller.getState();
+    const nodes = shown?.nodes ?? [];
+    return [...nodes, ...replies, ...comingOutputs(nodes, shown?.connections ?? [], replies).map((output) => output.frame)];
+  }, [controller]);
+
   const createNode = useCallback((type: CreatableNodeType, at?: CanvasPoint, connectFrom?: string | { nodeId: string; handle: "source" | "target" }): string | null => {
     if (readOnly) return null;
     const nodeSize = CANVAS_NODE_SIZE[type];
-    const middle = at ?? center();
     const id = randomUuid();
     const metadata: CanvasNodeMetadata | undefined = type === "config" ? { generationMode: "image" } : undefined;
-    const node: CanvasNode = { id, type, title: "", position: { x: middle.x - nodeSize.width / 2, y: middle.y - nodeSize.height / 2 }, ...nodeSize, ...(metadata ? { metadata } : {}) };
+    const node: CanvasNode = { id, type, title: "", position: freeSpot(at ?? center(), nodeSize, occupied()), ...nodeSize, ...(metadata ? { metadata } : {}) };
     const ops: CanvasOp[] = [addNodeOp(node)];
     const from = typeof connectFrom === "string" ? { nodeId: connectFrom, handle: "source" as const } : connectFrom;
     const link = from ? normalizeConnection(nodeById(snapshot, from.nodeId), node, from.handle) : null;
@@ -184,32 +191,37 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
     setSelectedConnectionId(null);
     if (type !== "group") setPanelNodeId(id);
     return id;
-  }, [apply, center, readOnly, snapshot]);
+  }, [apply, center, occupied, readOnly, snapshot]);
 
   const uploadFiles = useCallback((files: readonly File[], at?: CanvasPoint) => {
     if (readOnly || !files.length) return;
     const base = at ?? center();
     void (async () => {
-      for (const [index, file] of files.entries()) {
-        const nodeSize = CANVAS_NODE_SIZE[canvasFileNodeType(file.type || "application/octet-stream")];
-        const spot = { x: base.x - nodeSize.width / 2 + index * 32, y: base.y - nodeSize.height / 2 + index * 32 };
+      const coming: Array<Pick<CanvasNode, "position" | "width" | "height">> = [];
+      for (const file of files) {
+        const nodeSize = await uploadedNodeSize(file);
+        const position = freeSpot(base, nodeSize, [...occupied(), ...coming]);
+        coming.push({ position, ...nodeSize });
         try {
-          const { nodeId } = await controller.upload(file, spot);
+          const { nodeId } = await controller.upload(file, position);
           setSelection(new Set([nodeId]));
         } catch (error) {
           setNotice(t("projectCanvas.uploadFailed", { name: file.name, reason: canvasErrorText(error) }));
         }
       }
     })();
-  }, [center, controller, readOnly]);
+  }, [center, controller, occupied, readOnly]);
 
   const pasteNodes = useCallback((source: CanvasClipboard, at?: CanvasPoint) => {
-    const pasted = pasteClipboard(source, { center: at ?? center(), newId: randomUuid, copyTitle: (title) => (title ? t("projectCanvas.node.copyTitle", { title }) : "") });
+    const bounds = nodeBounds(source.nodes);
+    const size = { width: bounds.right - bounds.left, height: bounds.bottom - bounds.top };
+    const spot = freeSpot(at ?? center(), size, occupied());
+    const pasted = pasteClipboard(source, { center: { x: spot.x + size.width / 2, y: spot.y + size.height / 2 }, newId: randomUuid, copyTitle: (title) => (title ? t("projectCanvas.node.copyTitle", { title }) : "") });
     const groupsFirst = [...pasted.nodes].sort((a, b) => Number(b.type === "group") - Number(a.type === "group"));
     apply([...groupsFirst.map(addNodeOp), ...pasted.connections.map((connection): CanvasOp => ({ type: "connect_nodes", id: connection.id, fromNodeId: connection.fromNodeId, toNodeId: connection.toNodeId }))]);
     setSelection(new Set(pasted.nodes.map((node) => node.id)));
     setPanelNodeId(null);
-  }, [apply, center]);
+  }, [apply, center, occupied]);
 
   const group = useCallback(() => {
     if (readOnly || !canGroupSelection(selection, snapshot.nodes)) return;
@@ -266,11 +278,20 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
     setNotice(t("projectCanvas.cleared"));
   }, [apply, readOnly, snapshot.nodes]);
 
-  const fitAll = useCallback(() => {
+  const fitAll = useCallback((options?: { save?: boolean }) => {
     if (!snapshot.nodes.length) return;
     const bounds = nodeBounds(snapshot.nodes);
-    focusFrame({ position: { x: bounds.left, y: bounds.top }, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top }, false);
+    focusFrame({ position: { x: bounds.left, y: bounds.top }, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top }, false, options);
   }, [focusFrame, snapshot.nodes]);
+
+  const firstView = useRef(false);
+  useEffect(() => {
+    if (firstView.current || !size.width) return;
+    firstView.current = true;
+    const opensOnBot = selectedBotId !== undefined && nodeById(snapshot, botNodeId(selectedBotId));
+    const viewSet = (["x", "y", "k"] as const).some((key) => snapshot.viewport[key] !== CANVAS_UNSET_VIEWPORT[key]);
+    if (!opensOnBot && !viewSet) fitAll({ save: false });
+  }, [size.width, selectedBotId, snapshot, fitAll]);
 
   const resetView = useCallback(() => controller.setViewport({ x: sizeRef.current.width / 2, y: sizeRef.current.height / 2, k: 1 }), [controller]);
 
@@ -380,7 +401,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
             <span className="ui-chip gap-1"><Archive size={14} aria-hidden="true" />{t("projectCanvas.archived")}</span>
           ) : null}
           {snapshot.project.folderState === "missing" ? (
-            <span className="ui-chip gap-1 text-warning" title={t("projectCanvas.folderMissingHint")}><FolderX size={14} aria-hidden="true" />{t("projectCanvas.folderMissing")}</span>
+            <span className="ui-chip gap-1 text-warning" title={t("projectCanvas.folderMissingHint")}><FolderX size={14} aria-hidden="true" />{t("teamProjects.folderMissing")}</span>
           ) : null}
           <div className="flex min-w-0 flex-1 items-center gap-2" data-project-canvas-slot="">{topBarSlot}</div>
           <button type="button" className="ui-icon-button" aria-pressed={listOpen} aria-label={t("projectCanvas.nodeList.title")} title={t("projectCanvas.nodeList.title")} onClick={() => setListOpen((open) => !open)}>
@@ -412,7 +433,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
           ) : null}
           {listOpen ? <NodeList aboveMinimap={minimapOpen} onClose={() => setListOpen(false)} onFocus={(nodeId) => ui.focusNode(nodeId)} /> : null}
           {minimapOpen ? <Minimap nodes={snapshot.nodes} viewport={viewport} size={size} onCenter={(point) => controller.setViewport({ ...viewport, x: size.width / 2 - point.x * viewport.k, y: size.height / 2 - point.y * viewport.k })} /> : null}
-          <CanvasToolbar tool={tool} onTool={setTool} onFocus={fitAll} onCreate={(type) => createNode(type)} onUpload={() => openUpload()} onDeleteSelection={removeSelection} onClear={clearCanvas} />
+          <CanvasToolbar tool={tool} onTool={setTool} onFocus={() => fitAll()} onCreate={(type) => createNode(type)} onUpload={() => openUpload()} onDeleteSelection={removeSelection} onClear={clearCanvas} />
           <ZoomDock viewport={viewport} minimapOpen={minimapOpen} onMinimap={() => setMinimapOpen((open) => !open)} onReset={resetView} onZoom={(k) => controller.setViewport(zoomAroundCenter(viewport, size, k) satisfies CanvasViewport)} />
           {menu?.kind === "create" ? (
             <CreateMenu

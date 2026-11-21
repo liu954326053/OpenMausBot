@@ -13,6 +13,7 @@ import { api, ApiError } from "../../state/api";
 import type { Bot, Message } from "../../state/store";
 import type { StoreRef } from "../../state/store-ref-context";
 import { openBot, openThread } from "../../state/thread-navigation";
+import { botShowsUnread } from "../bot-unread";
 import { readAdvancedMode } from "../interface-mode";
 import { listenLiveFrames } from "../live-events";
 import { showThreads } from "../thread-preferences";
@@ -59,7 +60,7 @@ const isEventOf = (projectId: string, frame: unknown) => {
 
 function lookOf(bot: Bot): CanvasBotLook {
   const { color, avatarUrl, avatarCrop, avatarZoom, avatarFocusX, avatarFocusY, mascotBody, mascotFaceColor } = bot;
-  const look: CanvasBotLook = { color, avatarUrl, avatarCrop, avatarZoom, avatarFocusX, avatarFocusY, mascotBody, mascotFaceColor };
+  const look: CanvasBotLook = { color, avatarUrl, avatarCrop, avatarZoom, avatarFocusX, avatarFocusY, mascotBody, mascotFaceColor, unread: botShowsUnread(bot) || undefined };
   return Object.fromEntries(Object.entries(look).filter(([, value]) => value !== undefined)) as CanvasBotLook;
 }
 
@@ -152,6 +153,15 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
       if (!bot) return;
       if (threadId) openThread(store.dispatch, { botId, threadId }, state, threadsShown());
       else openBot(store.dispatch, bot, threadsShown());
+    },
+
+    readConversation(_projectId, botId, threadId) {
+      const bot = botOf(botId);
+      const thread = threadId ?? bot?.mainThreadId ?? bot?.threadId;
+      if (!bot || !thread) return;
+      const task = bot.tasks?.find((one) => one.threadId === thread);
+      if (!(task ? task.unread : bot.unread)) return;
+      void api(`/api/bots/${encodeURIComponent(botId)}/read`, { method: "POST", body: JSON.stringify({ threadId: thread }) }).catch(() => {});
     },
 
     readGenerationSettings: (projectId) => api<GenerationSettingsWire>(`${generationPath(projectId)}/settings`),

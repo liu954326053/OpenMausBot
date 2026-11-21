@@ -11506,7 +11506,6 @@
   "projectCanvas.saveFailed": "Uma alteração não foi salva: {reason}",
   "projectCanvas.uploadFailed": "{name} não foi adicionado: {reason}",
   "projectCanvas.archived": "Arquivado",
-  "projectCanvas.folderMissing": "Pasta ausente",
   "projectCanvas.folderMissingHint": "A pasta do projeto não está lá. Não dá para adicionar nem gerar arquivos até ela voltar.",
   "projectCanvas.tidy": "Organizar",
   "projectCanvas.tidyHint": "Dispõe os bots como a equipe deles, com o que cada um fez ao lado",

@@ -11506,7 +11506,6 @@
   "projectCanvas.saveFailed": "A change wasn't saved: {reason}",
   "projectCanvas.uploadFailed": "{name} wasn't added: {reason}",
   "projectCanvas.archived": "Archived",
-  "projectCanvas.folderMissing": "Folder missing",
   "projectCanvas.folderMissingHint": "The project's folder isn't there. Files can't be added or generated until it's back.",
   "projectCanvas.tidy": "Tidy",
   "projectCanvas.tidyHint": "Lay the bots out as their team, with what each made beside it",
