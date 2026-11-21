@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlOmb, type VerificationServer } from "../control-omb.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
-import { ensureUiBrowser } from "./control-omb-ui.ts";
+import { ensureUiBrowser, openFromPalette } from "./control-omb-ui.ts";
 import { fixtureApi, mountPreview, type MountedPreview } from "./preview-fixture.ts";
 import { NOTICES } from "../../src/lib/notices.ts";
 
@@ -122,6 +122,7 @@ async function connect(url: string) {
     // The notices (the Boat card and the like) are not this test's subject, and on a phone one covers the last block.
     await request("Page.addScriptToEvaluateOnNewDocument", { source: `try { for (const notice of ${JSON.stringify(NOTICES)}) localStorage.setItem(notice, "1"); } catch {}` });
     await request("Page.navigate", { url: preview.previewUrl });
+    await expect.poll(() => evaluate(openFromPalette("Pepper", `bot:${created.bot.id}`)), { timeout: 120_000 }).toBe(true);
     await expect.poll(() => evaluate(`Boolean(document.querySelector('textarea[aria-label="Message Pepper"]'))`), { timeout: 120_000 }).toBe(true);
     await evaluate(`document.querySelector('textarea[aria-label="Message Pepper"]').focus()`);
     await request("Input.insertText", { text: "Show separate text and code examples" });

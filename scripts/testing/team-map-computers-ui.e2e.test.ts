@@ -6,7 +6,7 @@ import { expect, it } from "vitest";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { ENABLE_ADVANCED_UI, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { ENABLE_ADVANCED_UI, OPEN_TEAM_MAP, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -45,9 +45,8 @@ type Receipts = { calls: Array<{ method: string; path: string }>; shots: Record<
     const screens = () => evaluate("[...document.querySelectorAll('[data-computer-node]')].map(node => ({ id: node.dataset.computerNode, src: node.querySelector('img')?.getAttribute('src') ?? null, text: node.textContent }))") as Promise<Array<{ id: string; src: string | null; text: string }>>;
     const press = (label: string) => evaluate(`(() => { const target = [...document.querySelectorAll('button, a, [role=menuitem]')].find(button => button.getAttribute('aria-label') === ${JSON.stringify(label)} || button.textContent.trim() === ${JSON.stringify(label)}); target?.click(); return Boolean(target); })()`);
     const openMap = async () => {
-      await expect.poll(snapshot, { timeout: 15_000 }).toContain("Iris");
-      if (!await press("Team map")) await press("Tools");
-      await expect.poll(() => snapshot().then((text) => text.includes('region "Team canvas"') || press("Team map").then(() => false)), { timeout: 15_000 }).toBe(true);
+      await expect.poll(() => evaluate(OPEN_TEAM_MAP), { timeout: 30_000 }).toBe(true);
+      await expect.poll(snapshot, { timeout: 15_000 }).toContain("Open chat with Iris");
     };
 
     const before = await receipts();
@@ -70,6 +69,7 @@ type Receipts = { calls: Array<{ method: string; path: string }>; shots: Record<
     const startedAt = Date.now(), startShots = await shots();
     await new Promise((resolve) => setTimeout(resolve, 10_000));
     const elapsed = (Date.now() - startedAt) / 1_000, taken = (await shots()) - startShots;
+    evidence.frames = { taken, seconds: elapsed, budget: 4 * elapsed + 6 };
     expect(taken).toBeGreaterThan(10);
     expect(taken).toBeLessThanOrEqual(4 * elapsed + 6);
     const changed = (await screens()).filter((screen) => screen.src && screen.src !== first.get(screen.id));

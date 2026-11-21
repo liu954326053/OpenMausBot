@@ -228,3 +228,54 @@ describe("a remote client", () => {
     expect(items()).toEqual(["Copy conversation ID"]);
   });
 });
+
+describe("the list in a narrow window", () => {
+  const details = () => q("details") as HTMLDetailsElement;
+  const list = () => details().querySelector<HTMLElement>("summary + div")!;
+  const layOut = (button: { left: number; right: number }, windowWidth: number) => {
+    const box = { ...button, top: 40, bottom: 76, width: button.right - button.left, height: 36, x: button.left, y: 40, toJSON: () => ({}) };
+    vi.spyOn(details(), "getBoundingClientRect").mockReturnValue(box);
+    vi.spyOn(q("summary")!, "getBoundingClientRect").mockReturnValue(box);
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(windowWidth);
+  };
+  const setOpen = (open: boolean) => {
+    details().open = open;
+    flushSync(() => details().dispatchEvent(new Event("toggle")));
+  };
+  const shown = () => {
+    const left = details().getBoundingClientRect().left + parseFloat(list().style.left);
+    return { left, right: left + parseFloat(list().style.width) };
+  };
+  const openAt = (button: { left: number; right: number }, windowWidth: number) => {
+    setOpen(false);
+    layOut(button, windowWidth);
+    setOpen(true);
+    return shown();
+  };
+  const expectInside = ({ left, right }: { left: number; right: number }, windowWidth: number) => {
+    expect(left).toBeGreaterThanOrEqual(8);
+    expect(right).toBeLessThanOrEqual(windowWidth - 8);
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("stays at least 8px inside the window on both sides, and ends at its button's right edge at desktop width", () => {
+    expectInside(openAt({ left: 48, right: 156 }, 640), 640);
+    expectInside(openAt({ left: 69, right: 177 }, 320), 320);
+    expectInside(openAt({ left: 20, right: 128 }, 260), 260);
+    expectInside(openAt({ left: 10, right: 118 }, 260), 260);
+    expect(openAt({ left: 653, right: 761 }, 1024)).toEqual({ left: 505, right: 761 });
+  });
+
+  it("moves back inside when the window narrows while it is open, and not once it is closed", () => {
+    expect(openAt({ left: 653, right: 761 }, 1024)).toEqual({ left: 505, right: 761 });
+    layOut({ left: 48, right: 156 }, 390);
+    window.dispatchEvent(new Event("resize"));
+    expectInside(shown(), 390);
+    const { left, width } = list().style;
+
+    setOpen(false);
+    layOut({ left: 69, right: 177 }, 320);
+    window.dispatchEvent(new Event("resize"));
+    expect([list().style.left, list().style.width]).toEqual([left, width]);
+  });
+});
