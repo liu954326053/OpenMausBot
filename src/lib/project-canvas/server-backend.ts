@@ -130,10 +130,7 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
       return looks;
     },
 
-    sendTask: (projectId, { botId, text, threadId }) => canvasCall<CanvasTaskResponse>(`${canvasPath(projectId)}/tasks`, {
-      method: "POST",
-      body: JSON.stringify({ botId, text, ...(threadId ? { threadId } : {}) }),
-    }),
+    sendTask: (projectId, task) => canvasCall<CanvasTaskResponse>(`${canvasPath(projectId)}/tasks`, { method: "POST", body: JSON.stringify(task) }),
 
     async stopBot(_projectId, botId) {
       const busy = (botOf(botId)?.tasks ?? []).filter((task) => task.busy).map((task) => task.threadId);

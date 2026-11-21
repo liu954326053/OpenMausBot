@@ -7,6 +7,7 @@ import type {
   CanvasOpsResponse,
   CanvasPoint,
   CanvasSnapshot,
+  CanvasTaskRequest,
   CanvasTaskResponse,
   CanvasUploadResponse,
 } from "../../../shared/project-canvas";
@@ -17,7 +18,7 @@ import type {
   ProjectGenerationSettings,
   Refused,
 } from "../../../shared/project-generation";
-import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
+import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 /** A refusal the server explained: the 409 body of a conflict or of a canvas that takes no change. */
 export class CanvasBackendError extends Error {
@@ -49,7 +50,7 @@ export interface CanvasBackend {
   /** How each bot of the project looks, by bot id. */
   readBotLooks(projectId: string): Promise<Record<string, CanvasBotLook>>;
   /** `POST /api/team-projects/:id/canvas/tasks`; the server adds what is connected into the bot's node. */
-  sendTask(projectId: string, task: CanvasBotTask): Promise<CanvasTaskResponse>;
+  sendTask(projectId: string, task: CanvasTaskRequest): Promise<CanvasTaskResponse>;
   stopBot(projectId: string, botId: string): Promise<void>;
   /** The bot's latest exchange in the project, oldest first. */
   readExchange(projectId: string, botId: string): Promise<CanvasExchangeMessage[]>;

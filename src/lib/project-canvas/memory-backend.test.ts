@@ -32,16 +32,18 @@ describe("the in-memory canvas backend", () => {
     await expect(backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "set_background", backgroundMode: "blank" }] })).rejects.toMatchObject({ body: { code: "canvas_read_only" } });
   });
 
-  it("lets a bot answer a task, filling the text node that asked", async () => {
+  it("lets a bot answer a task, filling the text node that asked, and shows the bot writing into it until then", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
     const response = await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "logline" });
     expect(response).toMatchObject({ threadId: "thread-kai", references: 0 });
-    expect(backend.current().bots.kai!.status).toBe("working");
+    expect(backend.current().bots.kai).toMatchObject({ status: "working", writingInto: ["logline"] });
     await vi.advanceTimersByTimeAsync(100);
     const after = backend.current();
     expect(after.bots.kai).toMatchObject({ status: "idle", output: { text: "Wrote: a tagline" } });
+    expect(after.bots.kai!.writingInto).toBeUndefined();
     expect(after.nodes.find((node) => node.id === "logline")!.metadata!.content).toBe("Wrote: a tagline");
     expect((await backend.readExchange(SAMPLE_PROJECT_ID, "kai")).map((message) => message.role)).toEqual(["person", "bot"]);
+    await expect(backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "bot:kai" })).rejects.toThrow("text node");
   });
 
   it("generates a shot from its saved prompt and settings, under the take before, and refuses what the model doesn't offer", async () => {

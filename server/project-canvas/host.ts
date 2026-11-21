@@ -98,9 +98,12 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
   deps.store.onChange((change) => {
     if (change.type === "message") {
       threadChanged(change.threadId, change.message.from?.botId);
+      service.taskLine(change.threadId, change.message);
       void service.handOverLine(change.threadId, change.message);
-    } else if (change.type === "message.patch") threadChanged(change.threadId, change.message.from?.botId);
-    else if (change.type === "thread") threadChanged(change.threadId);
+    } else if (change.type === "message.patch") {
+      threadChanged(change.threadId, change.message.from?.botId);
+      service.taskLine(change.threadId, change.message);
+    } else if (change.type === "thread") threadChanged(change.threadId);
     else if (change.type === "thread.deleted") {
       service.facts.forget(change.threadId);
       for (const projectId of new Set(projectOf.values())) botsChanged(projectId);

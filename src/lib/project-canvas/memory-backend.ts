@@ -10,6 +10,7 @@ import {
   type CanvasOpsResponse,
   type CanvasPoint,
   type CanvasSnapshot,
+  type CanvasTaskRequest,
 } from "../../../shared/project-canvas";
 import {
   resolveSettings,
@@ -29,7 +30,7 @@ import { CanvasBackendError, type CanvasBackend } from "./backend";
 import { generationInput, nextOutputFrame } from "./generation";
 import { applyCanvasOps } from "./ops";
 import { connectedReferences } from "./references";
-import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
+import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 export interface MemoryGenerationOutput {
   file: CanvasFileRef;
@@ -47,7 +48,7 @@ export interface MemoryCanvasOptions {
   generation: { settings: ProjectGenerationSettings; servers: string[]; models: Record<string, GenerationModel[]> };
   exchanges?: Record<string, CanvasExchangeMessage[]>;
   /** What a bot answers a task with. */
-  reply?: (task: CanvasBotTask, bot: CanvasBotState) => string;
+  reply?: (task: CanvasTaskRequest, bot: CanvasBotState) => string;
   /** The file each result of a generation is. */
   output?: (input: StartGenerationInput, index: number) => MemoryGenerationOutput;
   /** A reason to fail a generation, if it should. */
@@ -221,11 +222,12 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ensureWritable();
       const bot = snapshot.bots[task.botId];
       if (!bot) throw new Error("That bot isn't in this project.");
+      if (task.targetNodeId && nodeById(task.targetNodeId)?.type !== "text") throw new Error("A reply goes into a text node of this canvas, and that is not one.");
       const threadId = task.threadId ?? bot.output?.threadId ?? `thread-${task.botId}`;
       const messageId = newId("message");
       const references = connectedReferences(botNodeId(task.botId), snapshot.nodes, snapshot.connections).length;
       exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: messageId, role: "person", text: task.text, at: Date.now() }]);
-      setBot(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined });
+      setBot(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined, writingInto: task.targetNodeId ? [task.targetNodeId] : undefined });
       clearTimeout(botTimers.get(task.botId));
       botTimers.set(task.botId, setTimeout(() => {
         botTimers.delete(task.botId);
@@ -235,7 +237,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         const replyId = newId("message");
         exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: replyId, role: "bot", text, at: Date.now() }]);
         if (task.targetNodeId && nodeById(task.targetNodeId)) commit([{ type: "update_node", id: task.targetNodeId, metadata: { content: text } }]);
-        setBot(task.botId, { status: "idle", doing: undefined, output: { text, threadId, messageId: replyId, at: Date.now() } });
+        setBot(task.botId, { status: "idle", doing: undefined, writingInto: undefined, output: { text, threadId, messageId: replyId, at: Date.now() } });
       }, delay));
       return { threadId, messageId, references };
     },
@@ -244,7 +246,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ensureProject(id);
       clearTimeout(botTimers.get(botId));
       botTimers.delete(botId);
-      setBot(botId, { status: "idle", doing: undefined });
+      setBot(botId, { status: "idle", doing: undefined, writingInto: undefined });
     },
 
     async readExchange(id, botId) {

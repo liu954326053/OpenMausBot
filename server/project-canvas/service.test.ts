@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
+import type { DirectSendReceipt } from "../direct-send.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
 import { CanvasDocuments } from "./document-store.ts";
@@ -181,6 +182,87 @@ describe("a task sent from the canvas", () => {
     await expect(setup({ visibleFor: () => ({ thread: () => false }) }).service.task("p1", auth, { botId: "writer", text: "Go" })).rejects.toMatchObject({ status: 404 });
     await expect(service.task("p1", auth, { botId: "writer", text: "  " })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer" })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("a task whose reply goes into a text node", () => {
+  const KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+  const turnEnd = (requestMessageId: string, text: string, patch: Partial<Message> = {}): Message => ({
+    id: `reply-to-${requestMessageId}`, at: 5, role: "bot", kind: "text", text, turnId: "t1", turnTerminal: true, turnSucceeded: true, requestMessageId, ...patch,
+  });
+  const textNodes = (service: ProjectCanvasService, project: TeamProjectWire, ...titles: string[]) =>
+    service.apply(project, person, opsOf(...titles.map((title) => ({ type: "add_node", nodeType: "text", title, metadata: { content: "Draft" } })))).nodeIds;
+  const contentOf = (service: ProjectCanvasService, id: string | undefined) => nodeOf(service, id!)?.metadata?.content;
+  const writingInto = (service: ProjectCanvasService) => service.snapshot("p1", auth).bots.writer!.writingInto;
+
+  it("gets the bot's reply once its turn ends well, secrets redacted, and shows the bot writing into it until then", async () => {
+    let busy = true;
+    const { service, project, events } = setup({ threadBusy: () => busy });
+    const [logline] = textNodes(service, project, "Logline");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("sent-1", "A bride swaps places.", { turnSucceeded: undefined }));
+    expect(contentOf(service, logline)).toBe("Draft");
+    busy = false;
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", `A bride swaps places. Key: ${KEY}`));
+    expect(contentOf(service, logline)).toMatch(/^A bride swaps places\. Key: «redacted/);
+    expect(contentOf(service, logline)).not.toContain(KEY);
+    expect(nodeOf(service, logline!)?.createdBy).toEqual(person);
+    expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
+    expect(writingInto(service)).toBeUndefined();
+  });
+
+  it("waits for a queued task's message to reach the conversation, and takes no reply for a task steered into a running turn", async () => {
+    let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
+    const queued = new Set(["writer-main"]);
+    const { service, project } = setup({ send: async () => receipt, queuedThreads: () => queued });
+    const [logline, notes] = textNodes(service, project, "Logline", "Notes");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    queued.clear();
+    service.taskLine("writer-main", { id: "m7", at: 7, role: "user", kind: "text", text: "Write the logline", queueId: "q1" });
+    service.taskLine("writer-main", turnEnd("m7", "Swapped at the altar.", { at: 9 }));
+    expect(contentOf(service, logline)).toBe("Swapped at the altar.");
+    receipt = { ok: true, threadId: "writer-main", message: { id: "m10", at: 10, role: "user", kind: "text", text: "Notes too" }, steered: true };
+    await service.task("p1", auth, { botId: "writer", text: "Notes too", targetNodeId: notes });
+    service.taskLine("writer-main", turnEnd("m10", "Both done.", { at: 12 }));
+    expect(contentOf(service, notes)).toBe("Draft");
+  });
+
+  it("stays as it was after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
+    const { service, project, events } = setup({ threadBusy: () => true });
+    const [logline] = textNodes(service, project, "Logline");
+    const ask = () => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: logline });
+    await ask();
+    service.taskLine("writer-main", turnEnd("earlier", "An older reply, changed again", { at: 0 }));
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
+    expect(writingInto(service)).toBeUndefined();
+    await ask();
+    service.taskLine("writer-main", turnEnd("later", "A reply to a later message"));
+    expect(writingInto(service)).toBeUndefined();
+    service.taskLine("writer-main", turnEnd("sent-1", "Too late"));
+    await ask();
+    project.archivedAt = 9;
+    service.taskLine("writer-main", turnEnd("sent-1", "Into an archived canvas"));
+    delete project.archivedAt;
+    expect(contentOf(service, logline)).toBe("Draft");
+    await ask();
+    service.apply(project, person, opsOf({ type: "delete_node", id: logline }));
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", "Into nothing"));
+    expect(nodeOf(service, logline!)).toBeUndefined();
+    expect(events.slice(told)).toEqual([]);
+  });
+
+  it("is refused for anything but a text node of this canvas, and nothing is sent", async () => {
+    const { service, project, sent } = setup();
+    const [shot] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "shot", title: "Shot 1" })).nodeIds;
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: shot })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: "gone" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: 7 })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toEqual([]);
   });
 });
 

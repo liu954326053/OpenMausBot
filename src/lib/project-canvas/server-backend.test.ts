@@ -85,12 +85,12 @@ describe("the project canvas on the app's server", () => {
     expect(backend.fileUrl("p1", { path: "素材/a b.png", mime: "image/png", bytes: 1, name: "a b.png" })).toBe("/api/team-projects/p1/canvas/files?path=%E7%B4%A0%E6%9D%90%2Fa+b.png");
   });
 
-  it("sends a task as the server takes it, without the text node it is for", async () => {
+  it("sends a task with the text node its reply goes into", async () => {
     const { backend } = backendWith();
     answers.push({ status: 202, body: { threadId: "t1", messageId: "m1", references: 2 } });
     expect(await backend.sendTask("p1", { botId: "writer", text: "Write the opening", threadId: "t1", targetNodeId: "n1" })).toEqual({ threadId: "t1", messageId: "m1", references: 2 });
     expect(sent[0]).toMatchObject({ method: "POST", path: "/api/team-projects/p1/canvas/tasks" });
-    expect(JSON.parse(String(sent[0]!.body))).toEqual({ botId: "writer", text: "Write the opening", threadId: "t1" });
+    expect(JSON.parse(String(sent[0]!.body))).toEqual({ botId: "writer", text: "Write the opening", threadId: "t1", targetNodeId: "n1" });
   });
 
   it("hears its project's canvas events on the app's live stream, and the events the app missed", () => {

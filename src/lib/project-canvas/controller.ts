@@ -1,11 +1,11 @@
-import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasSnapshot, CanvasUploadResponse, CanvasViewport } from "../../../shared/project-canvas";
+import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasSnapshot, CanvasTaskRequest, CanvasUploadResponse, CanvasViewport } from "../../../shared/project-canvas";
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
 import { randomUuid } from "../random-uuid";
 import type { CanvasBackend } from "./backend";
 import { emptyHistory, recordHistory, redoHistory, undoHistory } from "./history";
 import { addNodeOp, applyCanvasOps, invertCanvasOps } from "./ops";
 import { layoutBotTree } from "./tree-layout";
-import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
+import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 /** How long the view rests before it is stored. */
 export const VIEWPORT_SAVE_DELAY_MS = 600;
@@ -26,8 +26,8 @@ export interface CanvasState {
   canRedo: boolean;
   /** Why the last change was not stored. */
   writeError?: string;
-  /** Text nodes a bot is writing, by node id. */
-  writing: Record<string, { botId: string; since: number }>;
+  /** Text nodes a bot's reply goes into, by node id. */
+  writing: Record<string, { botId: string }>;
 }
 
 interface Batch {
@@ -184,10 +184,10 @@ export class CanvasController {
     if (jobId) await this.backend.cancelGeneration(this.projectId, jobId);
   }
 
-  async sendTask(task: CanvasBotTask) {
+  async sendTask(task: CanvasTaskRequest) {
     await this.settled();
     const response = await this.backend.sendTask(this.projectId, task);
-    if (task.targetNodeId) this.set({ writing: { ...this.state.writing, [task.targetNodeId]: { botId: task.botId, since: Date.now() } } });
+    await this.refresh();
     return response;
   }
 
@@ -290,10 +290,7 @@ export class CanvasController {
     if (!server) return;
     this.pending = this.pending.filter((batch) => batch.revision === undefined || batch.revision > server.revision);
     const snapshot = this.pending.length ? applyCanvasOps(server, this.pending.flatMap((batch) => batch.ops)) : server;
-    const writing = Object.fromEntries(Object.entries(this.state.writing).filter(([nodeId, { botId, since }]) => {
-      const bot = snapshot.bots[botId];
-      return snapshot.nodes.some((node) => node.id === nodeId) && bot && bot.status !== "error" && !(bot.output && bot.output.at >= since && bot.status !== "working" && bot.status !== "queued");
-    }));
+    const writing = Object.fromEntries(Object.values(snapshot.bots).flatMap((bot) => (bot.writingInto ?? []).map((nodeId) => [nodeId, { botId: bot.botId }])));
     this.set({ ...change, snapshot, writing, canUndo: this.history.past.length > 0, canRedo: this.history.future.length > 0 });
   }
 

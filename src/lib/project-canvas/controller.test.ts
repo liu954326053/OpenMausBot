@@ -132,7 +132,7 @@ describe("the canvas controller", () => {
     expect(await controller.generate("shot-1", "Night rain, close-up")).toMatchObject({ code: "no_server" });
   });
 
-  it("marks a text node a bot is writing until the bot answers", async () => {
+  it("marks a text node a bot's reply goes into, as the backend has it, until the reply is in", async () => {
     const { controller } = await started({ delayMs: 100, reply: () => "Rain never stops in this city." });
     await controller.sendTask({ botId: "otto", text: "a tagline", targetNodeId: "logline" });
     await vi.advanceTimersByTimeAsync(0);
