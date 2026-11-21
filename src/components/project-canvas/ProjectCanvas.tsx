@@ -271,13 +271,24 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
 
   const resetView = useCallback(() => controller.setViewport({ x: sizeRef.current.width / 2, y: sizeRef.current.height / 2, k: 1 }), [controller]);
 
+  useEffect(() => {
+    if (!pickingFor) return;
+    const stopPicking = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setPickingFor(null);
+    };
+    window.addEventListener("keydown", stopPicking, true);
+    return () => window.removeEventListener("keydown", stopPicking, true);
+  }, [pickingFor]);
+
   const escape = useCallback(() => {
-    if (pickingFor) return setPickingFor(null);
     if (menu) return setMenu(null);
     if (panelNodeId) return setPanelNodeId(null);
     setSelection(new Set());
     setSelectedConnectionId(null);
-  }, [menu, panelNodeId, pickingFor]);
+  }, [menu, panelNodeId]);
 
   useCanvasShortcuts(!settingsOpen && !preview, {
     undo: () => controller.undo(),

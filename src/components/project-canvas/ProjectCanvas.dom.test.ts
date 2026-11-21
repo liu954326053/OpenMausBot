@@ -216,6 +216,18 @@ describe("the project canvas", () => {
     expect(backend.current().nodes).toHaveLength(before + 2);
   });
 
+  it("stops picking references on Escape pressed inside the panel, and keeps the panel open", async () => {
+    await mount();
+    await clickNode("shot-1");
+    const add = panel()!.querySelector<HTMLButtonElement>('button[aria-label="Add references from the canvas"]')!;
+    await act(async () => add.click());
+    expect(host.textContent).toContain("Click nodes to add them as references");
+
+    await act(async () => { add.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    expect(host.textContent).not.toContain("Click nodes to add them as references");
+    expect(panel()).not.toBeNull();
+  });
+
   it("renames a content node from its title and leaves a bot's name alone", async () => {
     await mount();
     await clickNode("city-night");
