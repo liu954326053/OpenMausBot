@@ -94,10 +94,12 @@ store.importTranscript(big.threadId, longRows, longRows.at(-1)!.id);
 
 process.stdout.write(`${JSON.stringify({
   bigBotId: big.id,
+  bigBotName: big.name,
   bigThreadId: big.threadId,
   bigLastMessageId: longRows.at(-1)!.id,
   bigMessages: longRows.length,
   otherBotId: created[0]!.id,
+  otherBotName: created[0]!.name,
   otherThreadId: created[0]!.threadId,
   otherSideThreadId,
   bots: store.bots.length,

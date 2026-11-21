@@ -11,6 +11,7 @@ import { expect, it } from "vitest";
 
 import { cloudHomeChildEnvironments, spawnWithSecrets } from "../../server/cloud-home-start.ts";
 import { cloudHomeConfiguration, cloudPairingSignature } from "../../server/cloud-home.ts";
+import type { Routine, RoutineRun } from "../../server/routines.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
 import { healthAnswerer, launchRestartableServer, type RestartableServer, webhookPortRefusal } from "../../server/testing/restartable-server.ts";
@@ -27,6 +28,17 @@ const SCHEDULE = "Every day at 9 AM, Scout sends you a summary of your inbox";
 const EDITED = "Every day at 10:30 AM, Scout sends you a summary of your inbox and your calendar";
 const FORM = "When your sales form sends something, Scout drafts a follow-up for the lead";
 const FAILING = "Every day at 5 PM, Scout checks the sales inbox";
+/** Automations is a row of the sidebar's Tools section in Advanced mode, an item of the account menu in Simple mode and of
+ * the Tools menu on a phone. One step a call: poll it until it returns true. */
+const OPEN_AUTOMATIONS = `(() => {
+  const entry = document.querySelector('[data-sidebar-nav="automations"], [role=menuitem][data-menu-key="automations"]');
+  if (entry) { entry.click(); return true; }
+  (document.querySelector("[data-tour=tools] button[aria-expanded=false]") ?? document.querySelector('button[aria-label="Tools"]') ?? document.querySelector("[data-sidebar-account]")?.closest("button"))?.click();
+  return false;
+})()`;
+/** A failed run nobody has opened: a dot on Automations in the Tools section in Advanced mode, the account's label in
+ * Simple mode. */
+const AUTOMATIONS_NEED_YOU = `Boolean(document.querySelector('[data-testid="routines-attention"]') || document.querySelector("[data-sidebar-account]")?.closest("button")?.getAttribute("aria-label")?.includes("Automations need you"))`;
 
 /** What each bot does when it is asked something, and when one of its automations runs. */
 function plan(bots: Array<{ id: string }>) {
@@ -50,32 +62,34 @@ type App = Awaited<ReturnType<typeof openApp>>;
   const server = await launchRestartableServer({ scripted: true, dataDirRoot: SHORT_TMP });
   let app: App | undefined;
   try {
-    const api = async (method: string, path: string, body?: unknown) => {
+    const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
       const response = await fetch(`${server.url}${path}`, { method, headers: { "content-type": "application/json", origin: server.url }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       expect(response.ok).toBe(true);
-      return response.json();
+      return await response.json() as T;
     };
-    const bot = (await api("GET", "/api/bots?messages=0")).bots[0];
-    const setReply = (fail: boolean) => writeFileSync(server.planPath, JSON.stringify({ [bot.id]: { script: [{ key: "check", match: ["Check notification history."], repeat: true, steps: [], ...(fail ? { failWith: "Provider disconnected." } : { reply: "Nothing new." }) }] } }));
-    const { routine } = await api("POST", "/api/routines", { name: "Keep an eye on my day", prompt: "Check notification history.", botId: bot.id, schedule: { type: "interval", everyMinutes: 1440, anchorAt: Date.now() + 86_400_000 } });
+    const bot = (await api<{ bots: Array<{ id: string; name: string }> }>("GET", "/api/bots?messages=0")).bots[0];
+    const setReply = (fail: boolean) => writeFileSync(server.planPath, JSON.stringify({ [bot.id]: { script: [fail
+      ? { key: "disconnected", match: [], repeat: true, steps: [], failWith: "Provider disconnected." }
+      : { key: "check", match: ["Check notification history."], repeat: true, steps: [], reply: "Nothing new." }] } }));
+    const { routine } = await api<{ routine: Routine }>("POST", "/api/routines", { name: "Keep an eye on my day", prompt: "Check notification history.", botId: bot.id, schedule: { type: "interval", everyMinutes: 1440, anchorAt: Date.now() + 86_400_000 } });
     let failedId = "";
     for (let index = 0; index < 7; index++) {
       setReply(index === 0);
-      const { run } = await api("POST", `/api/routines/${routine.id}/run`);
+      const { run } = await api<{ run: RoutineRun }>("POST", `/api/routines/${routine.id}/run`);
       if (index === 0) failedId = run.id;
-      await expect.poll(async () => (await api("GET", "/api/routines")).runs.find((candidate: { id: string }) => candidate.id === run.id)?.status, { timeout: 30_000 }).toBe(index === 0 ? "failed" : "completed");
+      await expect.poll(async () => (await api<{ runs: RoutineRun[] }>("GET", "/api/routines")).runs.find((candidate) => candidate.id === run.id)?.status, { timeout: 30_000 }).toBe(index === 0 ? "failed" : "completed");
     }
     await server.stop();
     await server.start();
     app = await openApp(server, { shots: join(SHOTS, "notification"), bots: { [bot.name]: bot.id } });
     await app.openAutomations();
     await expect.poll(() => app!.rowText(routine.name)).toContain("Provider disconnected.");
-    expect(await app.evaluate('Boolean(document.querySelector(\'[data-testid="routines-attention"]\'))')).toBe(true);
+    await expect.poll(() => app!.evaluate(AUTOMATIONS_NEED_YOU)).toBe(true);
     await app.screenshot("unread-failure-explained");
     await app.openRow(routine.name);
     await expect.poll(app.panel).toContain("Provider disconnected.");
-    await expect.poll(async () => Boolean((await api("GET", "/api/routines")).runs.find((run: { id: string }) => run.id === failedId)?.seenAt)).toBe(true);
-    await expect.poll(() => app!.evaluate('Boolean(document.querySelector(\'[data-testid="routines-attention"]\'))')).toBe(false);
+    await expect.poll(async () => Boolean((await api<{ runs: RoutineRun[] }>("GET", "/api/routines")).runs.find((run) => run.id === failedId)?.seenAt)).toBe(true);
+    await expect.poll(() => app!.evaluate(AUTOMATIONS_NEED_YOU)).toBe(false);
     await app.screenshot("failure-read");
     await app.close();
     app = undefined;
@@ -85,7 +99,7 @@ type App = Awaited<ReturnType<typeof openApp>>;
     await app.openAutomations();
     await expect.poll(() => app!.rowText(routine.name)).toContain("Keep an eye on my day");
     expect(await app.rowText(routine.name)).not.toContain("Provider disconnected.");
-    expect(await app.evaluate('Boolean(document.querySelector(\'[data-testid="routines-attention"]\'))')).toBe(false);
+    expect(await app.evaluate(AUTOMATIONS_NEED_YOU)).toBe(false);
     await app.screenshot("notification-cleared-after-restart");
   } finally {
     await app?.close();
@@ -97,6 +111,11 @@ type App = Awaited<ReturnType<typeof openApp>>;
 /** The real renderer on `server` in headless Chrome, and what a person does with it. */
 async function openApp(server: { url: string; port: number; dataDir: string; logPath: string }, options: { shots: string; bots: Record<string, string>; proxyHeaders?: Record<string, string> }) {
   mkdirSync(options.shots, { recursive: true });
+  const headers = { ...options.proxyHeaders, "content-type": "application/json", origin: server.url };
+  const { bots } = await (await fetch(`${server.url}/api/bots?messages=0`, { headers })).json() as { bots: Array<{ id: string; defaultBot?: unknown }> };
+  for (const bot of bots.filter((bot) => bot.defaultBot)) {
+    expect((await fetch(`${server.url}/api/bots/${bot.id}`, { method: "PATCH", headers, body: JSON.stringify({ welcomed: true }) })).ok).toBe(true);
+  }
   const tools = await ensureUiBrowser(process.env);
   const preview = await mountPreview({ info: { url: server.url } }, { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Automations journey", logLevel: "warn", proxyHeaders: options.proxyHeaders });
   const handle: UiHandle = { url: server.url, previewUrl: preview.previewUrl, session: `omb-journey-${server.port}`, binary: tools.binary, home: server.dataDir, botId: Object.values(options.bots)[0]!, logPath: server.logPath, chrome: tools.chrome };
@@ -133,11 +152,14 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
   const card = (sentence: string) => `[...document.querySelectorAll("[data-trigger-card]")].find((item) => item.innerText.includes(${JSON.stringify(sentence)}))`;
   const cardText = (sentence: string) => evaluate(`${card(sentence)}?.innerText ?? ""`) as Promise<string>;
   const clickCard = (sentence: string, label: string) => evaluate(`(() => { const button = [...(${card(sentence)}?.querySelectorAll("button") ?? [])].find((candidate) => candidate.textContent.trim() === ${JSON.stringify(label)}); button?.click(); return Boolean(button); })()`);
-  const reload = async () => { await evaluate("location.reload(); true"); await expect.poll(() => evaluate("Boolean(document.querySelector('nav'))"), { timeout: 30_000 }).toBe(true); };
+  const reload = async () => {
+    await evaluate("window.__journeyReloading = true; location.reload(); true");
+    await expect.poll(() => evaluate(`!window.__journeyReloading && Boolean(document.querySelector('[data-sidebar], button[aria-label="Open bot list"]'))`), { timeout: 30_000 }).toBe(true);
+  };
   const openAutomations = async () => {
     // A narrow window keeps the sidebar behind its menu button.
     await evaluate(`document.querySelector('button[aria-label="Open bot list"]')?.click(); true`);
-    await expect.poll(() => evaluate(`(() => { const entry = [...document.querySelectorAll("nav button")].find((button) => button.textContent.trim() === "Automations"); entry?.click(); return Boolean(entry); })()`)).toBe(true);
+    await expect.poll(() => evaluate(OPEN_AUTOMATIONS), { timeout: 15_000, interval: 500 }).toBe(true);
     await expect.poll(() => text("main h1"), { timeout: 15_000 }).toBe("Automations");
   };
   /** Opens a bot's chat; with `thread`, that conversation, as a person would from the bot's thread list. */
@@ -193,11 +215,11 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await select("Who should do it?", "Scout");
     await screenshot("new-box");
     await click("Set it up");
-    await expect.poll(() => cardText(SCHEDULE), { timeout: 30_000 }).toContain("Next: today 9:00 AM");
-    expect(await cardText(SCHEDULE)).toMatch(/^Set up: Every day at 9 AM, Scout sends you a summary of your inbox\nNext: (today|tomorrow) 9:00 AM/);
+    await expect.poll(() => cardText(SCHEDULE), { timeout: 30_000 }).toMatch(/First run (today|tomorrow) 9:00 AM/);
+    expect(await cardText(SCHEDULE)).toMatch(/^Set up: Every day at 9 AM, Scout sends you a summary of your inbox\nFirst run (today|tomorrow) 9:00 AM/);
     await screenshot("chat-card");
     await openAutomations();
-    await expect.poll(() => rowText(SCHEDULE)).toMatch(/Working · hasn't run yet · next: (today|tomorrow) 9:00 AM/);
+    await expect.poll(() => rowText(SCHEDULE)).toMatch(/First run (today|tomorrow) 9:00 AM/);
     await screenshot("list-one");
 
     // 2. From chat: "whenever our form sends a lead" → the card → Copy address → a real call with the right secret runs
@@ -219,7 +241,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     const wrong = await fetch(address.replace(/whsec_[\w-]+$/, "whsec_not-the-secret"), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     expect(wrong.status).toBe(401);
     await openAutomations();
-    await expect.poll(() => rowText(FORM)).toMatch(/Working · last ran today/);
+    await expect.poll(() => rowText(FORM)).toMatch(/On · last ran today/);
     await openRow(FORM);
     await expect.poll(panel).toMatch(/recent runs/i);
     await evaluate(`document.querySelector('aside[aria-label="Automation"] details summary').click(); true`);
@@ -242,7 +264,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
       expect(await flip(sentence)).toBe("true");
       await expect.poll(() => switchState(sentence)).toBe("false");
       await expect.poll(() => rowStatus(sentence)).toBe("paused");
-      expect(await rowText(sentence)).toMatch(/^.+\nPaused · /);
+      expect(await rowText(sentence)).toMatch(/^.+\n(?:.+\n)?Paused · /);
       expect(await rowText(sentence)).not.toContain("next:");
       if (sentence === SCHEDULE) await screenshot("list-switched-off");
       await reload();
@@ -250,7 +272,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
       expect(await rowStatus(sentence)).toBe("paused");
       expect(await flip(sentence)).toBe("false");
       await expect.poll(() => rowStatus(sentence)).toBe("working");
-      if (sentence === SCHEDULE) expect(await rowText(sentence)).toMatch(/Working · hasn't run yet · next: (today|tomorrow) 9:00 AM/);
+      if (sentence === SCHEDULE) expect(await rowText(sentence)).toMatch(/First run (today|tomorrow) 9:00 AM/);
       await reload();
       await openAutomations();
       expect(await rowStatus(sentence)).toBe("working");
@@ -262,16 +284,16 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
 
     await openRow(SCHEDULE);
     await clickIn('aside[aria-label="Automation"]', "Pause");
-    await expect.poll(panel).toMatch(/^.+\nPaused\n/);
+    await expect.poll(panel).toMatch(/^.+\n+(?:.+\n+)?Paused\n/);
     await expect.poll(() => rowText(SCHEDULE)).toMatch(/Paused · /);
     await screenshot("panel-paused");
     await reload();
     await openAutomations();
     await openRow(SCHEDULE);
-    expect(await panel()).toMatch(/^.+\nPaused\n/);
+    expect(await panel()).toMatch(/^.+\n+(?:.+\n+)?Paused\n/);
     await clickIn('aside[aria-label="Automation"]', "Resume");
-    await expect.poll(panel).toMatch(/^.+\nWorking\n/);
-    await expect.poll(() => rowText(SCHEDULE)).toMatch(/next: (today|tomorrow) 9:00 AM/);
+    await expect.poll(panel).toMatch(/^.+\n+(?:.+\n+)?On\n/);
+    await expect.poll(() => rowText(SCHEDULE)).toMatch(/First run (today|tomorrow) 9:00 AM/);
     await click("Close");
 
     await openChat("Scout", MAIN);
@@ -282,7 +304,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await openChat("Scout", MAIN);
     await expect.poll(() => cardText(SCHEDULE)).toMatch(/\nPaused\nResume/);
     expect(await clickCard(SCHEDULE, "Resume")).toBe(true);
-    await expect.poll(() => cardText(SCHEDULE)).toMatch(/\nNext: (today|tomorrow) 9:00 AM\nPause/);
+    await expect.poll(() => cardText(SCHEDULE)).toMatch(/\nFirst run (today|tomorrow) 9:00 AM\nPause/);
     expect(await clickCard(FORM, "Pause")).toBe(true);
     await expect.poll(() => cardText(FORM)).toMatch(/\nPaused\nResume/);
     expect(await clickCard(FORM, "Resume")).toBe(true);
@@ -293,7 +315,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await openRow(SCHEDULE);
     await clickIn('aside[aria-label="Automation"]', "Run now");
     await expect.poll(panel, { timeout: 30_000 }).toMatch(/Today [^\n]*\n✓\nInbox: 3 new emails, nothing urgent\./);
-    await expect.poll(() => rowText(SCHEDULE)).toMatch(/Working · last ran today [^·]+ · next: /);
+    await expect.poll(() => rowText(SCHEDULE)).toMatch(/On · last ran today [^·]+ · next: /);
     await screenshot("run-now");
     await clickIn('aside[aria-label="Automation"]', "Edit");
     await expect.poll(() => text("[role=dialog]")).toContain("Edit automation");
@@ -303,7 +325,8 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await clickIn("[role=dialog]", "Save");
     await expect.poll(() => evaluate("Boolean(document.querySelector('[role=dialog]'))")).toBe(false);
     await expect.poll(() => rowText(EDITED)).toMatch(/next: (today|tomorrow) 10:30 AM/);
-    expect(await panel()).toContain(EDITED);
+    expect(await panel()).toContain("Every day at 10:30 AM · Scout");
+    expect(await panel()).toContain("Send me a summary of my inbox and my calendar.");
     await screenshot("edited");
     await click("Close");
 
@@ -312,7 +335,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await expect.poll(() => evaluate(`document.querySelectorAll('[data-event-card][aria-label^="Morning inbox summary"]').length`)).toBeGreaterThan(0);
     await screenshot("calendar-week");
     await evaluate(`[...document.querySelectorAll('[data-event-card][aria-label^="Morning inbox summary"]')].at(-1).click(); true`);
-    await expect.poll(panel).toContain(EDITED);
+    await expect.poll(panel).toContain("Every day at 10:30 AM · Scout");
     await screenshot("calendar-event-panel");
     await click("Close");
     await click("List");
@@ -320,7 +343,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     // 6. A run that fails because the bot is signed out puts it first under Needs you, with the one button that fixes it,
     // and its future days on the calendar say so too.
     await say("Scout", "every day at 5pm, check the sales inbox", MAIN);
-    await expect.poll(() => cardText(FAILING), { timeout: 30_000 }).toContain("Next:");
+    await expect.poll(() => cardText(FAILING), { timeout: 30_000 }).toContain("First run ");
     await openAutomations();
     await openRow(FAILING);
     await clickIn('aside[aria-label="Automation"]', "Run now");
@@ -356,7 +379,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
 
     // 8. Deleting a bot takes its automations with it: off the list, off the calendar, and nothing of it runs.
     await say("Ledger", "every morning, summarize my inbox");
-    await expect.poll(() => cardText("Every day at 9 AM, Ledger sends you a summary of your inbox"), { timeout: 30_000 }).toContain("Next:");
+    await expect.poll(() => cardText("Every day at 9 AM, Ledger sends you a summary of your inbox"), { timeout: 30_000 }).toContain("First run ");
     await say("Ledger", "whenever our form sends a lead, draft a follow-up");
     await expect.poll(() => cardText("When your sales form sends something, Ledger drafts a follow-up for the lead"), { timeout: 30_000 }).toContain("Hasn't run yet");
     await openAutomations();
@@ -383,14 +406,14 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     // 9. Restart the server mid-way: everything is still there, in the same state, and a schedule still runs on time.
     const dueAt = Date.now() + 45_000;
     await api("POST", "/api/routines", { name: "Lead count", prompt: "Count the new leads.", botId: scout, schedule: { type: "interval", everyMinutes: 60, anchorAt: dueAt } });
-    await expect.poll(() => rowText("Scout counts the new leads")).toContain("next: today");
+    await expect.poll(() => rowText("Scout counts the new leads")).toContain("First run today");
     const before = await evaluate(`[...document.querySelectorAll("[data-automation]")].map((item) => item.dataset.automationStatus + " " + item.innerText.split("\\n")[0])`);
     await live.stop();
     await live.start();
     await reload();
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].map((item) => item.dataset.automationStatus + " " + item.innerText.split("\\n")[0])`), { timeout: 30_000 }).toEqual(before);
-    await expect.poll(() => rowText("Scout counts the new leads"), { timeout: 90_000, interval: 2_000 }).toMatch(/Working · last ran today [^·]+ · next: today/);
+    await expect.poll(() => rowText("Scout counts the new leads"), { timeout: 90_000, interval: 2_000 }).toMatch(/On · last ran today [^·]+ · next: (today|tomorrow)/);
     await screenshot("after-restart");
     expect((await state()).runs.filter((run) => run.botId === ledger)).toEqual([]);
 
@@ -541,11 +564,13 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     app = await openApp({ url: cloud.url, port: cloud.port, dataDir: cloud.dataDir, logPath: cloud.logPath }, { shots, bots: { Scout: scout, Ledger: ledger }, proxyHeaders: cloud.owner });
     const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, openChat, say } = app;
 
-    await expect.poll(() => evaluate(`(() => { const skip = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "Skip setup"); skip?.click(); return Boolean(skip); })()`), { timeout: 30_000 }).toBe(true);
+    // A new personal Cloud's first hour ends its welcome steps, so it opens on a chat.
+    await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 30_000 }).toMatch(/^Message /);
+    expect(await evaluate("Boolean(document.querySelector('[data-cloud-welcome]'))")).toBe(false);
 
     // The owner sets up a schedule and a webhook from chat; the address to paste is the Cloud's public one.
     await say("Scout", "every morning, summarize my inbox");
-    await expect.poll(() => cardText(SCHEDULE), { timeout: 30_000 }).toContain("Next:");
+    await expect.poll(() => cardText(SCHEDULE), { timeout: 30_000 }).toContain("First run ");
     await say("Scout", "whenever our form sends a lead, draft a follow-up");
     await expect.poll(() => cardText(FORM), { timeout: 30_000 }).toContain("Hasn't run yet");
     await evaluate("window.__copied = []; navigator.clipboard.writeText = async (value) => { window.__copied.push(value); }; true");
@@ -561,7 +586,7 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     await expect.poll(async () => (await state()).routines.some((routine) => routine.name === "Hourly orders"), { timeout: 30_000 }).toBe(true);
     expect((await fetch(local.replace(/whsec_[\w-]+$/, "whsec_wrong"), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status).toBe(401);
     await openAutomations();
-    await expect.poll(() => rowText(FORM), { timeout: 30_000 }).toMatch(/Working · last ran today/);
+    await expect.poll(() => rowText(FORM), { timeout: 30_000 }).toMatch(/On · last ran today/);
     await evaluate(`${"[...document.querySelectorAll('[data-automation]')]"}.find((item) => item.innerText.includes(${JSON.stringify(FORM)})).querySelector("button").click(); true`);
     await expect.poll(panel).toContain("Copy address");
     expect(await panel()).not.toContain("Keep MagicBot open");
@@ -606,9 +631,7 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     await expect.poll(async () => (await api("GET", `/api/threads/${ordersThread}/messages`)).messages.find((message: any) => message.card?.held)?.card.held, { timeout: 30_000 }).toBe(OUTSIDE_WHY);
     await expect.poll(panel).toContain("Needs you");
     await clickIn('aside[aria-label="Automation"]', "Answer");
-    await expect.poll(() => evaluate(`Boolean(document.querySelector('[role=region] button[aria-expanded="false"][aria-controls^="approval-details-"]'))`), { timeout: 15_000 }).toBe(true);
-    await evaluate(`document.querySelector('[role=region] button[aria-controls^="approval-details-"]').click(); true`);
-    await expect.poll(() => evaluate(`document.querySelector('[id^="approval-details-"]:not([hidden]) .text-warning')?.innerText ?? ""`)).toBe(OUTSIDE_WHY);
+    await expect.poll(() => evaluate(`document.querySelector('[aria-controls^="approval-details-"]')?.closest("[role=region]")?.querySelector("p.text-warning")?.innerText ?? ""`), { timeout: 15_000 }).toBe(OUTSIDE_WHY);
     await screenshot("cloud-webhook-made-routine-held");
 
     // Deleting a bot takes its automations with it, on a Cloud too.

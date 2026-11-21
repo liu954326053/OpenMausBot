@@ -148,6 +148,31 @@ describe("approval summary from driver event through persisted card to renderer"
     shows(english);
   });
 
+  it("tells a refusal after Confirm on the card in the person's language with its values, scrubbed of secrets when stored", () => {
+    const threadId = randomUUID();
+    const english = "This project already has 50 generations waiting or running. Wait for some of them to finish.";
+    const stored = (heldParams: Record<string, string | number>) => {
+      const requestId = randomUUID();
+      const sent = new Store(selection).appendMessage(threadId, { role: "bot", kind: "options", card: {
+        title: "Generate “Poster”?", subtitle: "A bot may start 3 videos a day without you.", options: ["Confirm", "Cancel"], requestId, tool: "canvas_generate",
+        fixedOptions: true, answered: "allow", held: english, heldCode: "serverError.projectGeneration.tooMany", heldParams,
+        canvasGeneration: {
+          requestId, projectId: "p1", nodeId: "n1", title: "Poster", botId: "b1", threadId, reasonKey: "serverError.projectGeneration.confirmVideos",
+          reasonParams: { ceiling: 3, used: 3, asked: 1 }, createdAt: 1, result: { state: "refused", code: "too_many", error: english },
+        },
+      } });
+      return JSON.parse(JSON.stringify(readMessage(threadId, sent.id))) as Message;
+    };
+    const message = stored({ count: 50 });
+    const zh = "这个项目已经有 50 个生成任务在等待或进行中。请等其中一些完成。";
+    expect(renderToStaticMarkup(createElement(ApprovalCard, { message }))).toContain(english);
+    setLocale("zh");
+    expect(renderToStaticMarkup(createElement(ApprovalCard, { message }))).toContain(zh);
+    const [pending] = pendingApprovals([{ ...message, card: { ...message.card!, answered: undefined } }]);
+    expect(renderToStaticMarkup(createElement(PendingApprovalPanel, { pending: pending!, count: 1, index: 0 }))).toContain(zh);
+    expect(stored({ count: `sk-${"c".repeat(24)}` }).card?.heldParams).toEqual({ count: "«redacted 27 chars»" });
+  });
+
   it.each([undefined, "chat.notice.unknown", "approval.someone", "chat.notice.elicitationContinue"])("keeps the English fallback for a legacy, unknown, out-of-namespace or incomplete code %j", (summaryCode) => {
     const message = persistedRequest(claudeRequest("", ""));
     message.card!.summaryCode = summaryCode;

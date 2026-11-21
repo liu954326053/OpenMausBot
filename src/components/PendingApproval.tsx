@@ -29,6 +29,7 @@ export interface Pending {
   detail: string;
   held?: string;
   heldCode?: string;
+  heldParams?: Record<string, string | number>;
 }
 
 /** Security: the persisted payload is the marker; provider-authored tool names can collide with ours. */
@@ -58,6 +59,7 @@ export function pendingApprovals(messages: Message[]): Pending[] {
       detail: approvalDetailText(m.card!),
       held: m.card!.held,
       heldCode: m.card!.heldCode,
+      heldParams: m.card!.heldParams,
     }));
 }
 
@@ -175,7 +177,7 @@ export const PendingApprovalPanel = memo(function PendingApprovalPanel({
   const outbound = pending.message.card ? outboundSummary(pending.message.card) : undefined;
   const heldNote = outbound?.opaque && pending.heldCode === "approval.held.outbound"
     ? t("approval.opaqueCode")
-    : tFromServer(pending.heldCode, pending.held);
+    : tFromServer(pending.heldCode, pending.held, pending.heldParams);
   const { line, summary, inline, note, detail } = approvalWords(pending, botName ?? asker?.name);
   const detailsId = `approval-details-${pending.requestId}`;
   const hidden = detail && detail !== inline ? detail : "";

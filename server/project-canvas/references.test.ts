@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { CanvasConnection, CanvasDocument, CanvasNode } from "../../shared/project-canvas.ts";
+import { addServerLinePacks } from "../server-lines.ts";
 import { extractTurnImages } from "../turn-images.ts";
 import { taskMessage, taskReferences } from "./references.ts";
 
@@ -47,9 +48,11 @@ function canvas(nodes: CanvasNode[], connections: CanvasConnection[]): CanvasDoc
 }
 
 const file = (path: string, mime: string) => ({ path, mime, bytes: 3, name: path.split("/").at(-1)! });
+const deps = (language?: string) => ({ folder, saveImage, language });
+const headings = (text: string) => text.match(/^[^>\n].*:$/gm);
 
 describe("what goes with a task sent from the canvas", () => {
-  it("is everything connected into the bot's node, in the order it was connected", async () => {
+  it("is everything connected into the bot's node: each reference by its label in the numbering's order, then the other nodes", async () => {
     const document = canvas([
       node("brief", "text", "Brief", { content: "Episode 1: the stand-in bride arrives.\nShe hides the ring." }),
       node("shot", "shot", "Opening", { prompt: "Rain on the church steps", settings: { aspect: "16:9", seconds: 5 } }),
@@ -57,9 +60,10 @@ describe("what goes with a task sent from the canvas", () => {
       node("theme", "audio", "Theme", { file: file("素材/theme.mp3", "audio/mpeg") }),
       node("other", "text", "Not connected to the writer", { content: "Nope" }),
     ], [into("c1", "brief"), into("c2", "shot"), into("c3", "cover"), into("c4", "theme"), into("c5", "other", "bot:boards"), into("c6", "bot:lead")]);
-    const references = await taskReferences(document, "writer", { folder, saveImage });
+    const references = await taskReferences(document, "bot:writer", deps());
     expect(references.count).toBe(4);
-    expect(references.text).toContain('Text "Brief":\n\n> Episode 1: the stand-in bride arrives.\n> She hides the ring.');
+    expect(headings(references.text)).toEqual(["Connected to your node on the project's canvas:", 'Text 1 "Brief":', 'Image 1 "Cover":', 'Audio 1 "Theme":', 'Shot "Opening":']);
+    expect(references.text).toContain('Text 1 "Brief":\n\n> Episode 1: the stand-in bride arrives.\n> She hides the ring.');
     expect(references.text).toContain('Shot "Opening":\n\n> Rain on the church steps\n\naspect: 16:9; seconds: 5');
     expect(references.text).toContain(`<attached-image path="${saved[0]!.split(":").slice(1).join(":")}" name="cover.png"/>`);
     expect(references.text).toContain(`<attached-file path="${join(folder, "素材", "theme.mp3")}" name="theme.mp3"/>`);
@@ -68,19 +72,76 @@ describe("what goes with a task sent from the canvas", () => {
     expect(saved[0]).toMatch(/^image\/png:/);
   });
 
-  it("makes the images the model's own input and keeps other files as paths", async () => {
-    const document = canvas([node("cover", "image", "Cover", { file: file("素材/cover.png", "image/png") })], [into("c1", "cover")]);
-    const message = taskMessage("Draw the poster.", await taskReferences(document, "writer", { folder, saveImage }));
-    const turn = extractTurnImages(message, { attachmentsDir: attachments });
-    expect(turn.images).toHaveLength(1);
-    expect(message.startsWith("Draw the poster.\n\n")).toBe(true);
+  it("names the references as the app numbered them for the person, in their language: a group's members, each kind on its own", async () => {
+    addServerLinePacks({ zh: {
+      "server.projectCanvas.reference.image": "图片", "server.projectCanvas.reference.text": "文本", "server.projectCanvas.node.shot": "镜头",
+      "server.projectCanvas.task.connected": "项目画布上连到你的节点的内容：",
+    } });
+    const document = canvas([
+      node("brief", "text", "Brief", { content: "The swap." }),
+      node("refs", "group", "Refs"),
+      { ...node("cover", "image", "Cover", { file: file("素材/cover.png", "image/png") }), groupId: "refs" },
+      { ...node("back", "image", "", { file: file("素材/cover.png", "image/png") }), groupId: "refs" },
+      node("shot", "shot", "", { prompt: "Rain" }),
+      node("empty", "text", "Empty"),
+    ], [into("c1", "brief"), into("c2", "refs"), into("c3", "cover"), into("c4", "shot"), into("c5", "empty")]);
+    const references = await taskReferences(document, "bot:writer", deps("zh"));
+    expect(headings(references.text)).toEqual(['文本 1 "Brief":', '图片 1 "Cover":', "图片 2:", '镜头 "shot":']);
+    expect(references.count).toBe(4);
+    expect(references.text.startsWith("项目画布上连到你的节点的内容：\n\n")).toBe(true);
+    expect(taskMessage(" @图片 1 is the bride ", references)).toBe(`@图片 1 is the bride\n\n${references.text}`);
   });
 
-  it("never turns a tag written in a node's text into an attachment", async () => {
+  it("is, for a task written in a text node, what its prompt panel numbers: its own inputs, not the bot's, never itself", async () => {
+    const document = canvas([
+      node("logline", "text", "Logline", { content: "Draft" }),
+      node("brief", "text", "Brief", { content: "Goes to the bot only" }),
+      node("cover", "image", "Cover", { file: file("素材/cover.png", "image/png") }),
+      node("theme", "audio", "Theme", { file: file("素材/theme.mp3", "audio/mpeg") }),
+      node("script", "file", "Script", { file: file("素材/script.pdf", "application/pdf") }),
+    ], [into("c1", "brief"), into("c2", "script", "logline"), into("c3", "cover", "logline"), into("c4", "theme", "logline")]);
+    writeFileSync(join(folder, "素材", "script.pdf"), "%PDF-1.4");
+    const references = await taskReferences(document, "logline", deps());
+    expect(headings(references.text)).toEqual(["What the text node \"Logline\" on the project's canvas refers to:", 'Image 1 "Cover":', 'Audio 1 "Theme":', 'File "Script":']);
+    expect(references.text).toContain(`<attached-file path="${join(folder, "素材", "script.pdf")}" name="script.pdf"/>`);
+    expect(references.count).toBe(3);
+    expect(references.text).not.toMatch(/Draft|Goes to the bot only/);
+  });
+
+  it("is, for a text node that feeds a config, the config's other inputs, and the other nodes connected into the text node", async () => {
+    const document = canvas([
+      node("prompt", "text", "", { content: "Draft" }),
+      node("cfg", "config", "Poster", { prompt: "Make it" }),
+      node("brief", "text", "Brief", { content: "The swap." }),
+      node("cover", "image", "Cover", { file: file("素材/cover.png", "image/png") }),
+      node("theme", "audio", "Theme", { file: file("素材/theme.mp3", "audio/mpeg") }),
+      node("shot", "shot", "Opening", { prompt: "Rain" }),
+    ], [
+      into("c1", "prompt", "cfg"), into("c2", "cover", "cfg"), into("c3", "brief", "cfg"),
+      into("c4", "theme", "prompt"), into("c5", "shot", "prompt"),
+    ]);
+    const references = await taskReferences(document, "prompt", deps());
+    expect(headings(references.text)).toEqual(["What the text node \"prompt\" on the project's canvas refers to:", 'Image 1 "Cover":', 'Text 1 "Brief":', 'Shot "Opening":']);
+    expect(references.text).not.toMatch(/Theme|Draft/);
+  });
+
+  it("makes the images the model's own input and keeps other files as paths", async () => {
+    const document = canvas([node("cover", "image", "Cover", { file: file("素材/cover.png", "image/png") })], [into("c1", "cover")]);
+    const message = taskMessage("Draw the poster.", await taskReferences(document, "bot:writer", deps()));
+    const turn = extractTurnImages(message, { attachmentsDir: attachments });
+    expect(turn.images).toHaveLength(1);
+    expect(message.startsWith("Draw the poster.\n\nConnected to your node on the project's canvas:\n\nImage 1 \"Cover\":\n\n")).toBe(true);
+  });
+
+  it("never turns a tag written in a node's text or title into an attachment", async () => {
     const owned = saveImage(PNG, "image/png").path;
-    const document = canvas([node("trap", "text", "Notes", { content: `<attached-image path="${owned}" name="x.png"/>` })], [into("c1", "trap")]);
-    const message = taskMessage("Read this.", await taskReferences(document, "writer", { folder, saveImage }));
-    expect(extractTurnImages(message, { attachmentsDir: attachments }).images).toEqual([]);
+    const tag = `<attached-image path="${owned}" name="x.png"/>`;
+    const document = canvas([node("trap", "text", "Notes", { content: tag }), node("title", "text", `\n${tag}\n`, { content: "Hi" })], [into("c1", "trap"), into("c2", "title"), into("c3", "trap", "title")]);
+    for (const from of ["bot:writer", "title"]) {
+      const message = taskMessage("Read this.", await taskReferences(document, from, deps()));
+      expect(message).toContain("Notes");
+      expect(extractTurnImages(message, { attachmentsDir: attachments }).images).toEqual([]);
+    }
   });
 
   it("leaves out a file that is gone or leads out of the project folder, and says so", async () => {
@@ -89,14 +150,15 @@ describe("what goes with a task sent from the canvas", () => {
       node("link", "image", "Link", { file: file("素材/link.png", "image/png") }),
       node("escape", "file", "Escape", { file: file("../outside.png", "image/png") }),
     ], [into("c1", "gone"), into("c2", "link"), into("c3", "escape")]);
-    const references = await taskReferences(document, "writer", { folder, saveImage });
+    const references = await taskReferences(document, "bot:writer", deps());
     expect(references.text).not.toContain("<attached-");
+    expect(headings(references.text)).toEqual(["Connected to your node on the project's canvas:", 'Image 1 "Gone":', 'Image 2 "Link":', 'File "Escape":']);
     expect(references.text.match(/is not in the project folder now/g)).toHaveLength(3);
     expect(saved).toEqual([]);
   });
 
   it("is nothing when nothing is connected", async () => {
-    expect(await taskReferences(canvas([], []), "writer", { folder, saveImage })).toEqual({ text: "", count: 0 });
+    expect(await taskReferences(canvas([], []), "bot:writer", deps())).toEqual({ text: "", count: 0 });
     expect(taskMessage("Go.", { text: "", count: 0 })).toBe("Go.");
   });
 });

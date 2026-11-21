@@ -88,6 +88,8 @@ export interface OpsContext {
   newId(): string;
   /** Where a node added without a position goes. */
   place(document: CanvasDocument, node: CanvasNode): CanvasPoint;
+  /** A content node deleted lately, by its id: the person adding it back, as undo does, gives it back to its maker. */
+  removed?(id: string): { type: CanvasNodeType; createdBy: CanvasNodeCreator } | undefined;
 }
 
 export interface OpsResult {
@@ -104,6 +106,10 @@ const newId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const nodeRef = z.string().regex(/^(?:bot:)?[\w-]{1,128}$/);
 const title = z.string().max(CANVAS_TITLE_MAX_CHARS).refine((value) => !/\p{Cc}/u.test(value), "a title is one line");
 const short = (max: number) => z.string().max(max);
+/** Security: a bot sets the error of a node it made, so the line it names is only ever a generation or canvas error. */
+const ERROR_KEY = /^serverError\.project(?:Generation|Canvas)\.\w+$/;
+const errorParams = z.record(z.string().regex(/^\w{1,40}$/), z.union([short(2_000), z.number().finite()]))
+  .refine((params) => Object.keys(params).length <= 8, "errorParams holds at most 8 values");
 
 const settings = z.object({
   model: short(200).optional(),
@@ -131,6 +137,8 @@ const METADATA_FIELDS = {
   prompt: z.string().max(CANVAS_PROMPT_MAX_CHARS),
   status: z.enum(["idle", "loading", "success", "error"]),
   errorDetails: short(2_000),
+  errorKey: z.string().regex(ERROR_KEY, "errorKey is a serverError.projectGeneration or serverError.projectCanvas key"),
+  errorParams,
   jobId: short(200),
   settings,
   generationMode: z.enum(["image", "video"]),
@@ -177,7 +185,8 @@ export function parseCanvasOps(input: unknown): CanvasOp[] {
   });
 }
 
-const GENERATION: readonly MetadataKey[] = ["prompt", "status", "errorDetails", "jobId", "settings"];
+const ERROR_FIELDS = ["errorDetails", "errorKey", "errorParams"] as const;
+const GENERATION: readonly MetadataKey[] = ["prompt", "status", ...ERROR_FIELDS, "jobId", "settings"];
 const TYPE_KEYS: Record<CanvasNodeType, readonly MetadataKey[]> = {
   bot: [],
   group: [],
@@ -209,6 +218,7 @@ function checkMetadata(type: CanvasNodeType, values: { settings?: unknown }, ind
 
 function mergeMetadata(current: CanvasNodeMetadata | undefined, patch: Record<string, unknown>): CanvasNodeMetadata | undefined {
   const next: Record<string, unknown> = { ...current };
+  if (ERROR_FIELDS.some((key) => patch[key] !== undefined)) for (const key of ERROR_FIELDS) delete next[key];
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) delete next[key];
     else if (value !== undefined) next[key] = value;
@@ -253,6 +263,11 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
   const exists = (id: string) => context.bots.has(id) || nodeAt(id) >= 0;
   const isBotNode = (id: string) => botIdOfNode(id) !== null;
   const madeByActor = (node: CanvasNode) => actor.kind === "bot" && node.createdBy?.kind === "bot" && node.createdBy.botId === actor.botId;
+  const makerOf = (id: string | undefined, type: CanvasNodeType): CanvasNodeCreator => {
+    if (actor.kind === "bot") return { kind: "bot", botId: actor.botId };
+    const removed = id ? context.removed?.(id) : undefined;
+    return removed?.type === type ? removed.createdBy : { kind: "person" };
+  };
   const actorOwnsEnd = (id: string) => {
     if (actor.kind === "person") return true;
     if (id === ownBotNode) return true;
@@ -320,7 +335,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         width: op.width ?? spec.width,
         height: op.height ?? spec.height,
         ...(op.metadata && Object.keys(op.metadata).length ? { metadata: op.metadata } : {}),
-        createdBy: actor.kind === "bot" ? { kind: "bot", botId: actor.botId } : { kind: "person" },
+        createdBy: makerOf(op.id, op.nodeType),
         ...(op.groupId ? { groupId: op.groupId } : {}),
       };
       node.position = op.position ?? context.place(document, node);

@@ -93,10 +93,33 @@ describe("adding a node", () => {
     expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "text", groupId: "brief" }], context())).code).toBe("not_found");
   });
 
+  it("gives a deleted node the person adds back its maker, when it comes back as the same type", () => {
+    const removed = (id: string) => (id === "shot-9" ? { type: "shot" as const, createdBy: WRITER } : undefined);
+    const back = (type: "shot" | "text", actor: CanvasNodeCreator = PERSON) =>
+      find(applyCanvasOps(canvas(), [{ type: "add_node", id: "shot-9", nodeType: type }], { ...context(actor), removed }).document, "shot-9")?.createdBy;
+    expect(back("shot")).toEqual(WRITER);
+    expect(back("text")).toEqual(PERSON);
+    expect(back("shot", BOARDS)).toEqual(BOARDS);
+    expect(find(applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "shot" }], { ...context(), removed }).document, "new-1")?.createdBy).toEqual(PERSON);
+  });
+
   it("stops at the most nodes a canvas holds", () => {
     const full = canvas();
     full.nodes = Array.from({ length: CANVAS_MAX_NODES }, (_, index) => node(`n${index}`));
     expect(refused(() => applyCanvasOps(full, [{ type: "add_node", nodeType: "text" }], context())).code).toBe("limit");
+  });
+});
+
+describe("a node's error", () => {
+  it("comes with a node added with it, and names only a generation or canvas line, on a node that generates", () => {
+    const error = { status: "error", errorDetails: "That generation is no longer there.", errorKey: "serverError.projectGeneration.jobGone", errorParams: { server: "gen" } } as const;
+    const added = applyCanvasOps(canvas(), parseCanvasOps([{ type: "add_node", nodeType: "shot", metadata: { prompt: "Rain", ...error } }]), context());
+    expect(find(added.document, "new-1")?.metadata).toEqual({ prompt: "Rain", ...error });
+    expect(refused(() => parseCanvasOps([{ type: "add_node", nodeType: "shot", metadata: { ...error, errorKey: "approval.held.outbound" } }])).message)
+      .toMatch(/errorKey is a serverError\.projectGeneration or serverError\.projectCanvas key/);
+    expect(refused(() => parseCanvasOps([{ type: "add_node", nodeType: "shot", metadata: { errorParams: { "a b": "x" } } }])).code).toBe("invalid_op");
+    expect(refused(() => applyCanvasOps(canvas(), parseCanvasOps([{ type: "add_node", nodeType: "text", metadata: { errorKey: "serverError.projectCanvas.noPrompt" } }]), context())).message)
+      .toMatch(/a text node takes no errorKey/);
   });
 });
 
@@ -120,6 +143,19 @@ describe("changing a node", () => {
   it("takes a node out of its group with a null group", () => {
     const result = applyCanvasOps(canvas(), [{ type: "update_node", id: "in-box", patch: { groupId: null } }], context());
     expect(find(result.document, "in-box")).not.toHaveProperty("groupId");
+  });
+
+  it("changes a node's error whole: a patch naming any of its fields drops the ones it leaves out", () => {
+    const failed = node("storm", { type: "shot", metadata: {
+      prompt: "Rain", status: "error", errorDetails: "gen couldn't make it: no faces", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "no faces" },
+    } });
+    const start: CanvasDocument = { ...canvas(), nodes: [...canvas().nodes, failed] };
+    const reworded = applyCanvasOps(start, [{ type: "update_node", id: "storm", metadata: { errorDetails: "Try a calmer sky." } }], context());
+    expect(find(reworded.document, "storm")?.metadata).toEqual({ prompt: "Rain", status: "error", errorDetails: "Try a calmer sky." });
+    const cleared = applyCanvasOps(start, [{ type: "update_node", id: "storm", metadata: { status: "idle", errorDetails: null } }], context());
+    expect(find(cleared.document, "storm")?.metadata).toEqual({ prompt: "Rain", status: "idle" });
+    const moved = applyCanvasOps(start, [{ type: "update_node", id: "storm", patch: { position: { x: 1, y: 2 } }, metadata: { prompt: "Hail" } }], context());
+    expect(find(moved.document, "storm")?.metadata).toEqual({ ...failed.metadata, prompt: "Hail" });
   });
 
   it("lets a bot change its own node and refuses one another made, naming it", () => {

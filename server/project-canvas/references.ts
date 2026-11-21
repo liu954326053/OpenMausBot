@@ -1,7 +1,9 @@
 import { join } from "node:path";
 
-import { botNodeId, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeSettings } from "../../shared/project-canvas.ts";
+import { connectedReferences, isReferenceNode, mentionReferences, REFERENCE_KIND_KEYS, referenceLabel, type CanvasReference } from "../../shared/project-canvas-references.ts";
+import { botIdOfNode, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeSettings } from "../../shared/project-canvas.ts";
 import { IMAGE_MAX_BYTES } from "../attachments.ts";
+import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import { TURN_IMAGE_MAX_BYTES, TURN_IMAGE_MAX_COUNT } from "../turn-images.ts";
 import { isProjectPathError, openProjectFile } from "./paths.ts";
 
@@ -10,6 +12,8 @@ export interface ReferenceDeps {
   folder: string;
   /** Keeps an image as the app's own attachment, which a message may carry; answers where it is. */
   saveImage(bytes: Buffer, mime: string): { path: string };
+  /** The language the person's app names references in. */
+  language: string | undefined;
 }
 
 export interface TaskReferences {
@@ -18,8 +22,8 @@ export interface TaskReferences {
 }
 
 const MODEL_IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-const LABEL: Record<Exclude<CanvasNode["type"], "bot" | "group">, string> = {
-  text: "Text", shot: "Shot", image: "Image", video: "Video", audio: "Audio", file: "File", config: "Settings",
+const NODE_WORD: Record<Exclude<CanvasNode["type"], "bot" | "group">, ServerLineKey> = {
+  ...REFERENCE_KIND_KEYS, shot: "server.projectCanvas.node.shot", config: "server.projectCanvas.node.config", file: "server.projectCanvas.node.file",
 };
 
 /** Security: every line of a node's words is quoted, so none of them is a standalone attachment tag the message would
@@ -35,15 +39,40 @@ function settingsLine(settings: CanvasNodeSettings | undefined): string {
   return Object.entries(settings ?? {}).filter(([, value]) => value !== undefined && value !== "").map(([key, value]) => `${key}: ${String(value)}`).join("; ");
 }
 
-/** The nodes connected into the bot's node, in the order they were connected, as lines of the person's message: words
- * quoted, images as the model's own input while the turn's image limits allow, other files by their path. */
-export async function taskReferences(document: CanvasDocument, botId: string, deps: ReferenceDeps): Promise<TaskReferences> {
-  const byId = new Map(document.nodes.map((node) => [node.id, node]));
-  const target = botNodeId(botId);
-  const sources = document.connections
-    .filter((one) => one.kind === "content" && one.toNodeId === target)
-    .map((one) => byId.get(one.fromNodeId))
-    .filter((node): node is CanvasNode & { type: keyof typeof LABEL } => node !== undefined && node.type !== "bot" && node.type !== "group");
+type ContentNode = CanvasNode & { type: keyof typeof NODE_WORD };
+const isContent = (node: CanvasNode): node is ContentNode => node.type !== "bot" && node.type !== "group";
+type Entry = { node: CanvasNode; reference: CanvasReference } | { node: ContentNode; reference?: undefined };
+
+/** The references as the app's panel for the node numbers them: a bot's by what is connected into its node, a text
+ * node's by what its prompt can name. Then each other node connected in with a file, a prompt or settings to pass on. */
+function entries(document: CanvasDocument, nodeId: string): Entry[] {
+  const { nodes, connections } = document;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const references = botIdOfNode(nodeId) === null ? mentionReferences(nodeId, nodes, connections) : connectedReferences(nodeId, nodes, connections);
+  const numbered = references.flatMap((reference): Entry[] => {
+    const node = byId.get(reference.nodeId);
+    return node ? [{ node, reference }] : [];
+  });
+  const sources = new Set(connections.flatMap((connection) => (connection.kind === "content" && connection.toNodeId === nodeId ? [connection.fromNodeId] : [])));
+  const others = [...sources].flatMap((id): Entry[] => {
+    const node = byId.get(id);
+    const meta = node?.metadata ?? {};
+    return node && isContent(node) && !isReferenceNode(node, nodes) && (meta.file || meta.prompt || settingsLine(meta.settings)) ? [{ node }] : [];
+  });
+  return [...numbered, ...others];
+}
+
+function heading(document: CanvasDocument, nodeId: string, language: string | undefined): string {
+  if (botIdOfNode(nodeId) !== null) return serverLine(language, "server.projectCanvas.task.connected");
+  const title = document.nodes.find((node) => node.id === nodeId)?.title || nodeId;
+  return serverLine(language, "server.projectCanvas.task.textNode", { title: JSON.stringify(title) });
+}
+
+/** The references of the node a task was written in, a bot's node or a text node, under a line saying whose they are:
+ * each named by its label and title as the app numbered them, words quoted, images as the model's own input while the
+ * turn's image limits allow, other files by their path. */
+export async function taskReferences(document: CanvasDocument, nodeId: string, deps: ReferenceDeps): Promise<TaskReferences> {
+  const word = (key: ServerLineKey) => serverLine(deps.language, key);
   let images = 0;
   let imageBytes = 0;
 
@@ -71,21 +100,21 @@ export async function taskReferences(document: CanvasDocument, botId: string, de
   }
 
   const parts: string[] = [];
-  for (const node of sources) {
+  for (const entry of entries(document, nodeId)) {
+    const { node } = entry;
     const meta = node.metadata ?? {};
-    const lines = [`${LABEL[node.type]} ${JSON.stringify(node.title || node.id)}:`];
-    if (node.type === "text") lines.push(quoted(meta.content ?? ""));
-    if (meta.file) lines.push(await fileLine(node.type, meta.file) ?? `(its file ${JSON.stringify(meta.file.path)} is not in the project folder now)`);
+    const [name, title] = entry.reference ? [referenceLabel(entry.reference, word), node.title] : [word(NODE_WORD[entry.node.type]), node.title || node.id];
+    const lines = [title ? `${name} ${JSON.stringify(title)}:` : `${name}:`];
+    if (entry.reference?.text) lines.push(quoted(entry.reference.text));
+    if (meta.file) lines.push(await fileLine(node.type, meta.file) ?? serverLine(deps.language, "server.projectCanvas.task.fileGone", { path: JSON.stringify(meta.file.path) }));
     if (node.type !== "text" && meta.prompt) lines.push(quoted(meta.prompt));
     const settings = settingsLine(meta.settings);
     if (settings) lines.push(settings);
     parts.push(lines.join("\n\n"));
   }
-  return { text: parts.join("\n\n"), count: parts.length };
+  return { text: parts.length ? [heading(document, nodeId, deps.language), ...parts].join("\n\n") : "", count: parts.length };
 }
 
 export function taskMessage(text: string, references: TaskReferences): string {
-  const said = text.trim();
-  if (!references.count) return said;
-  return `${said}\n\nConnected to your node on the project's canvas:\n\n${references.text}`;
+  return [text.trim(), references.text].filter(Boolean).join("\n\n");
 }

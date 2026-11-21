@@ -16,6 +16,7 @@ import {
   type ProjectCanvasEvent,
 } from "../../shared/project-canvas.ts";
 import { nodeStatusOf, type GenerationJob, type GenerationRequester, type ProjectGenerationApi, type Refused } from "../../shared/project-generation.ts";
+import type { ServerTextParams } from "../../shared/server-text.ts";
 import type { TeamProjectWire, TeamProjectsApi } from "../../shared/team-projects.ts";
 import { FILE_MAX_BYTES } from "../attachments.ts";
 import type { DirectSendReceipt } from "../direct-send.ts";
@@ -24,13 +25,14 @@ import type { Message, Store } from "../store.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
 import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments } from "./document-store.ts";
-import { generationInput } from "./generation.ts";
+import { generationInput, generationKindOf } from "./generation.ts";
 import { handOver } from "./handover.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame } from "./ops.ts";
 import type { ProjectPathError } from "./paths.ts";
 import { placeAfter, placeForActor, type BotTree } from "./placement.ts";
 import { taskMessage, taskReferences } from "./references.ts";
-import { botFrames, buildSnapshot } from "./snapshot.ts";
+import { botFrames, buildSnapshot, dispatchConnections } from "./snapshot.ts";
+import { replyText, TaskTargets, type TaskTarget } from "./task-targets.ts";
 
 /** A request the canvas does not carry out, and what it is answered with. */
 export class CanvasRefusal extends Error {
@@ -44,6 +46,7 @@ export class CanvasRefusal extends Error {
 }
 
 const refusal = (status: number, key: UserErrorKey, params?: Record<string, string | number>) => new CanvasRefusal(status, userError(key, params));
+const coded = (status: number, code: string, key: UserErrorKey) => new CanvasRefusal(status, { code, ...userError(key) });
 
 export function readOnlyRefusal(): CanvasRefusal {
   return new CanvasRefusal(409, { code: "canvas_read_only", ...userError("serverError.projectCanvas.archived"), reason: "archived" } satisfies CanvasReadOnly);
@@ -90,13 +93,25 @@ export interface ProjectCanvasServiceDeps {
   queuedThreads(): ReadonlySet<string>;
   /** Keeps an image as the app's own attachment, which a message may carry. */
   saveImage(bytes: Buffer, mime: string): { path: string };
+  /** The language the server writes its own lines in: references are named in it when a request names no language. */
+  language(): string | undefined;
   newId(): string;
   log(line: string): void;
 }
 
 const TASK_MAX_CHARS = 20_000;
-const JOB_KEYS = ["status", "jobId", "errorDetails"] as const;
+const JOB_KEYS = ["status", "jobId", "errorDetails", "errorKey", "errorParams"] as const;
 const NOT_A_PROJECT_BOT = "Only the bots of a project have its canvas, and you are not one of a project's bots now.";
+
+const LANGUAGE_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}$/;
+
+/** The language a person's request names its references in, or none when it names none. */
+function requestLanguage(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const tag = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!LANGUAGE_TAG.test(tag)) throw new CanvasRefusal(400, { error: "language must be a language tag such as zh or pt-br" });
+  return tag;
+}
 
 const NONE: CanvasChangeSet = { nodes: [], connections: [] };
 const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.length && !set.viewport && !set.backgroundMode;
@@ -108,6 +123,9 @@ function without(metadata: CanvasNodeMetadata, ...keys: Array<keyof CanvasNodeMe
   for (const key of keys) delete copy[key];
   return copy;
 }
+
+const nodeError = (said: { error: string; errorKey: string; errorParams?: ServerTextParams }): CanvasNodeMetadata =>
+  ({ errorDetails: said.error, errorKey: said.errorKey, ...(said.errorParams ? { errorParams: said.errorParams } : {}) });
 
 /** A bot whose node is where the default layout puts it is stored there once content is placed beside it, so a later
  * change to the layout does not leave it apart from what it made. */
@@ -130,7 +148,9 @@ function handedFile(message: Message) {
 export class ProjectCanvasService {
   readonly facts: BotFactsReader;
   private readonly queues = new Map<string, Promise<unknown>>();
+  private readonly targets = new TaskTargets();
   private readonly deps: ProjectCanvasServiceDeps;
+  private lastLines = new Map<string, string>();
 
   constructor(deps: ProjectCanvasServiceDeps) {
     this.deps = deps;
@@ -160,18 +180,33 @@ export class ProjectCanvasService {
     return this.deps.documents.revisionOf(projectId);
   }
 
+  /** The projects whose canvas draws other lines between its bots than when this was last called, each project on the
+   * first call. Throws while the list of projects cannot be read. */
+  linesMoved(): string[] {
+    const before = this.lastLines;
+    this.lastLines = new Map(this.deps.projects.list().map((project) => [project.id, dispatchConnections(this.tree(project)).map((one) => one.id).join(" ")]));
+    return [...this.lastLines].filter(([projectId, lines]) => before.get(projectId) !== lines).map(([projectId]) => projectId);
+  }
+
   private tree(project: TeamProjectWire): BotTree {
     return { botIds: project.botIds, leadBotId: project.leadBotId, parentOf: (botId) => this.deps.parentOf(project.id, botId) };
   }
 
   private view(project: TeamProjectWire, sees: (threadId: string) => boolean): CanvasSnapshot {
-    return buildSnapshot({
+    const snapshot = buildSnapshot({
       document: this.deps.documents.read(project.id),
       project: { id: project.id, name: project.name, leadBotId: project.leadBotId, archived: project.archivedAt !== undefined, folderState: project.folderState },
       bots: this.facts.facts(project.botIds),
       parentOf: (botId) => this.deps.parentOf(project.id, botId),
       sees,
     });
+    const queued = this.deps.queuedThreads();
+    for (const target of this.targets.of(project.id)) {
+      const bot = snapshot.bots[target.botId];
+      const running = queued.has(target.threadId) || this.deps.threadBusy(target.botId, target.threadId);
+      if (bot && running && snapshot.nodes.some((node) => node.id === target.nodeId)) bot.writingInto = [...(bot.writingInto ?? []), target.nodeId];
+    }
+    return snapshot;
   }
 
   snapshot(projectId: string, auth: RequestAuth): CanvasSnapshot {
@@ -198,9 +233,9 @@ export class ProjectCanvasService {
     const outcome = this.deps.documents.change(project.id, {
       ...(baseRevision === undefined ? {} : { baseRevision }),
       targets: opTargets(ops),
-      apply: (document) => {
+      apply: (document, removed) => {
         const bots = botFrames(document, this.tree(project));
-        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots) });
+        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots), removed });
         if (actor.kind === "bot" && result.nodeIds.length) pinBot(result.document, result.changed, actor.botId, bots);
         return result;
       },
@@ -267,23 +302,55 @@ export class ProjectCanvasService {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     if (project.folderState !== "ready") throw refusal(409, "serverError.projectCanvas.folderMissing", { folder: project.folder });
     const request = record(body);
-    const { botId, text } = request;
+    const { botId, text, targetNodeId } = request;
     const asked = request.threadId;
-    if (typeof botId !== "string" || typeof text !== "string" || text.length > TASK_MAX_CHARS || (asked !== undefined && typeof asked !== "string")) {
-      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId? }, its text at most ${TASK_MAX_CHARS} characters` });
+    if (typeof botId !== "string" || typeof text !== "string" || text.length > TASK_MAX_CHARS || (asked !== undefined && typeof asked !== "string")
+      || (targetNodeId !== undefined && typeof targetNodeId !== "string")) {
+      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, language? }, its text at most ${TASK_MAX_CHARS} characters` });
     }
+    const language = requestLanguage(request.language) ?? this.deps.language();
     if (!project.botIds.includes(botId)) throw refusal(404, "serverError.projectCanvas.notMember");
     const threadId = asked ?? this.deps.mainThread(botId) ?? this.deps.store.bot(botId)?.threadId;
     if (!threadId || !this.deps.store.taskByThread(botId, threadId) || !this.deps.visibleFor(auth).thread(threadId)) {
       throw new CanvasRefusal(404, { error: "That is not a conversation of this bot you can open." });
     }
-    const references = await taskReferences(this.deps.documents.read(project.id), botId, { folder: project.folder, saveImage: this.deps.saveImage });
+    const document = this.deps.documents.read(project.id);
+    if (targetNodeId !== undefined && document.nodes.find((node) => node.id === targetNodeId)?.type !== "text") {
+      throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
+    }
+    const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
     const message = taskMessage(text, references);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = await this.deps.send(auth, { botId, threadId, text: message });
+    if (targetNodeId !== undefined) this.awaitReply({ projectId: project.id, botId, threadId: receipt.threadId, nodeId: targetNodeId }, receipt);
     return "queued" in receipt
       ? { threadId: receipt.threadId, queued: true, references: references.count }
       : { threadId: receipt.threadId, messageId: receipt.message.id, references: references.count };
+  }
+
+  private awaitReply(where: Omit<TaskTarget, "requestId" | "requestAt" | "queueId">, receipt: DirectSendReceipt): void {
+    if ("queued" in receipt) this.targets.add({ ...where, queueId: receipt.queueId });
+    else if (!receipt.steered) this.targets.add({ ...where, requestId: receipt.message.id, requestAt: receipt.message.at });
+  }
+
+  /** A line of a conversation: the bot's reply to a task with a text node becomes the node's text. */
+  taskLine(threadId: string, message: Message): void {
+    const settled = this.targets.heard(threadId, message);
+    if (!settled?.reply) return;
+    const { projectId, nodeId } = settled.target;
+    const project = this.deps.projects.list().find((one) => one.id === projectId);
+    if (!project || project.archivedAt !== undefined) return;
+    const content = replyText(settled.reply);
+    try {
+      this.serverChange(project, (document) => {
+        const node = document.nodes.find((one) => one.id === nodeId);
+        if (node?.type !== "text") return null;
+        node.metadata = { ...node.metadata, content };
+        return { nodes: [node.id], connections: [] };
+      });
+    } catch (error) {
+      this.deps.log(`[project-canvas] ${projectId}: a reply could not go into ${nodeId} (${error instanceof Error ? error.message : "unknown"})`);
+    }
   }
 
   nodeOf(projectId: string, nodeId: string): CanvasNode | undefined {
@@ -300,26 +367,29 @@ export class ProjectCanvasService {
     });
   }
 
-  /** Starts the project's generation for a shot, image or video node, which shows `loading` until its job ends. A bot
-   * starts only its own nodes. A refusal leaves the node as it was. */
-  async generate(project: TeamProjectWire, requester: GenerationRequester, nodeId: unknown): Promise<{ job: GenerationJob } | Refused> {
+  /** Starts the project's generation for a shot, image, video or config node, which shows `loading` until its job ends.
+   * A bot starts only its own nodes. A refusal leaves the node as it was. `language` is the one a person's request names
+   * its references in; a bot's request names none. */
+  async generate(project: TeamProjectWire, requester: GenerationRequester, nodeId: unknown, language?: unknown): Promise<{ job: GenerationJob } | Refused> {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     if (typeof nodeId !== "string") throw new CanvasOpRefusal("invalid_op", "nodeId is required");
+    const named = requestLanguage(language) ?? this.deps.language();
     const document = this.deps.documents.read(project.id);
     const node = document.nodes.find((one) => one.id === nodeId);
-    if (!node) throw new CanvasOpRefusal("not_found", `no node ${nodeId} on this canvas`);
-    if (node.type !== "shot" && node.type !== "image" && node.type !== "video") throw new CanvasOpRefusal("invalid_op", "only shot, image and video nodes are generated");
+    if (!node) throw coded(404, "not_found", "serverError.projectCanvas.nodeMissing");
+    const kind = generationKindOf(node);
+    if (!kind) throw new CanvasOpRefusal("invalid_op", "only shot, image, video and config nodes are generated");
     if (requester.kind === "bot" && !madeBy(node, requester.botId)) throw new CanvasOpRefusal("not_yours", `${nodeId} was not put there by you; ask the person to generate it`);
-    if (node.metadata?.status === "loading") throw new CanvasRefusal(409, { error: `${nodeId} is being generated already` });
+    if (node.metadata?.status === "loading") throw coded(409, "generating", "serverError.projectCanvas.alreadyGenerating");
     const prompt = node.metadata?.prompt?.trim();
-    if (!prompt) throw new CanvasOpRefusal("invalid_op", `${nodeId} has no prompt; give it one first`);
+    if (!prompt) throw coded(400, "no_prompt", "serverError.projectCanvas.noPrompt");
     const before = Object.fromEntries(JOB_KEYS.flatMap((key) => (node.metadata?.[key] === undefined ? [] : [[key, node.metadata[key]]]))) as CanvasNodeMetadata;
     const reserved = (metadata: CanvasNodeMetadata) => metadata.status === "loading" && metadata.jobId === undefined;
     const restore = () => this.patchNode(project, node.id, (metadata) => (reserved(metadata) ? { ...without(metadata, ...JOB_KEYS), ...before } : null));
     this.patchNode(project, node.id, (metadata) => ({ ...without(metadata, ...JOB_KEYS), status: "loading" }));
     let started: { job: GenerationJob } | Refused;
     try {
-      started = await this.deps.generation.start(project.id, generationInput(document, node, prompt), { requester });
+      started = await this.deps.generation.start(project.id, generationInput(document, node, kind, prompt, named), { requester });
     } catch (error) {
       restore();
       throw error;
@@ -334,9 +404,10 @@ export class ProjectCanvasService {
     return started;
   }
 
-  /** A job's change, on its node: `loading` while it runs, then each file it made as a node to its right, connected from
-   * it, or its failure in `errorDetails`. A node given another job since, or none, is left as it is. Kept for an
-   * archived project too: the job began before. */
+  /** A job's change, on its node: `loading` while it runs, then the files it made, or its failure as the node's error.
+   * An empty image or video node takes the first file of its kind; each other file becomes a node to its right,
+   * connected from it. A node given another job since, or none, is left as it is. Kept for an archived project too: the
+   * job began before. */
   jobChanged(job: GenerationJob): void {
     const project = this.deps.projects.list().find((one) => one.id === job.projectId);
     if (!project) return;
@@ -346,14 +417,18 @@ export class ProjectCanvasService {
         const metadata = node?.metadata;
         if (!node || !metadata || metadata.jobId !== job.id) return null;
         const status = nodeStatusOf(job.status);
-        const errorDetails = status === "error" ? job.failure?.error : undefined;
-        if (metadata.status === status && metadata.errorDetails === errorDetails) return null;
-        node.metadata = { ...without(metadata, "errorDetails"), status, ...(errorDetails ? { errorDetails } : {}) };
+        const failure = status === "error" ? job.failure : undefined;
+        if (metadata.status === status && metadata.errorDetails === failure?.error && metadata.errorKey === failure?.errorKey) return null;
+        node.metadata = { ...without(metadata, "errorDetails", "errorKey", "errorParams"), status, ...(failure ? nodeError(failure) : {}) };
         const changed: CanvasChangeSet = { nodes: [node.id], connections: [] };
         for (const file of status === "success" ? job.files : []) {
-          if (document.nodes.length >= CANVAS_MAX_NODES) break;
           if (document.nodes.some((one) => one.metadata?.file?.path === file.path)) continue;
           const type = canvasFileNodeType(file.mime);
+          if (type === node.type && !node.metadata.file) {
+            node.metadata = { ...node.metadata, file };
+            continue;
+          }
+          if (document.nodes.length >= CANVAS_MAX_NODES) break;
           const made: CanvasNode = { id: this.deps.newId(), type, title: file.name, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE[type], metadata: { file }, ...(node.createdBy ? { createdBy: node.createdBy } : {}) };
           made.position = placeAfter(document, node, made, bots);
           const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: node.id, toNodeId: made.id, kind: "content" };
@@ -382,7 +457,7 @@ export class ProjectCanvasService {
             if (job) this.jobChanged(job);
             else this.patchNode(project, node.id, (metadata) => {
               if (metadata.status !== "loading" || metadata.jobId !== jobId) return null;
-              return jobId ? { ...metadata, status: "error", errorDetails: userError("serverError.projectGeneration.jobGone").error } : without(metadata, "status");
+              return jobId ? { ...metadata, status: "error", ...nodeError(userError("serverError.projectGeneration.jobGone")) } : without(metadata, "status");
             });
           }
         } catch (error) {

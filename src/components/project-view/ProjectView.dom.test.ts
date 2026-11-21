@@ -1,18 +1,31 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import type { Bot, Group } from "@/state/store";
 
-const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: { bots: [] as unknown[], groups: [] as unknown[], pendingQueued: {} } }));
+const fixture = vi.hoisted(() => ({
+  dispatch: vi.fn(),
+  state: { bots: [] as unknown[], groups: [] as unknown[], pendingQueued: {} },
+  canvas: null as null | { projectId: string; selectedBotId?: string },
+}));
 vi.mock("@/state/store-select", () => ({
   useStoreSelector: (selector: (state: typeof fixture.state) => unknown) => selector(fixture.state),
   useStoreDispatch: () => fixture.dispatch,
 }));
 vi.mock("@/lib/thread-preferences", () => ({ useShowThreads: () => false }));
 vi.mock("@/lib/default-bot", async (original) => ({ ...(await original<typeof import("@/lib/default-bot")>()), useViewerEmail: () => null }));
+vi.mock("@/components/project-canvas/ServerProjectCanvas", async () => {
+  const { createElement: element } = await import("react");
+  return {
+    ServerProjectCanvas: ({ projectId, selectedBotId, topBarSlot }: { projectId: string; selectedBotId?: string; topBarSlot?: ReactNode }) => {
+      fixture.canvas = { projectId, selectedBotId };
+      return element("header", { "data-canvas-top-bar": projectId }, topBarSlot);
+    },
+  };
+});
 
 import { setLocale } from "@/lib/i18n";
 import { setTeamProjects } from "@/state/team-projects";
@@ -27,30 +40,30 @@ const room = (id: string, section: string, extra: Partial<Group> = {}): Group =>
 });
 const bride: TeamProjectWire = {
   id: "p-bride", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer", "editor"],
+  leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"],
 };
+const teamChanges = { joined: [{ id: "colorist", name: "Colorist", title: "Grades the picture" }], left: [] };
 const bots = [
   bot("main", { defaultBot: {} }),
-  bot("editor", { section: "The bride", title: "Editor", unread: true }),
-  bot("writer", { section: "The bride", title: "Writer", busy: true }),
-  bot("lead", { section: "The bride", chiefOfStaff: true, activity: "waiting-on-you" }),
-  bot("sales", { section: "Sales" }),
+  bot("writer", { section: "The bride", title: "Writer" }),
+  bot("lead", { section: "The bride", chiefOfStaff: true }),
 ];
 
 let container: HTMLDivElement, root: Root;
-const q = (selector: string) => container.querySelector<HTMLElement>(selector);
-const rows = () => [...container.querySelectorAll<HTMLElement>("[data-project-member]")].map((row) => row.dataset.projectMember);
+const q = (selector: string) => document.body.querySelector<HTMLElement>(selector);
 const settle = async () => { await act(async () => { await new Promise((done) => setTimeout(done, 0)); }); };
 const draw = async (props: { projectId: string; selectedBotId?: string }) => {
   await act(async () => root.render(createElement(ProjectView, props)));
   await settle();
 };
+const roomsButton = () => q('[data-canvas-top-bar] button[aria-label="Group chats"]');
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   setLocale("en");
-  fixture.state = { bots, groups: [room("bride-room", "The bride", { unread: true }), room("sales-room", "Sales")], pendingQueued: {} };
+  fixture.state = { bots, groups: [room("bride-room", "The bride", { unread: true }), room("cast-room", "The bride"), room("sales-room", "Sales")], pendingQueued: {} };
   fixture.dispatch.mockClear();
+  fixture.canvas = null;
   setTeamProjects({ root: "/dramas", projects: [bride] });
   container = document.createElement("div");
   document.body.append(container);
@@ -65,42 +78,57 @@ afterEach(async () => {
 });
 
 describe("the project view", () => {
-  it("shows the lead first, then the members, each with what it is doing", async () => {
-    await draw({ projectId: "p-bride" });
-    expect(q("h1")?.textContent).toBe("The bride");
-    expect(rows()).toEqual(["lead", "writer", "editor"]);
-    expect(q('[data-project-member="lead"]')?.textContent).toContain("Chief of Staff");
-    expect(q('[data-project-member="lead"] [data-member-status]')?.textContent).toBe("Waiting on you");
-    expect(q('[data-project-member="writer"] [data-member-status]')?.textContent).toBe("Working");
-    expect(q('[data-project-member="editor"] [data-member-status]')?.textContent).toBe("Unread");
-  });
-
-  it("opens a member's chat from its row", async () => {
-    await draw({ projectId: "p-bride" });
-    await act(async () => q('[data-project-member="writer"] [data-open-chat]')!.click());
-    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "writer" });
-  });
-
-  it("marks the member chosen in the sidebar, and a click on another chooses it", async () => {
+  it("draws the project's canvas with the member chosen in the sidebar", async () => {
     await draw({ projectId: "p-bride", selectedBotId: "writer" });
-    expect(q('[data-project-member="writer"]')?.getAttribute("aria-current")).toBe("true");
-    expect(q('[data-project-member="lead"]')?.hasAttribute("aria-current")).toBe(false);
-    await act(async () => q('[data-project-member="editor"] [data-choose-member]')!.click());
-    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "showProject", projectId: "p-bride", botId: "editor" });
+    expect(q("[data-project-view]")?.dataset.projectView).toBe("p-bride");
+    expect(fixture.canvas).toEqual({ projectId: "p-bride", selectedBotId: "writer" });
   });
 
-  it("lists the project's own group chats and opens them", async () => {
+  it("names the project's folder in the canvas's top bar while the folder is there", async () => {
     await draw({ projectId: "p-bride" });
-    expect([...container.querySelectorAll<HTMLElement>("[data-project-room]")].map((row) => row.dataset.projectRoom)).toEqual(["bride-room"]);
-    expect(q('[data-project-room="bride-room"] [data-member-status]')?.textContent).toBe("Unread");
-    await act(async () => q('[data-project-room="bride-room"] [data-open-chat]')!.click());
+    expect(q("[data-project-folder]")?.textContent).toBe("/dramas/The bride");
+    await act(async () => setTeamProjects({ root: "/dramas", projects: [{ ...bride, folderState: "missing" }] }));
+    expect(q("[data-project-folder]")).toBeNull();
+  });
+
+  it("opens the project's own group chats from a menu in the top bar", async () => {
+    await draw({ projectId: "p-bride" });
+    await act(async () => roomsButton()!.click());
+    const items = [...document.body.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]')];
+    expect(items.map((item) => item.dataset.menuKey)).toEqual(["bride-room", "cast-room"]);
+    expect(items[0]!.textContent).toContain("Unread");
+    expect(items[1]!.textContent).not.toContain("Unread");
+    await act(async () => items[0]!.click());
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "bride-room" });
+  });
+
+  it("has no group chats menu while the project has none", async () => {
+    fixture.state = { ...fixture.state, groups: [room("sales-room", "Sales")] };
+    await draw({ projectId: "p-bride" });
+    expect(q("[data-canvas-top-bar]")).toBeTruthy();
+    expect(roomsButton()).toBeNull();
+  });
+
+  it("says in the top bar that the team changed, and reviews the changes from there", async () => {
+    setTeamProjects({ root: "/dramas", projects: [{ ...bride, teamChanges }] });
+    await draw({ projectId: "p-bride" });
+    expect(q("[data-project-team-changes]")?.textContent).toBe("Team changed");
+    await act(async () => q("[data-project-team-changes]")!.click());
+    expect(q('[data-team-changes="p-bride"] [data-team-change-member="colorist"]')).toBeTruthy();
+  });
+
+  it("leaves the team's changes to the computer this app drives", async () => {
+    vi.stubGlobal("ogb", { remoteClient: { active: true } });
+    setTeamProjects({ root: "/dramas", projects: [{ ...bride, teamChanges }] });
+    await draw({ projectId: "p-bride" });
+    expect(q("[data-canvas-top-bar]")).toBeTruthy();
+    expect(q("[data-project-team-changes]")).toBeNull();
   });
 
   it("waits for the list of projects", async () => {
     setTeamProjects(null);
     await draw({ projectId: "p-bride" });
-    expect(rows()).toEqual([]);
+    expect(fixture.canvas).toBeNull();
     expect(q("[data-project-loading]")).toBeTruthy();
     expect(fixture.dispatch).not.toHaveBeenCalled();
   });
@@ -108,6 +136,15 @@ describe("the project view", () => {
   it("opens MagicBot when the project is no longer there", async () => {
     setTeamProjects({ root: "/dramas", projects: [{ ...bride, archivedAt: 5 }] });
     await draw({ projectId: "p-bride" });
+    expect(fixture.canvas).toBeNull();
+    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "main" });
+  });
+
+  it("opens MagicBot when the open project is archived", async () => {
+    await draw({ projectId: "p-bride" });
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+    await act(async () => setTeamProjects({ root: "/dramas", projects: [{ ...bride, archivedAt: 5 }] }));
+    expect(fixture.dispatch).toHaveBeenCalledTimes(1);
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "main" });
   });
 });

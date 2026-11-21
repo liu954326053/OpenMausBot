@@ -13,7 +13,7 @@ import {
 import type { OptionCardData } from "../../shared/wire.ts";
 import { redactSecrets, redactSecretsInText } from "../redact.ts";
 import type { CanvasFrame } from "./ops.ts";
-import { defaultBotFrames, treeParents, type BotTree } from "./placement.ts";
+import { clearBelow, defaultBotFrames, treeParents, type BotTree } from "./placement.ts";
 
 /** One conversation of a bot, as its node needs it. */
 export interface ThreadFacts {
@@ -55,15 +55,20 @@ export interface SnapshotInput {
 
 export type PlacedFrame = CanvasFrame & { placed: boolean };
 
-/** Each bot node's frame by node id: where it is stored, or where the default layout puts it. */
+/** Each bot node's frame by node id: where it is stored, or where the default layout puts it, moved down clear of the
+ * nodes on the canvas and of the bots before it. */
 export function botFrames(document: CanvasDocument, tree: BotTree): Map<string, PlacedFrame> {
   const defaults = defaultBotFrames(tree);
+  const members = new Set(tree.botIds.map(botNodeId));
   const stored = new Map(document.nodes.filter((node) => node.type === "bot").map((node) => [node.id, node]));
-  return new Map(tree.botIds.map((botId) => {
+  const taken: CanvasFrame[] = document.nodes.filter((node) => node.type !== "group" && (node.type !== "bot" || members.has(node.id)));
+  return new Map(tree.botIds.map((botId): [string, PlacedFrame] => {
     const id = botNodeId(botId);
     const own = stored.get(id);
-    const frame = own ? { position: own.position, width: own.width, height: own.height } : defaults.get(id)!;
-    return [id, { ...frame, placed: own !== undefined }];
+    if (own) return [id, { position: own.position, width: own.width, height: own.height, placed: true }];
+    const frame = clearBelow(defaults.get(id)!, taken);
+    taken.push(frame);
+    return [id, { ...frame, placed: false }];
   }));
 }
 
@@ -103,6 +108,15 @@ function botState(bot: BotFacts, lead: boolean, placed: boolean, sees: (threadId
   };
 }
 
+/** The flow's lines between a project's bots, each from a bot's superior to the bot. */
+export function dispatchConnections(tree: BotTree): CanvasConnection[] {
+  const { parents } = treeParents(tree);
+  return tree.botIds.flatMap((child) => {
+    const parent = parents.get(child);
+    return parent === undefined ? [] : [{ id: dispatchConnectionId(parent, child), fromNodeId: botNodeId(parent), toNodeId: botNodeId(child), kind: "dispatch" as const }];
+  });
+}
+
 /** The stored canvas joined with what the server derives: a node for every bot of the project, the dispatch
  * connections of the flow, and what each bot shows, from the conversations the viewer may open. */
 export function buildSnapshot(input: SnapshotInput): CanvasSnapshot {
@@ -116,12 +130,7 @@ export function buildSnapshot(input: SnapshotInput): CanvasSnapshot {
   const content = document.nodes.filter((node) => botIdOfNode(node.id) === null);
   const nodes = [...botNodes, ...content];
   const present = new Set(nodes.map((node) => node.id));
-  const { parents } = treeParents(tree);
-  const dispatch: CanvasConnection[] = tree.botIds.flatMap((child) => {
-    const parent = parents.get(child);
-    return parent === undefined ? [] : [{ id: dispatchConnectionId(parent, child), fromNodeId: botNodeId(parent), toNodeId: botNodeId(child), kind: "dispatch" as const }];
-  });
-  const connections = [...dispatch, ...document.connections.filter((one) => present.has(one.fromNodeId) && present.has(one.toNodeId))];
+  const connections = [...dispatchConnections(tree), ...document.connections.filter((one) => present.has(one.fromNodeId) && present.has(one.toNodeId))];
   return {
     ...document,
     nodes,

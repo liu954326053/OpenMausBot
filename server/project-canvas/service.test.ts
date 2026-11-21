@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
+import type { DirectSendReceipt } from "../direct-send.ts";
 import type { RequestAuth } from "../request-auth.ts";
+import { addServerLinePacks } from "../server-lines.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import { parseCanvasOps } from "./ops.ts";
@@ -37,7 +39,7 @@ function fakeGeneration() {
     },
     job: (_projectId, jobId) => jobs.get(jobId) ?? null,
   };
-  return { api, jobs, started, refuseWith: (failure: GenerationFailure) => { refusal = failure; } };
+  return { api, jobs, started, refuseWith: (failure: GenerationFailure | undefined) => { refusal = failure; } };
 }
 
 beforeEach(() => {
@@ -84,6 +86,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     openCards: () => [],
     queuedThreads: () => new Set(),
     saveImage: () => ({ path: join(dir, "attachments", "saved.png") }),
+    language: () => undefined,
     newId: () => `id-${++next}`,
     log: () => undefined,
     ...patch,
@@ -104,6 +107,17 @@ describe("changing a project's canvas", () => {
     expect(events).toEqual([{ kind: "project-canvas", projectId: "p1", revision: 1, reason: "document" }]);
   });
 
+  it("keeps a bot's node the bot's when the person deletes it and adds it back, as undo does", () => {
+    const { service, project } = setup();
+    const [shotId] = service.apply(project, writer, opsOf({ type: "add_node", nodeType: "shot", title: "Shot 1", metadata: { prompt: "Veil, dawn" } })).nodeIds;
+    const made = nodeOf(service, shotId!)!;
+    service.apply(project, person, opsOf({ type: "delete_node", id: shotId }));
+    service.apply(project, person, opsOf({ type: "add_node", id: shotId, nodeType: "shot", title: made.title, position: made.position, metadata: made.metadata }));
+    expect(nodeOf(service, shotId!)?.createdBy).toEqual(writer);
+    service.apply(project, writer, opsOf({ type: "update_node", id: shotId, metadata: { prompt: "Veil, dusk" } }));
+    expect(nodeOf(service, shotId!)?.metadata?.prompt).toBe("Veil, dusk");
+  });
+
   it("refuses every change to an archived project's canvas", async () => {
     const { service, project } = setup();
     project.archivedAt = 5;
@@ -119,6 +133,30 @@ describe("changing a project's canvas", () => {
     expect(() => service.project("gone")).toThrow(expect.objectContaining({ status: 404 }));
     expect(() => service.projectOfBot("plain")).toThrow(expect.objectContaining({ status: 403 }));
     expect(service.projectOfBot("writer").id).toBe("p1");
+  });
+});
+
+describe("the flow's lines between a project's bots", () => {
+  it("names the projects whose canvas draws other lines than when last asked, a project made since included", () => {
+    const superiors: Record<string, string> = {};
+    const listed: TeamProjectWire[] = [];
+    const { service, project } = setup({ projects: { list: () => listed }, parentOf: (projectId, botId) => (projectId === "p1" ? superiors[botId] : undefined) });
+    listed.push({ ...project, botIds: ["lead", "writer", "board"] });
+    expect(service.linesMoved()).toEqual(["p1"]);
+    expect(service.linesMoved()).toEqual([]);
+
+    superiors.board = "writer";
+    expect(service.linesMoved()).toEqual(["p1"]);
+    expect(service.linesMoved()).toEqual([]);
+    superiors.board = "lead";
+    expect(service.linesMoved()).toEqual(["p1"]);
+    delete superiors.board;
+    superiors.writer = "someone-elsewhere";
+    expect(service.linesMoved()).toEqual([]);
+
+    listed.push({ ...project, id: "p2", botIds: ["lead-2", "writer-2"], leadBotId: "lead-2" });
+    superiors.board = "writer";
+    expect(service.linesMoved()).toEqual(["p1", "p2"]);
   });
 });
 
@@ -160,16 +198,131 @@ describe("a task sent from the canvas", () => {
     const made = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } }));
     service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
     expect(await service.task("p1", auth, { botId: "writer", text: "Write it" })).toEqual({ threadId: "writer-main", messageId: "sent-1", references: 1 });
-    expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText \"Brief\":\n\n> The swap." }]);
+    expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap." }]);
   });
 
-  it("is refused for a bot outside the project, a conversation the person cannot open, and nothing to say", async () => {
-    const { service } = setup();
+  it("names the references in the language the person's request names, else in the server's", async () => {
+    addServerLinePacks({ zh: { "server.projectCanvas.reference.text": "文本", "server.projectCanvas.task.connected": "项目画布上连到你的节点的内容：" } });
+    let serverLanguage: string | undefined;
+    const { service, project, sent } = setup({ language: () => serverLanguage });
+    const made = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } }));
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
+    await service.task("p1", auth, { botId: "writer", text: "@文本 1", language: " ZH " });
+    serverLanguage = "zh";
+    await service.task("p1", auth, { botId: "writer", text: "@文本 1" });
+    await service.task("p1", auth, { botId: "writer", text: "@Text 1", language: "en" });
+    const inChinese = "@文本 1\n\n项目画布上连到你的节点的内容：\n\n文本 1 \"Brief\":\n\n> The swap.";
+    expect(sent.map((one) => one.text)).toEqual([inChinese, inChinese, "@Text 1\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap."]);
+  });
+
+  it("is numbered from the text node it was written in, as that node's panel numbers it, and only a text node of this canvas takes it", async () => {
+    const { service, project, sent } = setup();
+    const [brief, scene, logline, take] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "Goes to the bot only" } },
+      { type: "add_node", nodeType: "text", title: "Scene", metadata: { content: "Rain on the steps." } },
+      { type: "add_node", nodeType: "text", title: "Logline", metadata: { content: "Draft" } },
+      { type: "add_node", nodeType: "shot", title: "Shot 1" },
+    )).nodeIds as [string, string, string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: brief, toNodeId: botNodeId("writer") }, { type: "connect_nodes", fromNodeId: scene, toNodeId: logline }));
+    expect(await service.task("p1", auth, { botId: "writer", text: "Write the logline from @Text 1", targetNodeId: logline })).toMatchObject({ references: 1 });
+    expect(sent.map((one) => one.text)).toEqual(["Write the logline from @Text 1\n\nWhat the text node \"Logline\" on the project's canvas refers to:\n\nText 1 \"Scene\":\n\n> Rain on the steps."]);
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: take })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: "gone" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: 7 })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("is refused for a bot outside the project, a conversation the person cannot open, a language that is no language, and nothing to say", async () => {
+    const { service, sent } = setup();
     await expect(service.task("p1", auth, { botId: "plain", text: "Go" })).rejects.toMatchObject({ status: 404 });
     await expect(service.task("p1", auth, { botId: "writer", text: "Go", threadId: "lead-main" })).rejects.toMatchObject({ status: 404 });
     await expect(setup({ visibleFor: () => ({ thread: () => false }) }).service.task("p1", auth, { botId: "writer", text: "Go" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", language: "中文" })).rejects.toMatchObject({ status: 400 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", language: 7 })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer", text: "  " })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer" })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("a task whose reply goes into a text node", () => {
+  const KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+  const turnEnd = (requestMessageId: string, text: string, patch: Partial<Message> = {}): Message => ({
+    id: `reply-to-${requestMessageId}`, at: 5, role: "bot", kind: "text", text, turnId: "t1", turnTerminal: true, turnSucceeded: true, requestMessageId, ...patch,
+  });
+  const textNodes = (service: ProjectCanvasService, project: TeamProjectWire, ...titles: string[]) =>
+    service.apply(project, person, opsOf(...titles.map((title) => ({ type: "add_node", nodeType: "text", title, metadata: { content: "Draft" } })))).nodeIds;
+  const contentOf = (service: ProjectCanvasService, id: string | undefined) => nodeOf(service, id!)?.metadata?.content;
+  const writingInto = (service: ProjectCanvasService) => service.snapshot("p1", auth).bots.writer!.writingInto;
+
+  it("gets the bot's reply once its turn ends well, secrets redacted, and shows the bot writing into it until then", async () => {
+    let busy = true;
+    const { service, project, events } = setup({ threadBusy: () => busy });
+    const [logline] = textNodes(service, project, "Logline");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("sent-1", "A bride swaps places.", { turnSucceeded: undefined }));
+    expect(contentOf(service, logline)).toBe("Draft");
+    busy = false;
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", `A bride swaps places. Key: ${KEY}`));
+    expect(contentOf(service, logline)).toMatch(/^A bride swaps places\. Key: «redacted/);
+    expect(contentOf(service, logline)).not.toContain(KEY);
+    expect(nodeOf(service, logline!)?.createdBy).toEqual(person);
+    expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
+    expect(writingInto(service)).toBeUndefined();
+  });
+
+  it("waits for a queued task's message to reach the conversation, and takes no reply for a task steered into a running turn", async () => {
+    let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
+    const queued = new Set(["writer-main"]);
+    const { service, project } = setup({ send: async () => receipt, queuedThreads: () => queued });
+    const [logline, notes] = textNodes(service, project, "Logline", "Notes");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    queued.clear();
+    service.taskLine("writer-main", { id: "m7", at: 7, role: "user", kind: "text", text: "Write the logline", queueId: "q1" });
+    service.taskLine("writer-main", turnEnd("m7", "Swapped at the altar.", { at: 9 }));
+    expect(contentOf(service, logline)).toBe("Swapped at the altar.");
+    receipt = { ok: true, threadId: "writer-main", message: { id: "m10", at: 10, role: "user", kind: "text", text: "Notes too" }, steered: true };
+    await service.task("p1", auth, { botId: "writer", text: "Notes too", targetNodeId: notes });
+    service.taskLine("writer-main", turnEnd("m10", "Both done.", { at: 12 }));
+    expect(contentOf(service, notes)).toBe("Draft");
+  });
+
+  it("stays as it was after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
+    const { service, project, events } = setup({ threadBusy: () => true });
+    const [logline] = textNodes(service, project, "Logline");
+    const ask = () => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: logline });
+    await ask();
+    service.taskLine("writer-main", turnEnd("earlier", "An older reply, changed again", { at: 0 }));
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
+    expect(writingInto(service)).toBeUndefined();
+    await ask();
+    service.taskLine("writer-main", turnEnd("later", "A reply to a later message"));
+    expect(writingInto(service)).toBeUndefined();
+    service.taskLine("writer-main", turnEnd("sent-1", "Too late"));
+    await ask();
+    project.archivedAt = 9;
+    service.taskLine("writer-main", turnEnd("sent-1", "Into an archived canvas"));
+    delete project.archivedAt;
+    expect(contentOf(service, logline)).toBe("Draft");
+    await ask();
+    service.apply(project, person, opsOf({ type: "delete_node", id: logline }));
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", "Into nothing"));
+    expect(nodeOf(service, logline!)).toBeUndefined();
+    expect(events.slice(told)).toEqual([]);
+  });
+
+  it("is refused for anything but a text node of this canvas, and nothing is sent", async () => {
+    const { service, project, sent } = setup();
+    const [shot] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "shot", title: "Shot 1" })).nodeIds;
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: shot })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: "gone" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: 7 })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toEqual([]);
   });
 });
 
@@ -189,21 +342,85 @@ describe("generating a node", () => {
     const take = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
     expect(await service.generate(project, person, poster)).toEqual({ job: expect.objectContaining({ id: "job-1" }) });
     await service.generate(project, person, take);
+    const numbering = [
+      "Reference image labels: Image 1. Use these labels to interpret image references in the prompt.",
+      "Reference audio labels: Audio 1. Use these labels to interpret audio references in the prompt.",
+    ].join("\n");
     expect(generation.started).toEqual([
-      { input: { kind: "image", nodeId: poster, prompt: "A poster", references: { images: ["refs/still.png"], audio: ["refs/song.mp3"] }, overrides: { aspect: "16:9", count: 2 }, name: "Poster" }, requester: person },
+      { input: { kind: "image", nodeId: poster, prompt: `${numbering}\n\nA poster`, references: { images: ["refs/still.png"], audio: ["refs/song.mp3"] }, overrides: { aspect: "16:9", count: 2 }, name: "Poster" }, requester: person },
       { input: { kind: "video", nodeId: take, prompt: "A bride alone at the altar", references: { images: [], audio: [] } }, requester: person },
     ]);
     expect(nodeOf(service, poster)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
   });
 
-  it("answers generation's refusal as it is, and leaves the node as it was", async () => {
+  it("starts a config node from its prompt and settings with its own references, groups opened, numbered as the person saw them", async () => {
     const { service, project, generation } = setup();
-    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", status: "error", errorDetails: "Timed out.", jobId: "old" } })).nodeIds[0]!;
+    const [still, refs, brief, config, clip] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", title: "Still", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "group", title: "Refs" },
+      { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } },
+      { type: "add_node", nodeType: "config", title: "生成配置", metadata: { prompt: "@Image 2 at dawn", generationMode: "image", settings: { model: "pixel-1", count: 2 } } },
+      { type: "add_node", nodeType: "config", metadata: { prompt: "Rain", generationMode: "video" } },
+    )).nodeIds as [string, string, string, string, string];
+    const [, take] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "image", groupId: refs, metadata: { file: file("refs/veil.png") } }, shot())).nodeIds as [string, string];
+    service.apply(project, person, opsOf(...[still, refs, brief, take].map((from) => ({ type: "connect_nodes", fromNodeId: from, toNodeId: config }))));
+    await service.generate(project, person, config);
+    await service.generate(project, person, take);
+    await service.generate(project, person, clip);
+    const numbering = "Reference image labels: Image 1, Image 2. Use these labels to interpret image references in the prompt.";
+    const images = ["refs/still.png", "refs/veil.png"];
+    expect(generation.started.map((one) => one.input)).toEqual([
+      { kind: "image", nodeId: config, prompt: `${numbering}\n\n@Image 2 at dawn\n\n【Text 1】\nThe swap.`, references: { images, audio: [] }, overrides: { model: "pixel-1", count: 2 }, name: "生成配置" },
+      { kind: "video", nodeId: take, prompt: `${numbering}\n\nA bride alone at the altar\n\n【Text 1】\nThe swap.`, references: { images, audio: [] } },
+      { kind: "video", nodeId: clip, prompt: "Rain", references: { images: [], audio: [] } },
+    ]);
+    expect(nodeOf(service, config)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
+    service.jobChanged({ ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/图片/a.png"), file("产出/图片/b.png")] });
+    const view = service.botView(project);
+    const made = view.nodes.filter((one) => one.metadata?.file?.path.startsWith("产出/"));
+    expect(made.map((one) => one.type)).toEqual(["image", "image"]);
+    for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: config, toNodeId: one.id, kind: "content" }));
+    expect(nodeOf(service, config)!.metadata).toMatchObject({ status: "success" });
+    await expect(service.generate(project, writer, clip)).rejects.toMatchObject({ code: "not_yours" });
+    await expect(service.generate(project, person, brief)).rejects.toMatchObject({ code: "invalid_op" });
+  });
+
+  it("numbers the references in the language the person's request names, a bot's in the server's, and refuses one that is no language", async () => {
+    addServerLinePacks({ zh: {
+      "server.projectCanvas.reference.image": "图片", "server.projectCanvas.reference.separator": "、",
+      "server.projectCanvas.reference.imageLine": "参考图片编号：{labels}。请按这些编号理解提示词中的图片引用。",
+    } });
+    let serverLanguage: string | undefined;
+    const { service, project, generation } = setup({ language: () => serverLanguage });
+    const [still, poster] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "image", metadata: { prompt: "@图片 1 at dawn" } },
+    )).nodeIds as [string, string];
+    const mine = service.apply(project, writer, opsOf(shot("@图片 1 in the rain"))).nodeIds[0]!;
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: poster }, { type: "connect_nodes", fromNodeId: still, toNodeId: mine }));
+    await expect(service.generate(project, person, poster, "图片")).rejects.toMatchObject({ status: 400 });
+    expect(nodeOf(service, poster)!.metadata).toEqual({ prompt: "@图片 1 at dawn" });
+    await service.generate(project, person, poster, "zh-Hans");
+    serverLanguage = "zh";
+    await service.generate(project, writer, mine);
+    expect(generation.started.map((one) => one.input.prompt)).toEqual([
+      "参考图片编号：图片 1。请按这些编号理解提示词中的图片引用。\n\n@图片 1 at dawn",
+      "参考图片编号：图片 1。请按这些编号理解提示词中的图片引用。\n\n@图片 1 in the rain",
+    ]);
+  });
+
+  it("answers generation's refusal as it is, and leaves the node as it was, its last error too", async () => {
+    const { service, project, generation } = setup();
+    const timedOut = { status: "error", errorDetails: "gen gave no result within 10 minutes.", errorKey: "serverError.projectGeneration.timedOut", errorParams: { server: "gen", minutes: 10 } };
+    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", ...timedOut, jobId: "old" } })).nodeIds[0]!;
     const before = nodeOf(service, id)!.metadata;
     const refusal: GenerationFailure = { code: "no_server", error: "Choose an MCP server for videos in this project's settings first.", errorKey: "serverError.projectGeneration.noVideoServer" };
     generation.refuseWith(refusal);
     expect(await service.generate(project, person, id)).toEqual({ refused: refusal });
     expect(nodeOf(service, id)!.metadata).toEqual(before);
+    generation.refuseWith(undefined);
+    await service.generate(project, person, id);
+    expect(nodeOf(service, id)!.metadata).toEqual({ prompt: "A bride", status: "loading", jobId: "job-1" });
   });
 
   it("lets a bot start only its own nodes, and a node only once while its job runs", async () => {
@@ -214,6 +431,18 @@ describe("generating a node", () => {
     await service.generate(project, writer, mine);
     await expect(service.generate(project, writer, mine)).rejects.toMatchObject({ status: 409 });
     expect(generation.started.map((one) => one.requester)).toEqual([writer]);
+  });
+
+  it("refuses a node that is gone, has no prompt or is generating already with a line the person reads in their language", async () => {
+    const { service, project, generation } = setup();
+    const [blank, busy] = service.apply(project, person, opsOf(shot("  "), shot())).nodeIds as [string, string];
+    await service.generate(project, person, busy);
+    const refusalOf = (nodeId: string) => service.generate(project, person, nodeId).then(() => null, (error: unknown) => canvasRefusalOf(error));
+    expect(await refusalOf("gone")).toEqual({ status: 404, body: { code: "not_found", error: "That node isn't on the canvas.", errorKey: "serverError.projectCanvas.nodeMissing" } });
+    expect(await refusalOf(blank)).toEqual({ status: 400, body: { code: "no_prompt", error: "Write a prompt for this node first.", errorKey: "serverError.projectCanvas.noPrompt" } });
+    expect(await refusalOf(busy)).toEqual({ status: 409, body: { code: "generating", error: "This node is being generated already.", errorKey: "serverError.projectCanvas.alreadyGenerating" } });
+    expect(nodeOf(service, blank)!.metadata).toEqual({ prompt: "  " });
+    expect(generation.started).toHaveLength(1);
   });
 
   it("shows a job on its node: each file it made as a node to its right, connected from it, once", async () => {
@@ -235,16 +464,71 @@ describe("generating a node", () => {
     for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: id, toNodeId: one.id, kind: "content" }));
   });
 
-  it("puts a failure in errorDetails, and a cancelled job leaves the node idle", async () => {
+  it("fills an empty image or video node with the first file of its kind, and puts each other one to its right", async () => {
+    const { service, project, generation } = setup();
+    const [poster, clip] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", title: "Poster", metadata: { prompt: "A poster", settings: { count: 2 } } },
+      { type: "add_node", nodeType: "video", title: "Clip", metadata: { prompt: "Rain" } },
+    )).nodeIds as [string, string];
+    await service.generate(project, person, poster);
+    await service.generate(project, person, clip);
+    const done: GenerationJob = { ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/图片/a.png"), file("产出/图片/b.png")] };
+    service.jobChanged(done);
+    service.jobChanged(done);
+    service.jobChanged({ ...generation.jobs.get("job-2")!, status: "done", files: [file("产出/视频/a.mp4", "video/mp4")] });
+    const view = service.botView(project);
+    const filled = view.nodes.find((one) => one.id === poster)!;
+    expect(filled).toMatchObject({ type: "image", title: "Poster", metadata: { prompt: "A poster", settings: { count: 2 }, status: "success", jobId: "job-1", file: file("产出/图片/a.png") } });
+    expect(nodeOf(service, clip)!.metadata).toEqual({ prompt: "Rain", status: "success", jobId: "job-2", file: file("产出/视频/a.mp4", "video/mp4") });
+    const made = view.nodes.filter((one) => one.metadata?.file && one.id !== poster && one.id !== clip);
+    expect(made.map((one) => [one.type, one.metadata!.file!.path])).toEqual([["image", "产出/图片/b.png"]]);
+    expect(made[0]!.position.x).toBe(filled.position.x + filled.width + 80);
+    expect(view.connections.filter((one) => one.fromNodeId === poster || one.fromNodeId === clip)).toEqual([expect.objectContaining({ fromNodeId: poster, toNodeId: made[0]!.id, kind: "content" })]);
+  });
+
+  it("sends an image node's own picture first, as Image 1, and puts what it makes to its right; a video node never sends its own clip", async () => {
+    const { service, project, generation } = setup();
+    const [cover, still, take] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", title: "Cover", metadata: { file: file("refs/cover.png"), prompt: "@Image 1 at night, the veil from @Image 2" } },
+      { type: "add_node", nodeType: "image", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "video", metadata: { file: file("refs/take.mp4", "video/mp4"), prompt: "Slower" } },
+    )).nodeIds as [string, string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: cover }, { type: "connect_nodes", fromNodeId: still, toNodeId: take }));
+    await service.generate(project, person, cover);
+    await service.generate(project, person, take);
+    const labels = (names: string) => `Reference image labels: ${names}. Use these labels to interpret image references in the prompt.`;
+    expect(generation.started.map((one) => [one.input.prompt, one.input.references])).toEqual([
+      [`${labels("Image 1, Image 2")}\n\n@Image 1 at night, the veil from @Image 2`, { images: ["refs/cover.png", "refs/still.png"], audio: [] }],
+      [`${labels("Image 1")}\n\nSlower`, { images: ["refs/still.png"], audio: [] }],
+    ]);
+    service.jobChanged({ ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/图片/night.png")] });
+    service.jobChanged({ ...generation.jobs.get("job-2")!, status: "done", files: [file("产出/视频/slow.mp4", "video/mp4")] });
+    expect(nodeOf(service, cover)!.metadata!.file).toEqual(file("refs/cover.png"));
+    expect(nodeOf(service, take)!.metadata!.file).toEqual(file("refs/take.mp4", "video/mp4"));
+    const view = service.botView(project);
+    for (const [from, path] of [[cover, "产出/图片/night.png"], [take, "产出/视频/slow.mp4"]] as const) {
+      const made = view.nodes.find((one) => one.metadata?.file?.path === path)!;
+      expect(made.position.x).toBeGreaterThan(nodeOf(service, from)!.position.x);
+      expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: from, toNodeId: made.id, kind: "content" }));
+    }
+  });
+
+  it("puts a failure on its node in English and as generation's key and values, and a cancelled job leaves the node idle", async () => {
     const { service, project, generation } = setup();
     const [failed, cancelled] = service.apply(project, person, opsOf(shot(), shot())).nodeIds as [string, string];
     await service.generate(project, person, failed);
     await service.generate(project, person, cancelled);
-    const failure = { code: "task_failed", error: "The server said: no faces.", errorKey: "serverError.projectGeneration.taskFailed", reason: "no faces" } as const;
+    const failure: GenerationFailure = {
+      code: "task_failed", error: "gen couldn't make it: no faces", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "no faces" }, reason: "no faces",
+    };
     service.jobChanged({ ...generation.jobs.get("job-1")!, status: "failed", failure });
     service.jobChanged({ ...generation.jobs.get("job-2")!, status: "cancelled" });
-    expect(nodeOf(service, failed)!.metadata).toMatchObject({ status: "error", errorDetails: "The server said: no faces." });
+    expect(nodeOf(service, failed)!.metadata).toEqual({
+      prompt: "A bride alone at the altar", status: "error", jobId: "job-1",
+      errorDetails: "gen couldn't make it: no faces", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "no faces" },
+    });
     expect(nodeOf(service, cancelled)!.metadata).toMatchObject({ status: "idle", jobId: "job-2" });
+    expect(nodeOf(service, cancelled)!.metadata).not.toHaveProperty("errorKey");
   });
 
   it("follows each loading node again at start: an ended job's outcome, a job generation no longer has, a node that never got one", () => {
@@ -258,7 +542,9 @@ describe("generating a node", () => {
     service.reconcileGenerations();
     expect(nodeOf(service, ended)!.metadata).toMatchObject({ status: "success" });
     expect(service.botView(project).nodes.find((one) => one.metadata?.file?.path === "产出/视频/a.mp4")).toMatchObject({ type: "video" });
-    expect(nodeOf(service, gone)!.metadata).toMatchObject({ status: "error", errorDetails: "That generation is no longer there." });
+    expect(nodeOf(service, gone)!.metadata).toEqual({
+      prompt: "B", status: "error", jobId: "j-gone", errorDetails: "That generation is no longer there.", errorKey: "serverError.projectGeneration.jobGone",
+    });
     expect(nodeOf(service, never)!.metadata).toEqual({ prompt: "C" });
   });
 });

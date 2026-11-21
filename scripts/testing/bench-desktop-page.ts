@@ -222,9 +222,28 @@ export const FRAMES_STOP = `(() => {
   return { frames: b.frames.slice(1), longTasks: b.longTasks.slice(b.longTasksAtStart), rows: document.querySelectorAll("[data-mid]").length,
     nodes: document.getElementsByTagName("*").length, top: el ? el.scrollTop : null, height: el ? el.scrollHeight : null };
 })()`;
-/** Clicks a sidebar row and resolves, in the page, on the first frame after \`ready\` holds: the switch as a person sees it. */
-export const switchExpression = (botId: string, ready: string) => `new Promise((resolve) => {
-  const row = document.querySelector('[data-sidebar-bot-row="${botId}"]');
+export type BenchBot = { id: string; name: string };
+/** The sidebar lists the main bot and the projects; a bot in no project has a row once the sidebar's search finds it by
+ * name. Resolves true a frame after the row is there. */
+export const revealRowExpression = (bot: BenchBot) => `new Promise((resolve) => {
+  const until = performance.now() + 15000;
+  const step = () => {
+    if (document.querySelector('[data-sidebar-bot-row="${bot.id}"]')) { requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))); return; }
+    if (performance.now() > until) { resolve(false); return; }
+    if (!document.querySelector("[data-sidebar] input")) document.querySelector("[data-sidebar-search-toggle]")?.click();
+    const input = document.querySelector("[data-sidebar] input");
+    if (input && input.value !== ${JSON.stringify(bot.name)}) {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(bot.name)});
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    setTimeout(step, 50);
+  };
+  step();
+})`;
+/** Clicks a bot's sidebar row and resolves, in the page, on the first frame after \`ready\` holds: the switch as a person
+ * sees it. Finding the row is not timed. */
+export const switchExpression = (bot: BenchBot, ready: string) => `${revealRowExpression(bot)}.then(() => new Promise((resolve) => {
+  const row = document.querySelector('[data-sidebar-bot-row="${bot.id}"]');
   if (!row) { resolve({ clicked: false }); return; }
   const started = performance.now();
   row.click();
@@ -234,7 +253,7 @@ export const switchExpression = (botId: string, ready: string) => `new Promise((
     else setTimeout(check, 0);
   };
   check();
-})`;
+}))`;
 
 export class Page {
   private cdp: Cdp;
