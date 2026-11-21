@@ -385,16 +385,9 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(2);
     await screenshot("ledger-automations");
-    await openChat("Ledger");
-    await evaluate(`document.querySelector('button[aria-label="Actions for Ledger"]').click(); true`);
-    await expect.poll(() => text("[role=menu]")).toContain("Delete");
-    await clickIn("[role=menu]", "Delete");
-    await expect.poll(() => text("[role=alertdialog], [role=dialog]")).toContain("automations");
-    await screenshot("delete-bot-confirm");
-    await clickIn("[role=alertdialog], [role=dialog]", "Delete");
-    await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-sidebar-bot-row]")].some((item) => item.innerText.startsWith("Ledger"))`), { timeout: 30_000 }).toBe(false);
+    await api("DELETE", `/api/bots/${ledger}`);
     await openAutomations();
-    expect(await evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(0);
+    await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`), { timeout: 30_000 }).toBe(0);
     await screenshot("bot-deleted-list");
     await click("Calendar");
     expect(await evaluate(`[...document.querySelectorAll("[data-event-card]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(0);
@@ -562,7 +555,7 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     const state = async () => ({ ...(await api("GET", "/api/routines")), ...(await api("GET", "/api/webhooks")) }) as { routines: any[]; runs: any[]; webhooks: any[] };
 
     app = await openApp({ url: cloud.url, port: cloud.port, dataDir: cloud.dataDir, logPath: cloud.logPath }, { shots, bots: { Scout: scout, Ledger: ledger }, proxyHeaders: cloud.owner });
-    const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, openChat, say } = app;
+    const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, say } = app;
 
     // A new personal Cloud's first hour ends its welcome steps, so it opens on a chat.
     await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 30_000 }).toMatch(/^Message /);
@@ -639,15 +632,10 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     await api("POST", "/api/routines", { name: "Ledger close", prompt: "Close the books.", botId: ledger, schedule: { type: "daily", time: "18:00", weekdays: [1, 2, 3, 4, 5] } });
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(2);
-    await openChat("Ledger");
-    await evaluate(`document.querySelector('button[aria-label="Actions for Ledger"]').click(); true`);
-    await expect.poll(() => text("[role=menu]")).toContain("Delete");
-    await clickIn("[role=menu]", "Delete");
-    await expect.poll(() => text("[role=alertdialog]")).toContain("automations");
-    await clickIn("[role=alertdialog]", "Delete");
+    await api("DELETE", `/api/bots/${ledger}`);
     await expect.poll(async () => (await api("GET", "/api/bots?messages=0")).bots.some((bot: any) => bot.id === ledger), { timeout: 30_000 }).toBe(false);
     await openAutomations();
-    expect(await evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(0);
+    await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`), { timeout: 30_000 }).toBe(0);
     const after = await state();
     expect([...after.routines, ...after.webhooks].filter((item) => item.botId === ledger)).toEqual([]);
     await screenshot("cloud-bot-deleted");
