@@ -16,7 +16,7 @@ import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
 import { healthAnswerer, launchRestartableServer, type RestartableServer, webhookPortRefusal } from "../../server/testing/restartable-server.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { agentBrowser, ensureUiBrowser, openFromPalette, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, OPEN_TEAM_MAP, openFromPalette, sessionEnv, type UiHandle } from "./control-omb-ui.ts";
 import { mountPreview } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -174,12 +174,24 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await expect.poll(() => text(), { timeout: 15_000 }).toContain(thread);
   };
   const say = async (bot: string, message: string, thread?: string) => { await openChat(bot, thread); await ui("type", "--name", `Message ${bot}`, "--text", message); await ui("press", "--keys", "Enter"); };
+  /** Deletes a bot from its card's menu on the team map; `shot` names the screenshot of the dialog that asks first. */
+  const deleteFromTeamMap = async (bot: string, shot?: string) => {
+    await expect.poll(() => evaluate(OPEN_TEAM_MAP), { timeout: 15_000, interval: 500 }).toBe(true);
+    const actions = JSON.stringify(`[data-team-canvas] button[aria-label="Actions for ${bot}"]`);
+    await expect.poll(() => evaluate(`(() => { const button = document.querySelector(${actions}); button?.click(); return Boolean(button); })()`), { timeout: 15_000 }).toBe(true);
+    await expect.poll(() => text("[role=menu]")).toContain("Delete");
+    await clickIn("[role=menu]", "Delete");
+    await expect.poll(() => text("[role=alertdialog]")).toContain("automations");
+    if (shot) await screenshot(shot);
+    await clickIn("[role=alertdialog]", "Delete");
+    await expect.poll(() => evaluate(`Boolean(document.querySelector(${actions}))`), { timeout: 30_000 }).toBe(false);
+  };
   const noOverflow = async (where: string) => expect(await evaluate("document.scrollingElement.scrollWidth - window.innerWidth"), `horizontal overflow on ${where}`).toBeLessThanOrEqual(1);
   const close = async () => {
     await browser("close").catch(() => {});
     await preview.close();
   };
-  return { ui, evaluate, click, screenshot, text, clickIn, fill, select, rowText, rowStatus, flip, switchState, openRow, panel, card, cardText, clickCard, reload, openAutomations, openChat, say, noOverflow, browser, close };
+  return { ui, evaluate, click, screenshot, text, clickIn, fill, select, rowText, rowStatus, flip, switchState, openRow, panel, card, cardText, clickCard, reload, openAutomations, openChat, say, deleteFromTeamMap, noOverflow, browser, close };
 }
 
 (enabled ? it : it.skip)("a person sets up, uses, pauses, edits, breaks, deletes and restarts automations in the real app", async () => {
@@ -202,7 +214,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     writeFileSync(live.planPath, JSON.stringify(plan([{ id: starter.id }, { id: scout }, { id: ledger }])));
 
     app = await openApp(live, { shots: SHOTS, bots: { Scout: scout, Ledger: ledger } });
-    const { ui, evaluate, click, screenshot, text, clickIn, fill, select, rowText, rowStatus, flip, switchState, openRow, panel, card, cardText, clickCard, reload, openAutomations, openChat, say, noOverflow, browser } = app;
+    const { ui, evaluate, click, screenshot, text, clickIn, fill, select, rowText, rowStatus, flip, switchState, openRow, panel, card, cardText, clickCard, reload, openAutomations, openChat, say, deleteFromTeamMap, noOverflow, browser } = app;
     const MAIN = "every morning, summarize my inbox";
     const state = async () => ({ ...(await api("GET", "/api/routines")), ...(await api("GET", "/api/webhooks")) }) as { routines: any[]; runs: any[]; webhooks: any[]; attempts: any[] };
 
@@ -385,7 +397,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(2);
     await screenshot("ledger-automations");
-    await api("DELETE", `/api/bots/${ledger}`);
+    await deleteFromTeamMap("Ledger", "delete-bot-confirm");
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`), { timeout: 30_000 }).toBe(0);
     await screenshot("bot-deleted-list");
@@ -555,7 +567,7 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     const state = async () => ({ ...(await api("GET", "/api/routines")), ...(await api("GET", "/api/webhooks")) }) as { routines: any[]; runs: any[]; webhooks: any[] };
 
     app = await openApp({ url: cloud.url, port: cloud.port, dataDir: cloud.dataDir, logPath: cloud.logPath }, { shots, bots: { Scout: scout, Ledger: ledger }, proxyHeaders: cloud.owner });
-    const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, say } = app;
+    const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, say, deleteFromTeamMap } = app;
 
     // A new personal Cloud's first hour ends its welcome steps, so it opens on a chat.
     await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 30_000 }).toMatch(/^Message /);
@@ -632,7 +644,7 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     await api("POST", "/api/routines", { name: "Ledger close", prompt: "Close the books.", botId: ledger, schedule: { type: "daily", time: "18:00", weekdays: [1, 2, 3, 4, 5] } });
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`)).toBe(2);
-    await api("DELETE", `/api/bots/${ledger}`);
+    await deleteFromTeamMap("Ledger");
     await expect.poll(async () => (await api("GET", "/api/bots?messages=0")).bots.some((bot: any) => bot.id === ledger), { timeout: 30_000 }).toBe(false);
     await openAutomations();
     await expect.poll(() => evaluate(`[...document.querySelectorAll("[data-automation]")].filter((item) => item.innerText.includes("Ledger")).length`), { timeout: 30_000 }).toBe(0);
