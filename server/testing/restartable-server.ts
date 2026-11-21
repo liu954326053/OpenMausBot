@@ -38,6 +38,16 @@ export async function healthAnswerer(url: string, ownPid: number | undefined): P
   return ownPid !== undefined && response.ok && body?.app === "openmausbot" && body.pid === ownPid ? "ours" : "theirs";
 }
 
+export async function webhookPortRefusal(url: string, webhookPort: number, headers: Record<string, string> = {}): Promise<string | null> {
+  const response = await fetch(`${url}/api/webhooks`, { headers, signal: AbortSignal.timeout(5_000) });
+  const body = await response.json().catch(() => null) as { ingress?: { available?: unknown; error?: unknown } } | null;
+  if (response.ok && body?.ingress?.available === true) return null;
+  const reason = typeof body?.ingress?.error === "string" ? body.ingress.error : `GET /api/webhooks answered ${response.status}`;
+  return reason.includes("EADDRINUSE")
+    ? `webhook port ${webhookPort} is taken by another process: the server's own webhook receiver could not listen there (${reason})`
+    : `the server's webhook receiver is not listening on port ${webhookPort}: ${reason}`;
+}
+
 export async function launchRestartableServer(options: { scripted?: boolean; dataDirRoot?: string } = {}): Promise<RestartableServer> {
   const port = await freePortBlock([0, 1]);
   // Native browser daemons use UNIX sockets, and a macOS temp home can exceed their path limit.
