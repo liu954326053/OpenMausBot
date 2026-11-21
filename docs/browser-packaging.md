@@ -116,8 +116,9 @@ destination locally, then passes only a checked public IP to that proxy; local,
 private, own-service, link-local and metadata destinations are never sent
 through it. New connections use the saved proxy immediately. My Chrome keeps
 using the person's own Chrome settings. The built-in browser also follows the
-app's language setting for its Chrome locale and `Accept-Language`; an explicit
-`OMB_BROWSER_LANG` environment value takes precedence.
+bots' language for its Chrome locale and `Accept-Language`: `language` in
+`config.json`, else Simplified Chinese in the desktop app, else the system's.
+An explicit `OMB_BROWSER_LANG` environment value takes precedence.
 
 | Destination | Desktop | Self-hosted server | MausBot Cloud |
 |---|---|---|---|

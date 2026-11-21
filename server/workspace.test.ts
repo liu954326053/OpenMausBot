@@ -1,6 +1,6 @@
 import { chmodSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DATA_DIR } from "./config.ts";
 import { closeMessageDb, recallMemory } from "./message-db.ts";
@@ -126,6 +126,16 @@ describe("workspace", () => {
       expect(readFileSync(join(dir, "MEMORY.md"), "utf8")).toContain(heading);
       expect(loadMemory(bot)).toBeNull();
       expect(readMemoryFile(bot)).toEqual({ text: "", truncated: false });
+    }
+  });
+
+  it("seeds memory in the language the server was started with while none is named", () => {
+    vi.stubEnv("OMB_DEFAULT_LANGUAGE", "zh");
+    try {
+      expect(readFileSync(join(ensureWorkspace(`${BOT}-default`), "MEMORY.md"), "utf8")).toMatch(/^# 记忆\n/);
+      expect(readFileSync(join(ensureWorkspace(`${BOT}-named`, "en"), "MEMORY.md"), "utf8")).toMatch(/^# Memory\n/);
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

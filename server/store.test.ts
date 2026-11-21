@@ -628,6 +628,19 @@ describe("Store", () => {
     expect(store.messagesFor(bot.threadId)[0]?.text).toBe(`Oi, eu sou ${bot.name}. O que você gostaria que eu fizesse?`);
   });
 
+  it("greets in the language the server was started with when given none", () => {
+    vi.stubEnv("OMB_DEFAULT_LANGUAGE", "zh");
+    try {
+      const store = new Store(selection);
+      expect(store.messagesFor(store.createBot({ name: "Pepper" }).threadId)[0]).toMatchObject({
+        text: "嗨，我是 Pepper。你想让我帮你做什么？",
+        setupChoices: ["调研和深挖各种主题", "帮我盯着一些事情", "邮件、日历和消息", "预订、购物和跑腿", "数据、表格和报告"],
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("greets the person by the first name they have given by the time the bot is created", () => {
     let person: string | undefined;
     const store = new Store(selection, undefined, undefined, "en", () => person);

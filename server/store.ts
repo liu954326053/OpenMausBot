@@ -38,6 +38,7 @@ import { movesThreadToTop, nextOpenThread } from "../shared/wire.ts";
 import { parseConnectorTools } from "./connector-tools.ts"; import { recoverThreadGrantsOnce, rewriteGrantLists, type GrantRewrite } from "./always-allow.ts";
 import { sameModelSelection } from "../shared/thread-model.ts";
 import { initialGreetingMessage } from "./initial-greeting.ts"; import { createDefaultBot, defaultBotRefusal, type DefaultBotIntro } from "./default-bot.ts";
+import { defaultLanguage } from "./language.ts";
 import { appsFromCreator } from "./inherited-apps.ts"; import { newBotOwner, sharedAsMaker, sharedUnlessRestricted, type NewBotSharingRule } from "./new-bot-sharing.ts";
 import { ThreadCache, type ThreadState } from "./thread-cache.ts";
 import { lastMessageId, messagesBefore } from "./thread-history.ts";
@@ -279,7 +280,7 @@ export class Store {
     completeNewBotSelection: (selection: ModelSelection) => ModelSelection = (selection) => selection,
     /** Unknown counts as another driver, so Full and Custom fall back to Ask. */
     driverKindOf: (instanceId: string) => string | undefined = () => undefined,
-    initialLanguage: string | (() => string) = Intl.DateTimeFormat().resolvedOptions().locale,
+    initialLanguage: string | (() => string) = defaultLanguage,
     /** The person a new bot's greeting names, read as each bot is created; undefined where no one person owns the
      * server. */
     personName: () => string | undefined = () => undefined,

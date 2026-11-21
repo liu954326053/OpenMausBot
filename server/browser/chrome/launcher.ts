@@ -54,7 +54,7 @@ export function runsLauncher(path: string, env: NodeJS.ProcessEnv, timeoutMs = 1
 export interface ChromeLauncherOptions {
   dataDir: string;
   env?: NodeJS.ProcessEnv;
-  /** Current application language, used after OMB_BROWSER_LANG and before the host locale. */
+  /** The bots' current language, used after OMB_BROWSER_LANG. */
   language?: () => string | undefined;
   platform?: NodeJS.Platform;
   arch?: string;

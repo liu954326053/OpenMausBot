@@ -21,9 +21,11 @@ pinned agent-browser release (size and SHA-256 verified) and its Chrome for
 Testing into `.omb-scratch/verify-tools` (gitignored); later launches reuse
 them. `OMB_AGENT_BROWSER_PATH` and `AGENT_BROWSER_EXECUTABLE_PATH` take
 precedence when set. The launcher then starts the fixture, pins its language
-to English (`PATCH /api/config`), creates Pepper through the same `new-bot`
-path as [Chat turns](chat-turns.md), mounts the preview, opens it in a headless
-session named `omb-ui-<port>`, and prints a handle:
+to English (`PATCH /api/config`) unless `OMB_DEFAULT_LANGUAGE` is set (then its
+bots speak that language, as the desktop app's speak Simplified Chinese with
+`zh`), creates Pepper through the same `new-bot` path as
+[Chat turns](chat-turns.md), mounts the preview, opens it in a headless session
+named `omb-ui-<port>`, and prints a handle:
 
 ```json
 {

@@ -28,7 +28,9 @@ exception: `OMB_OPENAI_LIVE_URL` crosses when it is a loopback
 `http://127.0.0.1:PORT` (the fake GPT-Live that
 `node --experimental-strip-types server/testing/fake-openai-live.ts` prints),
 and `OMB_OPENAI_LIVE_KEY` crosses only with it, so that key can only ever
-reach the fake.
+reach the fake. `OMB_DEFAULT_LANGUAGE` crosses too, so a fixture can speak as
+the desktop app does: with `OMB_DEFAULT_LANGUAGE=zh` and no `language` in its
+`config.json`, new bots and the server's own lines are in Simplified Chinese.
 
 Pass the printed URL explicitly from a second terminal:
 

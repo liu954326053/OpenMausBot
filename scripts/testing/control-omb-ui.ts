@@ -473,7 +473,7 @@ export async function launchUi(
       { binaryPath: binary, executablePath: chrome ?? "" }, undefined, undefined, values.engine === undefined ? [] : [extraEngines[String(values.engine)]!], fixtureOptions.boatFixtureApi);
     checkpoint();
     const api = fixtureApi(fixture.info.url);
-    await api("PATCH", "/api/config", { language: "en" });
+    if (!parentEnv.OMB_DEFAULT_LANGUAGE?.trim()) await api("PATCH", "/api/config", { language: "en" });
     const { bots } = await api("GET", "/api/bots") as { bots: Array<{ id: string; defaultBot?: object }> };
     for (const bot of bots.filter((bot) => bot.defaultBot)) await api("PATCH", `/api/bots/${bot.id}`, { welcomed: true });
     const created = await runControlOmb(["new-bot", "--name", SEEDED_BOT, "--url", fixture.info.url]) as { bot: { id: string } };

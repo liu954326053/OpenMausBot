@@ -1111,7 +1111,7 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
   const childEnv = managedComposioChildEnvironment(composioBrokerUrl(), secureCredentials, {
     // The parent owns the data-dir lease; a child only validates it, so fallback-port children never replace it.
     ...process.env, ...systemProxy.latest(), ...desktopDataDirLease.utilityServerLeaseEnvironment(),
-    OMB_DATA_DIR: dataDir,
+    OMB_DATA_DIR: dataDir, OMB_DEFAULT_LANGUAGE: "zh",
     // Fail-closed until this process sends the private connection; never a descriptor inherited from the shell.
     OMB_DESKTOP_PARENT: "1",
     OMB_DESKTOP_LAUNCH_ID: desktopLaunchId,

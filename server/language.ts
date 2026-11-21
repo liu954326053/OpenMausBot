@@ -13,6 +13,17 @@ export function byLanguage<T>(table: { en: T } & Partial<Record<string, T>>, lan
   return table.en;
 }
 
+/** OMB_DEFAULT_LANGUAGE: the language bots speak and the server writes its own lines in while config.json names none,
+ * as whoever started the server chose it. The desktop app starts its server with Simplified Chinese. */
+export function startupLanguage(): string | undefined {
+  return process.env.OMB_DEFAULT_LANGUAGE?.trim() || undefined;
+}
+
+/** A new bot's language while config.json names none: the start-up language, else this computer's locale. */
+export function defaultLanguage(): string {
+  return startupLanguage() ?? Intl.DateTimeFormat().resolvedOptions().locale;
+}
+
 /** The locale dates and times are formatted in: the language set in Settings, else US English. */
 export function intlLocale(language: string | undefined): string {
   try {

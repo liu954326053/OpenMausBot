@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 
 import { TEAM_PROJECT_FOLDER, type TeamProjectMembership } from "../shared/team-projects.ts";
 import { writeFileAtomic } from "./atomic.ts";
-import { byLanguage } from "./language.ts";
+import { byLanguage, defaultLanguage } from "./language.ts";
 import { alwaysCore, isExpired, isMemoryDate, parseMemoryEntries, untilMark, withoutExpired, withoutSuperseded, type MemoryEntryLine } from "./memory-entries.ts";
 import { parseTopicHeader, readTopicHead, renderTopicIndex } from "./memory-topics.ts";
 import { indexMemoryFile, indexedMemoryFiles, recallMemory, removeMemoryFile, type MemoryHit, type SearchMode } from "./message-db.ts";
@@ -87,7 +87,7 @@ export function isMemorySeed(text: string): boolean {
 }
 
 function memorySeedFor(language?: string): string {
-  return byLanguage(MEMORY_SEEDS, (language?.trim() || Intl.DateTimeFormat().resolvedOptions().locale).replaceAll("_", "-"));
+  return byLanguage(MEMORY_SEEDS, (language?.trim() || defaultLanguage()).replaceAll("_", "-"));
 }
 
 /** The bot's folder in the app's data folder. A project bot's own files are not here: only its secret files and the

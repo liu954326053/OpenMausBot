@@ -33,6 +33,13 @@ describe("the fixture's fake engine knobs", () => {
   });
 });
 
+describe("the fixture's start-up language", () => {
+  it("lets the desktop app's default language cross, and none when the caller names none", () => {
+    expect(childEnv({ OMB_DEFAULT_LANGUAGE: "zh" }).OMB_DEFAULT_LANGUAGE).toBe("zh");
+    expect(childEnv({})).not.toHaveProperty("OMB_DEFAULT_LANGUAGE");
+  });
+});
+
 describe("the fixture's Netlify stand-in", () => {
   it("lets only a loopback stand-in's API address cross, so a fixture never lists or deletes on Netlify", () => {
     expect(childEnv({ OMB_NETLIFY_API_URL: " http://127.0.0.1:4010/api/v1 " }).OMB_NETLIFY_API_URL).toBe("http://127.0.0.1:4010/api/v1");

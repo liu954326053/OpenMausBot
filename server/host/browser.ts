@@ -58,7 +58,7 @@ import type { TurnOwner, TurnResources } from "../turn-resources.ts";
 
 export interface BrowserHostDeps {
   cfg: AppConfig;
-  /** Current application language for every built-in browser launch. */
+  /** The bots' current language for every built-in browser launch. */
   language?(): string | undefined;
   /** The store is built after this host, so it is read when used. */
   store(): Pick<Store, "bots" | "bot" | "botByThread">;

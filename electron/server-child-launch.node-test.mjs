@@ -66,6 +66,15 @@ test("every server child of one launch gets that launch's id, never one from the
   assert.ok(spread > 0 && launch > spread, "the launch id is set after, so over, the inherited environment");
 });
 
+test("the desktop's server makes new bots speak Simplified Chinese, whatever the Mac's locale or the shell says", () => {
+  const main = readFileSync(new URL("./main.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const start = main.indexOf("async function startServerOn(port,");
+  const body = main.slice(start, main.indexOf("utilityProcess.fork(entry", start));
+  const spread = body.indexOf("...process.env,");
+  const language = body.indexOf('OMB_DEFAULT_LANGUAGE: "zh",');
+  assert.ok(spread > 0 && language > spread, "the default language is set after, so over, the inherited environment");
+});
+
 // A staged copy of the bootstrap beside a stand-in index.js that reports what the server would see.
 function stage(t, indexSource = REPORTING_INDEX) {
   const dir = mkdtempSync(path.join(tmpdir(), "omb-server-entry-"));

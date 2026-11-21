@@ -161,8 +161,8 @@ export function createSettingsRegistry(deps: RegistryDeps): SettingEntry[] {
     windowPref("general.sendKey", "Send key", "Which key sends a message in the composer.", "send-key", ["enter", "typing", "keyboard", "shortcut"], enumOf(WINDOW_PREFS["general.sendKey"].options)),
     windowPref("general.notificationSounds", "Notification sounds", "Play a sound when a bot needs you or finishes.", "notifications", ["sound", "sounds", "mute", "alerts", "notifications"], "true or false"),
     writable({
-      id: "general.language", label: "Language", help: "The app's language, as a tag such as en, de or pt-br; empty follows the computer.", where: "language",
-      synonyms: ["locale", "translation"], value: z.string().trim().max(16).regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})*$|^$/i, "a language tag such as en or pt-br"), allowed: "a language tag such as en, de, ja, pt-br, zh-tw; empty to follow the computer",
+      id: "general.language", label: "Language", help: "The bots' language, and the app's until one is picked in Settings, as a tag such as en, de or pt-br; empty is the default (Simplified Chinese in the desktop app).", where: "language",
+      synonyms: ["locale", "translation"], value: z.string().trim().max(16).regex(/^[a-z]{2,3}(-[a-z0-9]{2,8})*$|^$/i, "a language tag such as en or pt-br"), allowed: "a language tag such as en, de, ja, pt-br, zh-tw; empty for the default",
       current: () => cfg().language ?? "", write: config((language: string) => ({ language })),
     }),
     writable({

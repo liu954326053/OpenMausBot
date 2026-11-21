@@ -125,17 +125,14 @@ describe("the display, language and time zone the launcher gives Chrome", () => 
     expect(await primaryScreen("darwin", { OMB_BROWSER_SCREEN: "2560x1440" }, fail)).toEqual({ width: 2560, height: 1440 });
   });
 
-  it("uses the app or system language and falls back to English for a C locale", () => {
+  it("uses the named language, else the bots', and never reads the POSIX locale itself", () => {
     expect(browserLanguage({ OMB_BROWSER_LANG: "de-DE", LANG: "en_US.UTF-8" })).toBe("de-DE");
     expect(browserLanguage({}, "ko-KR")).toBe("ko-KR");
     expect(browserLanguage({}, "ko")).toBe("ko-KR");
     expect(browserLanguage({ LANG: "fr_FR.UTF-8" }, "ko-KR")).toBe("ko-KR");
     expect(browserLanguage({ OMB_BROWSER_LANG: "ja-JP" }, "ko-KR")).toBe("ja-JP");
-    expect(browserLanguage({ LANG: "fr_FR.UTF-8" }, "not a locale")).toBe("fr-FR");
-    expect(browserLanguage({ LANG: "en_GB.UTF-8" })).toBe("en-GB");
-    expect(browserLanguage({ LC_ALL: "fr_FR@euro", LANG: "en_US.UTF-8" })).toBe("fr-FR");
-    expect(browserLanguage({ LANG: "C.UTF-8" })).toBe("en-US");
-    expect(browserLanguage({ LANG: "POSIX" })).toBe("en-US");
+    expect(browserLanguage({ LANG: "fr_FR.UTF-8" }, "not a locale")).toBeUndefined();
+    expect(browserLanguage({ LC_ALL: "fr_FR@euro", LC_MESSAGES: "de_DE", LANG: "en_GB.UTF-8" })).toBeUndefined();
     expect(browserLanguage({})).toBeUndefined();
     expect(browserLanguage({ OMB_BROWSER_LANG: "en US; rm" })).toBeUndefined();
     expect(browserLanguage({ OMB_BROWSER_LANG: "en US; rm" }, "ko")).toBe("ko-KR");

@@ -2,8 +2,8 @@
 // writes for a person read in it (server/server-lines.ts). The app keeps a person's language pick on their own computer,
 // so this is the only way the server learns it. Kept on disk: a routine's line at night, with no app open, still knows.
 // A line for nobody in particular, or in a conversation more than one person reads (a room, a team's shared chat), reads
-// in the place's language: the one set on this server or by the team's Admin, else the one every app here shows, else
-// English. One person's pick never decides the words everyone else reads.
+// in the place's language: the one set on this server or by the team's Admin, else the one the server was started with,
+// else the one every app here shows, else English. One person's pick never decides the words everyone else reads.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -23,7 +23,7 @@ const fileSchema = z.object({
 
 export interface PersonLanguagesDeps {
   dataDir: string;
-  /** The language set on this server, else the team's default from the Admin. */
+  /** The language set on this server, else the team's default from the Admin, else the one the server was started with. */
   configured(): string | undefined;
   /** The one person a conversation is private to (a member's own chat on a Team Cloud), else null. */
   privateTo?(threadId: string): string | null;
