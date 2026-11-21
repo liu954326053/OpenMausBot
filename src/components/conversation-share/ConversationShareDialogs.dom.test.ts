@@ -10,6 +10,7 @@ vi.mock("@/state/store", async (importOriginal) => {
   return { ...original, useStore: () => ({ state, dispatch: vi.fn() }) };
 });
 
+const { TOAST_CLEAR_OF_COMPOSER } = await import("../NoticeCard");
 const { ConversationShareDialogs } = await import("./ConversationShareDialogs");
 const { closeConversationDialog, openConversationDialog, savesToTeamMemory, shareChoices } = await import("./conversation-share");
 
@@ -134,5 +135,18 @@ describe("the confirm step", () => {
     await settle();
     expect(sent.filter((each) => each.method === "POST").length).toBe(2);
     expect(toast()?.textContent).toContain("Saved to Scout's team memory");
+  });
+
+  it("keeps the refusal and the saved toast in the notices' corner, clear of the chat's composer", async () => {
+    let tries = 0;
+    answer = () => (++tries === 1 ? reply(409, { error: "Not now." }) : reply(201, { entry: { id: "e3", text: "x", at: 1 } }));
+    await show({ kind: "memory", botId: "scout", threadId: "t9", messageId: "m1", text: "Launch: 3 March" });
+    const toast = () => document.querySelector<HTMLElement>("[data-access-toast]")!;
+    expect(toast().textContent).toContain("Not now.");
+    expect(toast().className).toContain(TOAST_CLEAR_OF_COMPOSER);
+    await act(async () => [...toast().querySelectorAll("button")].find((each) => each.textContent === "Try again")!.click());
+    await settle();
+    expect(toast().textContent).toContain("Saved to Scout's team memory");
+    expect(toast().className).toContain(TOAST_CLEAR_OF_COMPOSER);
   });
 });
