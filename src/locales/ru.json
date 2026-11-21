@@ -193,6 +193,7 @@
   "server.projectCanvas.node.file": "Файл",
   "server.projectCanvas.task.connected": "Подключено к вашему узлу на холсте проекта:",
   "server.projectCanvas.task.textNode": "На что ссылается текстовый узел {title} на холсте проекта:",
+  "server.projectCanvas.task.editText": "Отредактируйте текст согласно указаниям.\n\nИсходный текст:\n{source}\n\nУказания:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(его файла {path} сейчас нет в папке проекта)",
   "server.mcp.askedSignIn": "Запрошен вход в MCP-сервер {name}",
   "server.mcp.signIn.card": "MCP-серверу {label} нужен вход. Откройте этот разговор в MagicBot, чтобы войти.",

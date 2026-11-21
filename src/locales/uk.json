@@ -151,6 +151,7 @@
   "server.projectCanvas.node.file": "Файл",
   "server.projectCanvas.task.connected": "Під’єднано до вашого вузла на полотні проєкту:",
   "server.projectCanvas.task.textNode": "На що посилається текстовий вузол {title} на полотні проєкту:",
+  "server.projectCanvas.task.editText": "Відредагуйте текст відповідно до вказівок.\n\nВихідний текст:\n{source}\n\nВказівки:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(його файлу {path} зараз немає в папці проєкту)",
   "server.mcp.askedSignIn": "Запит на вхід у MCP-сервер {name}",
   "server.mcp.signIn.card": "MCP-серверу {label} потрібен вхід. Відкрийте цю розмову в MagicBot, щоб увійти.",

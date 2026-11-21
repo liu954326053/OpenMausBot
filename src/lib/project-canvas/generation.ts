@@ -1,6 +1,6 @@
-import { CANVAS_NODE_SIZE, generationKindOf, type CanvasConnection, type CanvasNode, type CanvasPoint } from "../../../shared/project-canvas";
+import { CANVAS_NODE_SIZE, generationKindOf, type CanvasConnection, type CanvasNode, type CanvasNodeType, type CanvasPoint } from "../../../shared/project-canvas";
 import { generationReferences } from "../../../shared/project-canvas-references";
-import type { GenerationKind, StartGenerationInput } from "../../../shared/project-generation";
+import type { StartGenerationInput } from "../../../shared/project-generation";
 import { nodeOverrides } from "./settings";
 
 /** How far right of its source the server puts a result. */
@@ -36,8 +36,8 @@ export function previousOutputs(source: CanvasNode, nodes: readonly CanvasNode[]
 }
 
 /** Where the next result of `source` lands: right of it, level with its top, under the results made before. */
-export function nextOutputFrame(source: CanvasNode, kind: GenerationKind, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): { position: CanvasPoint; width: number; height: number } {
-  const size = CANVAS_NODE_SIZE[kind];
+export function nextOutputFrame(source: CanvasNode, type: CanvasNodeType, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): { position: CanvasPoint; width: number; height: number } {
+  const size = CANVAS_NODE_SIZE[type];
   const y = previousOutputs(source, nodes, connections).reduce((lowest, node) => Math.max(lowest, node.position.y + node.height + OUTPUT_GAP_Y), source.position.y);
   return { position: { x: outputColumn(source), y }, width: size.width, height: size.height };
 }

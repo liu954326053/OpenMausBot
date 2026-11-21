@@ -243,6 +243,7 @@
   "server.projectCanvas.node.file": "ファイル",
   "server.projectCanvas.task.connected": "プロジェクトのキャンバスであなたのノードにつながっているもの：",
   "server.projectCanvas.task.textNode": "プロジェクトのキャンバスのテキストノード {title} が参照しているもの：",
+  "server.projectCanvas.task.editText": "指示に従って次のテキストを修正してください。\n\n原文：\n{source}\n\n修正の指示：\n{prompt}",
   "server.projectCanvas.task.fileGone": "（このファイル {path} は今プロジェクトフォルダーにありません）",
   "server.mcp.askedSignIn": "MCPサーバー {name} へのサインインをリクエストしました",
   "server.mcp.signIn.card": "{label} の MCP サーバーにはサインインが必要です。MagicBot でこの会話を開いてサインインしてください。",

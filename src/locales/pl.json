@@ -193,6 +193,7 @@
   "server.projectCanvas.node.file": "Plik",
   "server.projectCanvas.task.connected": "Połączone z twoim węzłem na kanwie projektu:",
   "server.projectCanvas.task.textNode": "To, do czego odwołuje się węzeł tekstowy {title} na kanwie projektu:",
+  "server.projectCanvas.task.editText": "Popraw tekst zgodnie z instrukcjami.\n\nOryginał:\n{source}\n\nInstrukcje:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(jego pliku {path} nie ma teraz w folderze projektu)",
   "server.mcp.askedSignIn": "Poproszono o zalogowanie do serwera MCP {name}",
   "server.mcp.signIn.card": "Serwer MCP {label} wymaga zalogowania. Otwórz tę rozmowę w MagicBot, aby się zalogować.",

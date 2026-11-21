@@ -5,7 +5,7 @@ import type { Message } from "../store.ts";
 import { replyText, TaskTargets } from "./task-targets.ts";
 
 const KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
-const where = { projectId: "p1", botId: "writer", threadId: "w" };
+const where = { projectId: "p1", botId: "writer", threadId: "w", title: "Write the logline" };
 const turnEnd = (requestMessageId: string, at: number, text: string): Message => ({
   id: `reply-${at}`, at, role: "bot", kind: "text", text, turnId: `t${at}`, turnTerminal: true, turnSucceeded: true, requestMessageId,
 });
