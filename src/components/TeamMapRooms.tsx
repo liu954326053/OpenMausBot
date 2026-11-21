@@ -1,9 +1,10 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, MessagesSquare, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 
 import { opensRowMenuFromKey } from "@/lib/bulk-select";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { PICKER_MARGIN, pickerPlacement } from "@/lib/picker-placement";
 import { useStore, type Group } from "@/state/store";
 import { useTeamProjectSide } from "@/state/team-projects";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -57,6 +58,23 @@ export function TeamMapRoomList({ rooms, menuFor, onOpen, onMenu, onNew }: {
 const insideListOrItsMenus = (details: HTMLElement, next: EventTarget | null) =>
   details.contains(next as Node | null) || (next instanceof Element && next.closest("[data-room-menu], [role=alertdialog]") !== null);
 
+const LIST_WIDTH = 256;
+const LIST_TALLEST = 320;
+const LIST_GAP = 8;
+
+function placeList(details: HTMLElement, toggle: HTMLElement, list: HTMLElement) {
+  const anchor = toggle.getBoundingClientRect();
+  const frame = details.getBoundingClientRect();
+  const edge = anchor.right - LIST_WIDTH >= PICKER_MARGIN ? "right" : "left";
+  const { left, width } = pickerPlacement(anchor, { width: LIST_WIDTH, height: 0 }, { width: window.innerWidth, height: window.innerHeight }, { vertical: "below", edge });
+  Object.assign(list.style, {
+    left: `${left - frame.left}px`,
+    top: `${anchor.bottom - frame.top + LIST_GAP}px`,
+    width: `${width}px`,
+    maxHeight: `${Math.max(0, Math.min(LIST_TALLEST, window.innerHeight - anchor.bottom - LIST_GAP - PICKER_MARGIN))}px`,
+  });
+}
+
 /** The group chats and bot chats outside projects: the sidebar lists only the projects' own. */
 export function TeamMapRooms() {
   const { state, dispatch } = useStore();
@@ -65,19 +83,29 @@ export function TeamMapRooms() {
   const [menu, setMenu] = useState<RoomMenuAt | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const toggleRef = useRef<HTMLElement>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const place = useCallback(() => {
+    if (detailsRef.current && toggleRef.current && listRef.current) placeList(detailsRef.current, toggleRef.current, listRef.current);
+  }, []);
+  useEffect(() => {
+    const onResize = () => { if (detailsRef.current?.open) place(); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [place]);
   const deleting = deletingId ? state.groups.find((group) => group.id === deletingId) : undefined;
   const unread = rooms.some((room) => room.unread);
   return <>
-    <details className="relative" onBlur={(event) => { if (!insideListOrItsMenus(event.currentTarget, event.relatedTarget)) event.currentTarget.removeAttribute("open"); }} onKeyDown={(event) => {
+    <details ref={detailsRef} className="relative" onToggle={(event) => { if (event.currentTarget.open) place(); }} onBlur={(event) => { if (!insideListOrItsMenus(event.currentTarget, event.relatedTarget)) event.currentTarget.removeAttribute("open"); }} onKeyDown={(event) => {
       if (event.key === "Escape") { event.currentTarget.removeAttribute("open"); event.currentTarget.querySelector("summary")?.focus(); }
     }}>
-      <summary ref={toggleRef} data-team-map-rooms="" className="relative flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-hairline/60 bg-panel px-3 py-2 text-[12px] font-medium hover:bg-control [&::-webkit-details-marker]:hidden">
+      <summary ref={toggleRef} data-team-map-rooms="" onClick={place} className="relative flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-hairline/60 bg-panel px-3 py-2 text-[12px] font-medium hover:bg-control [&::-webkit-details-marker]:hidden">
         <MessagesSquare size={14} />{t("sidebar.section.channels")}
         <span className="tabular-nums text-ink-secondary">{rooms.length}</span>
         {unread && <span data-team-map-rooms-unread="" role="img" aria-label={t("task.unread")} className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-app" />}
       </summary>
-      <div className="absolute end-0 top-full z-40 mt-2 max-h-80 w-64 overflow-y-auto max-sm:start-0 max-sm:end-auto rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
+      <div ref={listRef} data-team-map-rooms-list="" className="absolute z-40 overflow-y-auto rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
         const details = event.currentTarget.closest("details"); details?.querySelector("summary")?.focus(); details?.removeAttribute("open");
       }}>
         <TeamMapRoomList rooms={rooms} menuFor={menu?.groupId} onOpen={(id) => dispatch({ type: "select", id })} onMenu={setMenu} onNew={() => setCreating(true)} />

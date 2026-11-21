@@ -32,7 +32,7 @@ export function RoomMenu({ menu, onClose, onDelete }: { menu: RoomMenuAt | null;
     const element = menuRef.current;
     if (!element || !shown) return;
     const place = () => {
-      const { width, height } = element.getBoundingClientRect();
+      const { offsetWidth: width, offsetHeight: height } = element;
       element.style.top = `${Math.max(8, Math.min(shown.y, window.innerHeight - height - 8))}px`;
       element.style.left = `${Math.max(8, Math.min(shown.x, window.innerWidth - width - 8))}px`;
     };
