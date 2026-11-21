@@ -23,14 +23,6 @@ export type VideoSettingKey = (typeof SETTING_KEYS.video)[number];
 export type SettingKey = ImageSettingKey | VideoSettingKey;
 export type SettingValue = string | number;
 
-/** The generation a node runs, if any. */
-export function generationKindOf(node: CanvasNode): GenerationKind | null {
-  if (node.type === "image") return "image";
-  if (node.type === "video" || node.type === "shot") return "video";
-  if (node.type === "config") return node.metadata?.generationMode ?? "image";
-  return null;
-}
-
 /** The node's overrides that belong to `kind`; a config switched to the other kind ignores the rest. */
 export function nodeOverrides(kind: GenerationKind, node: CanvasNode): CanvasNodeSettings {
   const own = node.metadata?.settings ?? {};

@@ -2,8 +2,10 @@
 // server, inside the app's store: the snapshot draws the project's bots, a change survives a reload, an upload lands in
 // 素材, a task takes what is connected to the bot, live events update the open canvas, opening a chat and Stop go
 // through the app, a node generates a picture and stops a generation, a config node generates from its inputs on a
-// page in Chinese, its references numbered in Chinese and its failure said in Chinese, a task asked from a text node
-// writes its reply there, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
+// page in Chinese, its references numbered in Chinese and its failure said in Chinese, an empty image node on that
+// page generates into itself and then beside itself, its @ list starting with its own picture and naming nothing a
+// generation won't take, a task asked from a text node writes its reply there, and undo gives a deleted bot node back
+// to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
 // drawn clear of the others, and a project archived while open gives way to the main bot.
 import { createHash } from "node:crypto";
@@ -350,12 +352,13 @@ type Box = { x: number; y: number; w: number; h: number };
       await clickSelector('button[aria-label="Add image"]');
       await expect.poll(async () => (await drawnIds()).filter((id) => !beforeImage.includes(id)).length, { message: "a new image node" }).toBe(1);
       const imageId = (await drawnIds()).find((id) => !beforeImage.includes(id))!;
-      const openImagePanel = async () => {
+      const openPanelOf = async (id: string, what: string) => {
         await clickEmpty();
-        const shown = await box(node(imageId));
+        const shown = await box(node(id));
         await clickAt(shown!.x + shown!.w / 2, shown!.y + 30);
-        await waitFor("document.querySelector('[data-node-panel]')", "the image node's panel");
+        await waitFor("document.querySelector('[data-node-panel]')", what);
       };
+      const openImagePanel = () => openPanelOf(imageId, "the image node's panel");
       const generateFromPanel = async (prompt: string) => {
         await browser("find", "role", "textbox", "fill", prompt, "--name", "Prompt", "--exact");
         await clickButton("Generate", "[data-node-panel]");
@@ -395,13 +398,8 @@ type Box = { x: number; y: number; w: number; h: number };
       await waitFor(`document.querySelector(${JSON.stringify(node(configId))})`, "the config node on the open canvas");
       await fit(fitZh);
       await connectInto(upload.id, configId);
-      const openConfigPanel = async () => {
-        await clickEmpty();
-        const shown = await box(node(configId));
-        await clickAt(shown!.x + shown!.w / 2, shown!.y + 30);
-        await waitFor("document.querySelector('[data-node-panel]')", "the config node's panel");
-      };
-      const generateConfig = async (prompt: string) => {
+      const openConfigPanel = () => openPanelOf(configId, "the config node's panel");
+      const generateInChinese = async (prompt: string) => {
         await browser("find", "role", "textbox", "fill", prompt, "--name", "提示词", "--exact");
         await revealPanelEnd();
         await clickButton("生成", "[data-node-panel]");
@@ -409,7 +407,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await openConfigPanel();
       await waitFor(`document.querySelector("[data-node-panel]")?.textContent.includes("图片 1")`, "the board named 图片 1 among the config's references");
       const dawn = "黎明时分重画图片 1，雨停了";
-      await generateConfig(dawn);
+      await generateInChinese(dawn);
       await expect.poll(async () => (await results(configId)).length, { timeout: 30_000, message: "the config's picture on the canvas" }).toBe(1);
       const [fromConfig] = await results(configId);
       const config = (await snapshot()).nodes.find((one) => one.id === configId)!;
@@ -423,7 +421,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await shot("12-config-generates-in-chinese.png");
 
       await openConfigPanel();
-      await generateConfig(`[task][fail:没有灵感] ${dawn}`);
+      await generateInChinese(`[task][fail:没有灵感] ${dawn}`);
       await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === configId)?.metadata?.status, { timeout: 30_000, message: "the config's generation fails" }).toBe("error");
       const failed = (await snapshot()).nodes.find((one) => one.id === configId)!;
       expect(failed.metadata).toMatchObject({ errorDetails: "gen couldn't make it: 没有灵感", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "没有灵感" } });
@@ -432,6 +430,100 @@ type Box = { x: number; y: number; w: number; h: number };
       expect(await text(configAlert)).not.toContain("couldn't make it");
       evidence.config = { node: failed, made: fromConfig, prompt: configCall.arguments.prompt, referenceImages: configCall.arguments.referenceImages, failureShown: await text(configAlert) };
       await shot("13-config-failure-in-chinese.png");
+
+      const below = await snapshot();
+      const sceneAt = { x: configAt.x, y: Math.max(...below.nodes.map((one) => one.position.y + one.height)) + 160 };
+      const sceneTitle = "教堂";
+      const sceneId = (await api("POST", `${canvasPath}/ops`, { ops: [{ type: "add_node", nodeType: "image", title: sceneTitle, position: sceneAt }] })).nodeIds[0] as string;
+      await waitFor(`document.querySelector(${JSON.stringify(node(sceneId))})`, "the empty image node on the open canvas");
+      await fit(fitZh);
+      const sceneNode = async () => (await snapshot()).nodes.find((one) => one.id === sceneId)!;
+      const ghost = `[data-generation-ghost=${JSON.stringify(sceneId)}]`;
+      const nodeList = 'aside[aria-label="节点"]';
+      const focusOn = async (title: string) => {
+        await clickEmpty();
+        await clickSelector('button[aria-label="节点"]');
+        await waitFor(`document.querySelector(${JSON.stringify(nodeList)})`, "the node list");
+        await browser("find", "role", "searchbox", "fill", title, "--name", "搜索节点", "--exact");
+        const entry = await evaluate<Box | null>(`(() => { const e = [...document.querySelectorAll(${JSON.stringify(`${nodeList} li button`)})].find((b) => b.querySelector("span")?.textContent === ${JSON.stringify(title)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`);
+        if (!entry) throw new Error(`no ${title} in the node list`);
+        await clickAt(centre(entry).x, centre(entry).y);
+        await clickSelector(`${nodeList} button[aria-label="关闭"]`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      };
+      const chapel = "[task][hold] 雨后的教堂，清晨";
+      await openPanelOf(sceneId, "the empty image node's panel");
+      await generateInChinese(chapel);
+      await expect.poll(async () => (await sceneNode()).metadata?.status, { timeout: 15_000, message: "the empty image node generating" }).toBe("loading");
+      await waitFor(`document.querySelector(${JSON.stringify(node(sceneId))})?.textContent.includes("生成中")`, "the empty image node generating in itself on the open canvas");
+      await focusOn(sceneTitle);
+      expect(await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(ghost)}))`)).toBe(false);
+      await shot("14-empty-image-generates-in-itself.png");
+      mcp.release();
+      await expect.poll(async () => (await sceneNode()).metadata?.file, { timeout: 30_000, message: "the picture in the empty image node itself" }).toBeTruthy();
+      const scene = await sceneNode();
+      expect(scene).toMatchObject({ type: "image", title: sceneTitle, createdBy: { kind: "person" }, metadata: { prompt: chapel, status: "success", file: { mime: "image/png" } } });
+      expect(await results(sceneId)).toEqual([]);
+      const scenePicture = join(project.folder, ...scene.metadata!.file!.path.split("/"));
+      expect(existsSync(scenePicture)).toBe(true);
+      await waitFor(`(() => { const image = document.querySelector(${JSON.stringify(`${node(sceneId)} img`)}); return image && image.complete && image.naturalWidth > 0; })()`, "the picture loads in the node it was generated in");
+      await expect.poll(async () => {
+        const fitted = await sceneNode();
+        return { width: fitted.width, height: fitted.height };
+      }, { timeout: 15_000, message: "the node fitted to its small picture, no smaller than a node can be resized to" }).toEqual({ width: 220, height: 220 });
+      await focusOn(sceneTitle);
+      await shot("15-empty-image-filled-itself.png");
+
+      const clipUpload = await fetch(`${fixture.url}${canvasPath}/files?name=rain.mp4&x=${sceneAt.x - 560}&y=${sceneAt.y}`, {
+        method: "POST",
+        headers: { origin: fixture.url, "content-type": "video/mp4" },
+        body: new Uint8Array(readFileSync(new URL("../../server/testing/fixtures/generation-sample.mp4", import.meta.url))),
+      });
+      expect(clipUpload.status).toBe(201);
+      const clipId = ((await clipUpload.json()) as { nodeId: string }).nodeId;
+      await waitFor(`document.querySelector(${JSON.stringify(node(clipId))})`, "the uploaded clip on the open canvas");
+      await fit(fitZh);
+      for (const fromId of [upload.id, outsideId, clipId]) await connectInto(fromId, sceneId);
+      const mentionList = '[data-node-panel] [role="listbox"]';
+      await focusOn(sceneTitle);
+      await openPanelOf(sceneId, "the image node's panel with its references");
+      await revealPanelEnd();
+      await browser("find", "role", "textbox", "fill", "@", "--name", "提示词", "--exact");
+      await waitFor(`document.querySelector(${JSON.stringify(mentionList)})`, "the @ list over the image node's prompt");
+      const mentioned = await evaluate<string[][]>(`[...document.querySelectorAll(${JSON.stringify(`${mentionList} [role="option"]`)})].map((option) => [...option.querySelectorAll("span")].map((span) => span.textContent))`);
+      expect(mentioned).toEqual([["图片 1", sceneTitle], ["图片 2", "board.png"], ["文本 1", "From the director"]]);
+      const thumbs = await evaluate<Array<{ label: string; remove: string | null }>>(`[...document.querySelectorAll("[data-node-panel] [data-reference]")].map((thumb) => ({ label: thumb.textContent.trim(), remove: thumb.querySelector("button")?.getAttribute("aria-label") ?? null }))`);
+      expect(thumbs).toEqual([{ label: "图片 1", remove: null }, { label: "图片 2", remove: "移除 图片 2" }, { label: "文本 1", remove: "移除 文本 1" }]);
+      await shot("16-mention-list-starts-with-its-own-picture.png");
+
+      const retake = "[task][hold] 按@图片 2 的构图重画@图片 1，雨不要停";
+      await generateInChinese(retake);
+      await expect.poll(async () => (await sceneNode()).metadata?.status, { timeout: 15_000, message: "the image node generating again" }).toBe("loading");
+      await waitFor(`document.querySelector(${JSON.stringify(ghost)})`, "the next picture's placeholder on the open canvas");
+      await focusOn(sceneTitle);
+      const placeholder = await box(ghost);
+      const sceneShown = await box(node(sceneId));
+      expect(placeholder!.x).toBeGreaterThan(sceneShown!.x + sceneShown!.w);
+      await shot("17-next-picture-placeholder-to-its-right.png");
+      mcp.release();
+      await expect.poll(async () => (await results(sceneId)).length, { timeout: 30_000, message: "the next picture beside the image node" }).toBe(1);
+      const [beside] = await results(sceneId);
+      const sceneAfter = await sceneNode();
+      expect(sceneAfter.metadata).toMatchObject({ prompt: retake, status: "success", file: scene.metadata!.file });
+      expect(beside).toMatchObject({ type: "image", createdBy: { kind: "person" }, metadata: { file: { mime: "image/png" } } });
+      expect(beside!.position.x).toBeGreaterThanOrEqual(sceneAfter.position.x + sceneAfter.width);
+      const retakeJob = (await jobs()).find((job) => job.nodeId === sceneId && job.prompt.includes(retake));
+      expect(retakeJob?.references).toEqual({ images: [scene.metadata!.file!.path, "素材/board.png"], audio: [] });
+      const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+      const retakeCall = mcp.calls.filter((call) => call.tool === "generate_image").at(-1)!;
+      expect(retakeCall.arguments.prompt).toBe(`参考图片编号：图片 1、图片 2。请按这些编号理解提示词中的图片引用。\n\n${retake}\n\n【文本 1】\nKeep the rain in every scene.`);
+      expect(retakeCall.arguments.referenceImages).toEqual([expect.objectContaining({ sha256: sha(scenePicture) }), expect.objectContaining({ sha256: sha(onDisk) })]);
+      await waitFor(`(() => { const image = document.querySelector(${JSON.stringify(`${node(beside!.id)} img`)}); return image && image.complete && image.naturalWidth > 0; })()`, "the next picture loads beside the image node");
+      evidence.emptyImage = { scene: sceneAfter, beside, mentioned, thumbs, prompt: retakeCall.arguments.prompt, referenceImages: retakeCall.arguments.referenceImages, references: retakeJob?.references };
+      await focusOn(sceneTitle);
+      await shot("18-next-picture-to-its-right.png");
+      await fit(fitZh);
+      await expect.poll(async () => (await snapshot()).viewport.k, { timeout: 15_000, message: "the fitted view saved before the page opens again" }).toBeLessThan(1);
       await openPage();
 
       const noteGate = join(fixture.dataDir, "gate-note");
@@ -449,7 +541,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes("is writing")`, "the writer writing into the note on the open canvas");
       const writingInto = (await snapshot()).bots[writer.id]!.writingInto;
       expect(writingInto).toEqual([outsideId]);
-      await shot("14-writing-into-a-text-node.png");
+      await shot("19-writing-into-a-text-node.png");
       writeFileSync(noteGate, "go");
       await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes(${JSON.stringify(rule)})`, "the reply in the note on the open canvas");
       await settled();
@@ -457,7 +549,7 @@ type Box = { x: number; y: number; w: number; h: number };
       expect(filled.nodes.find((one) => one.id === outsideId)).toMatchObject({ type: "text", createdBy: { kind: "person" }, metadata: { content: rule } });
       expect(filled.bots[writer.id]!.writingInto).toBeUndefined();
       evidence.reply = { writingInto, node: filled.nodes.find((one) => one.id === outsideId) };
-      await shot("15-reply-in-the-text-node.png");
+      await shot("20-reply-in-the-text-node.png");
 
       const writersShot = async () => (await snapshot()).nodes.find((one) => one.type === "shot" && one.createdBy?.kind === "bot");
       plan([{ key: "shot", match: ["ADD-SHOT"], reply: "SHOT ADDED", steps: [
@@ -487,7 +579,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await settled();
       evidence.undo = { shot: (await snapshot()).nodes.find((one) => one.id === botShot.id) };
       await fit();
-      await shot("16-bot-shot-back-after-undo.png");
+      await shot("21-bot-shot-back-after-undo.png");
 
       evidence.console = (await browser("console")).messages;
       expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
@@ -514,12 +606,12 @@ type Box = { x: number; y: number; w: number; h: number };
       await openProject();
       expect(await text(`${slot} [data-project-folder]`)).toBe(project.folder);
       await waitFor(`document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the team's change in the top bar");
-      await shot("17-project-row-opens-its-canvas.png");
+      await shot("22-project-row-opens-its-canvas.png");
 
       await clickSelector(`${slot} button[aria-label="Group chats"]`);
       const roomItem = `[role="menu"] [data-menu-key=${JSON.stringify(room.id)}]`;
       await waitFor(`document.querySelector(${JSON.stringify(roomItem)})`, "the project's group chat in the top bar's menu");
-      await shot("18-group-chats-menu.png");
+      await shot("23-group-chats-menu.png");
       await clickSelector(roomItem);
       await waitFor(`!document.querySelector(${JSON.stringify(view)}) && !document.querySelector('[role="menu"]') && document.body.innerText.includes("Table read")`, "the group chat open");
 
@@ -536,12 +628,12 @@ type Box = { x: number; y: number; w: number; h: number };
       evidence.colorist = { node: colorist, under };
       expect(under).toEqual([]);
       await fit();
-      await shot("19-team-change-adds-a-bot.png");
+      await shot("24-team-change-adds-a-bot.png");
 
       await api("POST", `/api/team-projects/${project.id}/archive`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
       await mainInstead("the main bot in place of the project archived elsewhere");
-      await shot("21-archived-elsewhere-opens-the-main-bot.png");
+      await shot("26-archived-elsewhere-opens-the-main-bot.png");
       await api("POST", `/api/team-projects/${project.id}/restore`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
       await openProject();
@@ -552,7 +644,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await mainInstead("the main bot in place of the project archived from the sidebar");
       const listed = (await api("GET", "/api/team-projects")).projects as TeamProjectWire[];
       expect(listed.find((one) => one.id === project.id)?.archivedAt).toEqual(expect.any(Number));
-      await shot("22-archived-from-the-sidebar-opens-the-main-bot.png");
+      await shot("27-archived-from-the-sidebar-opens-the-main-bot.png");
       evidence.app = { main: main.id, room: room.id, folder: project.folder, bots: (await snapshot()).nodes.filter((one) => one.type === "bot").map((one) => one.id) };
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {

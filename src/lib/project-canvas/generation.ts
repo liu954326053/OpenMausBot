@@ -1,7 +1,7 @@
-import { CANVAS_NODE_SIZE, type CanvasConnection, type CanvasNode, type CanvasPoint } from "../../../shared/project-canvas";
+import { CANVAS_NODE_SIZE, generationKindOf, type CanvasConnection, type CanvasNode, type CanvasPoint } from "../../../shared/project-canvas";
 import { generationReferences } from "../../../shared/project-canvas-references";
 import type { GenerationKind, StartGenerationInput } from "../../../shared/project-generation";
-import { generationKindOf, nodeOverrides } from "./settings";
+import { nodeOverrides } from "./settings";
 
 /** How far right of its source the server puts a result. */
 export const OUTPUT_OFFSET_X = 80;
@@ -22,6 +22,9 @@ export function generationInput(node: CanvasNode, nodes: readonly CanvasNode[], 
     ...(node.title.trim() ? { name: node.title.trim() } : {}),
   };
 }
+
+/** Whether generating `node` puts its first result in the node itself: an empty image or video node takes it in place. */
+export const takesResultInPlace = (node: CanvasNode): boolean => (node.type === "image" || node.type === "video") && !node.metadata?.file;
 
 const outputColumn = (source: CanvasNode) => source.position.x + source.width + OUTPUT_OFFSET_X;
 
