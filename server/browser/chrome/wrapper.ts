@@ -133,6 +133,8 @@ export async function primaryScreen(platform: NodeJS.Platform, env: NodeJS.Proce
   return SERVER_SCREEN;
 }
 
+const WITH_REGION: Record<string, string> = { ko: "ko-KR", zh: "zh-CN", "zh-hans": "zh-CN", "zh-hant": "zh-TW" };
+
 /** Explicit OMB_BROWSER_LANG, else the bots' language; none leaves Chrome on its own. */
 export function browserLanguage(env: NodeJS.ProcessEnv, configured?: string): string | undefined {
   const named = env.OMB_BROWSER_LANG?.trim();
@@ -141,7 +143,7 @@ export function browserLanguage(env: NodeJS.ProcessEnv, configured?: string): st
   if (!app || !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u.test(app)) return undefined;
   try {
     const canonical = Intl.getCanonicalLocales(app)[0];
-    return canonical?.toLowerCase() === "ko" ? "ko-KR" : canonical;
+    return canonical && (WITH_REGION[canonical.toLowerCase()] ?? canonical);
   } catch {
     return undefined;
   }

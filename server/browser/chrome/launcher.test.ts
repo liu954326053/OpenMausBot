@@ -347,4 +347,15 @@ describe("the Chrome launcher", () => {
     chrome.stopped("bot-1");
     expect(attached.forget).toHaveBeenCalledWith("bot-1");
   });
+
+  it("starts the bots' Chrome in zh-CN and asks pages for it first when the bots speak Simplified Chinese", async () => {
+    const machine = mac({ env: { LANG: "en_US.UTF-8" } });
+    const attached = sidecars();
+    const chrome = launcher(machine, { sidecars: attached });
+    chrome.setLanguageProvider(() => "zh");
+    await chrome.ready(headless(chrome.path));
+    expect(readFileSync(chrome.path, "utf8")).toContain("'--lang=zh-CN'");
+    await chrome.started("bot-1", headless(chrome.path));
+    expect(attached.ensure).toHaveBeenCalledExactlyOnceWith("bot-1", headless(chrome.path), { ...identity("155"), acceptLanguage: "zh-CN,zh,en-US,en" });
+  });
 });

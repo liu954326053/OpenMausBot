@@ -138,6 +138,14 @@ describe("the display, language and time zone the launcher gives Chrome", () => 
     expect(browserLanguage({ OMB_BROWSER_LANG: "en US; rm" }, "ko")).toBe("ko-KR");
   });
 
+  it("asks sites for Simplified Chinese as zh-CN and Traditional Chinese as zh-TW", () => {
+    expect(["zh", "zh-cn", "zh-CN", "zh-Hans", "zh-hans"].map((language) => browserLanguage({}, language))).toEqual(["zh-CN", "zh-CN", "zh-CN", "zh-CN", "zh-CN"]);
+    expect(["zh-tw", "zh-TW", "zh-Hant"].map((language) => browserLanguage({}, language))).toEqual(["zh-TW", "zh-TW", "zh-TW"]);
+    expect(browserLanguage({}, "zh-HK")).toBe("zh-HK");
+    expect(languageList(browserLanguage({}, "zh"))).toBe("zh-CN,zh,en-US,en");
+    expect(languageList(browserLanguage({}, "zh-tw"))).toBe("zh-TW,zh,en-US,en");
+  });
+
   it("gives Chrome the server's time zone, where Chrome reads TZ", () => {
     expect(browserTimeZone({ TZ: "Asia/Kolkata" }, "linux")).toBe("Asia/Kolkata");
     expect(browserTimeZone({ OMB_BROWSER_TIMEZONE: "Europe/Berlin", TZ: "UTC" }, "linux")).toBe("Europe/Berlin");

@@ -118,7 +118,9 @@ through it. New connections use the saved proxy immediately. My Chrome keeps
 using the person's own Chrome settings. The built-in browser also follows the
 bots' language for its Chrome locale and `Accept-Language`: `language` in
 `config.json`, else Simplified Chinese in the desktop app, else the system's.
-An explicit `OMB_BROWSER_LANG` environment value takes precedence.
+Simplified Chinese asks sites for `zh-CN`, Traditional Chinese for `zh-TW` and
+Korean for `ko-KR`. An explicit `OMB_BROWSER_LANG` environment value takes
+precedence.
 
 | Destination | Desktop | Self-hosted server | MausBot Cloud |
 |---|---|---|---|
