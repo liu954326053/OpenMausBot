@@ -7,6 +7,7 @@ import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent }
 import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import type { RequestAuth } from "../request-auth.ts";
+import { addServerLinePacks } from "../server-lines.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import { parseCanvasOps } from "./ops.ts";
@@ -84,6 +85,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     openCards: () => [],
     queuedThreads: () => new Set(),
     saveImage: () => ({ path: join(dir, "attachments", "saved.png") }),
+    language: () => undefined,
     newId: () => `id-${++next}`,
     log: () => undefined,
     ...patch,
@@ -184,16 +186,33 @@ describe("a task sent from the canvas", () => {
     const made = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } }));
     service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
     expect(await service.task("p1", auth, { botId: "writer", text: "Write it" })).toEqual({ threadId: "writer-main", messageId: "sent-1", references: 1 });
-    expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText \"Brief\":\n\n> The swap." }]);
+    expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap." }]);
   });
 
-  it("is refused for a bot outside the project, a conversation the person cannot open, and nothing to say", async () => {
-    const { service } = setup();
+  it("names the references in the language the person's request names, else in the server's", async () => {
+    addServerLinePacks({ zh: { "server.projectCanvas.reference.text": "文本", "server.projectCanvas.task.connected": "项目画布上连到你的节点的内容：" } });
+    let serverLanguage: string | undefined;
+    const { service, project, sent } = setup({ language: () => serverLanguage });
+    const made = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } }));
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
+    await service.task("p1", auth, { botId: "writer", text: "@文本 1", language: " ZH " });
+    serverLanguage = "zh";
+    await service.task("p1", auth, { botId: "writer", text: "@文本 1" });
+    await service.task("p1", auth, { botId: "writer", text: "@Text 1", language: "en" });
+    const inChinese = "@文本 1\n\n项目画布上连到你的节点的内容：\n\n文本 1 \"Brief\":\n\n> The swap.";
+    expect(sent.map((one) => one.text)).toEqual([inChinese, inChinese, "@Text 1\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap."]);
+  });
+
+  it("is refused for a bot outside the project, a conversation the person cannot open, a language that is no language, and nothing to say", async () => {
+    const { service, sent } = setup();
     await expect(service.task("p1", auth, { botId: "plain", text: "Go" })).rejects.toMatchObject({ status: 404 });
     await expect(service.task("p1", auth, { botId: "writer", text: "Go", threadId: "lead-main" })).rejects.toMatchObject({ status: 404 });
     await expect(setup({ visibleFor: () => ({ thread: () => false }) }).service.task("p1", auth, { botId: "writer", text: "Go" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", language: "中文" })).rejects.toMatchObject({ status: 400 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", language: 7 })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer", text: "  " })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer" })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toEqual([]);
   });
 });
 
@@ -213,11 +232,71 @@ describe("generating a node", () => {
     const take = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
     expect(await service.generate(project, person, poster)).toEqual({ job: expect.objectContaining({ id: "job-1" }) });
     await service.generate(project, person, take);
+    const numbering = [
+      "Reference image labels: Image 1. Use these labels to interpret image references in the prompt.",
+      "Reference audio labels: Audio 1. Use these labels to interpret audio references in the prompt.",
+    ].join("\n");
     expect(generation.started).toEqual([
-      { input: { kind: "image", nodeId: poster, prompt: "A poster", references: { images: ["refs/still.png"], audio: ["refs/song.mp3"] }, overrides: { aspect: "16:9", count: 2 }, name: "Poster" }, requester: person },
+      { input: { kind: "image", nodeId: poster, prompt: `${numbering}\n\nA poster`, references: { images: ["refs/still.png"], audio: ["refs/song.mp3"] }, overrides: { aspect: "16:9", count: 2 }, name: "Poster" }, requester: person },
       { input: { kind: "video", nodeId: take, prompt: "A bride alone at the altar", references: { images: [], audio: [] } }, requester: person },
     ]);
     expect(nodeOf(service, poster)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
+  });
+
+  it("starts a config node from its prompt and settings with its own references, groups opened, numbered as the person saw them", async () => {
+    const { service, project, generation } = setup();
+    const [still, refs, brief, config, clip] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", title: "Still", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "group", title: "Refs" },
+      { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } },
+      { type: "add_node", nodeType: "config", title: "生成配置", metadata: { prompt: "@Image 2 at dawn", generationMode: "image", settings: { model: "pixel-1", count: 2 } } },
+      { type: "add_node", nodeType: "config", metadata: { prompt: "Rain", generationMode: "video" } },
+    )).nodeIds as [string, string, string, string, string];
+    const [, take] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "image", groupId: refs, metadata: { file: file("refs/veil.png") } }, shot())).nodeIds as [string, string];
+    service.apply(project, person, opsOf(...[still, refs, brief, take].map((from) => ({ type: "connect_nodes", fromNodeId: from, toNodeId: config }))));
+    await service.generate(project, person, config);
+    await service.generate(project, person, take);
+    await service.generate(project, person, clip);
+    const numbering = "Reference image labels: Image 1, Image 2. Use these labels to interpret image references in the prompt.";
+    const images = ["refs/still.png", "refs/veil.png"];
+    expect(generation.started.map((one) => one.input)).toEqual([
+      { kind: "image", nodeId: config, prompt: `${numbering}\n\n@Image 2 at dawn\n\n【Text 1】\nThe swap.`, references: { images, audio: [] }, overrides: { model: "pixel-1", count: 2 }, name: "生成配置" },
+      { kind: "video", nodeId: take, prompt: `${numbering}\n\nA bride alone at the altar\n\n【Text 1】\nThe swap.`, references: { images, audio: [] } },
+      { kind: "video", nodeId: clip, prompt: "Rain", references: { images: [], audio: [] } },
+    ]);
+    expect(nodeOf(service, config)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
+    service.jobChanged({ ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/图片/a.png"), file("产出/图片/b.png")] });
+    const view = service.botView(project);
+    const made = view.nodes.filter((one) => one.metadata?.file?.path.startsWith("产出/"));
+    expect(made.map((one) => one.type)).toEqual(["image", "image"]);
+    for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: config, toNodeId: one.id, kind: "content" }));
+    expect(nodeOf(service, config)!.metadata).toMatchObject({ status: "success" });
+    await expect(service.generate(project, writer, clip)).rejects.toMatchObject({ code: "not_yours" });
+    await expect(service.generate(project, person, brief)).rejects.toMatchObject({ code: "invalid_op" });
+  });
+
+  it("numbers the references in the language the person's request names, a bot's in the server's, and refuses one that is no language", async () => {
+    addServerLinePacks({ zh: {
+      "server.projectCanvas.reference.image": "图片", "server.projectCanvas.reference.separator": "、",
+      "server.projectCanvas.reference.imageLine": "参考图片编号：{labels}。请按这些编号理解提示词中的图片引用。",
+    } });
+    let serverLanguage: string | undefined;
+    const { service, project, generation } = setup({ language: () => serverLanguage });
+    const [still, poster] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "image", metadata: { prompt: "@图片 1 at dawn" } },
+    )).nodeIds as [string, string];
+    const mine = service.apply(project, writer, opsOf(shot("@图片 1 in the rain"))).nodeIds[0]!;
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: poster }, { type: "connect_nodes", fromNodeId: still, toNodeId: mine }));
+    await expect(service.generate(project, person, poster, "图片")).rejects.toMatchObject({ status: 400 });
+    expect(nodeOf(service, poster)!.metadata).toEqual({ prompt: "@图片 1 at dawn" });
+    await service.generate(project, person, poster, "zh-Hans");
+    serverLanguage = "zh";
+    await service.generate(project, writer, mine);
+    expect(generation.started.map((one) => one.input.prompt)).toEqual([
+      "参考图片编号：图片 1。请按这些编号理解提示词中的图片引用。\n\n@图片 1 at dawn",
+      "参考图片编号：图片 1。请按这些编号理解提示词中的图片引用。\n\n@图片 1 in the rain",
+    ]);
   });
 
   it("answers generation's refusal as it is, and leaves the node as it was, its last error too", async () => {

@@ -25,7 +25,7 @@ import type { Message, Store } from "../store.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
 import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments } from "./document-store.ts";
-import { generationInput } from "./generation.ts";
+import { generationInput, generationKindOf } from "./generation.ts";
 import { handOver } from "./handover.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame } from "./ops.ts";
 import type { ProjectPathError } from "./paths.ts";
@@ -92,6 +92,8 @@ export interface ProjectCanvasServiceDeps {
   queuedThreads(): ReadonlySet<string>;
   /** Keeps an image as the app's own attachment, which a message may carry. */
   saveImage(bytes: Buffer, mime: string): { path: string };
+  /** The language the server writes its own lines in: references are named in it when a request names no language. */
+  language(): string | undefined;
   newId(): string;
   log(line: string): void;
 }
@@ -99,6 +101,16 @@ export interface ProjectCanvasServiceDeps {
 const TASK_MAX_CHARS = 20_000;
 const JOB_KEYS = ["status", "jobId", "errorDetails", "errorKey", "errorParams"] as const;
 const NOT_A_PROJECT_BOT = "Only the bots of a project have its canvas, and you are not one of a project's bots now.";
+
+const LANGUAGE_TAG = /^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,3}$/;
+
+/** The language a person's request names its references in, or none when it names none. */
+function requestLanguage(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  const tag = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!LANGUAGE_TAG.test(tag)) throw new CanvasRefusal(400, { error: "language must be a language tag such as zh or pt-br" });
+  return tag;
+}
 
 const NONE: CanvasChangeSet = { nodes: [], connections: [] };
 const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.length && !set.viewport && !set.backgroundMode;
@@ -284,15 +296,16 @@ export class ProjectCanvasService {
     const { botId, text } = request;
     const asked = request.threadId;
     if (typeof botId !== "string" || typeof text !== "string" || text.length > TASK_MAX_CHARS || (asked !== undefined && typeof asked !== "string")) {
-      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId? }, its text at most ${TASK_MAX_CHARS} characters` });
+      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, language? }, its text at most ${TASK_MAX_CHARS} characters` });
     }
+    const language = requestLanguage(request.language) ?? this.deps.language();
     if (!project.botIds.includes(botId)) throw refusal(404, "serverError.projectCanvas.notMember");
     const threadId = asked ?? this.deps.mainThread(botId) ?? this.deps.store.bot(botId)?.threadId;
     if (!threadId || !this.deps.store.taskByThread(botId, threadId) || !this.deps.visibleFor(auth).thread(threadId)) {
       throw new CanvasRefusal(404, { error: "That is not a conversation of this bot you can open." });
     }
-    const references = await taskReferences(this.deps.documents.read(project.id), botId, { folder: project.folder, saveImage: this.deps.saveImage });
-    const message = taskMessage(text, references);
+    const references = await taskReferences(this.deps.documents.read(project.id), botId, { folder: project.folder, saveImage: this.deps.saveImage, language });
+    const message = taskMessage(text, references, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = await this.deps.send(auth, { botId, threadId, text: message });
     return "queued" in receipt
@@ -314,15 +327,18 @@ export class ProjectCanvasService {
     });
   }
 
-  /** Starts the project's generation for a shot, image or video node, which shows `loading` until its job ends. A bot
-   * starts only its own nodes. A refusal leaves the node as it was. */
-  async generate(project: TeamProjectWire, requester: GenerationRequester, nodeId: unknown): Promise<{ job: GenerationJob } | Refused> {
+  /** Starts the project's generation for a shot, image, video or config node, which shows `loading` until its job ends.
+   * A bot starts only its own nodes. A refusal leaves the node as it was. `language` is the one a person's request names
+   * its references in; a bot's request names none. */
+  async generate(project: TeamProjectWire, requester: GenerationRequester, nodeId: unknown, language?: unknown): Promise<{ job: GenerationJob } | Refused> {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     if (typeof nodeId !== "string") throw new CanvasOpRefusal("invalid_op", "nodeId is required");
+    const named = requestLanguage(language) ?? this.deps.language();
     const document = this.deps.documents.read(project.id);
     const node = document.nodes.find((one) => one.id === nodeId);
     if (!node) throw coded(404, "not_found", "serverError.projectCanvas.nodeMissing");
-    if (node.type !== "shot" && node.type !== "image" && node.type !== "video") throw new CanvasOpRefusal("invalid_op", "only shot, image and video nodes are generated");
+    const kind = generationKindOf(node);
+    if (!kind) throw new CanvasOpRefusal("invalid_op", "only shot, image, video and config nodes are generated");
     if (requester.kind === "bot" && !madeBy(node, requester.botId)) throw new CanvasOpRefusal("not_yours", `${nodeId} was not put there by you; ask the person to generate it`);
     if (node.metadata?.status === "loading") throw coded(409, "generating", "serverError.projectCanvas.alreadyGenerating");
     const prompt = node.metadata?.prompt?.trim();
@@ -333,7 +349,7 @@ export class ProjectCanvasService {
     this.patchNode(project, node.id, (metadata) => ({ ...without(metadata, ...JOB_KEYS), status: "loading" }));
     let started: { job: GenerationJob } | Refused;
     try {
-      started = await this.deps.generation.start(project.id, generationInput(document, node, prompt), { requester });
+      started = await this.deps.generation.start(project.id, generationInput(document, node, kind, prompt, named), { requester });
     } catch (error) {
       restore();
       throw error;

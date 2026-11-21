@@ -35,6 +35,8 @@ export interface ProjectCanvasHostDeps {
   generation: ProjectGenerationApi;
   /** Hands a card's decision to the turn parked on it; false when none took it. */
   answerCard(threadId: string, messageId: string, text: string): boolean;
+  /** The language the server writes its own lines in. */
+  language(): string | undefined;
   dataDir?: string;
 }
 
@@ -66,6 +68,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     openCards: openCardRows,
     queuedThreads,
     saveImage: (bytes, mime) => saveImage(bytes, mime),
+    language: deps.language,
     newId: randomUUID,
     log: (line) => console.error(line),
   });

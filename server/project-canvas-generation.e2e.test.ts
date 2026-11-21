@@ -1,12 +1,13 @@
 // A project's canvas generating through the project's generation, on a real server with the scripted fake engine and
 // generation's test MCP server. Nothing here reaches the user's data or port 8799.
+import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { CanvasNode, CanvasSnapshot } from "../shared/project-canvas.ts";
+import type { CanvasGenerateRequest, CanvasNode, CanvasSnapshot } from "../shared/project-canvas.ts";
 import type { GenerationJob } from "../shared/project-generation.ts";
 import { formatServerText, type ServerTextParams } from "../shared/server-text.ts";
 import type { TeamProjectWire } from "../shared/team-projects.ts";
@@ -51,6 +52,7 @@ const script = [
   { key: "fifth", match: ["ONE-MORE"], reply: "ASKED FOR THE FIFTH", steps: [generate(5)] },
   { key: "declined", match: ["MagicBot generation decision", "the person declined"], reply: "HEARD DECLINE" },
   { key: "sixth", match: ["A-SIXTH-IN-CHINESE"], reply: "ASKED FOR THE SIXTH", steps: [{ tool: "canvas_apply_ops", arguments: { ops: [take(6)] } }, generate(6)] },
+  { key: "config", match: ["GENERATE-THE-CONFIG"], reply: "TRIED THE CONFIG", steps: [{ tool: "canvas_generate", arguments: { node_id: "config" }, expectError: true }] },
 ];
 
 describe("generating on a project's canvas", () => {
@@ -79,7 +81,7 @@ describe("generating on a project's canvas", () => {
     const added = await api("POST", `${canvasPath()}/ops`, { baseRevision: (await canvas()).revision, ops });
     expect(added.status, JSON.stringify(added.body)).toBe(200);
   };
-  const generateNode = (nodeId: string) => api("POST", `${canvasPath()}/generate`, { nodeId });
+  const generateNode = (nodeId: string, language?: string) => api("POST", `${canvasPath()}/generate`, { nodeId, ...(language ? { language } : {}) } satisfies CanvasGenerateRequest);
   const settledNode = async (id: string) => {
     await expect.poll(async () => (await node(id)).metadata?.status, { timeout: 60_000 }).toMatch(/^(success|error|idle)$/);
     return node(id);
@@ -344,4 +346,56 @@ describe("generating on a project's canvas", () => {
       pressed: { answered: pressed, shown: line }, card: { asked: card.card, answered, shownHeld: inChinese(answered.heldCode, answered.heldParams) },
     });
   }, hostTimeout(90_000));
+
+  it("generates a config node from its prompt, settings and references, numbered in the person's words, each result to its right", async () => {
+    const [first, second] = await results("poster");
+    const sha = (one: CanvasNode) => createHash("sha256").update(readFileSync(join(project.folder, ...one.metadata!.file!.path.split("/")))).digest("hex");
+    await applyOps(
+      { type: "add_node", id: "refs", nodeType: "group", title: "参考组" },
+      { type: "add_node", id: "brief", nodeType: "text", title: "剧情", metadata: { content: "雨夜，新娘在教堂台阶上回头。" } },
+      { type: "add_node", id: "config", nodeType: "config", title: "生成配置", metadata: { prompt: "@图片 2 的新娘站在 @图片 1 的灯塔下", generationMode: "image", settings: { aspect: "16:9", count: 2 } } },
+      { type: "add_node", id: "config-fail", nodeType: "config", title: "失败配置", metadata: { prompt: "暴雨中的灯塔 [fail:模型繁忙]", generationMode: "video" } },
+      { type: "update_node", id: second!.id, patch: { groupId: "refs" } },
+      ...[first!.id, "refs", "brief"].map((from) => ({ type: "connect_nodes", fromNodeId: from, toNodeId: "config" })),
+      { type: "connect_nodes", fromNodeId: first!.id, toNodeId: "config-fail" },
+    );
+    const started = await generateNode("config", "zh");
+    expect(started).toEqual({ status: 202, body: { jobId: expect.any(String) } });
+    const loading = await node("config");
+    expect(loading.metadata).toMatchObject({ status: "loading", jobId: started.body.jobId });
+    const done = await settledNode("config");
+    expect(done.metadata).toMatchObject({ status: "success", jobId: started.body.jobId });
+    const made = await results("config");
+    expect(made.map((one) => [one.type, one.metadata?.file?.path, one.createdBy])).toEqual([
+      ["image", expect.stringMatching(/^产出\/图片\/生成配置-.+-1\.png$/), { kind: "person" }], ["image", expect.stringMatching(/^产出\/图片\/生成配置-.+-2\.png$/), { kind: "person" }],
+    ]);
+    expect(made.map((one) => one.position.x)).toEqual([done.position.x + done.width + 80, done.position.x + done.width + 80]);
+    for (const one of made) expect(onDisk(one.metadata!.file!.path), one.metadata!.file!.path).toBe(true);
+    const job = (await jobs()).find((one) => one.id === started.body.jobId)!;
+    expect(job).toMatchObject({ nodeId: "config", kind: "image", requester: { kind: "person" }, settings: { model: "pixel-1", aspect: "16:9", count: 2 },
+      references: { images: [first!.metadata!.file!.path, second!.metadata!.file!.path], audio: [] } });
+    const call = fake.calls.find((one) => String(one.arguments.prompt).includes("@图片 2 的新娘"))!;
+    expect(call.arguments.prompt).toBe("参考图片编号：图片 1、图片 2。请按这些编号理解提示词中的图片引用。\n\n@图片 2 的新娘站在 @图片 1 的灯塔下\n\n【文本 1】\n雨夜，新娘在教堂台阶上回头。");
+    expect((call.arguments.referenceImages as Array<{ sha256: string }>).map((one) => one.sha256)).toEqual([sha(first!), sha(second!)]);
+
+    expect((await generateNode("config-fail")).status).toBe(202);
+    const failed = await settledNode("config-fail");
+    expect(failed.metadata).toMatchObject({ status: "error", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "模型繁忙" } });
+    expect(inChinese(failed.metadata!.errorKey, failed.metadata!.errorParams)).toBe("gen 没能生成：模型繁忙");
+    expect(await results("config-fail")).toEqual([]);
+    expect((await generateNode("config-fail", "en")).status).toBe(202);
+    await expect.poll(async () => (await node("config-fail")).metadata?.status, { timeout: 60_000 }).toBe("error");
+    const failing = fake.calls.filter((one) => String(one.arguments.prompt).includes("暴雨中的灯塔")).map((one) => one.arguments.prompt);
+    expect(failing).toEqual([
+      "参考图片编号：图片 1。请按这些编号理解提示词中的图片引用。\n\n暴雨中的灯塔 [fail:模型繁忙]",
+      "Reference image labels: Image 1. Use these labels to interpret image references in the prompt.\n\n暴雨中的灯塔 [fail:模型繁忙]",
+    ]);
+
+    await say(writer, "GENERATE-THE-CONFIG");
+    await said(writer.threadId, "TRIED THE CONFIG");
+    expect(answers(turnOf("config"))).toEqual([{ isError: true, text: "config was not put there by you; ask the person to generate it" }]);
+    expect((await jobs()).filter((one) => one.nodeId === "config").map((one) => one.requester)).toEqual([{ kind: "person" }]);
+    await idle();
+    keep("07-config-generates.json", { started: started.body, loading, done, made, job, mcpCall: call, failed, failingPrompts: failing, botTried: answers(turnOf("config")) });
+  }, hostTimeout(120_000));
 });

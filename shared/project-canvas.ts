@@ -250,12 +250,16 @@ export interface ProjectCanvasEvent {
 }
 
 /** `POST /api/team-projects/:id/canvas/tasks`: the person's task for one bot of the project. What is connected into
- * the bot's node goes with it: a text node's text, a shot's fields, media and other files as attachments. Without
- * `threadId` it goes to the conversation the bot has open. */
+ * the bot's node goes with it, each reference named by the label `connectedReferences` gives it and its title: a text
+ * node's text, a shot's fields, media and other files as attachments. Without `threadId` it goes to the conversation
+ * the bot has open. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;
   threadId?: string;
+  /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
+   * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
+  language?: string;
 }
 
 export interface CanvasTaskResponse {
@@ -276,13 +280,21 @@ export interface CanvasUploadResponse {
   file: CanvasFileRef;
 }
 
-/** `POST /api/team-projects/:id/canvas/generate {nodeId}`: the project's generation starts for a shot, image or video
- * node, from its prompt, its `settings` and the files of the image and audio nodes connected into it, so a model never
- * rewrites the request. Answered 202; a refusal is answered with generation's own `GenerationFailure`, or, for a node
- * that is gone, has no prompt or is generating already, with the canvas's `ServerErrorBody`. The node shows `loading`
- * while the job runs. On success each file the job made becomes a node to its right, connected from it, below the ones
- * made before; on failure `errorDetails`, `errorKey` and `errorParams` say why. A bot past its ceiling is asked about on
- * a card instead (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the person answers. */
+/** `POST /api/team-projects/:id/canvas/generate`: the project's generation starts for a shot, image, video or config
+ * node, from its prompt, its `settings` and the files of the image and audio among the references `generationInputs`
+ * gives it, so a model never rewrites the request. The prompt sent begins with which label names which of those files,
+ * in the words of `language`, and ends with each text reference under its label. Answered 202; a refusal is answered
+ * with generation's own `GenerationFailure`, or, for a node that is gone, has no prompt or is generating already, with
+ * the canvas's `ServerErrorBody`. The node shows `loading` while the job runs. On success each file the job made becomes
+ * a node to its right, connected from it, below the ones made before; on failure `errorDetails`, `errorKey` and
+ * `errorParams` say why. A bot past its ceiling is asked about on a card instead (`OptionCardData.canvasGeneration`),
+ * which its node shows in `waiting` until the person answers. */
+export interface CanvasGenerateRequest {
+  nodeId: string;
+  /** As in `CanvasTaskRequest`. */
+  language?: string;
+}
+
 export interface CanvasGenerateResponse {
   jobId: string;
 }
