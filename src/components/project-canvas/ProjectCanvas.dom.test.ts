@@ -228,6 +228,58 @@ describe("the project canvas", () => {
     expect(panel()).not.toBeNull();
   });
 
+  it("takes the pointer on a node only once it drags, so a double-click on the node reaches it", async () => {
+    await mount();
+    const capture = vi.fn();
+    stage().setPointerCapture = capture;
+    const before = shown("logline")!.position;
+    await act(async () => {
+      pointer(nodeElement("logline")!, "pointerdown", { clientX: 100, clientY: 100 });
+      pointer(stage(), "pointerup", { clientX: 100, clientY: 100 });
+    });
+    expect(capture).not.toHaveBeenCalled();
+    await act(async () => {
+      pointer(nodeElement("logline")!, "pointerdown", { clientX: 100, clientY: 100 });
+      pointer(stage(), "pointermove", { clientX: 180, clientY: 100 });
+      pointer(stage(), "pointerup", { clientX: 180, clientY: 100 });
+    });
+    await settle();
+    expect(capture).toHaveBeenCalledOnce();
+    expect(shown("logline")!.position.x).toBeGreaterThan(before.x);
+  });
+
+  it("hides an open panel while the canvas pans and brings it back as it was", async () => {
+    await mount();
+    await clickNode(botNodeId("mira"));
+    await act(async () => buttonByText(panel()!, "Conversation")!.click());
+    await settle();
+    expect(buttonByText(panel()!, "Open the full chat")).toBeDefined();
+    await act(async () => {
+      pointer(stage(), "pointerdown", { clientX: 3000, clientY: 2500 });
+      pointer(stage(), "pointermove", { clientX: 3100, clientY: 2550 });
+    });
+    expect(panel()!.parentElement!.classList.contains("invisible")).toBe(true);
+    await act(async () => pointer(stage(), "pointerup", { clientX: 3100, clientY: 2550 }));
+    expect(panel()!.parentElement!.classList.contains("invisible")).toBe(false);
+    expect(buttonByText(panel()!, "Open the full chat")).toBeDefined();
+  });
+
+  it("leaves a left press on the canvas to move the focus, so the text being written in a node is saved", async () => {
+    await mount();
+    const press = (button: number) => {
+      const event = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button, pointerId: 2 });
+      stage().dispatchEvent(event);
+      pointer(stage(), "pointerup", { button, pointerId: 2 });
+      return event.defaultPrevented;
+    };
+    const kept: Record<string, boolean> = {};
+    await act(async () => {
+      kept.left = press(0);
+      kept.middle = press(1);
+    });
+    expect(kept).toEqual({ left: false, middle: true });
+  });
+
   it("renames a content node from its title and leaves a bot's name alone", async () => {
     await mount();
     await clickNode("city-night");

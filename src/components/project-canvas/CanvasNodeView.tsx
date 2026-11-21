@@ -33,9 +33,11 @@ export interface CanvasNodeViewProps {
   selected: boolean;
   related: boolean;
   panelOpen: boolean;
+  /** Hidden while the canvas is panned or something on it is dragged, and kept as it was. */
+  panelHidden: boolean;
 }
 
-export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, related, panelOpen }: CanvasNodeViewProps) {
+export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, related, panelOpen, panelHidden }: CanvasNodeViewProps) {
   const ui = useCanvasUi();
   const stage = useContext(StageHandlersContext)!;
   const [hovered, setHovered] = useState(false);
@@ -129,7 +131,7 @@ export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, rel
         : null}
 
       {panelOpen ? (
-        <div className="pointer-events-none absolute inset-x-0 top-full z-[70] flex justify-center pt-4">
+        <div className={cn("pointer-events-none absolute inset-x-0 top-full z-[70] flex justify-center pt-4", panelHidden && "invisible")}>
           <div
             data-node-panel=""
             data-canvas-no-zoom=""

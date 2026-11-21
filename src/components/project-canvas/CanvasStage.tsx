@@ -149,7 +149,6 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
       const next = clickSelection(selection, node.id, event.shiftKey || event.metaKey || event.ctrlKey);
       ui.select(next);
       ui.selectConnection(null);
-      capture(event.pointerId);
       begin({ kind: "drag", pointerId: event.pointerId, start: local(event), ids: readOnly ? new Set() : dragNodeIds(next, snapshot.nodes), nodeId: node.id, moved: false, dx: 0, dy: 0 });
     },
     onHandlePointerDown(event, node, handle) {
@@ -173,7 +172,9 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
     const onSomething = Boolean((event.target as Element).closest("[data-canvas-node], [data-node-panel], button, input, textarea"));
     if (event.button === 2) return;
     if (event.button === 1 || panning || (tool === "pan" && !onSomething)) {
-      event.preventDefault();
+      // A middle press starts the browser's autoscroll on Windows and Linux; a left one must still move the focus, so
+      // the text being written in a node is saved.
+      if (event.button === 1) event.preventDefault();
       capture(event.pointerId);
       begin({ kind: "pan", pointerId: event.pointerId, start: local(event), origin: viewportRef.current });
       return;
@@ -206,6 +207,8 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
       const dx = point.x - current.start.x;
       const dy = point.y - current.start.y;
       const moved = current.moved || Math.hypot(dx, dy) > DRAG_THRESHOLD;
+      // Chrome sends click and dblclick to the element holding the pointer, so a node's press takes it only once it drags.
+      if (moved && !current.moved) capture(event.pointerId);
       update(current.ids.size ? { ...current, moved, dx: dx / viewportRef.current.k, dy: dy / viewportRef.current.k } : { ...current, moved });
       return;
     }
@@ -340,7 +343,7 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
             }}
           />
           {shownNodes.map((node) => (
-            <CanvasNodeView key={node.id} node={node} selected={selection.has(node.id)} related={related.has(node.id)} panelOpen={ui.panelNodeId === node.id && !interaction} />
+            <CanvasNodeView key={node.id} node={node} selected={selection.has(node.id)} related={related.has(node.id)} panelOpen={ui.panelNodeId === node.id} panelHidden={Boolean(interaction)} />
           ))}
           {ghosts.map(({ sourceId, frame }) => (
             <div
