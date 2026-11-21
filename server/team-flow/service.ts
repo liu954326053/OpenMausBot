@@ -20,6 +20,8 @@ export interface TeamFlowsDeps {
   /** The department whose memory key is `key` now, null when none is. Throws when the departments cannot be read. */
   teamOfKey(key: string): string | null;
   log(line: string): void;
+  /** Runs after a flow may have changed, once what it answers shows the change. */
+  changed(): void;
 }
 
 export type LineResult = { ok: true; flows: TeamFlowsWire } | { ok: false; status: number; error: UserError };
@@ -78,6 +80,7 @@ export class TeamFlows implements InstalledFlows {
   /** Reads `team-flows.json` again, as after it changed on disk. */
   reload(): void {
     if (this.adopt(readFlowFile(this.deps.file))) this.tidy();
+    this.deps.changed();
   }
 
   /** True when the file became readable again. */
@@ -183,6 +186,7 @@ export class TeamFlows implements InstalledFlows {
       return refuse(500, "serverError.teamFlow.saveFailed", { detail: error instanceof Error ? error.message : String(error) });
     }
     this.keys.set(team.section, key);
+    this.deps.changed();
     return { ok: true, flows: this.wire() };
   }
 
@@ -302,6 +306,7 @@ export class TeamFlows implements InstalledFlows {
     this.shape = shape;
     this.forget();
     this.tidy();
+    this.deps.changed();
   }
 
   private forget(): void {

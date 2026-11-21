@@ -240,7 +240,8 @@ export interface CanvasSnapshot extends CanvasDocument {
 }
 
 /** On `/api/events`, to the owner and admins, when a project's canvas changes. `document`: the stored canvas has a new
- * revision. `bots`: what the snapshot derives changed (a status, an output, a member). Read the snapshot again. */
+ * revision. `bots`: what the snapshot derives changed (a status, an output, a member, a line of the team's flow). Read
+ * the snapshot again. */
 export interface ProjectCanvasEvent {
   kind: "project-canvas";
   projectId: string;

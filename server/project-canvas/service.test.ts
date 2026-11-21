@@ -122,6 +122,30 @@ describe("changing a project's canvas", () => {
   });
 });
 
+describe("the flow's lines between a project's bots", () => {
+  it("names the projects whose canvas draws other lines than when last asked, a project made since included", () => {
+    const superiors: Record<string, string> = {};
+    const listed: TeamProjectWire[] = [];
+    const { service, project } = setup({ projects: { list: () => listed }, parentOf: (projectId, botId) => (projectId === "p1" ? superiors[botId] : undefined) });
+    listed.push({ ...project, botIds: ["lead", "writer", "board"] });
+    expect(service.linesMoved()).toEqual(["p1"]);
+    expect(service.linesMoved()).toEqual([]);
+
+    superiors.board = "writer";
+    expect(service.linesMoved()).toEqual(["p1"]);
+    expect(service.linesMoved()).toEqual([]);
+    superiors.board = "lead";
+    expect(service.linesMoved()).toEqual(["p1"]);
+    delete superiors.board;
+    superiors.writer = "someone-elsewhere";
+    expect(service.linesMoved()).toEqual([]);
+
+    listed.push({ ...project, id: "p2", botIds: ["lead-2", "writer-2"], leadBotId: "lead-2" });
+    superiors.board = "writer";
+    expect(service.linesMoved()).toEqual(["p1", "p2"]);
+  });
+});
+
 describe("a file a project's bot attaches", () => {
   const attached = (patch: Partial<Message> = {}): Message => ({
     id: "m1", at: 1, role: "bot", kind: "text", text: "",

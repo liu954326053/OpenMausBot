@@ -31,7 +31,7 @@ import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type Canvas
 import type { ProjectPathError } from "./paths.ts";
 import { placeAfter, placeForActor, type BotTree } from "./placement.ts";
 import { taskMessage, taskReferences } from "./references.ts";
-import { botFrames, buildSnapshot } from "./snapshot.ts";
+import { botFrames, buildSnapshot, dispatchConnections } from "./snapshot.ts";
 
 /** A request the canvas does not carry out, and what it is answered with. */
 export class CanvasRefusal extends Error {
@@ -136,6 +136,7 @@ export class ProjectCanvasService {
   readonly facts: BotFactsReader;
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly deps: ProjectCanvasServiceDeps;
+  private lastLines = new Map<string, string>();
 
   constructor(deps: ProjectCanvasServiceDeps) {
     this.deps = deps;
@@ -163,6 +164,14 @@ export class ProjectCanvasService {
 
   revisionOf(projectId: string): number | null {
     return this.deps.documents.revisionOf(projectId);
+  }
+
+  /** The projects whose canvas draws other lines between its bots than when this was last called, each project on the
+   * first call. Throws while the list of projects cannot be read. */
+  linesMoved(): string[] {
+    const before = this.lastLines;
+    this.lastLines = new Map(this.deps.projects.list().map((project) => [project.id, dispatchConnections(this.tree(project)).map((one) => one.id).join(" ")]));
+    return [...this.lastLines].filter(([projectId, lines]) => before.get(projectId) !== lines).map(([projectId]) => projectId);
   }
 
   private tree(project: TeamProjectWire): BotTree {

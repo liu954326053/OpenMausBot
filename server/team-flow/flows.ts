@@ -15,10 +15,24 @@ export interface InstalledFlows {
 
 const NONE: InstalledFlows = { parents: () => ({}), projectParents: () => ({}), lineOf: () => null };
 let installed = NONE;
+const listeners = new Set<() => void>();
 
 /** Until this is called no bot is in a flow, so every bot reaches the others as it would without one. */
 export function installTeamFlows(flows: InstalledFlows): void {
   installed = flows;
+}
+
+/** `listener` runs after a flow may have changed: a line drawn or taken away, `team-flows.json` read again, or a member,
+ * a Chief or a project's copy changed. Returns the unsubscribe. */
+export function onTeamFlowsChange(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function teamFlowsChanged(): void {
+  for (const listener of listeners) listener();
 }
 
 /** Every member of the department's team but its Chief → its superior; a project's department answers its project's flow. */

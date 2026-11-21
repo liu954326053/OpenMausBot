@@ -163,6 +163,29 @@ describe("a team's flow", () => {
     });
     expect(stored(app.file).teams).toEqual({});
   });
+
+  it("tells once a flow shows a line drawn or taken away, an archived member's subordinate moved up, a new Chief or the file read again", async () => {
+    const app = await installation();
+    const id = app.team("Studio", "Chief", "Story", "Board", "Video");
+    app.flows.setLine({ botId: id("Video"), superiorId: id("Board") });
+    const seen: Array<string | undefined> = [];
+    app.changed.mockReset();
+    app.changed.mockImplementation(() => seen.push(app.flows.parents("Studio")[id("Video")]));
+
+    app.flows.setLine({ botId: id("Video"), superiorId: id("Story") });
+    app.flows.setLine({ botId: id("Video"), superiorId: null });
+    app.flows.setLine({ botId: id("Video"), superiorId: id("Board") });
+    expect(app.flows.setLine({ botId: id("Board"), superiorId: id("Video") })).toMatchObject({ ok: false });
+    expect(app.flows.setLine({ botId: id("Chief"), superiorId: id("Story") })).toMatchObject({ ok: false });
+    app.store.patchBot(id("Board"), { hidden: true });
+    app.store.patchBot(id("Story"), { title: "Story editor" });
+    app.store.patchBot(id("Chief"), { chiefOfStaff: false });
+    app.store.patchBot(id("Story"), { chiefOfStaff: true });
+    writeFileSync(app.file, JSON.stringify({ version: 1, teams: { [app.sections.sectionMemoryKey("Studio")]: { [id("Video")]: id("Chief") } } }));
+    app.flows.reload();
+
+    expect(seen).toEqual([id("Story"), id("Chief"), id("Board"), id("Chief"), undefined, id("Story"), id("Chief")]);
+  });
 });
 
 describe("a flow file that cannot be read", () => {

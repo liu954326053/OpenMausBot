@@ -13,6 +13,7 @@ import { createProjectCanvasRoutes } from "../routes/project-canvas.ts";
 import type { RouteHandler } from "../routes/table.ts";
 import { onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
 import type { Store } from "../store.ts";
+import { onTeamFlowsChange, projectParents } from "../team-flow/flows.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import { setCanvasGenerationCardAnswer } from "./card-route.ts";
@@ -29,7 +30,7 @@ export interface ProjectCanvasHostDeps {
   threadBusy(botId: string, threadId: string): boolean;
   mainThread(botId: string): string | undefined;
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
-  /** A bot's superior in its project's flow; without it the project's lead is every other bot's superior. */
+  /** A bot's superior in its project's flow; by default the one its team's flow gives it. */
   parentOf?(projectId: string, botId: string): string | undefined;
   generation: ProjectGenerationApi;
   /** Hands a card's decision to the turn parked on it; false when none took it. */
@@ -60,7 +61,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     threadBusy: deps.threadBusy,
     mainThread: deps.mainThread,
     send: deps.send,
-    parentOf: deps.parentOf ?? (() => undefined),
+    parentOf: deps.parentOf ?? ((projectId, botId) => projectParents(projectId)[botId]),
     generation: deps.generation,
     openCards: openCardRows,
     queuedThreads,
@@ -116,6 +117,14 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     const now = queuedThreads();
     for (const threadId of new Set([...queued, ...now])) if (queued.has(threadId) !== now.has(threadId)) botChanged(deps.store.botByThread(threadId)?.id);
     queued = now;
+  });
+
+  onTeamFlowsChange(() => {
+    try {
+      for (const projectId of service.linesMoved()) botsChanged(projectId);
+    } catch (error) {
+      console.error(`[project-canvas] a change to a team's flow could not be drawn on the canvases (${error instanceof Error ? error.message : "unknown"})`);
+    }
   });
 
   deps.generation.onJobChange((job) => service.jobChanged(job));
