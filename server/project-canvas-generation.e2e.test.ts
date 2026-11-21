@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { botNodeId, type CanvasGenerateRequest, type CanvasNode, type CanvasSnapshot, type CanvasTaskRequest } from "../shared/project-canvas.ts";
+import { botNodeId, type CanvasGenerateRequest, type CanvasNode, type CanvasSnapshot, type CanvasTaskRequest, replyTitle } from "../shared/project-canvas.ts";
 import type { GenerationJob } from "../shared/project-generation.ts";
 import { formatServerText, type ServerTextParams } from "../shared/server-text.ts";
 import type { TeamProjectWire } from "../shared/team-projects.ts";
@@ -54,6 +54,7 @@ const script = [
   { key: "sixth", match: ["A-SIXTH-IN-CHINESE"], reply: "ASKED FOR THE SIXTH", steps: [{ tool: "canvas_apply_ops", arguments: { ops: [take(6)] } }, generate(6)] },
   { key: "config", match: ["GENERATE-THE-CONFIG"], reply: "TRIED THE CONFIG", steps: [{ tool: "canvas_generate", arguments: { node_id: "config" }, expectError: true }] },
   { key: "logline", match: ["WRITE-THE-LOGLINE"], reply: "WROTE THE LOGLINE" },
+  { key: "tagline", match: ["WRITE-THE-TAGLINE"], reply: "WROTE THE TAGLINE" },
 ];
 
 describe("generating on a project's canvas", () => {
@@ -423,23 +424,42 @@ describe("generating on a project's canvas", () => {
     keep("08-image-sends-itself-first.json", { started: started.body, done, mcpCall: call, job, made });
   }, hostTimeout(120_000));
 
-  it("numbers a task written in a text node as that node's panel does, not as the bot's node would", async () => {
+  it("numbers a task written in a text node as that node's panel does, its own text first as the text to revise; the reply goes beside it, or into it when it is empty", async () => {
     const [night] = (await canvas()).nodes.filter((one) => one.title === "夜景");
     await applyOps(
-      { type: "add_node", id: "logline", nodeType: "text", title: "梗概", metadata: { content: "待写" } },
+      { type: "add_node", id: "logline", nodeType: "text", title: "梗概", metadata: { content: "雨夜，一个替身新娘。" } },
       { type: "connect_nodes", fromNodeId: night!.id, toNodeId: "logline" },
       { type: "connect_nodes", fromNodeId: "brief", toNodeId: "logline" },
       { type: "connect_nodes", fromNodeId: "poster", toNodeId: botNodeId(writer.id) },
+      { type: "add_node", id: "tagline", nodeType: "text", title: "宣传语" },
+      { type: "connect_nodes", fromNodeId: night!.id, toNodeId: "tagline" },
     );
-    const sent = await task({ botId: writer.id, text: "WRITE-THE-LOGLINE：按 @图片 1 和 @文本 1 写一句梗概", targetNodeId: "logline", language: "zh" });
+    const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const image = `图片 1 "夜景":\\n\\n<attached-image path="[^"]+" name="${escaped(night!.metadata!.file!.name)}"/>\\n\\n> 把 @图片 1 改成夜景，灯塔照着 @图片 2`;
+    const request = "WRITE-THE-LOGLINE：把 @文本 1 按 @图片 1 和 @文本 2 改成一句梗概";
+    const sent = await task({ botId: writer.id, text: request, targetNodeId: "logline", language: "zh" });
     expect(sent.status, JSON.stringify(sent.body)).toBe(202);
     expect(sent.body).toMatchObject({ threadId: writer.threadId, references: 2 });
     await said(writer.threadId, "WROTE THE LOGLINE");
     await idle();
     const asked = (await messages(writer.threadId)).find((line) => line.id === sent.body.messageId)!;
-    const name = night!.metadata!.file!.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    expect(asked.text).toMatch(new RegExp(`^WRITE-THE-LOGLINE：按 @图片 1 和 @文本 1 写一句梗概\\n\\n项目画布上文本节点 "梗概" 引用的内容：\\n\\n图片 1 "夜景":\\n\\n<attached-image path="[^"]+" name="${name}"/>\\n\\n> 把 @图片 1 改成夜景，灯塔照着 @图片 2\\n\\n文本 1 "剧情":\\n\\n> 雨夜，新娘在教堂台阶上回头。$`));
+    expect(asked.text).toMatch(new RegExp(`^请根据要求修改以下文本。\\n\\n原文：\\n文本 1 "梗概":\\n\\n> 雨夜，一个替身新娘。\\n\\n修改要求：\\n${escaped(request)}\\n\\n项目画布上文本节点 "梗概" 引用的内容：\\n\\n${image}\\n\\n文本 2 "剧情":\\n\\n> 雨夜，新娘在教堂台阶上回头。$`));
     expect(JSON.stringify(turnOf("logline").prompt)).toContain("> 雨夜，新娘在教堂台阶上回头。");
-    keep("09-text-node-task.json", { response: sent.body, message: asked, prompt: turnOf("logline").prompt });
-  }, hostTimeout(60_000));
+    const logline = await node("logline");
+    expect(logline.metadata?.content).toBe("雨夜，一个替身新娘。");
+    await expect.poll(async () => (await results("logline")).length, { timeout: 30_000, message: "the reply beside the logline" }).toBe(1);
+    const [reply] = await results("logline");
+    expect(reply).toMatchObject({ type: "text", title: replyTitle(request), createdBy: { kind: "bot", botId: writer.id }, metadata: { content: "WROTE THE LOGLINE" } });
+    expect(reply!.position.x).toBeGreaterThanOrEqual(logline.position.x + logline.width);
+
+    const filling = await task({ botId: writer.id, text: "WRITE-THE-TAGLINE：按 @图片 1 写一句宣传语", targetNodeId: "tagline", language: "zh" });
+    expect(filling.body).toMatchObject({ threadId: writer.threadId, references: 1 });
+    await said(writer.threadId, "WROTE THE TAGLINE");
+    await idle();
+    const askedTagline = (await messages(writer.threadId)).find((line) => line.id === filling.body.messageId)!;
+    expect(askedTagline.text).toMatch(new RegExp(`^WRITE-THE-TAGLINE：按 @图片 1 写一句宣传语\\n\\n项目画布上文本节点 "宣传语" 引用的内容：\\n\\n${image}$`));
+    await expect.poll(async () => (await node("tagline")).metadata?.content, { timeout: 30_000, message: "the reply in the empty tagline" }).toBe("WROTE THE TAGLINE");
+    expect(await results("tagline")).toEqual([]);
+    keep("09-text-node-task.json", { response: sent.body, message: asked, prompt: turnOf("logline").prompt, logline, reply, tagline: { response: filling.body, message: askedTagline, node: await node("tagline") } });
+  }, hostTimeout(90_000));
 });

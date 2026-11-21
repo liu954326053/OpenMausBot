@@ -3,7 +3,7 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { FileText, Music, Plus, RotateCcw, SlidersHorizontal, Video, X } from "lucide-react";
 import type { CanvasNode } from "../../../shared/project-canvas";
-import { referenceLabel, type CanvasReference } from "../../../shared/project-canvas-references";
+import { mentionHolder, referenceLabel, type CanvasReference } from "../../../shared/project-canvas-references";
 import type { GenerationKind, GenerationModel, ProjectGenerationSettings, SettingProblem } from "../../../shared/project-generation";
 import { MENU_ITEM, MENU_SHEET } from "@/components/menu-recipe";
 import { MentionTextarea } from "@/components/MentionTextarea";
@@ -50,18 +50,20 @@ function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; o
   );
 }
 
-/** The references the panel's prompt names, labelled as it names them, with the "+" that picks more on the canvas. Only
- * what is connected into the node itself can be taken off here. */
+/** The references the panel's prompt names, labelled as it names them, with the "+" that picks more on the canvas. What
+ * is picked, or taken off, is connected into the node whose inputs the list holds. */
 export function ReferenceBar({ node, references }: { node: CanvasNode; references: readonly CanvasReference[] }) {
   const ui = useCanvasUi();
-  const connected = new Set(ui.snapshot.connections.flatMap((connection) => (connection.kind === "content" && connection.toNodeId === node.id ? [connection.fromNodeId] : [])));
-  const picking = ui.pickingFor === node.id;
+  const holder = mentionHolder(node.id, ui.snapshot.nodes, ui.snapshot.connections);
+  const picking = ui.pickingFor === holder;
+  const connected = (reference: CanvasReference) => reference.sourceNodeId !== node.id
+    && ui.snapshot.connections.some((connection) => connection.kind === "content" && connection.fromNodeId === reference.sourceNodeId && connection.toNodeId === holder);
   return (
     <div className="flex flex-col gap-2">
       <PanelLabel>{t("projectCanvas.reference.title")}</PanelLabel>
       <div className="flex flex-wrap items-start gap-2">
         {references.map((reference) => (
-          <ReferenceThumb key={`${reference.sourceNodeId}:${reference.nodeId}`} reference={reference} onRemove={ui.readOnly || !connected.has(reference.sourceNodeId) ? undefined : () => ui.removeReference(node.id, reference.sourceNodeId)} />
+          <ReferenceThumb key={`${reference.sourceNodeId}:${reference.nodeId}`} reference={reference} onRemove={ui.readOnly || !connected(reference) ? undefined : () => ui.removeReference(holder, reference.sourceNodeId)} />
         ))}
         {!ui.readOnly ? (
           <button
@@ -70,7 +72,7 @@ export function ReferenceBar({ node, references }: { node: CanvasNode; reference
             aria-label={picking ? t("projectCanvas.reference.stopPicking") : t("projectCanvas.reference.add")}
             title={picking ? t("projectCanvas.reference.stopPicking") : t("projectCanvas.reference.add")}
             className={cn("flex size-12 items-center justify-center rounded-lg border border-dashed text-ink-secondary hover:bg-ink/[0.06] active:bg-ink/[0.08]", picking ? "border-accent text-accent-text" : "border-hairline")}
-            onClick={() => ui.startPicking(picking ? null : node.id)}
+            onClick={() => ui.startPicking(picking ? null : holder)}
           >
             <Plus size={16} aria-hidden="true" />
           </button>

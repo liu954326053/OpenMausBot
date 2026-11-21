@@ -33,8 +33,9 @@ describe("the in-memory canvas backend", () => {
     await expect(backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "set_background", backgroundMode: "blank" }] })).rejects.toMatchObject({ body: { code: "canvas_read_only" } });
   });
 
-  it("lets a bot answer a task, filling the text node that asked, and shows the bot writing into it until then", async () => {
+  it("lets a bot answer a task written in a text node: beside a node with text, into an empty one, numbered from the node, and shows the bot writing until then", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
+    const logline = backend.current().nodes.find((node) => node.id === "logline")!;
     const response = await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "logline" });
     expect(response).toMatchObject({ threadId: "thread-kai", references: 0 });
     expect(backend.current().bots.kai).toMatchObject({ status: "working", writingInto: ["logline"] });
@@ -42,9 +43,32 @@ describe("the in-memory canvas backend", () => {
     const after = backend.current();
     expect(after.bots.kai).toMatchObject({ status: "idle", output: { text: "Wrote: a tagline" } });
     expect(after.bots.kai!.writingInto).toBeUndefined();
-    expect(after.nodes.find((node) => node.id === "logline")!.metadata!.content).toBe("Wrote: a tagline");
+    expect(after.nodes.find((node) => node.id === "logline")!.metadata).toEqual(logline.metadata);
+    const replies = after.connections.filter((connection) => connection.fromNodeId === "logline" && connection.kind === "content").map((connection) => after.nodes.find((node) => node.id === connection.toNodeId)!);
+    expect(replies).toEqual([expect.objectContaining({ type: "text", title: "a tagline", createdBy: { kind: "bot", botId: "kai" }, metadata: { content: "Wrote: a tagline" } })]);
+    expect(replies[0]!.position).toEqual({ x: logline.position.x + logline.width + OUTPUT_OFFSET_X, y: logline.position.y });
     expect((await backend.readExchange(SAMPLE_PROJECT_ID, "kai")).map((message) => message.role)).toEqual(["person", "bot"]);
+
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "tagline", nodeType: "text", title: "Tagline" }, { type: "connect_nodes", fromNodeId: "city-night", toNodeId: "tagline" }] });
+    expect(await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline from @Image 1", targetNodeId: "tagline" })).toMatchObject({ references: 1 });
+    await vi.advanceTimersByTimeAsync(100);
+    const filled = backend.current();
+    expect(filled.nodes.find((node) => node.id === "tagline")!.metadata).toEqual({ content: "Wrote: a tagline from @Image 1" });
+    expect(filled.connections.filter((connection) => connection.fromNodeId === "tagline")).toEqual([]);
     await expect(backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "bot:kai" })).rejects.toThrow("text node");
+  });
+
+  it("fills an empty image node with the first picture it generates and puts the rest to its right", async () => {
+    const backend = sampleCanvasBackend({ delayMs: 50 });
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "poster", nodeType: "image", position: { x: 3000, y: 0 }, metadata: { prompt: "A poster", settings: { count: 2 } } }] });
+    expect(await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "poster" })).toEqual({ jobId: expect.any(String) });
+    await vi.advanceTimersByTimeAsync(100);
+    const snapshot = backend.current();
+    const poster = snapshot.nodes.find((node) => node.id === "poster")!;
+    const rest = snapshot.connections.filter((connection) => connection.fromNodeId === "poster").map((connection) => snapshot.nodes.find((node) => node.id === connection.toNodeId)!);
+    expect(poster.metadata).toMatchObject({ status: "success", file: { mime: "image/png" } });
+    expect(rest).toEqual([expect.objectContaining({ type: "image", position: { x: poster.position.x + poster.width + OUTPUT_OFFSET_X, y: poster.position.y } })]);
+    expect(rest[0]!.metadata!.file!.path).not.toBe(poster.metadata!.file!.path);
   });
 
   it("generates a shot from its saved prompt and settings, under the take before, and refuses what the model doesn't offer", async () => {

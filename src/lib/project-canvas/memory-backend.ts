@@ -3,8 +3,11 @@ import {
   CANVAS_UPLOAD_FOLDER,
   botNodeId,
   canvasFileNodeType,
+  replyTitle,
   type CanvasBotState,
+  type CanvasConnection,
   type CanvasFileRef,
+  type CanvasNode,
   type CanvasOp,
   type CanvasOpsRequest,
   type CanvasOpsResponse,
@@ -12,7 +15,7 @@ import {
   type CanvasSnapshot,
   type CanvasTaskRequest,
 } from "../../../shared/project-canvas";
-import { connectedReferences } from "../../../shared/project-canvas-references";
+import { connectedReferences, mentionReferences } from "../../../shared/project-canvas-references";
 import {
   resolveSettings,
   settingProblems,
@@ -113,6 +116,13 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     const bot = snapshot.bots[botId];
     if (!bot) return;
     snapshot = { ...snapshot, bots: { ...snapshot.bots, [botId]: { ...bot, ...change } } };
+    emit();
+  };
+
+  const addReplyBeside = (source: CanvasNode, task: CanvasTaskRequest, text: string) => {
+    const made: CanvasNode = { id: newId("node"), type: "text", title: replyTitle(task.text), ...nextOutputFrame(source, "text", snapshot.nodes, snapshot.connections), metadata: { content: text }, createdBy: { kind: "bot", botId: task.botId } };
+    const connection: CanvasConnection = { id: newId("connection"), fromNodeId: source.id, toNodeId: made.id, kind: "content" };
+    snapshot = { ...snapshot, revision: snapshot.revision + 1, nodes: [...snapshot.nodes, made], connections: [...snapshot.connections, connection] };
     emit();
   };
 
@@ -232,7 +242,10 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       if (task.targetNodeId && nodeById(task.targetNodeId)?.type !== "text") throw new Error("A reply goes into a text node of this canvas, and that is not one.");
       const threadId = task.threadId ?? bot.output?.threadId ?? `thread-${task.botId}`;
       const messageId = newId("message");
-      const references = connectedReferences(botNodeId(task.botId), snapshot.nodes, snapshot.connections).length;
+      const target = task.targetNodeId;
+      const references = target
+        ? mentionReferences(target, snapshot.nodes, snapshot.connections).filter((reference) => reference.nodeId !== target).length
+        : connectedReferences(botNodeId(task.botId), snapshot.nodes, snapshot.connections).length;
       exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: messageId, role: "person", text: task.text, at: Date.now() }]);
       setBot(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined, writingInto: task.targetNodeId ? [task.targetNodeId] : undefined });
       clearTimeout(botTimers.get(task.botId));
@@ -243,7 +256,9 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         const text = options.reply?.(task, current) ?? `Done: ${task.text}`;
         const replyId = newId("message");
         exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: replyId, role: "bot", text, at: Date.now() }]);
-        if (task.targetNodeId && nodeById(task.targetNodeId)) commit([{ type: "update_node", id: task.targetNodeId, metadata: { content: text } }]);
+        const into = target ? nodeById(target) : undefined;
+        if (into?.metadata?.content?.trim()) addReplyBeside(into, task, text);
+        else if (into) commit([{ type: "update_node", id: into.id, metadata: { content: text } }]);
         setBot(task.botId, { status: "idle", doing: undefined, writingInto: undefined, output: { text, threadId, messageId: replyId, at: Date.now() } });
       }, delay));
       return { threadId, messageId, references };

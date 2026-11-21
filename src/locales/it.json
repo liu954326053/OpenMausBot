@@ -192,6 +192,7 @@
   "server.projectCanvas.node.file": "File",
   "server.projectCanvas.task.connected": "Collegato al tuo nodo nella tela del progetto:",
   "server.projectCanvas.task.textNode": "Ciò a cui rimanda il nodo di testo {title} nella tela del progetto:",
+  "server.projectCanvas.task.editText": "Rivedi il testo secondo le istruzioni.\n\nOriginale:\n{source}\n\nIstruzioni:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(il suo file {path} ora non è nella cartella del progetto)",
   "server.mcp.askedSignIn": "Richiesta di accedere al server MCP {name}",
   "server.mcp.signIn.card": "Il server MCP di {label} richiede l'accesso. Apri questa conversazione in MagicBot per accedere.",

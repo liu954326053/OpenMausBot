@@ -4,8 +4,9 @@
 // through the app, a node generates a picture and stops a generation, a config node generates from its inputs on a
 // page in Chinese, its references numbered in Chinese and its failure said in Chinese, an empty image node on that
 // page generates into itself and then beside itself, its @ list starting with its own picture and naming nothing a
-// generation won't take, a task asked from a text node writes its reply there, and undo gives a deleted bot node back
-// to its bot. Then in the app itself: the sidebar's
+// generation won't take, a text node with text there names its own text first in its @, a clip too, and gets the bot's
+// revision in a new node to its right, an empty text node takes the reply itself, a note's task in English is answered
+// beside the note, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
 // drawn clear of the others, and a project archived while open gives way to the main bot.
 import { createHash } from "node:crypto";
@@ -13,7 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { botNodeId, dispatchConnectionId, type CanvasNode, type CanvasOpsRequest, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import { botNodeId, dispatchConnectionId, replyTitle, type CanvasNode, type CanvasOpsRequest, type CanvasSnapshot } from "../../shared/project-canvas.ts";
 import type { GenerationJob } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import { closeBrowserSession, resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
@@ -152,15 +153,16 @@ type Box = { x: number; y: number; w: number; h: number };
       }
       return null;
     })()`);
+    const panLongerThanAClick = 12;
     const revealPanelEnd = async () => {
       const height = await evaluate<number>("window.innerHeight");
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const shown = await box("[data-node-panel]");
-        const overflow = shown ? shown.y + shown.h - (height - 60) : 0;
+        const overflow = shown ? Math.ceil(shown.y + shown.h - (height - 60)) : 0;
         if (overflow <= 0) return;
         const spot = await emptySpot("bottom");
         if (!spot) throw new Error("no empty canvas to pan from");
-        await drag(spot, { x: spot.x, y: spot.y - Math.min(overflow, spot.y - 20) });
+        await drag(spot, { x: spot.x, y: spot.y - Math.min(Math.max(overflow, panLongerThanAClick), spot.y - 20) });
       }
     };
     const clickEmpty = async () => {
@@ -485,14 +487,16 @@ type Box = { x: number; y: number; w: number; h: number };
       await fit(fitZh);
       for (const fromId of [upload.id, outsideId, clipId]) await connectInto(fromId, sceneId);
       const mentionList = '[data-node-panel] [role="listbox"]';
+      const mentionOptions = () => evaluate<string[][]>(`[...document.querySelectorAll(${JSON.stringify(`${mentionList} [role="option"]`)})].map((option) => [...option.querySelectorAll("span")].map((span) => span.textContent))`);
+      const referenceThumbs = () => evaluate<Array<{ label: string; remove: string | null }>>(`[...document.querySelectorAll("[data-node-panel] [data-reference]")].map((thumb) => ({ label: thumb.textContent.trim(), remove: thumb.querySelector("button")?.getAttribute("aria-label") ?? null }))`);
       await focusOn(sceneTitle);
       await openPanelOf(sceneId, "the image node's panel with its references");
       await revealPanelEnd();
       await browser("find", "role", "textbox", "fill", "@", "--name", "提示词", "--exact");
       await waitFor(`document.querySelector(${JSON.stringify(mentionList)})`, "the @ list over the image node's prompt");
-      const mentioned = await evaluate<string[][]>(`[...document.querySelectorAll(${JSON.stringify(`${mentionList} [role="option"]`)})].map((option) => [...option.querySelectorAll("span")].map((span) => span.textContent))`);
+      const mentioned = await mentionOptions();
       expect(mentioned).toEqual([["图片 1", sceneTitle], ["图片 2", "board.png"], ["文本 1", "From the director"]]);
-      const thumbs = await evaluate<Array<{ label: string; remove: string | null }>>(`[...document.querySelectorAll("[data-node-panel] [data-reference]")].map((thumb) => ({ label: thumb.textContent.trim(), remove: thumb.querySelector("button")?.getAttribute("aria-label") ?? null }))`);
+      const thumbs = await referenceThumbs();
       expect(thumbs).toEqual([{ label: "图片 1", remove: null }, { label: "图片 2", remove: "移除 图片 2" }, { label: "文本 1", remove: "移除 文本 1" }]);
       await shot("16-mention-list-starts-with-its-own-picture.png");
 
@@ -522,34 +526,130 @@ type Box = { x: number; y: number; w: number; h: number };
       evidence.emptyImage = { scene: sceneAfter, beside, mentioned, thumbs, prompt: retakeCall.arguments.prompt, referenceImages: retakeCall.arguments.referenceImages, references: retakeJob?.references };
       await focusOn(sceneTitle);
       await shot("18-next-picture-to-its-right.png");
+
+      const lowestY = async () => Math.max(...(await snapshot()).nodes.map((one) => one.position.y + one.height));
+      const fitUntilDrawn = (id: string, what: string) => expect.poll(async () => {
+        await fit(fitZh);
+        return evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(node(id))}))`);
+      }, { timeout: 20_000, message: what }).toBe(true);
+      const requestField = '[data-node-panel] textarea[aria-label="要写什么"]';
+      const writtenByInChinese = '[data-node-panel] select[aria-label="撰写者"]';
+      const placeholderForWriter = async () => {
+        await browser("select", writtenByInChinese, writer.id);
+        return evaluate<string>(`document.querySelector(${JSON.stringify(requestField)})?.placeholder ?? ""`);
+      };
+      const askInChinese = async (request: string) => {
+        await browser("select", writtenByInChinese, writer.id);
+        await browser("find", "role", "textbox", "fill", request, "--name", "要写什么", "--exact");
+        await revealPanelEnd();
+        await clickButton(`让 ${writer.name} 来写`, "[data-node-panel]");
+      };
+      const sentToWriter = async (marker: string) => (await messages(conversation)).find((line) => line.role === "user" && line.text?.includes(marker))?.text ?? "";
+
+      const loglineTitle = "梗概";
+      const loglineText = "雨夜，一个替身新娘在教堂台阶上回头。";
+      const loglineId = (await api("POST", `${canvasPath}/ops`, { ops: [{ type: "add_node", nodeType: "text", title: loglineTitle, position: { x: sceneAt.x, y: (await lowestY()) + 160 }, metadata: { content: loglineText } }] })).nodeIds[0] as string;
+      await fitUntilDrawn(loglineId, "the logline on the open canvas");
+      for (const fromId of [sceneId, clipId]) await connectInto(fromId, loglineId);
+      await focusOn(loglineTitle);
+      await openPanelOf(loglineId, "the logline's panel");
+      expect(await placeholderForWriter()).toBe(`告诉 ${writer.name} 怎么修改这段文本，改好的会放进旁边的新节点。输入 @ 引用参考。`);
+      await revealPanelEnd();
+      await browser("find", "role", "textbox", "fill", "@", "--name", "要写什么", "--exact");
+      await waitFor(`document.querySelector(${JSON.stringify(mentionList)})`, "the @ list over the logline's request");
+      const loglineMentions = await mentionOptions();
+      expect(loglineMentions).toEqual([["文本 1", loglineTitle], ["图片 1", sceneTitle], ["视频 1", "rain.mp4"]]);
+      const loglineThumbs = await referenceThumbs();
+      expect(loglineThumbs).toEqual([{ label: "文本 1", remove: null }, { label: "图片 1", remove: "移除 图片 1" }, { label: "视频 1", remove: "移除 视频 1" }]);
+      await shot("19-text-node-mention-list-starts-with-its-own-text.png");
+
+      const reviseGate = join(fixture.dataDir, "gate-revise");
+      const revised = "替身新娘在雨夜的教堂台阶上回头，戒指还攥在手里。";
+      const reviseRequest = "REVISE-THE-LOGLINE 把 @文本 1 改得更紧凑，参考 @图片 1 和 @视频 1";
+      plan([{ key: "revise", match: ["REVISE-THE-LOGLINE"], gateFile: reviseGate, reply: revised }]);
+      await askInChinese(reviseRequest);
+      await waitFor(`document.querySelector(${JSON.stringify(node(loglineId))})?.textContent.includes(${JSON.stringify(`${writer.name} 正在写`)})`, "the writer writing from the logline on the open canvas");
+      expect((await snapshot()).bots[writer.id]!.writingInto).toEqual([loglineId]);
+      writeFileSync(reviseGate, "go");
+      await expect.poll(async () => (await results(loglineId)).map((one) => one.metadata?.content), { timeout: 30_000, message: "the revision beside the logline" }).toEqual([revised]);
+      const [revision] = await results(loglineId);
+      await fitUntilDrawn(revision!.id, "the revision on the open canvas");
+      await waitFor(`document.querySelector(${JSON.stringify(node(revision!.id))})?.textContent.includes(${JSON.stringify(revised)})`, "the revision's text on the open canvas");
+      await settled();
+      const afterRevision = await snapshot();
+      const logline = afterRevision.nodes.find((one) => one.id === loglineId)!;
+      expect(logline).toMatchObject({ type: "text", title: loglineTitle, createdBy: { kind: "person" }, metadata: { content: loglineText } });
+      expect(revision).toMatchObject({ type: "text", title: replyTitle(reviseRequest), createdBy: { kind: "bot", botId: writer.id }, metadata: { content: revised } });
+      expect(revision!.position.x).toBeGreaterThanOrEqual(logline.position.x + logline.width);
+      expect(afterRevision.bots[writer.id]!.writingInto).toBeUndefined();
+      const revisionAsked = await sentToWriter("REVISE-THE-LOGLINE");
+      const framed = `请根据要求修改以下文本。\n\n原文：\n文本 1 "${loglineTitle}":\n\n> ${loglineText}\n\n修改要求：\n${reviseRequest}\n\n项目画布上文本节点 "${loglineTitle}" 引用的内容：\n\n图片 1 "${sceneTitle}":\n\n<attached-image `;
+      expect(revisionAsked.slice(0, framed.length)).toBe(framed);
+      expect(revisionAsked).toContain('\n\n视频 1 "rain.mp4":');
+      evidence.revision = { mentions: loglineMentions, thumbs: loglineThumbs, logline, revision, asked: revisionAsked };
+      await focusOn(loglineTitle);
+      await shot("20-revision-in-a-new-node-to-its-right.png");
+
+      const taglineTitle = "宣传语";
+      const tagline = "雨不停，婚礼照常。";
+      const taglineRequest = "WRITE-THE-TAGLINE 按 @图片 1 写一句宣传语";
+      const taglineId = (await api("POST", `${canvasPath}/ops`, { ops: [{ type: "add_node", nodeType: "text", title: taglineTitle, position: { x: sceneAt.x, y: (await lowestY()) + 160 } }] })).nodeIds[0] as string;
+      await fitUntilDrawn(taglineId, "the empty text node on the open canvas");
+      await connectInto(sceneId, taglineId);
+      plan([{ key: "tagline", match: ["WRITE-THE-TAGLINE"], reply: tagline }]);
+      await focusOn(taglineTitle);
+      await openPanelOf(taglineId, "the empty text node's panel");
+      expect(await placeholderForWriter()).toBe(`告诉 ${writer.name} 这里写什么。输入 @ 引用参考。`);
+      await askInChinese(taglineRequest);
+      await waitFor(`document.querySelector(${JSON.stringify(node(taglineId))})?.textContent.includes(${JSON.stringify(tagline)})`, "the reply in the empty text node on the open canvas");
+      await settled();
+      const taglineNode = (await snapshot()).nodes.find((one) => one.id === taglineId)!;
+      expect(taglineNode).toMatchObject({ type: "text", title: taglineTitle, createdBy: { kind: "person" }, metadata: { content: tagline } });
+      expect(await results(taglineId)).toEqual([]);
+      const taglineAsked = await sentToWriter("WRITE-THE-TAGLINE");
+      const asWritten = `${taglineRequest}\n\n项目画布上文本节点 "${taglineTitle}" 引用的内容：\n\n图片 1 "${sceneTitle}":\n\n<attached-image `;
+      expect(taglineAsked.slice(0, asWritten.length)).toBe(asWritten);
+      evidence.emptyText = { node: taglineNode, asked: taglineAsked };
+      await focusOn(taglineTitle);
+      await shot("21-empty-text-node-filled-in-place.png");
       await fit(fitZh);
       await expect.poll(async () => (await snapshot()).viewport.k, { timeout: 15_000, message: "the fitted view saved before the page opens again" }).toBeLessThan(1);
       await openPage();
 
       const noteGate = join(fixture.dataDir, "gate-note");
       const rule = "RULE: rain falls in every scene, even indoors.";
-      plan([{ key: "note", match: ["Turn the note into a rule"], gateFile: noteGate, reply: rule }]);
+      const noteRequest = "Turn the note into a rule";
+      plan([{ key: "note", match: [noteRequest], gateFile: noteGate, reply: rule }]);
       await clickEmpty();
       const note = await box(node(outsideId));
       await clickAt(note!.x + note!.w / 2, note!.y + 30);
       const writtenBy = '[data-node-panel] select[aria-label="Written by"]';
       await waitFor(`document.querySelector(${JSON.stringify(writtenBy)})`, "the note's panel");
       await browser("select", writtenBy, writer.id);
-      await browser("find", "role", "textbox", "fill", "Turn the note into a rule", "--name", "What to write", "--exact");
+      await browser("find", "role", "textbox", "fill", noteRequest, "--name", "What to write", "--exact");
       await revealPanelEnd();
       await clickButton(`Ask ${writer.name}`, "[data-node-panel]");
-      await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes("is writing")`, "the writer writing into the note on the open canvas");
+      await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes("is writing")`, "the writer writing from the note on the open canvas");
       const writingInto = (await snapshot()).bots[writer.id]!.writingInto;
       expect(writingInto).toEqual([outsideId]);
-      await shot("19-writing-into-a-text-node.png");
+      await shot("22-writing-from-a-text-node.png");
       writeFileSync(noteGate, "go");
-      await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes(${JSON.stringify(rule)})`, "the reply in the note on the open canvas");
+      const ruleNode = async () => (await results(outsideId)).find((one) => one.type === "text");
+      await expect.poll(async () => (await ruleNode())?.metadata?.content, { timeout: 30_000, message: "the reply beside the note" }).toBe(rule);
+      const replied = (await ruleNode())!;
+      await expect.poll(async () => {
+        await fit();
+        return text(node(replied.id));
+      }, { timeout: 20_000, message: "the reply beside the note on the open canvas" }).toContain(rule);
       await settled();
       const filled = await snapshot();
-      expect(filled.nodes.find((one) => one.id === outsideId)).toMatchObject({ type: "text", createdBy: { kind: "person" }, metadata: { content: rule } });
+      const noteAfter = filled.nodes.find((one) => one.id === outsideId)!;
+      expect(noteAfter).toMatchObject({ type: "text", createdBy: { kind: "person" }, metadata: { content: "Keep the rain in every scene." } });
+      expect(replied).toMatchObject({ type: "text", title: replyTitle(noteRequest), createdBy: { kind: "bot", botId: writer.id }, metadata: { content: rule } });
+      expect(replied.position.x).toBeGreaterThanOrEqual(noteAfter.position.x + noteAfter.width);
       expect(filled.bots[writer.id]!.writingInto).toBeUndefined();
-      evidence.reply = { writingInto, node: filled.nodes.find((one) => one.id === outsideId) };
-      await shot("20-reply-in-the-text-node.png");
+      evidence.reply = { writingInto, note: noteAfter, reply: replied };
+      await shot("23-reply-beside-the-text-node.png");
 
       const writersShot = async () => (await snapshot()).nodes.find((one) => one.type === "shot" && one.createdBy?.kind === "bot");
       plan([{ key: "shot", match: ["ADD-SHOT"], reply: "SHOT ADDED", steps: [
@@ -579,7 +679,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await settled();
       evidence.undo = { shot: (await snapshot()).nodes.find((one) => one.id === botShot.id) };
       await fit();
-      await shot("21-bot-shot-back-after-undo.png");
+      await shot("24-bot-shot-back-after-undo.png");
 
       evidence.console = (await browser("console")).messages;
       expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
@@ -606,12 +706,12 @@ type Box = { x: number; y: number; w: number; h: number };
       await openProject();
       expect(await text(`${slot} [data-project-folder]`)).toBe(project.folder);
       await waitFor(`document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the team's change in the top bar");
-      await shot("22-project-row-opens-its-canvas.png");
+      await shot("25-project-row-opens-its-canvas.png");
 
       await clickSelector(`${slot} button[aria-label="Group chats"]`);
       const roomItem = `[role="menu"] [data-menu-key=${JSON.stringify(room.id)}]`;
       await waitFor(`document.querySelector(${JSON.stringify(roomItem)})`, "the project's group chat in the top bar's menu");
-      await shot("23-group-chats-menu.png");
+      await shot("26-group-chats-menu.png");
       await clickSelector(roomItem);
       await waitFor(`!document.querySelector(${JSON.stringify(view)}) && !document.querySelector('[role="menu"]') && document.body.innerText.includes("Table read")`, "the group chat open");
 
@@ -628,12 +728,12 @@ type Box = { x: number; y: number; w: number; h: number };
       evidence.colorist = { node: colorist, under };
       expect(under).toEqual([]);
       await fit();
-      await shot("24-team-change-adds-a-bot.png");
+      await shot("27-team-change-adds-a-bot.png");
 
       await api("POST", `/api/team-projects/${project.id}/archive`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
       await mainInstead("the main bot in place of the project archived elsewhere");
-      await shot("26-archived-elsewhere-opens-the-main-bot.png");
+      await shot("29-archived-elsewhere-opens-the-main-bot.png");
       await api("POST", `/api/team-projects/${project.id}/restore`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
       await openProject();
@@ -644,7 +744,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await mainInstead("the main bot in place of the project archived from the sidebar");
       const listed = (await api("GET", "/api/team-projects")).projects as TeamProjectWire[];
       expect(listed.find((one) => one.id === project.id)?.archivedAt).toEqual(expect.any(Number));
-      await shot("27-archived-from-the-sidebar-opens-the-main-bot.png");
+      await shot("30-archived-from-the-sidebar-opens-the-main-bot.png");
       evidence.app = { main: main.id, room: room.id, folder: project.folder, bots: (await snapshot()).nodes.filter((one) => one.type === "bot").map((one) => one.id) };
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {

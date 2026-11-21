@@ -53,6 +53,14 @@ async function paste(clipboardData: { files: File[]; getData: (type: string) => 
   });
 }
 
+async function type(field: HTMLTextAreaElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await settle(20);
+}
+
 async function choose(select: HTMLSelectElement, value: string) {
   await act(async () => {
     select.value = value;
@@ -182,23 +190,49 @@ describe("the project canvas", () => {
     expect(shown("shot-1")!.metadata?.settings).toBeUndefined();
   });
 
-  it("asks a bot to write into a text node and shows the text once it arrives", async () => {
+  it("asks a bot to revise a text node's text, shows the node written from, and its reply in a new node beside it once it arrives", async () => {
     await mount({ delayMs: 150 });
+    const text = shown("logline")!.metadata?.content;
     await clickNode("logline");
     const open = panel()!;
     const request = open.querySelector<HTMLTextAreaElement>("textarea")!;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
-      setter.call(request, "A tighter logline, one sentence");
-      request.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    expect(request.placeholder).toContain("how to revise this text");
+    await type(request, "A tighter logline, one sentence");
     const ask = [...open.querySelectorAll("button")].find((button) => button.textContent?.startsWith("Ask "))!;
     await act(async () => ask.click());
     await settle();
     expect(nodeElement("logline")!.textContent).toContain("is writing");
     await settle(250);
     expect(nodeElement("logline")!.textContent).not.toContain("is writing");
-    expect(String(shown("logline")!.metadata?.content)).toContain("A tighter logline, one sentence");
+    expect(shown("logline")!.metadata?.content).toBe(text);
+    const replies = backend.current().connections.filter((connection) => connection.fromNodeId === "logline" && connection.kind === "content").map((connection) => shown(connection.toNodeId)!);
+    expect(replies).toEqual([expect.objectContaining({ type: "text", createdBy: { kind: "bot", botId: expect.any(String) }, metadata: { content: expect.stringContaining("A tighter logline, one sentence") } })]);
+  });
+
+  it("names a text node's own text first in its references and its @, with the videos a task attaches, and no video in a generation's", async () => {
+    await mount();
+    await act(async () => {
+      await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [
+        { type: "connect_nodes", fromNodeId: "city-night", toNodeId: "logline" },
+        { type: "connect_nodes", fromNodeId: "shot-1-take-1", toNodeId: "logline" },
+        { type: "connect_nodes", fromNodeId: "shot-1-take-1", toNodeId: "city-night" },
+      ] });
+    });
+    await settle();
+    const shelf = () => [...panel()!.querySelectorAll("[data-reference]")].map((thumb) => thumb.textContent);
+    const choices = () => [...host.querySelectorAll('[role="option"]')].map((option) => option.querySelector("span")?.textContent);
+
+    await clickNode("logline");
+    expect(shelf()).toEqual(["Text 1", "Image 1", "Video 1"]);
+    expect(panel()!.querySelector('button[aria-label="Remove Text 1"]')).toBeNull();
+    expect(panel()!.querySelector('button[aria-label="Remove Video 1"]')).not.toBeNull();
+    await type(panel()!.querySelector<HTMLTextAreaElement>("textarea")!, "Shorter, after @");
+    expect(choices()).toEqual(["Text 1", "Image 1", "Video 1"]);
+
+    await clickNode("city-night");
+    expect(shelf()).toEqual(["Image 1"]);
+    await type(panel()!.querySelector<HTMLTextAreaElement>('textarea[aria-label="Prompt"]')!, "Night rain on @");
+    expect(choices()).toEqual(["Image 1"]);
   });
 
   it("pastes what was copied on the canvas from the keyboard, and undo takes the paste back", async () => {
