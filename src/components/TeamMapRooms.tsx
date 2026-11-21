@@ -77,7 +77,7 @@ export function TeamMapRooms() {
         <span className="tabular-nums text-ink-secondary">{rooms.length}</span>
         {unread && <span data-team-map-rooms-unread="" role="img" aria-label={t("task.unread")} className="absolute -end-0.5 -top-0.5 size-2 rounded-full bg-accent ring-2 ring-app" />}
       </summary>
-      <div className="absolute end-0 top-full z-40 mt-2 max-h-80 w-64 overflow-y-auto rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
+      <div className="absolute end-0 top-full z-40 mt-2 max-h-80 w-64 overflow-y-auto max-sm:start-0 max-sm:end-auto rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
         const details = event.currentTarget.closest("details"); details?.querySelector("summary")?.focus(); details?.removeAttribute("open");
       }}>
         <TeamMapRoomList rooms={rooms} menuFor={menu?.groupId} onOpen={(id) => dispatch({ type: "select", id })} onMenu={setMenu} onNew={() => setCreating(true)} />
