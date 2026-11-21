@@ -85,6 +85,15 @@ describe("connections", () => {
     expect(normalizeConnection(text, text, "source")).toBeNull();
   });
 
+  it("lets a person connect into a bot but never out of one", () => {
+    const bot = node("bot:a", 0, 0, { type: "bot" });
+    const text = node("t", 0, 0);
+    expect(normalizeConnection(text, bot, "source")).toEqual({ fromNodeId: "t", toNodeId: "bot:a" });
+    expect(normalizeConnection(bot, text, "target")).toEqual({ fromNodeId: "t", toNodeId: "bot:a" });
+    expect(normalizeConnection(text, bot, "target")).toBeNull();
+    expect(normalizeConnection(bot, text, "source")).toBeNull();
+  });
+
   it("lands on the node under the pointer before one whose dot or margin is near", () => {
     const from = node("a", 0, 0);
     const near = node("b", 300, 0);

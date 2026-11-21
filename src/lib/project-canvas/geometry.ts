@@ -117,15 +117,14 @@ export function connectionAnchor(node: CanvasNode, handle: HandleType): CanvasPo
 
 /**
  * Which way a connection drawn from `first`'s handle to `second` runs, or null when it may not exist: never into a
- * group, never between two configs or two bots; a config always receives.
+ * group, never out of a bot (the server draws what a bot made), never between two configs; a config always receives.
  */
 export function normalizeConnection(first: CanvasNode | undefined, second: CanvasNode | undefined, handle: HandleType): { fromNodeId: string; toNodeId: string } | null {
   if (!first || !second || first.id === second.id) return null;
-  if (first.type === "bot" && second.type === "bot") return null;
   if (first.type === "config" && second.type === "config") return null;
   const reversed = second.type !== "config" && handle === "target";
   const [from, to] = reversed ? [second, first] : [first, second];
-  if (to.type === "group") return null;
+  if (to.type === "group" || from.type === "bot") return null;
   return { fromNodeId: from.id, toNodeId: to.id };
 }
 
