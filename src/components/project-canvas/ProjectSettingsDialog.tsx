@@ -1,20 +1,26 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LoaderCircle } from "lucide-react";
+import { generationKindOf } from "../../../shared/project-canvas";
 import {
   COMMON_CHOICES,
+  fitSettings,
   modelOffers,
   type GenerationFailure,
   type GenerationKind,
+  type GenerationKindSettings,
   type GenerationModel,
+  type ImageSettings,
   type ProjectGenerationSettings,
+  type SettingProblem,
+  type VideoSettings,
 } from "../../../shared/project-generation";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
-import { t, tFromServer } from "@/lib/i18n";
+import { activeLocale, t, tFromServer } from "@/lib/i18n";
 import { SETTING_KEYS, type SettingKey, type SettingValue } from "@/lib/project-canvas/settings";
-import { useCanvasUi } from "./canvas-ui";
+import { nodeById, useCanvasUi } from "./canvas-ui";
 import { problemText, settingValueLabel } from "./panel-parts";
 
 const LABEL = "text-[13px] font-medium leading-[18px] text-ink";
@@ -41,6 +47,37 @@ function settingName(key: SettingKey): string {
   }
 }
 
+function withDefaults(settings: ProjectGenerationSettings, kind: GenerationKind, defaults: ImageSettings | VideoSettings): ProjectGenerationSettings {
+  return kind === "image"
+    ? { ...settings, image: { ...settings.image, defaults: defaults as ImageSettings } }
+    : { ...settings, video: { ...settings.video, defaults: defaults as VideoSettings } };
+}
+
+/** `kind`'s defaults fitted to their model when `models` lists it, and with no model when it does not. */
+function fittedTo(settings: ProjectGenerationSettings, kind: GenerationKind, models: readonly GenerationModel[]): ProjectGenerationSettings {
+  const defaults = settings[kind].defaults;
+  if (!defaults.model) return settings;
+  const model = models.find((candidate) => candidate.id === defaults.model);
+  return withDefaults(settings, kind, model ? fitSettings(kind, defaults, model) : { ...defaults, model: "" });
+}
+
+const anyOf = (labels: string[]) => new Intl.ListFormat(activeLocale(), { type: "disjunction" }).format(labels);
+
+/** A setting a save was refused for: its field and what to choose instead. */
+function refusedText(problem: SettingProblem, settings: GenerationKindSettings<ImageSettings | VideoSettings>, models: readonly GenerationModel[] | null): string {
+  const { key } = problem;
+  if (key === "referenceImages" || key === "referenceAudio") return problemText(problem, models);
+  const setting = settingName(key);
+  const choices = anyOf(problem.offered.map((choice) => settingValueLabel(key, choice, models)));
+  if (key === "model") {
+    const server = settings.server ?? "";
+    return problem.offered.length
+      ? t("projectCanvas.settings.refusedModel", { setting, server, value: String(problem.value), choices })
+      : t("projectCanvas.settings.refusedNoModels", { setting, server });
+  }
+  return t("projectCanvas.settings.refusedChoice", { setting, model: settingValueLabel("model", settings.defaults.model, models), value: settingValueLabel(key, problem.value, models), choices });
+}
+
 /** The project's generation settings: per kind, the MCP server, the default model and what a node that overrides nothing uses. */
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const ui = useCanvasUi();
@@ -49,7 +86,10 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   useModalDialog(dialogRef, onClose);
   const saved = ui.state.generation;
   const [draft, setDraft] = useState<ProjectGenerationSettings | null>(() => (saved ? structuredClone(saved.settings) : null));
-  const [kind, setKind] = useState<GenerationKind>("video");
+  const [kind, setKind] = useState<GenerationKind>(() => {
+    const opener = ui.panelNodeId ? nodeById(ui.snapshot, ui.panelNodeId) : undefined;
+    return (opener && generationKindOf(opener)) || "image";
+  });
   const [models, setModels] = useState<GenerationModel[] | null>(null);
   const [modelsRefused, setModelsRefused] = useState<GenerationFailure | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,8 +107,12 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     setModelsRefused(null);
     ui.controller.previewModels(kind, server).then((result) => {
       if (!live) return;
-      if ("refused" in result) setModelsRefused(result.refused);
-      else setModels(result.models);
+      if ("refused" in result) {
+        setModelsRefused(result.refused);
+        return;
+      }
+      setModels(result.models);
+      setDraft((current) => (current ? fittedTo(current, kind, result.models) : current));
     }, (error: unknown) => live && setModelsRefused({ code: "unreachable", error: error instanceof Error ? error.message : String(error), errorKey: "" }));
     return () => {
       live = false;
@@ -83,9 +127,9 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     setRefusal(null);
     setDraft((current) => {
       if (!current) return current;
-      return kind === "image"
-        ? { ...current, image: { ...current.image, defaults: { ...current.image.defaults, [key]: value } } }
-        : { ...current, video: { ...current.video, defaults: { ...current.video.defaults, [key]: value } } };
+      const defaults = { ...current[kind].defaults, [key]: value } as ImageSettings | VideoSettings;
+      const model = key === "model" ? models?.find((candidate) => candidate.id === value) : undefined;
+      return withDefaults(current, kind, model ? fitSettings(kind, defaults, model) : defaults);
     });
   };
   const save = async () => {
@@ -100,6 +144,11 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const defaults = draft?.[kind].defaults as unknown as Record<string, SettingValue> | undefined;
   const model = models?.find((candidate) => candidate.id === defaults?.model);
   const servers = saved?.servers ?? [];
+  const loadingModels = Boolean(server) && !models && !modelsRefused;
+  const refusalLines = !refusal || !draft ? [] : [...new Set(refusal.problems?.length
+    ? refusal.problems.map((problem) => refusedText(problem, draft[kind], models))
+    : [tFromServer(refusal.errorKey, refusal.error, refusal.errorParams)])];
+  const modelsText = modelsRefused ? tFromServer(modelsRefused.errorKey, modelsRefused.error, modelsRefused.errorParams) : null;
 
   return createPortal(
     <div className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
@@ -122,8 +171,8 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
               </Select>
               <span className={NOTE}>{t("projectCanvas.settings.serverNote")}</span>
             </div>
-            {server && !models && !modelsRefused ? <LoaderCircle size={16} aria-label={t("projectCanvas.loading")} className="animate-spin text-ink-tertiary motion-reduce:animate-none" /> : null}
-            {modelsRefused ? <p role="alert" className="text-[12px] leading-4 text-danger">{tFromServer(modelsRefused.errorKey, modelsRefused.error, modelsRefused.errorParams)}</p> : null}
+            {loadingModels ? <LoaderCircle size={16} aria-label={t("projectCanvas.loading")} className="animate-spin text-ink-tertiary motion-reduce:animate-none" /> : null}
+            {modelsText && !refusalLines.includes(modelsText) ? <p role="alert" className="text-[12px] leading-4 text-danger">{modelsText}</p> : null}
             {defaults ? SETTING_KEYS[kind].map((key) => {
               const value = defaults[key]!;
               const choices = key === "model" ? (models ?? []).map((candidate) => candidate.id) : defaultChoices(kind, key, model);
@@ -142,17 +191,16 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
               );
             }) : null}
             <p className={NOTE}>{t("projectCanvas.settings.inheritNote")}</p>
-            {refusal ? (
+            {refusalLines.length ? (
               <div role="alert" className="flex flex-col gap-1 text-[12px] leading-4 text-danger">
-                <span>{tFromServer(refusal.errorKey, refusal.error, refusal.errorParams)}</span>
-                {refusal.problems?.map((problem) => <span key={problem.key}>{problemText(problem, models)}</span>)}
+                {refusalLines.map((line) => <span key={line}>{line}</span>)}
               </div>
             ) : null}
           </div>
         )}
         <footer className="flex flex-wrap items-center justify-end gap-2 px-5 pb-5">
           <button type="button" className="ui-button ui-button-md" disabled={busy} onClick={onClose}>{t("common.cancel")}</button>
-          <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={busy || !draft || ui.readOnly} onClick={() => void save()}>
+          <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={busy || !draft || ui.readOnly || loadingModels} onClick={() => void save()}>
             {busy ? <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : null}
             {t("projectCanvas.settings.save")}
           </button>

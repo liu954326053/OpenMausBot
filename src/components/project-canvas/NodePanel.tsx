@@ -3,11 +3,17 @@ import { useEffect, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
 import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, mentionReferences, referenceCounts, referenceFiles } from "../../../shared/project-canvas-references";
+import { AttachmentGallery } from "@/components/AttachmentGallery";
+import { FOLDED_SENT_TEXT, foldsSentText } from "@/components/chat-bubble";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
+import { CitationBadge } from "@/components/CitationUI";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
+import { ThreadRefText } from "@/components/ThreadRefs";
 import { approvalDetailText } from "@/lib/approval-summary";
+import { splitTranscriptCitations } from "@/lib/citations";
 import { cn } from "@/lib/cn";
+import { splitTranscriptAttachments } from "@/lib/composer-attachments";
 import { t } from "@/lib/i18n";
 import { canvasErrorText } from "@/lib/project-canvas/backend";
 import { referenceProblems } from "@/lib/project-canvas/settings";
@@ -219,7 +225,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
             {exchange?.map((message) => (
               <div key={message.id} className="flex flex-col gap-1">
                 <span className="text-[12px] font-medium leading-4 text-ink-secondary">{message.role === "person" ? t("projectCanvas.bot.you") : bot.name}</span>
-                <div dir="auto" className="text-[13px] leading-[18px] text-ink"><ChatMarkdown text={message.text} /></div>
+                <div dir="auto" className="text-[13px] leading-[18px] text-ink">{message.role === "person" ? <SentMessage text={message.text} /> : <ChatMarkdown text={message.text} />}</div>
               </div>
             ))}
           </div>
@@ -230,6 +236,26 @@ function BotPanel({ node }: { node: CanvasNode }) {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** A person's message as the chat shows it: its pictures and files, then its words, folded when long. */
+function SentMessage({ text }: { text: string }) {
+  const [unfolded, setUnfolded] = useState(false);
+  const cited = splitTranscriptCitations(text);
+  const { display, images, files } = splitTranscriptAttachments(cited.display);
+  const folds = foldsSentText(display);
+  return (
+    <>
+      <AttachmentGallery images={images} files={files} className={cn("w-64", !display && "mb-0")} />
+      {display ? <div className={cn("whitespace-pre-wrap [overflow-wrap:anywhere]", folds && !unfolded && FOLDED_SENT_TEXT)}><ThreadRefText text={display} /></div> : null}
+      {cited.citations.length ? <div className="mt-2 flex flex-wrap gap-1.5">{cited.citations.map((citation) => <CitationBadge key={citation.id} citation={citation} />)}</div> : null}
+      {folds ? (
+        <button type="button" className="mt-1 text-[13px] text-ink-secondary hover:text-ink" onClick={() => setUnfolded((open) => !open)}>
+          {unfolded ? t("chat.showLess") : t("chat.showFull")}
+        </button>
+      ) : null}
+    </>
   );
 }
 

@@ -26,7 +26,7 @@ import { diffCanvasOps } from "@/lib/project-canvas/ops";
 import { clickSelection, dragNodeIds, nodesInRect, rectFromPoints } from "@/lib/project-canvas/selection";
 import { relatedNodeIds, useCanvasUi, type CanvasTool } from "./canvas-ui";
 import { CanvasConnections, ghostKey, type GhostFrame } from "./CanvasConnections";
-import { CanvasNodeView, StageHandlersContext, type StageHandlers } from "./CanvasNodeView";
+import { CanvasNodeView, NodePanelLayer, StageHandlersContext, type StageHandlers } from "./CanvasNodeView";
 
 const DRAG_THRESHOLD = 3;
 const NOT_A_DRAG = "button, a, input, textarea, select, video, audio, [contenteditable='true'], [data-node-panel], [data-handle], [data-resize-corner]";
@@ -128,7 +128,6 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
   const displayById = useMemo(() => new Map(displayNodes.map((node) => [node.id, node])), [displayNodes]);
 
   const handlers: StageHandlers = {
-    k: viewport.k,
     connecting: interaction?.kind === "connect" ? { nodeId: interaction.nodeId, handle: interaction.handle } : null,
     connectionTarget: interaction?.kind === "connect" ? interaction.target : null,
     onNodePointerDown(event, node) {
@@ -263,7 +262,8 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
   };
 
   const bounds = visibleBounds(viewport, size);
-  const shownNodes = displayNodes.filter((node) => intersects(node, bounds) || selection.has(node.id) || node.id === ui.panelNodeId);
+  const shownNodes = displayNodes.filter((node) => intersects(node, bounds) || selection.has(node.id));
+  const panelNode = ui.panelNodeId ? displayById.get(ui.panelNodeId) : undefined;
   const related = relatedNodeIds(selection, snapshot.connections);
   const activeConnections = new Set(snapshot.connections.filter((connection) => selection.has(connection.fromNodeId) || selection.has(connection.toNodeId)).map((connection) => connection.id));
   const ghosts: GhostFrame[] = [
@@ -345,7 +345,7 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
             }}
           />
           {shownNodes.map((node) => (
-            <CanvasNodeView key={node.id} node={node} selected={selection.has(node.id)} related={related.has(node.id)} panelOpen={ui.panelNodeId === node.id} panelHidden={Boolean(interaction)} />
+            <CanvasNodeView key={node.id} node={node} selected={selection.has(node.id)} related={related.has(node.id)} />
           ))}
           {ghosts.map((ghost) => (
             <div
@@ -366,6 +366,16 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
             aria-hidden="true"
             className={cn("pointer-events-none absolute rounded-md border border-accent bg-accent/10")}
             style={{ left: marquee.x * viewport.k + viewport.x, top: marquee.y * viewport.k + viewport.y, width: marquee.width * viewport.k, height: marquee.height * viewport.k }}
+          />
+        ) : null}
+        {panelNode && size.width > 0 ? (
+          <NodePanelLayer
+            key={panelNode.id}
+            node={panelNode}
+            viewport={viewport}
+            size={size}
+            hidden={Boolean(interaction) || !intersects(panelNode, visibleBounds(viewport, size, 0))}
+            onPointerDownCapture={(event) => handlers.onNodePointerDown(event, panelNode)}
           />
         ) : null}
       </div>
