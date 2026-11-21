@@ -1,0 +1,340 @@
+// The project canvas in a real browser on a disposable server with the scripted fake engine, inside the app's store:
+// the snapshot draws the project's bots, a change survives a reload, an upload lands in 素材, a task takes what is
+// connected to the bot, live events update the open canvas, and opening a chat and Stop go through the app.
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expect, it } from "vitest";
+import { botNodeId, dispatchConnectionId, type CanvasOpsRequest, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import type { TeamProjectWire } from "../../shared/team-projects.ts";
+import { closeBrowserSession, resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
+import { removeTempDir } from "../../server/testing/cleanup.ts";
+import { hostTimeout } from "../../server/testing/host-timeout.ts";
+import { launchRestartableServer, type RestartableServer } from "../../server/testing/restartable-server.ts";
+import { agentBrowser, ensureUiBrowser, sessionEnv, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
+
+const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
+if (!enabled) console.info("skipping the project canvas UI e2e: set OMB_UI_E2E=1 to install the pinned browser");
+const evidenceDir = process.env.OMB_UI_EVIDENCE_DIR;
+
+const TEAM = "Canvas crew";
+const BRIEF = "Episode one: the bride is swapped at the altar.";
+type Bot = { id: string; name: string; title?: string; color: string; threadId: string; mainThreadId?: string; busy?: boolean; tasks?: Array<{ threadId: string; busy?: boolean }> };
+type Line = { id: string; role?: string; kind?: string; text?: string };
+type Box = { x: number; y: number; w: number; h: number };
+
+(enabled ? it : it.skip)("draws a project's canvas from the server, keeps its changes, and follows its bots live", async () => {
+  const tools = await ensureUiBrowser();
+  let server: RestartableServer | undefined;
+  let root: string | undefined;
+  let home: string | undefined;
+  let preview: MountedPreview | undefined;
+  let env: NodeJS.ProcessEnv | undefined;
+  const evidence: Record<string, unknown> = {};
+  const browser = (...args: string[]) => agentBrowser(tools.binary, env!, args, 60_000);
+  const evaluate = async <T = unknown>(js: string) => (await browser("eval", js)).result as T;
+  const shot = async (name: string) => {
+    if (evidenceDir) await browser("screenshot", join(evidenceDir, name));
+  };
+  try {
+    server = await launchRestartableServer({ scripted: true });
+    const fixture = server;
+    root = realpathSync(mkdtempSync(join(tmpdir(), "omb-project-canvas-ui-")));
+    // agent-browser 0.37 refuses a socket path over 103 bytes, and it lives under this home.
+    home = mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "omb-pc-"));
+    mkdirSync(join(home, "tmp"));
+    env = sessionEnv({ home, session: "pc", chrome: tools.chrome });
+    if (evidenceDir) mkdirSync(evidenceDir, { recursive: true });
+
+    const api = async (method: string, path: string, body?: unknown) => {
+      const response = await fetch(fixture.url + path, {
+        method,
+        headers: { "content-type": "application/json", origin: fixture.url },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const answer = await response.json() as any;
+      if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${JSON.stringify(answer)}`);
+      return answer;
+    };
+    const bots = async () => (await api("GET", "/api/bots?messages=0")).bots as Bot[];
+    const settled = () => expect.poll(async () => (await bots()).some((one) => one.busy), { timeout: 30_000 }).toBe(false);
+    const messages = async (threadId: string) => (await api("GET", `/api/threads/${threadId}/messages`)).messages as Line[];
+
+    await api("PUT", "/api/team-projects/root", { path: root });
+    const member = async (name: string, title: string, color: string) => {
+      const made = (await api("POST", "/api/bots", { name, section: TEAM })).bot as Bot;
+      await api("PATCH", `/api/bots/${made.id}`, { title, color });
+      return made;
+    };
+    const director = await member("Director", "Runs the production", "purple");
+    await member("Writer", "Writes the episodes", "teal");
+    await api("PATCH", `/api/bots/${director.id}`, { chiefOfStaff: true });
+    await settled();
+    const project = (await api("POST", "/api/team-projects", { name: "Canvas drama", team: TEAM })).project as TeamProjectWire;
+    await settled();
+    const leadId = project.leadBotId;
+    const writerId = project.botIds.find((id) => id !== leadId)!;
+    const all = await bots();
+    const lead = all.find((one) => one.id === leadId)!;
+    const writer = all.find((one) => one.id === writerId)!;
+    expect([lead.color, writer.color]).toEqual(["purple", "teal"]);
+    const canvasPath = `/api/team-projects/${project.id}/canvas`;
+    const snapshot = async () => await api("GET", canvasPath) as CanvasSnapshot;
+    const gate = join(fixture.dataDir, "gate-scene");
+    const plan = (script: unknown[]) => writeFileSync(fixture.planPath, JSON.stringify({ [writer.id]: { script } }));
+
+    preview = await mountPreview({ info: { url: fixture.url } }, { entry: "/scripts/testing/project-canvas-server-preview.tsx", route: "/__project-canvas.html", title: "Project canvas on a server", logLevel: "warn" });
+    const pageUrl = `${preview.previewUrl}?project=${encodeURIComponent(project.id)}`;
+
+    const waitFor = (js: string, message: string, timeout = 30_000) =>
+      expect.poll(() => evaluate<boolean>(`Boolean(${js})`), { timeout, interval: 250, message }).toBe(true);
+    const node = (id: string) => `[data-canvas-node=${JSON.stringify(id)}]`;
+    const text = (selector: string) => evaluate<string>(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? ""`);
+    const box = (selector: string) => evaluate<Box | null>(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`);
+    const centre = (found: Box) => ({ x: found.x + found.w / 2, y: found.y + found.h / 2 });
+    const move = (x: number, y: number) => browser("mouse", "move", String(Math.round(x)), String(Math.round(y)));
+    const clickAt = async (x: number, y: number) => {
+      await move(x, y);
+      await browser("mouse", "down", "left");
+      await browser("mouse", "up", "left");
+    };
+    const clickSelector = async (selector: string) => {
+      const found = await box(selector);
+      if (!found) throw new Error(`${selector} is not on the page`);
+      const point = centre(found);
+      await clickAt(point.x, point.y);
+    };
+    const clickButton = async (label: string, scope: string) => {
+      const found = await evaluate<Box | null>(`(() => { const e = [...document.querySelectorAll(${JSON.stringify(`${scope} button`)})].find((b) => b.textContent.trim() === ${JSON.stringify(label)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`);
+      if (!found) throw new Error(`no button "${label}" in ${scope}`);
+      const point = centre(found);
+      await clickAt(point.x, point.y);
+    };
+    const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      await move(from.x, from.y);
+      await browser("mouse", "down", "left");
+      for (let step = 1; step <= 8; step += 1) await move(from.x + ((to.x - from.x) * step) / 8, from.y + ((to.y - from.y) * step) / 8);
+      await browser("mouse", "up", "left");
+    };
+    const emptySpot = (from: "top" | "bottom" = "top") => evaluate<{ x: number; y: number } | null>(`(() => {
+      const stage = document.querySelector("[data-project-canvas-stage]").getBoundingClientRect();
+      const rows = [];
+      for (let y = stage.top + 80; y < stage.bottom - 140; y += 40) rows.push(y);
+      if (${JSON.stringify(from)} === "bottom") rows.reverse();
+      for (const y of rows) for (let x = stage.left + 300; x < stage.right - 300; x += 40) {
+        const hit = document.elementFromPoint(x, y);
+        if (hit && hit.closest("[data-project-canvas-stage]") && !hit.closest("[data-canvas-node], [data-node-panel], button, input, [role=toolbar], [data-kind], aside")) return { x, y };
+      }
+      return null;
+    })()`);
+    const revealPanelEnd = async () => {
+      const height = await evaluate<number>("window.innerHeight");
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const shown = await box("[data-node-panel]");
+        const overflow = shown ? shown.y + shown.h - (height - 60) : 0;
+        if (overflow <= 0) return;
+        const spot = await emptySpot("bottom");
+        if (!spot) throw new Error("no empty canvas to pan from");
+        await drag(spot, { x: spot.x, y: spot.y - Math.min(overflow, spot.y - 20) });
+      }
+    };
+    const clickEmpty = async () => {
+      const spot = await emptySpot();
+      if (!spot) throw new Error("no empty canvas to click");
+      await clickAt(spot.x, spot.y);
+    };
+    const fit = async () => {
+      await clickEmpty();
+      await clickSelector('button[aria-label="Fit to view"]');
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    };
+    const openPage = async () => {
+      await browser("open", pageUrl);
+      await waitFor(`document.querySelector(${JSON.stringify(node(botNodeId(writer.id)))})`, "the writer's node is drawn", 120_000);
+      await fit();
+    };
+    const drawnIds = () => evaluate<string[]>("[...document.querySelectorAll('[data-canvas-node]')].map((one) => one.getAttribute('data-canvas-node'))");
+    const sentOps = () => evaluate<CanvasOpsRequest[]>("window.canvasOpsSent ?? []");
+    const recordOps = () => evaluate(`(() => {
+      window.canvasOpsSent = [];
+      const send = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        if (String(input).endsWith("/canvas/ops")) window.canvasOpsSent.push(JSON.parse(init.body));
+        return send(input, init);
+      };
+      return true;
+    })()`);
+
+    try {
+      await browser("set", "viewport", "1440", "900");
+      await openPage();
+
+      const leadNode = node(botNodeId(lead.id));
+      const writerNode = node(botNodeId(writer.id));
+      const middleStop = (selector: string) => evaluate<string | null>(`document.querySelector(${JSON.stringify(`${selector} stop[offset="55%"]`)})?.getAttribute("stop-color") ?? null`);
+      evidence.bots = {
+        lead: { text: await text(leadNode), crown: await evaluate(`Boolean(document.querySelector(${JSON.stringify(`${leadNode} [aria-label="Lead"]`)}))`), fill: await middleStop(leadNode), color: lead.color },
+        writer: { text: await text(writerNode), fill: await middleStop(writerNode), color: writer.color },
+        dispatch: await evaluate(`document.querySelector('[data-connection=${JSON.stringify(dispatchConnectionId(lead.id, writer.id))}]')?.getAttribute("data-kind") ?? null`),
+      };
+      expect(evidence.bots).toMatchObject({
+        lead: { text: expect.stringContaining("Runs the production"), crown: true, fill: expect.any(String), color: "purple" },
+        writer: { text: expect.stringContaining("Writes the episodes"), fill: expect.any(String), color: "teal" },
+        dispatch: "dispatch",
+      });
+      const fills = evidence.bots as { lead: { fill: string }; writer: { fill: string } };
+      expect(fills.lead.fill).not.toBe(fills.writer.fill);
+      expect(await text(leadNode)).toContain(lead.name);
+      expect(await text(writerNode)).toContain(writer.name);
+      await shot("01-bots-from-the-snapshot.png");
+
+      await recordOps();
+      const before = await drawnIds();
+      await clickSelector('button[aria-label="Add text"]');
+      await expect.poll(async () => (await drawnIds()).filter((id) => !before.includes(id)).length, { message: "a new text node" }).toBe(1);
+      const textId = (await drawnIds()).find((id) => !before.includes(id))!;
+      await browser("dblclick", `${node(textId)} .whitespace-pre-wrap`);
+      await waitFor(`document.querySelector('textarea[aria-label="Text"]')`, "the text node's editor");
+      await browser("find", "role", "textbox", "fill", BRIEF, "--name", "Text", "--exact");
+      await clickEmpty();
+      await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === textId)?.metadata?.content, { timeout: 15_000 }).toBe(BRIEF);
+      await fit();
+      const placed = (await snapshot()).nodes.find((one) => one.id === textId)!.position;
+      const shown = await box(node(textId));
+      await drag({ x: shown!.x + shown!.w / 2, y: shown!.y + 24 }, { x: shown!.x + shown!.w / 2, y: shown!.y + 344 });
+      await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === textId)!.position.y, { timeout: 15_000 }).toBeGreaterThan(placed.y);
+      const moved = (await snapshot()).nodes.find((one) => one.id === textId)!.position;
+      const sent = await sentOps();
+      evidence.opsSent = sent;
+      const contentChange = sent.find((request) => request.ops.some((op) => op.type === "update_node" && op.id === textId && op.metadata?.content === BRIEF));
+      const moveChange = sent.find((request) => request.ops.some((op) => op.type === "update_node" && op.id === textId && op.patch?.position));
+      expect(contentChange?.baseRevision).toEqual(expect.any(Number));
+      expect(moveChange).toBeDefined();
+      expect(moveChange).not.toHaveProperty("baseRevision");
+      await openPage();
+      await waitFor(`document.querySelector(${JSON.stringify(node(textId))})?.textContent.includes(${JSON.stringify(BRIEF)})`, "the text node after a reload");
+      expect((await snapshot()).nodes.find((one) => one.id === textId)).toMatchObject({ type: "text", position: moved, metadata: { content: BRIEF }, createdBy: { kind: "person" } });
+      evidence.afterReload = { textId, placed, moved };
+      await shot("02-text-node-after-a-reload.png");
+
+      const bytes = await evaluate<number>(`(async () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 320;
+        canvas.height = 180;
+        const context = canvas.getContext("2d");
+        const sky = context.createLinearGradient(0, 0, 0, 180);
+        sky.addColorStop(0, "#1d2b53");
+        sky.addColorStop(1, "#ff77a8");
+        context.fillStyle = sky;
+        context.fillRect(0, 0, 320, 180);
+        context.fillStyle = "#fff1e8";
+        context.font = "28px sans-serif";
+        context.fillText("Altar, night", 24, 100);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([blob], "board.png", { type: "image/png" }));
+        const input = document.querySelector('input[type="file"]');
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        return blob.size;
+      })()`);
+      await expect.poll(async () => (await snapshot()).nodes.some((one) => one.metadata?.file?.path === "素材/board.png"), { timeout: 15_000 }).toBe(true);
+      const upload = (await snapshot()).nodes.find((one) => one.metadata?.file?.path === "素材/board.png")!;
+      const onDisk = join(project.folder, "素材", "board.png");
+      expect(existsSync(onDisk) && readFileSync(onDisk).length).toBe(bytes);
+      await waitFor(`(() => { const image = document.querySelector(${JSON.stringify(`${node(upload.id)} img`)}); return image && image.complete && image.naturalWidth === 320; })()`, "the uploaded image loads from the server");
+      evidence.upload = { node: upload, bytes, src: await evaluate(`document.querySelector(${JSON.stringify(`${node(upload.id)} img`)}).getAttribute("src")`) };
+      expect(upload).toMatchObject({ type: "image", createdBy: { kind: "person" }, metadata: { file: { path: "素材/board.png", mime: "image/png", bytes } } });
+      await fit();
+      await shot("03-upload-in-sucai.png");
+
+      const connectInto = async (fromId: string) => {
+        await clickEmpty();
+        const from = await box(node(fromId));
+        await move(from!.x + from!.w / 2, from!.y + from!.h / 2);
+        await waitFor(`document.querySelector(${JSON.stringify(`${node(fromId)} [data-handle="source"]`)})`, `${fromId}'s handle`);
+        const handle = await box(`${node(fromId)} [data-handle="source"]`);
+        const target = await box(writerNode);
+        await drag(centre(handle!), centre(target!));
+        await expect.poll(async () => (await snapshot()).connections.some((one) => one.fromNodeId === fromId && one.toNodeId === botNodeId(writer.id)), { timeout: 15_000, message: `${fromId} connected into the writer` }).toBe(true);
+      };
+      await connectInto(textId);
+      await connectInto(upload.id);
+
+      plan([{ key: "task", match: ["Write the opening scene"], gateFile: gate, reply: "SCENE WRITTEN: the bride runs from the altar." }]);
+      await clickEmpty();
+      const writerBox = await box(writerNode);
+      await clickAt(writerBox!.x + writerBox!.w / 2, writerBox!.y + 30);
+      await waitFor("document.querySelector('[data-node-panel]')", "the writer's panel");
+      await browser("find", "role", "textbox", "fill", "Write the opening scene", "--name", `Message to ${writer.name}`, "--exact");
+      await clickButton("Send", "[data-node-panel]");
+      await waitFor(`document.querySelector(${JSON.stringify(writerNode)})?.textContent.includes("Working")`, "the writer at work on the open canvas");
+      await shot("04-writer-at-work.png");
+      writeFileSync(gate, "go");
+      await waitFor(`document.querySelector(${JSON.stringify(writerNode)})?.textContent.includes("SCENE WRITTEN")`, "the writer's reply on the open canvas");
+      await settled();
+      const conversation = writer.mainThreadId ?? writer.threadId;
+      const asked = (await messages(conversation)).find((line) => line.role === "user" && line.text?.startsWith("Write the opening scene"))!;
+      const turns = readFileSync(`${fixture.planPath}.evidence.jsonl`, "utf8").trim().split("\n").map((line) => JSON.parse(line) as { botId: string; planKey?: string; prompt: unknown });
+      const prompt = turns.find((turn) => turn.botId === writer.id && turn.planKey === "task")!.prompt as { message?: { content?: unknown } };
+      const blocks = Array.isArray(prompt.message?.content) ? prompt.message.content as Array<{ type?: string; text?: string; source?: { data?: string } }> : [];
+      const image = blocks.find((block) => block.type === "image");
+      evidence.task = {
+        asked,
+        promptText: blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n").slice(0, 3000),
+        promptImage: image ? { sameBytesAsTheUpload: image.source?.data === readFileSync(onDisk).toString("base64") } : null,
+      };
+      expect(asked.text).toMatch(/^Write the opening scene\n\nConnected to your node on the project's canvas:\n\n/);
+      expect(asked.text).toContain(`> ${BRIEF}`);
+      expect(asked.text).toMatch(/Image "[^"]+":/);
+      expect(JSON.stringify(blocks)).toContain(BRIEF);
+      expect(image).toBeDefined();
+      await shot("05-writer-replied.png");
+
+      await clickButton("Conversation", "[data-node-panel]");
+      await waitFor(`(() => { const panel = document.querySelector("[data-node-panel]")?.textContent ?? ""; return panel.includes("Write the opening scene") && panel.includes("SCENE WRITTEN"); })()`, "the latest exchange in the panel");
+      await shot("06-latest-exchange.png");
+      await revealPanelEnd();
+      await clickButton("Open the full chat", "[data-node-panel]");
+      const opened = await evaluate<{ view: string; selected: string | null }>("(() => { const state = window.canvasStore.state(); return { view: state.activeView, selected: state.selectedId }; })()");
+      evidence.openedChat = opened;
+      expect(opened.selected).toBe(writer.id);
+
+      const outside = await api("POST", `${canvasPath}/ops`, { ops: [{ type: "add_node", nodeType: "text", title: "From the director", position: { x: moved.x, y: moved.y + 280 }, metadata: { content: "Keep the rain in every scene." } }] });
+      const outsideId = outside.nodeIds[0] as string;
+      await expect.poll(async () => {
+        await fit();
+        return text(node(outsideId));
+      }, { timeout: 20_000, message: "a change made elsewhere on the open canvas" }).toContain("Keep the rain in every scene.");
+      await shot("07-change-from-elsewhere.png");
+
+      plan([{ key: "season", match: ["Write the whole season"], gateFile: join(fixture.dataDir, "gate-season"), reply: "SEASON WRITTEN" }]);
+      await clickEmpty();
+      const again = await box(writerNode);
+      await clickAt(again!.x + again!.w / 2, again!.y + 30);
+      await waitFor("document.querySelector('[data-node-panel]')", "the writer's panel again");
+      await browser("find", "role", "textbox", "fill", "Write the whole season", "--name", `Message to ${writer.name}`, "--exact");
+      await clickButton("Send", "[data-node-panel]");
+      await waitFor(`document.querySelector(${JSON.stringify(writerNode)})?.textContent.includes("Working")`, "the writer at work again");
+      await clickButton("Stop", "[data-node-panel]");
+      await settled();
+      await waitFor(`!document.querySelector(${JSON.stringify(writerNode)})?.textContent.includes("Working")`, "the writer stopped on the open canvas");
+      expect((await messages(conversation)).some((line) => line.text === "SEASON WRITTEN")).toBe(false);
+      await shot("08-writer-stopped.png");
+
+      evidence.console = (await browser("console")).messages;
+      expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
+    } catch (error) {
+      await shot("failed.png").catch(() => {});
+      throw error;
+    }
+  } finally {
+    if (evidenceDir) writeFileSync(join(evidenceDir, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
+    if (env) await closeBrowserSession(tools.binary, env).catch(() => false);
+    await preview?.close();
+    await server?.close();
+    if (root) await removeTempDir(root);
+    if (home) await removeTempDir(home);
+  }
+}, hostTimeout(300_000));
