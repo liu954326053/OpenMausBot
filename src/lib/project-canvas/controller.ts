@@ -245,7 +245,8 @@ export class CanvasController {
     this.set({ writeError: undefined });
   }
 
-  /** Reads the snapshot and the bots' looks again; calls that overlap share one read and one more after it. */
+  /** Reads the snapshot, then the bots' looks, so a bot the snapshot names has its look; calls that overlap share one
+   * read and one more after it. */
   refresh(): Promise<void> {
     if (this.refreshing) {
       this.refreshAgain = true;
@@ -255,10 +256,8 @@ export class CanvasController {
       do {
         this.refreshAgain = false;
         try {
-          const [snapshot, looks] = await Promise.all([
-            this.backend.readSnapshot(this.projectId),
-            this.backend.readBotLooks(this.projectId).catch(() => this.state.looks),
-          ]);
+          const snapshot = await this.backend.readSnapshot(this.projectId);
+          const looks = await this.backend.readBotLooks(this.projectId).catch(() => this.state.looks);
           if (this.disposed) return;
           if (!this.server || snapshot.revision >= this.server.revision) this.server = snapshot;
           this.recompute({ looks });

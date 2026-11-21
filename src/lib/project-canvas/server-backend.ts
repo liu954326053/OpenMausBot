@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type {
   CanvasConflict,
   CanvasOpsResponse,
@@ -11,7 +10,6 @@ import type {
 import type { GenerationFailure, GenerationModelsWire, GenerationSettingsWire, Refused } from "../../../shared/project-generation";
 import { api, ApiError } from "../../state/api";
 import type { Bot, Message } from "../../state/store";
-import { useStoreRef } from "../../state/store-ref";
 import type { StoreRef } from "../../state/store-ref-context";
 import { openBot, openThread } from "../../state/thread-navigation";
 import { readAdvancedMode } from "../interface-mode";
@@ -65,6 +63,8 @@ function lookOf(bot: Bot): CanvasBotLook {
   return Object.fromEntries(Object.entries(look).filter(([, value]) => value !== undefined)) as CanvasBotLook;
 }
 
+const looksOf = (bots: readonly Bot[]) => Object.fromEntries(bots.map((bot) => [bot.id, lookOf(bot)]));
+
 function exchangeOf(messages: readonly Message[]): CanvasExchangeMessage[] {
   const said = messages.flatMap((message): CanvasExchangeMessage[] => (message.kind === "text" && message.text?.trim()
     ? [{ id: message.id, role: message.role === "user" ? "person" : "bot", text: message.text, at: message.at }]
@@ -73,23 +73,41 @@ function exchangeOf(messages: readonly Message[]): CanvasExchangeMessage[] {
   return lastAsk < 0 ? said.slice(-1) : said.slice(lastAsk);
 }
 
+export interface ServerCanvasBackend extends CanvasBackend {
+  /** Hears the app store's bots; the open canvas reads the looks again when they differ from those it was given. */
+  followBots(bots: readonly Bot[]): void;
+}
+
 /** The project canvas on the app's server: requests through the app's `api`, live events from its `/api/events`
  * stream, and the bots, conversations, navigation and Stop as the app's store has them. */
-export function createServerCanvasBackend(store: StoreRef): CanvasBackend {
+export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend {
   const botOf = (botId: string) => store.state().bots.find((bot) => bot.id === botId);
   const threadsShown = () => readAdvancedMode() && showThreads();
+  const listeners = new Set<() => void>();
+  let givenLooks = "";
 
   return {
     readSnapshot: (projectId) => canvasCall<CanvasSnapshot>(canvasPath(projectId)),
 
     applyOps: (projectId, request) => canvasCall<CanvasOpsResponse>(`${canvasPath(projectId)}/ops`, { method: "POST", body: JSON.stringify(request) }),
 
-    subscribe: (projectId, onChange) => listenLiveFrames({
-      onFrame: (frame) => {
-        if (isEventOf(projectId, frame)) onChange();
-      },
-      onMissedFrames: onChange,
-    }),
+    subscribe(projectId, onChange) {
+      listeners.add(onChange);
+      const stopListening = listenLiveFrames({
+        onFrame: (frame) => {
+          if (isEventOf(projectId, frame)) onChange();
+        },
+        onMissedFrames: onChange,
+      });
+      return () => {
+        listeners.delete(onChange);
+        stopListening();
+      };
+    },
+
+    followBots(bots) {
+      if (JSON.stringify(looksOf(bots)) !== givenLooks) for (const listener of listeners) listener();
+    },
 
     uploadFile(projectId, file, at) {
       const query = new URLSearchParams({ name: file.name });
@@ -106,7 +124,11 @@ export function createServerCanvasBackend(store: StoreRef): CanvasBackend {
 
     fileUrl: (projectId, file) => `${canvasPath(projectId)}/files?${new URLSearchParams({ path: file.path })}`,
 
-    readBotLooks: async () => Object.fromEntries(store.state().bots.map((bot) => [bot.id, lookOf(bot)])),
+    async readBotLooks() {
+      const looks = looksOf(store.state().bots);
+      givenLooks = JSON.stringify(looks);
+      return looks;
+    },
 
     sendTask: (projectId, { botId, text, threadId }) => canvasCall<CanvasTaskResponse>(`${canvasPath(projectId)}/tasks`, {
       method: "POST",
@@ -152,10 +174,4 @@ export function createServerCanvasBackend(store: StoreRef): CanvasBackend {
 
     cancelGeneration: () => Promise.reject(new Error(GENERATION_NOT_WIRED)),
   };
-}
-
-/** The server's canvas backend for a page inside the app's store. */
-export function useServerCanvasBackend(): CanvasBackend {
-  const store = useStoreRef();
-  return useMemo(() => createServerCanvasBackend(store), [store]);
 }

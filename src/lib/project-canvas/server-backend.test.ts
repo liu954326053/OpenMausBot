@@ -142,6 +142,22 @@ describe("the project canvas on the app's server", () => {
     expect(sent).toEqual([]);
   });
 
+  it("tells the open canvas when the store's bots look different from what it was given, and only then", async () => {
+    const lead = bot({ id: "lead", color: "purple" });
+    const { backend } = backendWith([lead]);
+    const onChange = vi.fn();
+    const stop = backend.subscribe("p1", onChange);
+    await backend.readBotLooks("p1");
+    backend.followBots([{ ...lead, busy: true }]);
+    expect(onChange).not.toHaveBeenCalled();
+    backend.followBots([{ ...lead, color: "red" }]);
+    backend.followBots([lead, bot({ id: "writer" })]);
+    expect(onChange).toHaveBeenCalledTimes(2);
+    stop();
+    backend.followBots([{ ...lead, color: "green" }]);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
   it("reads a bot's latest exchange from the conversation its tasks go to", async () => {
     const { backend } = backendWith([bot({ id: "writer", threadId: "t-open", mainThreadId: "t-main" })]);
     answers.push({ body: { messages: [

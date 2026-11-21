@@ -38,8 +38,8 @@ export interface CanvasBackend {
   readSnapshot(projectId: string): Promise<CanvasSnapshot>;
   /** `POST /api/team-projects/:id/canvas/ops`. */
   applyOps(projectId: string, request: CanvasOpsRequest): Promise<CanvasOpsResponse>;
-  /** Calls `onChange` when the project's canvas may have changed: on its `ProjectCanvasEvent`s, and when the app missed
-   * live events. Returns the way to stop listening. */
+  /** Calls `onChange` when what the canvas draws may have changed: on the project's `ProjectCanvasEvent`s, when a bot's
+   * look changes, and when the app missed live events. Returns the way to stop listening. */
   subscribe(projectId: string, onChange: () => void): () => void;
 
   /** `POST /api/team-projects/:id/canvas/files`: the file goes into `素材/` and the server adds its node at `at`. */
