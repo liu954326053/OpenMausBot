@@ -152,6 +152,37 @@ describe("ProfileRequestService", () => {
     expect(store.messagesFor(bot.threadId)[0]?.card).toMatchObject({ dismissed: true, options: [] });
   });
 
+  it("refuses, at propose, confirm and undo, a change to fields the bot may not change, whoever asks for it", () => {
+    const { store, bot, addBot } = harness({ name: "Quill" });
+    const chief = addBot({ name: "Morgan" });
+    let locked = false;
+    const fieldsRefusal = vi.fn((_target: string, fields: readonly string[]) => (locked && fields.includes("title") ? "Quill follows Quill in Sales desk." : null));
+    const service = new ProfileRequestService({ store, fieldsRefusal });
+
+    locked = true;
+    expect(() => service.propose({ botId: bot.id, threadId: bot.threadId, changes: { title: "Lead" }, reason: "requested" })).toThrow("Quill follows Quill");
+    expect(() => service.propose({ botId: chief.id, threadId: chief.threadId, targetBotId: bot.id, changes: { title: "Lead" }, reason: "requested" }))
+      .toThrow("Quill follows Quill");
+    expect(fieldsRefusal).toHaveBeenLastCalledWith(bot.id, ["title"]);
+    expect(store.messagesFor(bot.threadId)).toHaveLength(0);
+    expect(service.propose({ botId: bot.id, threadId: bot.threadId, changes: { notifications: false }, reason: "requested" }).requestId).toBeTruthy();
+
+    locked = false;
+    const pending = service.propose({ botId: bot.id, threadId: bot.threadId, changes: { title: "Lead" }, reason: "requested" });
+    locked = true;
+    expect(service.resolve({ botId: bot.id, threadId: bot.threadId, requestId: pending.requestId, behavior: "allow" }))
+      .toMatchObject({ state: "invalid", error: "Quill follows Quill in Sales desk." });
+    expect(bot.title).toBe("");
+
+    locked = false;
+    const auto = new ProfileRequestService({ store, fieldsRefusal, autoApply: () => "full-access" });
+    const applied = auto.submit({ botId: bot.id, threadId: bot.threadId, changes: { title: "Lead" }, reason: "requested" });
+    expect(bot.title).toBe("Lead");
+    locked = true;
+    expect(auto.undo({ botId: bot.id, threadId: bot.threadId, requestId: applied.requestId })).toMatchObject({ state: "invalid", error: "Quill follows Quill in Sales desk." });
+    expect(bot.title).toBe("Lead");
+  });
+
   it("reports a committed Full Access profile accurately when its receipt cannot settle", () => {
     const { store, bot } = harness({ name: "Scout" });
     const service = new ProfileRequestService({ store, autoApply: () => "full-access" });

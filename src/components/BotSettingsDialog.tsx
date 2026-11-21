@@ -31,6 +31,7 @@ import { BOT_PANEL_ID, sidePanelCls } from "./bot-panel/side-panel";
 import { HistoryRollbackDialog, useBotHistory, useBotOverview } from "./bot-settings/useBotOverview";
 import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 import { ShareBotButton, useTeamName } from "./bot-access/ShareBotButton";
+import { CopyFollowsNotice } from "./team-projects/CopyFollows";
 
 /** Where the Library's memory, skills and folder rows lead in Advanced settings. */
 const LIBRARY_LINKS: Partial<Record<SimplePageId, BotSettingsSection>> = { memory: "memory", skills: "skills", folder: "access" };
@@ -123,10 +124,11 @@ export function BotSettingsDialog({ bot, overlay = false }: {
             patch={derived.patch}
             activeState={derived.activeState}
             mascotMotion={derived.mascotMotion}
+            readOnly={Boolean(derived.followedSource)}
           />
         );
       case "soul":
-        return <SoulSection bot={bot} patch={derived.patch} />;
+        return <SoulSection bot={bot} patch={derived.patch} readOnly={Boolean(derived.followedSource)} />;
       case "slack":
         return slackUrl ? <SlackSection managementUrl={slackUrl} /> : null;
       case "skills":
@@ -140,7 +142,7 @@ export function BotSettingsDialog({ bot, overlay = false }: {
       case "access":
         return <AccessSection bot={bot} derived={derived} />;
       case "model":
-        return <ModelSection bot={bot} />;
+        return <ModelSection bot={bot} followed={Boolean(derived.followedSource)} />;
       case "permissions":
         return <PermissionsSection bot={bot} derived={derived} />;
       case "voice":
@@ -220,6 +222,7 @@ export function BotSettingsDialog({ bot, overlay = false }: {
             className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-secondary focus:outline-none"
           />
         </div>
+        <CopyFollowsNotice bot={bot} className="mx-4 mb-2 shrink-0" />
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {visibleSections.length === 0 && (

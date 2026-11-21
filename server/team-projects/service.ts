@@ -12,6 +12,7 @@ import { userError, userErrorThrown, type UserError } from "../user-errors.ts";
 import { teamProjectFolderReady } from "../workspace.ts";
 import { renderTeamProjectCopies, writeTeamProjectCopies, type TeamMemoryLine } from "./copies.ts";
 import { createTeamProject, type ExportedTeam } from "./create.ts";
+import { changedCopyFields, isCopyField } from "./follow.ts";
 import { Following } from "./following.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 import { checkTeamProjectsRoot } from "./root.ts";
@@ -270,6 +271,37 @@ export class TeamProjects implements TeamProjectsApi {
   departmentRefusal(section: string | null | undefined): UserError | null {
     const name = sectionKey(section);
     return this.projectIdOfDepartment(name) ? userError("serverError.teamProject.departmentFixed", { department: name }) : null;
+  }
+
+  /** Why these fields of the bot may not change: it is a copy, and they are its source's. Null otherwise. */
+  copyRefusal(botId: string, fields: Iterable<string>): UserError | null {
+    const copy = this.deps.store.bot(botId);
+    const membership = copy?.teamProject;
+    if (!copy || !membership?.source || membership.sourceLeft || ![...fields].some(isCopyField)) return null;
+    const source = this.deps.store.bot(membership.source);
+    const team = (source && sectionKey(source.section)) || this.deps.registry.find(membership.id)?.team?.name || "";
+    return userError("serverError.teamProject.copyFollows", { bot: copy.name, source: source?.name ?? copy.name, team });
+  }
+
+  /** `copyRefusal` for a request that sets fields to values: a value the copy has already changes nothing. */
+  copyChangeRefusal(botId: string, changes: object): UserError | null {
+    const copy = this.deps.store.bot(botId);
+    return copy ? this.copyRefusal(botId, changedCopyFields(copy, changes)) : null;
+  }
+
+  /** Why a department's shared instructions may not change: it is a project's, and they are its team's. Null otherwise. */
+  contextRefusal(section: string | null | undefined): UserError | null {
+    const name = sectionKey(section);
+    if (!name || !this.deps.registry.readable) return null;
+    const team = this.deps.registry.projects().find((project) => project.section === name)?.team;
+    if (!team) return null;
+    let teamSection: string | null;
+    try {
+      teamSection = this.deps.teamOfKey(team.key);
+    } catch {
+      teamSection = team.name;
+    }
+    return teamSection ? userError("serverError.teamProject.contextFollows", { department: name, team: teamSection }) : null;
   }
 
   /** For a Chief's team setup: throws when the change moves a bot into or out of a project. */

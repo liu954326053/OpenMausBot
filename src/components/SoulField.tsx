@@ -14,10 +14,12 @@ export function SoulField({
   bot,
   onPatch,
   simple,
+  readOnly = false,
 }: {
   bot: Bot;
   onPatch: (patch: { soul?: string; description?: string }) => void;
   simple?: { label: string; placeholder: string };
+  readOnly?: boolean;
 }) {
   const { dispatch, flushBotPatches } = useStore();
   const { request: api } = useBotEditor();
@@ -62,7 +64,7 @@ export function SoulField({
       setResolving(false);
     }
   };
-  const canMigrate = bot.description.length > 400 && !(bot.soul ?? "").trim();
+  const canMigrate = !readOnly && bot.description.length > 400 && !(bot.soul ?? "").trim();
 
   return (
     <div className="block">
@@ -89,9 +91,9 @@ export function SoulField({
           </div>
           <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-control p-2 text-[12px]">{info.fileText}</pre>
           <div className="mt-2 flex gap-2">
-            <button type="button" disabled={resolving} onClick={() => void resolve("apply-file")} className="rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-white hover:brightness-110 disabled:opacity-50">
+            {!readOnly && <button type="button" disabled={resolving} onClick={() => void resolve("apply-file")} className="rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-white hover:brightness-110 disabled:opacity-50">
               {t("botIdentity.soul.useFile")}
-            </button>
+            </button>}
             <button type="button" disabled={resolving} onClick={() => void resolve("discard-file")} className="rounded-lg bg-control px-3 py-1.5 text-[12px] text-ink hover:bg-raised-hover disabled:opacity-50">
               {t("botIdentity.soul.keepSaved")}
             </button>
@@ -108,6 +110,7 @@ export function SoulField({
         placeholder={simple ? simple.placeholder : t("bot.soul.placeholder")}
         aria-invalid={over || undefined}
         disabled={resolving}
+        readOnly={readOnly}
         value={draft}
         onChange={(e) => change(e.target.value)}
       />

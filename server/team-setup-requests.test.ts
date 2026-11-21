@@ -8,7 +8,7 @@ import { botFolder } from "./bot-folder.ts";
 import { flushProfileHistory, readHistory } from "./profile-versions.ts";
 import { hasTeamAuthority } from "./peer-roster.ts";
 import type { BotRecord, OptionCardData } from "./store.ts";
-import type { TeamSetupRequest, TeamSetupResult } from "../shared/team-setup.ts";
+import type { TeamSetupFields, TeamSetupRequest, TeamSetupResult } from "../shared/team-setup.ts";
 import type { DirectApply } from "./direct-apply.ts";
 
 function harness(caps?: Record<string, { driverKind: string; agentsMcp: boolean }>) {
@@ -51,9 +51,11 @@ function harness(caps?: Record<string, { driverKind: string; agentsMcp: boolean 
   const autoApply = vi.fn((): DirectApply | null => null);
   const targetBusy = vi.fn((id: string, _sourceThreadId?: string) => Boolean(store.bot(id)?.busy));
   const validateChange = vi.fn();
+  let fieldsRefusal: ((target: BotRecord, fields: TeamSetupFields) => string | null) | null = null;
   const canPersist = vi.fn((): { ok: true } | { ok: false; status: number; error: string } => ({ ok: true }));
   const service = new TeamSetupRequestService({ store, teams: () => teams, maxBots: 100, hasTeamAuthority,
     canPersist, ownsThread: () => sourceExists, targetBusy, deleteBot, deletionRefusal, autoApply, validateChange,
+    fieldsRefusal: (target, fields) => fieldsRefusal?.(target, fields) ?? null,
     mcpServerProblem: (name, botId) => {
       const servers: Record<string, { bot?: string }> = { hindsight: {}, linear: {}, "clive-notes": { bot: "Clive" } };
       if (!servers[name]) return "no such server";
@@ -68,7 +70,8 @@ function harness(caps?: Record<string, { driverKind: string; agentsMcp: boolean 
   const propose = (operations: unknown[], newTeams: string[] = []) => service.propose({ botId: chief.id, threadId: chief.threadId, plan: { reason: "Requested specialist setup", operations, newTeams } });
   const submit = (operations: unknown[], newTeams: string[] = []) => service.submit({ botId: chief.id, threadId: chief.threadId, plan: { reason: "Requested specialist setup", operations, newTeams } });
   const resolve = (requestId: string, behavior = "allow") => service.resolve({ botId: chief.id, threadId: chief.threadId, requestId, behavior });
-  return { service, store, chief, peer, bot, teams, propose, submit, resolve, apply, deleteBot, deletionRefusal, messages, autoApply, targetBusy, validateChange, canPersist, removeSource: () => { sourceExists = false; } };
+  return { service, store, chief, peer, bot, teams, propose, submit, resolve, apply, deleteBot, deletionRefusal, messages, autoApply, targetBusy, validateChange, canPersist,
+    removeSource: () => { sourceExists = false; }, refuseFields: (rule: typeof fieldsRefusal) => { fieldsRefusal = rule; } };
 }
 const specialist = (key: string, section: string, modelSelection = { instanceId: "claude", model: "sonnet" }) => ({ action: "create", key,
   fields: { name: key, title: "Specialist", soul: "Finish the assigned work.", section, modelSelection } });
@@ -131,6 +134,21 @@ describe("reviewed Chief team setup", () => {
     expect((await h.resolve(card.requestId))?.result.state).toBe("cancelled");
     expect(h.store.bots).toEqual(before);
     expect(h.apply).not.toHaveBeenCalled();
+  });
+  it("refuses, at propose and confirm, a change to fields a bot may not change, and lets its other fields change", async () => {
+    const h = harness();
+    const follows = (target: BotRecord, fields: TeamSetupFields) => (target.id === h.peer.id && fields.title !== undefined ? "Ada follows Ada in Sales desk." : null);
+    h.refuseFields(follows);
+    expect(() => h.propose([{ action: "update", botId: h.peer.id, fields: { title: "Lead" } }])).toThrow("Ada follows Ada in Sales desk.");
+    expect(h.messages).toHaveLength(0);
+    const servers = h.propose([{ action: "update", botId: h.peer.id, fields: { mcpServers: ["hindsight"] } }]);
+    expect((await h.resolve(servers.requestId))?.result.state).toBe("applied");
+
+    h.refuseFields(null);
+    const card = h.propose([{ action: "update", botId: h.peer.id, fields: { title: "Lead" } }]);
+    h.refuseFields(follows);
+    expect((await h.resolve(card.requestId))?.result.state).toBe("cancelled");
+    expect(h.peer.title).toBe("");
   });
   it("rejects malformed leadership and promotion outside the team", () => {
     const h = harness();

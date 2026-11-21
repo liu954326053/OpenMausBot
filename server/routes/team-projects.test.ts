@@ -69,6 +69,9 @@ function fakeHost(overrides: Partial<TeamProjectRouteHost> = {}): TeamProjectRou
     setRoot: (path) => (path === "/dramas" ? { root: "/dramas" } : { error: "Give the folder's full path.", errorKey: "serverError.teamProject.rootNotAbsolute" }),
     moveRefusalFor: () => null,
     departmentRefusal: () => null,
+    copyRefusal: () => null,
+    copyChangeRefusal: () => null,
+    contextRefusal: () => null,
     ...overrides,
   };
 }
@@ -165,36 +168,40 @@ describe("the project routes", () => {
   });
 });
 
+/** A real project in a real store, with the app's own department routes and stand-ins for the bot settings routes behind the guards. */
+async function withProject() {
+  app = await teamProjectsInstallation();
+  const { createSidebarSectionRoutes } = await import("./sidebar-sections.ts");
+  const table = await import("./table.ts");
+  const installation = app;
+  installation.projects.start();
+  installation.salesTeam();
+  installation.projects.setRoot(installation.root);
+  const made = await installation.projects.create({ name: "Stand-in bride", team: "Sales desk" });
+  if (!("project" in made)) throw new Error(made.error);
+  const outsider = installation.store.createBot({ name: "Outsider", section: "Marketing" }, { seedMessages: false });
+  const writer = installation.byRole(made.project.id).get("writer")!;
+
+  const teamComputers = { forSection: () => undefined, renameSection: () => false } as unknown as TeamComputers;
+  const departments = createSidebarSectionRoutes({
+    store: installation.store, teamComputers, maxBots: 100, assertTeamComputerChangeIdle: () => {}, wireBot: (bot: BotRecord) => ({ id: bot.id, section: bot.section }) as never,
+  });
+  const patchBot: RouteHandler = async ({ req, res, path, method, json, readBody }) => {
+    const match = method === "PATCH" ? path.match(/^\/api\/bots\/([\w-]+)$/) : null;
+    if (!match) return table.PASS;
+    const body = await readBody(req);
+    return json(res, 200, { bot: installation.store.patchBot(match[1]!, body) });
+  };
+  const botSettings: RouteHandler = async ({ req, res, path, json, readBody }) => {
+    if (!/^\/api\/bots\/[\w-]+\/(profile|model|avatar\/generate|soul\/apply-file|history\/rollback)$/.test(path)) return table.PASS;
+    return json(res, 200, { read: await readBody(req) });
+  };
+  const call = await serve(installation.projects, [patchBot, botSettings, departments]);
+  const sectionOf = (id: string) => installation.store.bot(id)!.section;
+  return { app: installation, project: made.project, outsider, writer, call, sectionOf };
+}
+
 describe("the guard on a project's department", () => {
-  /** A real project in a real store, with the app's own department routes behind the guard. */
-  async function withProject() {
-    app = await teamProjectsInstallation();
-    const { createSidebarSectionRoutes } = await import("./sidebar-sections.ts");
-    const table = await import("./table.ts");
-    const installation = app;
-    installation.projects.start();
-    installation.salesTeam();
-    installation.projects.setRoot(installation.root);
-    const made = await installation.projects.create({ name: "Stand-in bride", team: "Sales desk" });
-    if (!("project" in made)) throw new Error(made.error);
-    const outsider = installation.store.createBot({ name: "Outsider", section: "Marketing" }, { seedMessages: false });
-    const writer = installation.byRole(made.project.id).get("writer")!;
-
-    const teamComputers = { forSection: () => undefined, renameSection: () => false } as unknown as TeamComputers;
-    const departments = createSidebarSectionRoutes({
-      store: installation.store, teamComputers, maxBots: 100, assertTeamComputerChangeIdle: () => {}, wireBot: (bot: BotRecord) => ({ id: bot.id, section: bot.section }) as never,
-    });
-    const patchBot: RouteHandler = async ({ req, res, path, method, json, readBody }) => {
-      const match = method === "PATCH" ? path.match(/^\/api\/bots\/([\w-]+)$/) : null;
-      if (!match) return table.PASS;
-      const body = await readBody(req);
-      return json(res, 200, { bot: installation.store.patchBot(match[1]!, body) });
-    };
-    const call = await serve(installation.projects, [patchBot, departments]);
-    const sectionOf = (id: string) => installation.store.bot(id)!.section;
-    return { app: installation, project: made.project, outsider, writer, call, sectionOf };
-  }
-
   const stays = (bot: string) => ({ status: 409, body: { error: `${bot} belongs to a project and can't move to another department.`, errorKey: "serverError.teamProject.botStays", errorParams: { bot } } });
   const noJoin = { status: 409, body: { error: expect.stringContaining("Stand-in bride is a project's team"), errorKey: "serverError.teamProject.noJoin", errorParams: { department: "Stand-in bride" } } };
   const fixed = { status: 409, body: { error: "Stand-in bride is a project's team, so it can't be renamed or deleted.", errorKey: "serverError.teamProject.departmentFixed", errorParams: { department: "Stand-in bride" } } };
@@ -211,10 +218,10 @@ describe("the guard on a project's department", () => {
 
   it("lets every other change to a bot through, a project's bot included", async () => {
     const { app, outsider, writer, call, sectionOf } = await withProject();
-    expect((await call("PATCH", `/api/bots/${writer.id}`, { title: "Head writer" })).status).toBe(200);
+    expect((await call("PATCH", `/api/bots/${writer.id}`, { voice: "calm" })).status).toBe(200);
     expect((await call("PATCH", `/api/bots/${writer.id}`, { section: "Stand-in bride", pinned: true })).status).toBe(200);
     expect((await call("PATCH", `/api/bots/${outsider.id}`, { section: "Sales" })).status).toBe(200);
-    expect(app.store.bot(writer.id)).toMatchObject({ title: "Head writer", pinned: true });
+    expect(app.store.bot(writer.id)).toMatchObject({ voice: "calm", pinned: true });
     expect(sectionOf(outsider.id)).toBe("Sales");
   });
 
@@ -256,5 +263,57 @@ describe("the guard on a project's department", () => {
     const { writer, call, sectionOf } = await withProject();
     expect((await call("PUT", "/api/sidebar-sections?section=Stand-in%20bride", { addBotIds: [writer.id], removeBotIds: [] })).status).toBe(200);
     expect(sectionOf(writer.id)).toBe("Stand-in bride");
+  });
+});
+
+describe("the guard on a copy", () => {
+  const follows = { errorKey: "serverError.teamProject.copyFollows", errorParams: { bot: "Quill", source: "Quill", team: "Sales desk" } };
+
+  it("refuses, through every route that would, a change to what a copy takes from its source, and says where to make it", async () => {
+    const { app, writer, call } = await withProject();
+    const before = structuredClone(app.store.bot(writer.id));
+    for (const [method, path, body] of [
+      ["PATCH", `/api/bots/${writer.id}`, { title: "Head writer" }],
+      ["PATCH", `/api/bots/${writer.id}`, { name: "Penn", pinned: true }],
+      ["PATCH", `/api/bots/${writer.id}`, { color: "red" }],
+      ["PATCH", `/api/bots/${writer.id}`, { modelSelection: { instanceId: "codex", model: "gpt-test" } }],
+      ["PATCH", `/api/bots/${writer.id}/profile`, { soul: "Write longer." }],
+      ["PATCH", `/api/bots/${writer.id}/profile`, { avatarZoom: 2 }],
+      ["PATCH", `/api/bots/${writer.id}/model`, { instanceId: "codex", model: "gpt-test" }],
+      ["POST", `/api/bots/${writer.id}/avatar/generate`, { prompt: "A fox" }],
+      ["POST", `/api/bots/${writer.id}/soul/apply-file`, { expectedRevision: "r", fileText: "x" }],
+      ["POST", `/api/bots/${writer.id}/history/rollback`, { id: "row", expectedRevision: "r" }],
+    ] as const) {
+      expect(await call(method, path, body), `${method} ${path} ${JSON.stringify(body)}`).toEqual({
+        status: 409, body: { error: "Quill follows Quill in Sales desk. Change Quill in Sales desk instead.", ...follows },
+      });
+    }
+    expect(app.store.bot(writer.id)).toEqual(before);
+  });
+
+  it("lets through a change that leaves what a copy follows as it is, and any change to a bot that follows nobody", async () => {
+    const { app, writer, outsider, call } = await withProject();
+    const copy = app.store.bot(writer.id)!;
+    expect((await call("PATCH", `/api/bots/${writer.id}`, { name: "Quill", title: copy.title, color: copy.color, pinned: true })).status).toBe(200);
+    expect((await call("PATCH", `/api/bots/${writer.id}/profile`, { name: "Quill ", soul: copy.soul, voice: "calm" })).status).toBe(200);
+    expect((await call("PATCH", `/api/bots/${writer.id}/model`, copy.modelSelection)).status).toBe(200);
+    expect((await call("PATCH", `/api/bots/${outsider.id}`, { title: "Greeter" })).status).toBe(200);
+
+    app.store.patchBot(writer.id, { teamProject: { ...copy.teamProject!, sourceLeft: true } });
+    expect((await call("PATCH", `/api/bots/${writer.id}`, { title: "Head writer" })).status).toBe(200);
+    expect((await call("POST", `/api/bots/${writer.id}/avatar/generate`, { prompt: "A fox" })).status).toBe(200);
+    expect(app.store.bot(writer.id)!.title).toBe("Head writer");
+  });
+
+  it("refuses new shared instructions for a project's department while its team is there, and for no other department", async () => {
+    const { app, call } = await withProject();
+    expect(await call("PUT", "/api/section-context?section=Stand-in%20bride", { text: "Our own." })).toEqual({
+      status: 409, body: { error: "Stand-in bride takes its shared instructions from Sales desk. Change them in Sales desk instead.", errorKey: "serverError.teamProject.contextFollows", errorParams: { department: "Stand-in bride", team: "Sales desk" } },
+    });
+    expect((await call("PUT", "/api/section-context?section=Marketing", { text: "Theirs." })).body).toEqual({ from: "inline routes" });
+    expect((await call("GET", "/api/section-context?section=Stand-in%20bride")).body).toEqual({ from: "inline routes" });
+
+    expect(app.store.deleteSection("Sales desk")).toBeUndefined();
+    expect((await call("PUT", "/api/section-context?section=Stand-in%20bride", { text: "Our own." })).body).toEqual({ from: "inline routes" });
   });
 });

@@ -8,45 +8,52 @@ import { ThreadModelsLine } from "../ThreadModelsLine";
 import { t } from "@/lib/i18n";
 import { Select } from "../Select";
 import { backupNote } from "@/lib/engine-rail";
+import { FollowedModel } from "../team-projects/CopyFollows";
 
-export function ModelSection({ bot }: { bot: Bot }) {
+export function ModelSection({ bot, followed = false }: { bot: Bot; followed?: boolean }) {
   const { state, dispatch } = useStore();
   const { draft } = useBotEditor();
   const modelVariants = state.instances.find((instance) => instance.instanceId === bot.modelSelection.instanceId)?.capabilities?.modelVariants;
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-xl bg-card p-4">
-        <ModelPicker
-          bot={bot}
-          contained
-          label={
-            <div>
-              <div className="text-[15px] font-medium text-ink">{t("model.section.default")}</div>
-              <div className="mt-0.5 text-[13px] text-ink-secondary">
-                {draft ? t("model.section.starting") : t("model.section.threads")}
-              </div>
-              <ProposalStatus bot={bot} kind="chief" />
-            </div>
-          }
-        />
-        {!draft && <ThreadModelsLine bot={bot} className="mt-3" />}
-        {!draft && <div className="mt-3 text-[13px] text-ink-secondary">{t("model.section.installationDefault")}</div>}
-      </div>
-
-      <EffortRow
-        bot={bot}
-        className="rounded-xl bg-card p-4"
-        label={
-          <div>
-            <div className="text-[15px] font-medium text-ink">{modelVariants ? t("model.simple.reasoning") : t("model.section.effort")}</div>
-            {/* Codex applies a level to the whole thread and cannot take one back, so this says what the app sends, not where the engine ends up. */}
-            <div className="mt-0.5 text-[13px] text-ink-secondary">
-              {modelVariants ? (draft ? t("model.section.startingReasoning") : t("model.section.threads")) : t(bot.modelSelection.effort ? "model.section.effortHelp" : "model.section.effortHelpDefault")}
-            </div>
-            <ProposalStatus bot={bot} kind="chief" />
+      {followed ? (
+        <FollowedModel bot={bot} className="rounded-xl bg-card p-4" label={<div className="text-[15px] font-medium text-ink">{t("model.section.default")}</div>} />
+      ) : (
+        <>
+          <div className="rounded-xl bg-card p-4">
+            <ModelPicker
+              bot={bot}
+              contained
+              label={
+                <div>
+                  <div className="text-[15px] font-medium text-ink">{t("model.section.default")}</div>
+                  <div className="mt-0.5 text-[13px] text-ink-secondary">
+                    {draft ? t("model.section.starting") : t("model.section.threads")}
+                  </div>
+                  <ProposalStatus bot={bot} kind="chief" />
+                </div>
+              }
+            />
+            {!draft && <ThreadModelsLine bot={bot} className="mt-3" />}
+            {!draft && <div className="mt-3 text-[13px] text-ink-secondary">{t("model.section.installationDefault")}</div>}
           </div>
-        }
-      />
+
+          <EffortRow
+            bot={bot}
+            className="rounded-xl bg-card p-4"
+            label={
+              <div>
+                <div className="text-[15px] font-medium text-ink">{modelVariants ? t("model.simple.reasoning") : t("model.section.effort")}</div>
+                {/* Codex applies a level to the whole thread and cannot take one back, so this says what the app sends, not where the engine ends up. */}
+                <div className="mt-0.5 text-[13px] text-ink-secondary">
+                  {modelVariants ? (draft ? t("model.section.startingReasoning") : t("model.section.threads")) : t(bot.modelSelection.effort ? "model.section.effortHelp" : "model.section.effortHelpDefault")}
+                </div>
+                <ProposalStatus bot={bot} kind="chief" />
+              </div>
+            }
+          />
+        </>
+      )}
       {!draft && <FallbackChain bot={bot} onChange={(fallback) => dispatch({ type: "updateBot", botId: bot.id, patch: { fallback } })} />}
       {!draft && state.config?.cacheKeepWarm && (
         <KeepWarmRow bot={bot} workspaceOn={state.config.cacheKeepWarm.enabled}

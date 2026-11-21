@@ -6,6 +6,7 @@ import { useStore, type Bot } from "@/state/store";
 import type { MausMotion, MausState } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { BOT_PROFILE_LIMITS } from "../../../shared/bot-profile";
+import { BotAvatar } from "../Avatar";
 import { BotProfileAvatarCard } from "../BotProfileAvatarCard";
 import { BotInstructionsDialog } from "../BotInstructionsDialog";
 import { Field, inputCls } from "./field";
@@ -25,6 +26,7 @@ export function IdentitySection({
   mascotMotion,
   namePlaceholder,
   parts,
+  readOnly = false,
 }: {
   bot: Bot;
   patch: (patch: BotPatch) => void;
@@ -32,6 +34,8 @@ export function IdentitySection({
   mascotMotion: { kind: Exclude<MausMotion, "none">; nonce: number } | null;
   namePlaceholder?: string;
   parts?: readonly IdentityPart[];
+  /** A copy in a project shows these from its source. */
+  readOnly?: boolean;
 }) {
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const { draft } = useBotEditor();
@@ -40,7 +44,9 @@ export function IdentitySection({
 
   return (
     <div className="flex flex-col gap-4">
-      {shows("avatar") && <BotProfileAvatarCard bot={bot} activeState={activeState} mascotMotion={mascotMotion} onPatch={patch} />}
+      {shows("avatar") && (readOnly
+        ? <div data-identity-avatar-shown className="flex justify-center rounded-xl bg-card p-4"><BotAvatar bot={bot} size={64} state={activeState} /></div>
+        : <BotProfileAvatarCard bot={bot} activeState={activeState} mascotMotion={mascotMotion} onPatch={patch} />)}
       {shows("provenance") && <PackageProvenance bot={bot} />}
 
       {shows("name") && <div>
@@ -61,6 +67,7 @@ export function IdentitySection({
           className={inputCls}
           maxLength={BOT_PROFILE_LIMITS.name}
           value={bot.name}
+          readOnly={readOnly}
           placeholder={namePlaceholder}
           onChange={(e) => patch({ name: e.target.value })}
         />
@@ -72,6 +79,7 @@ export function IdentitySection({
           maxLength={BOT_PROFILE_LIMITS.title}
           placeholder={t("botSettings.identity.titlePlaceholder")}
           value={bot.title}
+          readOnly={readOnly}
           onChange={(e) => patch({ title: e.target.value })}
         />
       </Field>}
@@ -96,6 +104,7 @@ export function IdentitySection({
           placeholder={t("botSettings.identity.blurbPlaceholder")}
           aria-label={t("botSettings.identity.blurb")}
           value={bot.description}
+          readOnly={readOnly}
           onChange={(e) => patch({ description: e.target.value })}
         />
         <div className="mt-1.5 flex items-start justify-between gap-3 text-[11px] text-ink-secondary">

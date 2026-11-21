@@ -4,6 +4,7 @@ import { stateForBot } from "@/lib/mascot";
 import { useStore, type Bot } from "@/state/store";
 import { approvalModeFor } from "../../../shared/approval-mode";
 import { connectorGrantsState, type ConnectorGrantsState } from "@/lib/connector-grants";
+import { useFollowedSource, withoutCopyFields } from "../team-projects/CopyFollows";
 
 export type BotPatch = Partial<
   Pick<
@@ -58,7 +59,11 @@ export type BotPatch = Partial<
 export function useBotSettingsDerived(bot: Bot) {
   const { state, dispatch } = useStore();
   const { capabilities } = useDesktopCapabilities();
-  const patch = (p: BotPatch) => dispatch({ type: "updateBot", botId: bot.id, patch: p });
+  const followedSource = useFollowedSource(bot);
+  const patch = (p: BotPatch) => {
+    const allowed = followedSource ? withoutCopyFields(p) : p;
+    if (Object.keys(allowed).length > 0) dispatch({ type: "updateBot", botId: bot.id, patch: allowed });
+  };
   const activeState = stateForBot(bot);
   const mascotMotion = state.mascotMotion?.botId === bot.id ? state.mascotMotion : null;
   const engine = state.instances.find((instance) => instance.instanceId === bot.modelSelection.instanceId);
@@ -87,6 +92,7 @@ export function useBotSettingsDerived(bot: Bot) {
 
   return {
     patch,
+    followedSource,
     engine,
     approvalMode,
     trustedModesAvailable,

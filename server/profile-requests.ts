@@ -72,6 +72,8 @@ export interface ProfileRequestServiceOptions {
   canPersist?: (botId: string, threadId: string, opensCard: boolean) => { ok: true } | { ok: false; status: number; error: string };
   /** Chief targeting another bot: returns a refusal sentence or null. Checked at propose AND confirm. */
   validateTarget?: (proposerBotId: string, targetBotId: string) => string | null;
+  /** A refusal sentence when these fields of the bot may not change, whoever asks; null when they may. Checked at propose, confirm and undo. */
+  fieldsRefusal?: (targetBotId: string, fields: readonly string[]) => string | null;
   /** Absent: browserProfile is refused. */
   browserProfile?: { guards: BrowserProfileGuards; cleanup: BrowserChangeCleanup };
 }
@@ -229,6 +231,7 @@ export class ProfileRequestService {
   private readonly canPersist?: ProfileRequestServiceOptions["canPersist"];
   private readonly autoApply?: ProfileRequestServiceOptions["autoApply"];
   validateTarget?: ProfileRequestServiceOptions["validateTarget"];
+  private readonly fieldsRefusal?: ProfileRequestServiceOptions["fieldsRefusal"];
   private readonly browserProfile?: ProfileRequestServiceOptions["browserProfile"];
 
   constructor(options: ProfileRequestServiceOptions) {
@@ -237,6 +240,7 @@ export class ProfileRequestService {
     this.canPersist = options.canPersist;
     this.autoApply = options.autoApply;
     this.validateTarget = options.validateTarget;
+    this.fieldsRefusal = options.fieldsRefusal;
     this.browserProfile = options.browserProfile;
   }
 
@@ -318,6 +322,8 @@ export class ProfileRequestService {
     if (Object.keys(finalChanges).length === 0) {
       throw new ProfileRequestError("Nothing would change");
     }
+    const locked = this.fieldsRefusal?.(targetBotId, Object.keys(finalChanges));
+    if (locked) throw new ProfileRequestError(locked, 409);
 
     const requestId = newId();
     const targetName = redactSecretsInText(target.name);
@@ -398,6 +404,8 @@ export class ProfileRequestService {
       return cannot("This profile change belongs to another conversation", 403);
     }
     if (!payload.undo) return cannot("This change can't be undone here.");
+    const locked = this.fieldsRefusal?.(payload.targetBotId, Object.keys(payload.changes));
+    if (locked) return cannot(locked);
     const target = this.store.bot(payload.targetBotId);
     if (!target || profileRevision(target) !== payload.undo.appliedRevision) {
       return { claimed: true, state: "invalid", error: UNDO_STALE, status: 409, stale: true };
@@ -479,6 +487,8 @@ export class ProfileRequestService {
         const refusal = this.validateTarget(payload.botId, payload.targetBotId);
         if (refusal) throw new ProfileRequestError(refusal, 404, { terminal: true });
       }
+      const locked = this.fieldsRefusal?.(target.id, Object.keys(payload.changes));
+      if (locked) throw new ProfileRequestError(locked, 409, { terminal: true });
       if (profileRevision(target) !== payload.expectedRevision) {
         throw new ProfileRequestError(STALE, 409, { terminal: true });
       }

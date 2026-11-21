@@ -106,6 +106,8 @@ interface Options {
   autoApply?(botId: string, threadId: string): DirectApply | null;
   driverCapabilities?(instanceId: string): DriverCapabilities | undefined;
   validateChange?(before: BotRecord, fields: TeamSetupFields): void;
+  /** A refusal sentence when these fields of the bot may not change, whoever asks; null when they may. Checked at propose and confirm. */
+  fieldsRefusal?(target: BotRecord, fields: TeamSetupFields): string | null;
   /** Why this MCP server cannot be given to this bot (unknown, or another bot's own); null when it can. */
   mcpServerProblem?(name: string, botId: string): string | null;
   maxBots: number;
@@ -201,6 +203,8 @@ export class TeamSetupRequestService {
       const fields = this.fields(operation.fields, target ?? undefined);
       if (fields.chiefOfStaff !== undefined && !chief.chiefOfStaff) throw new TeamSetupError(`Only the Chief of Staff changes who the Chief is; ${chief.name} doesn't.`, 403);
       if (confirming && target) this.options.validateChange?.(target, fields);
+      const locked = target && this.options.fieldsRefusal?.(target, fields);
+      if (locked) throw new TeamSetupError(locked, 409);
       const destination = fields.section ?? target?.section ?? chief.section;
       if (!departmentOpenTo(this.options.store.bots, chief, destination)) throw new TeamSetupError(teamProjectSetupRefusal(chief, destination), 403);
       if (!allowed(destination)) throw new TeamSetupError(outsideDepartmentReason(chief, { section: destination }), 403);

@@ -256,6 +256,8 @@ export const USER_ERROR = {
   "serverError.teamProject.botStays": "{bot} belongs to a project and can't move to another department.",
   "serverError.teamProject.noJoin": "{department} is a project's team, so a bot that already exists can't move into it. Add a new bot to the project instead.",
   "serverError.teamProject.departmentFixed": "{department} is a project's team, so it can't be renamed or deleted.",
+  "serverError.teamProject.copyFollows": "{bot} follows {source} in {team}. Change {source} in {team} instead.",
+  "serverError.teamProject.contextFollows": "{department} takes its shared instructions from {team}. Change them in {team} instead.",
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;

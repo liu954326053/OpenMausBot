@@ -56,12 +56,14 @@ function useInlineEdit(save: (value: string) => void) {
   return { draft, setDraft, start, onKeyDown, onBlur, buttonRef };
 }
 
-export function PanelHero({ bot, activeState, patch, editorOpen, onToggleEditor }: {
+export function PanelHero({ bot, activeState, patch, editorOpen, onToggleEditor, readOnly = false }: {
   bot: Bot;
   activeState: MausState;
   patch: (patch: BotPatch) => void;
   editorOpen: boolean;
   onToggleEditor: () => void;
+  /** A copy in a project shows its name, title and look from its source. */
+  readOnly?: boolean;
 }) {
   const name = useInlineEdit((value) => {
     const next = value.trim();
@@ -72,10 +74,21 @@ export function PanelHero({ bot, activeState, patch, editorOpen, onToggleEditor 
     if (next !== bot.title.trim()) patch({ title: next });
   });
   const title = bot.title.trim();
+  const chief = bot.chiefOfStaff && (
+    <span data-panel-chief title={t("chat.chiefOfStaff")} className="absolute -bottom-0.5 -right-0.5 flex size-[22px] items-center justify-center rounded-full bg-accent text-accent-ink ring-[3px] ring-app">
+      <Crown size={12} aria-hidden="true" />
+      <span className="sr-only">{t("chat.chiefOfStaff")}</span>
+    </span>
+  );
 
   return (
     <div className="group/hero flex flex-col items-center text-center">
-      <button
+      {readOnly ? (
+        <div data-panel-avatar-shown className="relative rounded-[18px]">
+          <BotAvatar bot={bot} size={64} state={activeState} />
+          {chief}
+        </div>
+      ) : <button
         type="button"
         data-panel-avatar
         aria-label={t("botPanel.avatar.edit")}
@@ -90,23 +103,22 @@ export function PanelHero({ bot, activeState, patch, editorOpen, onToggleEditor 
         >
           <Pencil size={20} />
         </span>
-        {bot.chiefOfStaff && (
-          <span data-panel-chief title={t("chat.chiefOfStaff")} className="absolute -bottom-0.5 -right-0.5 flex size-[22px] items-center justify-center rounded-full bg-accent text-accent-ink ring-[3px] ring-app">
-            <Crown size={12} aria-hidden="true" />
-            <span className="sr-only">{t("chat.chiefOfStaff")}</span>
-          </span>
-        )}
+        {chief}
         <span
           aria-hidden="true"
           className="pointer-events-none absolute left-1/2 top-[calc(100%+4px)] z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-hairline bg-menu px-[7px] py-0.5 text-[12px] text-ink opacity-0 transition-opacity group-hover:opacity-100"
         >
           {t("botPanel.avatar.edit")}
         </span>
-      </button>
+      </button>}
 
       <div data-panel-name-row className="mt-2 flex max-w-full items-center justify-center">
         <h2 id="bot-settings-title" className="flex min-w-0 justify-center">
-          {name.draft !== null ? (
+          {readOnly ? (
+            <span className="inline-flex max-w-full items-center px-1.5 text-[17px] font-medium leading-6 text-ink">
+              <span className="min-w-0 truncate">{bot.name}</span>
+            </span>
+          ) : name.draft !== null ? (
             <input
               autoFocus
               data-panel-rename-input
@@ -134,7 +146,9 @@ export function PanelHero({ bot, activeState, patch, editorOpen, onToggleEditor 
         </h2>
       </div>
 
-      {label.draft !== null ? (
+      {readOnly ? title && (
+        <span data-panel-label-shown className="mt-px max-w-full truncate px-1.5 py-px text-[13px] text-ink-secondary">{title}</span>
+      ) : label.draft !== null ? (
         <input
           autoFocus
           data-panel-label-input

@@ -39,6 +39,9 @@ export interface TeamProjectsHost {
   routes: RouteHandler;
   /** For a Chief's team setup: throws when a change would move a bot into or out of a project. */
   checkSetupChange: TeamProjects["checkSetupChange"];
+  /** Why a change to these fields of a bot is refused: it is a copy that shows what its source shows. Null otherwise. */
+  copyRefusal: TeamProjects["copyRefusal"];
+  copyChangeRefusal: TeamProjects["copyChangeRefusal"];
 }
 
 const COPIES_SETTLE_MS = 1000;
@@ -73,5 +76,10 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
   // path keeps seeing them (Node.js docs, fs.watch caveats, "Inodes").
   watchFile(SECTION_CONTEXTS_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.contextsChanged());
   watchFile(TEAM_MEMORY_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.touchAll());
-  return { api: projects, root: () => projects.listWire().root, lookup: projects.lookup, routes: createTeamProjectRoutes(projects), checkSetupChange: (before, fields) => projects.checkSetupChange(before, fields) };
+  return {
+    api: projects, root: () => projects.listWire().root, lookup: projects.lookup, routes: createTeamProjectRoutes(projects),
+    checkSetupChange: (before, fields) => projects.checkSetupChange(before, fields),
+    copyRefusal: (botId, fields) => projects.copyRefusal(botId, fields),
+    copyChangeRefusal: (botId, changes) => projects.copyChangeRefusal(botId, changes),
+  };
 }

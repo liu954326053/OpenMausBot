@@ -7,6 +7,7 @@ import { useChatMoreItems } from "../ChatMoreMenu";
 import { EffortRow, ModelPicker } from "../ModelPicker";
 import type { SidebarMenuItem } from "../SidebarPopoverMenu";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
+import { FollowedModel } from "../team-projects/CopyFollows";
 import { BotConversations } from "./Conversations";
 import type { SimplePageId } from "./page-registry";
 import { TryAsking } from "./TryAsking";
@@ -54,22 +55,32 @@ export function DetailsTab({ bot, derived, onOpen }: {
     <div data-panel-tabpanel="details">
       {/* One row style down the whole tab: flat rows under quiet labels, no cards. */}
       <section data-panel-card="model" className="pt-2">
-        <div data-panel-row="model" className={cn(rowCls, "rounded-[8px]")}>
-          <ModelPicker
+        {derived.followedSource ? (
+          <FollowedModel
             bot={bot}
-            contained
-            threadId={bot.threadId}
+            className={cn(rowCls, "rounded-[8px]")}
             label={<span className="flex shrink-0 items-center gap-2.5"><RowIcon icon={Sparkles} /><RowText title={t("model.simple.model")} /></span>}
           />
-        </div>
-        {/* The picker hides its own reasoning row when contained, so this tab draws it as its own row. */}
-        <EffortRow
-          bot={bot}
-          threadId={bot.threadId}
-          compact
-          className={cn(rowCls, "min-w-0 flex-1 rounded-[8px]")}
-          label={<span className="flex shrink-0 items-center gap-2.5"><RowIcon icon={Sparkles} /><RowText title={t("model.simple.reasoning")} /></span>}
-        />
+        ) : (
+          <>
+            <div data-panel-row="model" className={cn(rowCls, "rounded-[8px]")}>
+              <ModelPicker
+                bot={bot}
+                contained
+                threadId={bot.threadId}
+                label={<span className="flex shrink-0 items-center gap-2.5"><RowIcon icon={Sparkles} /><RowText title={t("model.simple.model")} /></span>}
+              />
+            </div>
+            {/* The picker hides its own reasoning row when contained, so this tab draws it as its own row. */}
+            <EffortRow
+              bot={bot}
+              threadId={bot.threadId}
+              compact
+              className={cn(rowCls, "min-w-0 flex-1 rounded-[8px]")}
+              label={<span className="flex shrink-0 items-center gap-2.5"><RowIcon icon={Sparkles} /><RowText title={t("model.simple.reasoning")} /></span>}
+            />
+          </>
+        )}
       </section>
 
       <BotConversations bot={bot} />

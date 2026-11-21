@@ -61,6 +61,14 @@ export interface TeamProjectMembership {
   sourceLeft?: true;
 }
 
+/** What a copy shows of its source. Nobody can change these on a copy while it follows its source. */
+export const COPY_FIELDS = [
+  "name", "title", "description", "soul", "modelSelection",
+  "color", "mascotExpression", "mascotBody", "mascotFaceColor", "avatarUrl", "avatarCrop", "avatarZoom", "avatarFocusX", "avatarFocusY",
+] as const;
+
+export type CopyField = (typeof COPY_FIELDS)[number];
+
 const ROLE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 /** Names Windows keeps for devices: no folder can be called one, and a role names its bot's folder in a project. */
 const DEVICE_NAME = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/;

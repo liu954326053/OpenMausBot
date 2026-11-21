@@ -1,16 +1,17 @@
 import { takeImportName } from "../../shared/import-name.ts";
+import { COPY_FIELDS, type CopyField } from "../../shared/team-projects.ts";
 import { sameModelSelection } from "../../shared/thread-model.ts";
 import type { ModelSelection } from "../../shared/wire.ts";
 import type { BotRecord } from "../store.ts";
 
-/** What a copy shows of its source besides its name, persona and model. */
-export const FOLLOWED_FIELDS = [
-  "title", "description", "color", "mascotExpression", "mascotBody", "mascotFaceColor",
-  "avatarUrl", "avatarCrop", "avatarZoom", "avatarFocusX", "avatarFocusY",
-] as const satisfies ReadonlyArray<keyof BotRecord>;
+type LookField = Exclude<CopyField, "name" | "soul" | "modelSelection">;
 
-/** Every field of a copy that is its source's: a direct change to one of them is refused. */
-export const COPY_FIELDS: ReadonlySet<string> = new Set(["name", "soul", "modelSelection", ...FOLLOWED_FIELDS]);
+/** What a copy shows of its source besides its name, persona and model. */
+export const FOLLOWED_FIELDS = COPY_FIELDS.filter((field): field is LookField => field !== "name" && field !== "soul" && field !== "modelSelection") satisfies ReadonlyArray<keyof BotRecord>;
+
+const COPY_FIELD_NAMES: ReadonlySet<string> = new Set<string>(COPY_FIELDS satisfies ReadonlyArray<keyof BotRecord>);
+
+export const isCopyField = (field: string): boolean => COPY_FIELD_NAMES.has(field);
 
 export interface CopyUpdate {
   fields: Partial<BotRecord>;
@@ -19,6 +20,19 @@ export interface CopyUpdate {
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+const cleared = (value: unknown) => value === undefined || value === null || value === "";
+
+/** The fields a copy takes from its source that `changes` would set to something else. */
+export function changedCopyFields(copy: BotRecord, changes: object): string[] {
+  return Object.entries(changes).filter(([field, next]) => {
+    if (!isCopyField(field)) return false;
+    if (field === "modelSelection") return !(next && typeof next === "object" && sameModelSelection(next as ModelSelection, copy.modelSelection));
+    if (field === "name") return typeof next !== "string" || next.trim() !== copy.name;
+    const current = copy[field as keyof BotRecord];
+    return !(cleared(next) && cleared(current)) && !same(next, current);
+  }).map(([field]) => field);
+}
 
 /** The name a copy takes: its source's, numbered when another bot of the project has it already. */
 export function copyName(source: Pick<BotRecord, "name">, otherNames: Iterable<string>): string {

@@ -15,6 +15,7 @@ import { PANEL_TABS, PAGES, TAB_LABEL, type PanelTab, type PanelTarget, type Sim
 import { PageBody, pageSurfaceCls } from "./pages";
 import { linkTarget, usePanelLink, type PanelLink } from "./panel-link";
 import { PanelHero } from "./PanelHero";
+import { CopyFollowsNotice } from "../team-projects/CopyFollows";
 import { PageHeader, roundButtonCls } from "./rows";
 
 function initialTarget(section: BotSettingsSection | null, link: PanelLink | null): PanelTarget {
@@ -124,6 +125,7 @@ export function BotPanel({ bot, derived, linkedSection, onClose }: {
                 patch={derived.patch}
                 editorOpen={editorOpen}
                 onToggleEditor={() => setEditorOpen((open) => !open)}
+                readOnly={Boolean(derived.followedSource)}
               />
               {editorOpen && (
                 <>
@@ -132,6 +134,7 @@ export function BotPanel({ bot, derived, linkedSection, onClose }: {
                 </>
               )}
             </div>
+            <CopyFollowsNotice bot={bot} className="mt-3.5" />
             <div
               role="tablist"
               aria-label={t("botSettings.simple.tabs")}

@@ -17,6 +17,9 @@ export interface TeamProjectRouteHost {
   setRoot(path: unknown): { root: string } | UserError;
   moveRefusalFor(botId: string, to: string | null | undefined): UserError | null;
   departmentRefusal(section: string | null | undefined): UserError | null;
+  copyRefusal(botId: string, fields: Iterable<string>): UserError | null;
+  copyChangeRefusal(botId: string, changes: object): UserError | null;
+  contextRefusal(section: string | null | undefined): UserError | null;
 }
 
 const REFUSAL_STATUS: Record<TeamProjectRefusal, number> = {
@@ -57,6 +60,37 @@ function guardDepartments(projects: TeamProjectRouteHost, req: IncomingMessage, 
   return null;
 }
 
+type CopyChange = { botId: string; fields: readonly string[] } | { botId: string; changes(body: Record<string, unknown>): Record<string, unknown> };
+
+/** What a request would change on a bot that a copy takes from its source; null for a request that changes none of it. */
+function copyChangeIn(method: string, path: string): CopyChange | null {
+  const match = path.match(/^\/api\/bots\/([\w-]+)(\/[\w/-]+)?$/);
+  if (!match) return null;
+  const [, botId = "", rest = ""] = match;
+  if (method === "PATCH" && (rest === "" || rest === "/profile")) return { botId, changes: (body) => body };
+  if (method === "PATCH" && rest === "/model") return { botId, changes: (body) => ({ modelSelection: body }) };
+  if (method === "POST" && rest === "/avatar/generate") return { botId, fields: ["avatarUrl"] };
+  if (method === "POST" && (rest === "/soul/apply-file" || rest === "/history/rollback")) return { botId, fields: ["soul"] };
+  return null;
+}
+
+/**
+ * A copy in a project shows what its source shows, and a project's department has its team's shared instructions. A
+ * request that would change either here is refused before the route that carries it out.
+ */
+function guardCopies(projects: TeamProjectRouteHost, req: IncomingMessage, method: string, path: string, section: string | undefined): UserError | null {
+  if (path === "/api/section-context" && method === "PUT") return projects.contextRefusal(section);
+  const change = copyChangeIn(method, path);
+  if (!change) return null;
+  if ("fields" in change) return projects.copyRefusal(change.botId, change.fields);
+  onParsedBody(req, (body) => {
+    const refused = projects.copyChangeRefusal(change.botId, change.changes(record(body)));
+    if (refused) throw Object.assign(userErrorThrown(refused.errorKey, refused.errorParams), { status: 409 });
+    return null;
+  });
+  return null;
+}
+
 /**
  * The Projects page's routes, and the guard on the routes that move bots between departments. Projects are the
  * owner's or an admin's to list, make, archive and restore: the list names every project's folder.
@@ -80,7 +114,10 @@ export function createTeamProjectRoutes(projects: TeamProjectRouteHost): RouteHa
       const project = action[2] === "archive" ? projects.archive(action[1]!) : projects.restore(action[1]!);
       return project ? json(res, 200, { project }) : json(res, 404, userError("serverError.teamProject.notFound"));
     }
-    const refused = guardDepartments(projects, req, method, path, url.searchParams.get("section")?.trim());
-    return refused ? json(res, 409, refused) : PASS;
+    const section = url.searchParams.get("section")?.trim();
+    const refused = guardDepartments(projects, req, method, path, section) ?? guardCopies(projects, req, method, path, section);
+    if (!refused) return PASS;
+    req.resume();
+    return json(res, 409, refused);
   };
 }

@@ -66,6 +66,13 @@ describe("a project's team", () => {
     expect(side.of(bot("helper", "palace"))?.id).toBe("palace");
     expect(side.of(bot("sales-1", "Sales"))).toBeUndefined();
   });
+
+  it("tells which bot a copy follows, and only while it follows one", () => {
+    const following = teamProjectSide({ root: "/dramas", projects: [project("bride", { follows: { "bride-writer": "writer" } })] });
+    expect(following.source("bride-writer")).toEqual({ sourceId: "writer", project: expect.objectContaining({ id: "bride" }) });
+    expect(following.source("bride-lead")).toBeUndefined();
+    expect(following.source("writer")).toBeUndefined();
+  });
 });
 
 describe("what is left for the departments", () => {

@@ -26,6 +26,8 @@ export interface TeamProjectSide {
   /** False for a project's department, archived or not. */
   department(name: string): boolean;
   of(bot: SideBot): TeamProjectWire | undefined;
+  /** The bot a copy shows, and the copy's project, while the copy follows it. */
+  source(botId: string): { sourceId: string; project: TeamProjectWire } | undefined;
   /** The lead first, then the members in the server's order. */
   team<T extends SideBot>(project: TeamProjectWire, bots: T[]): T[];
   teamRooms<T extends SideRoom>(project: TeamProjectWire, rooms: T[]): T[];
@@ -54,6 +56,11 @@ export function teamProjectSide(list: TeamProjectsListWire | null, creating: str
     rooms: (rooms) => rooms.filter((room) => !ofSection(room.section) && !arriving(room.section)),
     department: (name) => !ofSection(name) && !arriving(name),
     of,
+    source: (botId) => {
+      const project = byBot.get(botId);
+      const sourceId = project?.follows[botId];
+      return project && sourceId ? { sourceId, project } : undefined;
+    },
     team: (project, bots) => {
       const place = (bot: SideBot) => {
         if (bot.id === project.leadBotId) return -1;

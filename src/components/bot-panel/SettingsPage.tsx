@@ -52,6 +52,7 @@ export function SettingsPage({ bot, derived, onOpen, editingInstructions = false
   const choosesVisibility = useChoosesVisibility();
   const [jobDraft, setJobDraft] = useState<string | null>(null);
   const { patch, approvalMode, engine } = derived;
+  const followed = Boolean(derived.followedSource);
   const name = bot.name;
   const commitJob = () => {
     if (jobDraft !== null && jobDraft.trim() !== bot.title.trim()) patch({ title: jobDraft.trim() });
@@ -111,6 +112,7 @@ export function SettingsPage({ bot, derived, onOpen, editingInstructions = false
             <SoulField
               bot={bot}
               onPatch={patch}
+              readOnly={followed}
               simple={{
                 label: t("botSettings.simple.instructions"),
                 placeholder: t("botSettings.simple.instructionsPlaceholder", { name }),
@@ -129,7 +131,7 @@ export function SettingsPage({ bot, derived, onOpen, editingInstructions = false
           <button
             type="button"
             data-panel-edit="soul"
-            aria-label={`${t("botSettings.simple.edit")}: ${t("botSettings.simple.instructions")}`}
+            aria-label={followed ? t("botSettings.simple.instructions") : `${t("botSettings.simple.edit")}: ${t("botSettings.simple.instructions")}`}
             onClick={() => onEditInstructions?.(true)}
             className={cn(rowCls, "w-full text-left hover:bg-ink/[0.03]")}
           >
@@ -240,6 +242,7 @@ export function SettingsPage({ bot, derived, onOpen, editingInstructions = false
           <input
             data-panel-job
             value={jobDraft ?? bot.title}
+            readOnly={followed}
             placeholder={t("botSettings.simple.jobPlaceholder")}
             aria-label={t("botSettings.simple.job")}
             maxLength={BOT_PROFILE_LIMITS.title}
