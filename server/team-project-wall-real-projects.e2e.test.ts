@@ -125,7 +125,7 @@ describe("the wall between two projects that the project code itself made from o
     expect(crewLead.chiefOfStaff).toBe(true);
   });
 
-  it("tells a project's member of its own lead and the main bot alone, and answers every other bot as one that does not exist", async () => {
+  it("tells a project's member of its own lead alone, and answers every other bot as one that does not exist", async () => {
     const seen = await personAsks("a member of Midnight Train", writerA, "Where does the script stand?", {
       [writerA.id]: {
         steps: [
@@ -144,13 +144,12 @@ describe("the wall between two projects that the project code itself made from o
     });
     const turn = firstTurn(seen, writerA);
     const heard = told(turn);
-    expect(heard).toContain("You work inside one team project.");
-    expect(heard).toContain(`[id: ${directorA.id}]`);
-    expect(heard).toContain(`[id: ${main.id}]`);
-    for (const beyond of [directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id, PAPER, CREW, "Oswald", "Studio"]) expect(heard, beyond).not.toContain(beyond);
+    expect(heard).toContain("You work in your team's flow");
+    expect(heard).toContain(`[your superior] [id: ${directorA.id}]`);
+    for (const beyond of [main.id, directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id, PAPER, CREW, "Oswald", "Studio"]) expect(heard, beyond).not.toContain(beyond);
     const [listed, nobody, otherWriter, otherLead, sourceWriter, outside, ownLead] = answers(turn);
-    for (const reached of [directorA.id, main.id]) expect(listed, reached).toContain(reached);
-    for (const beyond of [directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id]) expect(listed, beyond).not.toContain(beyond);
+    expect(listed).toContain(directorA.id);
+    for (const beyond of [main.id, directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id]) expect(listed, beyond).not.toContain(beyond);
     expect(nobody).toContain(`No bot with id or name "${NOBODY}"`);
     for (const [answer, asked] of [[otherWriter, writerB.id], [otherLead, directorB.id], [sourceWriter, crewWriter.id], [outside, oswald.id]] as const) {
       expect(answer!.replaceAll(asked, NOBODY), asked).toBe(nobody);
