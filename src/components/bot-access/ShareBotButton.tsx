@@ -35,7 +35,7 @@ export function ShareBotButton({ bot, className, headerMenu, iconSize = 16, lead
         <Share size={iconSize} aria-hidden="true" className="pointer-events-none" />
       </button>
       {open && <ShareBotDialog bot={bot} teamName={teamName} onClose={() => setOpen(false)} onChanged={setChange} headerMenu={headerMenu} />}
-      {change && <UndoToast key={`${change.text}:${JSON.stringify(change.after)}`} text={change.text}
+      {change && <UndoToast key={`${change.text}:${JSON.stringify(change.after)}`} clearOfComposer text={change.text}
         onUndo={() => saveAccess(bot.id, change.before)} onDone={settled} />}
     </>
   );

@@ -42,8 +42,8 @@ describe("the canvas controller", () => {
     expect(controller.getState().snapshot!.nodes.some((candidate) => candidate.title === "Note")).toBe(true);
     await controller.settled();
     await controller.refresh();
-    expect(sent.map((request) => request.ops[0]!.type)).toEqual(["update_node", "add_node"]);
-    expect(sent[1]!.ops[0]).toMatchObject({ id: expect.any(String) });
+    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([["update_node"], ["update_node", "update_node", "update_node", "update_node"], ["add_node"]]);
+    expect(sent[2]!.ops[0]).toMatchObject({ id: expect.any(String) });
     expect(backend.current().nodes.find((candidate) => candidate.id === "logline")!.title).toBe("Logline v2");
     expect(controller.getState().snapshot!.revision).toBe(backend.current().revision);
   });
@@ -56,7 +56,40 @@ describe("the canvas controller", () => {
     controller.apply([{ type: "update_node", id: "logline", patch: { position: { x: 5, y: 5 }, width: 300 } }]);
     controller.setBackground("dots");
     await controller.settled();
-    expect(sent.map((request) => request.baseRevision)).toEqual([start, start + 1, undefined, undefined]);
+    expect(sent.map((request) => request.baseRevision)).toEqual([start, undefined, start + 2, undefined, undefined]);
+  });
+
+  it("stores where each bot the server still lays out is before the first node is added, as its own change and out of undo", async () => {
+    const { backend, controller, sent } = await started();
+    const before = backend.current().nodes.filter((candidate) => candidate.type === "bot");
+    controller.apply([{ type: "add_node", nodeType: "text", title: "Note", position: { x: 10, y: 10 } }]);
+    controller.apply([{ type: "add_node", nodeType: "text", title: "Another", position: { x: 10, y: 400 } }]);
+    await controller.settled();
+    await controller.refresh();
+    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([before.map(() => "update_node"), ["add_node"], ["add_node"]]);
+    expect(sent[0]).toEqual({ ops: before.map((bot) => ({ type: "update_node", id: bot.id, patch: { position: bot.position } })) });
+    expect(Object.values(backend.current().bots).map((bot) => bot.placed)).toEqual(before.map(() => true));
+    controller.undo();
+    controller.undo();
+    expect(controller.getState().canUndo).toBe(false);
+    await controller.upload(new File(["x"], "still.png", { type: "image/png" }), { x: 5, y: 900 });
+    expect(sent).toHaveLength(5);
+  });
+
+  it("stores those places before an upload too", async () => {
+    const { controller, sent } = await started();
+    const { nodeId } = await controller.upload(new File(["x"], "still.png", { type: "image/png" }), { x: 5, y: 6 });
+    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([["update_node", "update_node", "update_node", "update_node"]]);
+    expect(node(controller, nodeId)).toBeDefined();
+  });
+
+  it("shows a view without storing it when asked to", async () => {
+    const { backend, controller } = await started();
+    controller.setViewport({ x: 40, y: 50, k: 0.5 }, { save: false });
+    await vi.advanceTimersByTimeAsync(VIEWPORT_SAVE_DELAY_MS * 2);
+    await controller.settled();
+    expect(controller.getState().viewport).toEqual({ x: 40, y: 50, k: 0.5 });
+    expect(backend.current().viewport).toEqual({ x: 0, y: 0, k: 1 });
   });
 
   it("reads the canvas and the bots' looks again whenever the backend says something changed", async () => {
@@ -69,6 +102,13 @@ describe("the canvas controller", () => {
     await controller.refresh();
     expect(controller.getState().snapshot!.bots.mira!.status).toBe("working");
     expect(controller.getState().looks.mira).toEqual({ color: "green" });
+  });
+
+  it("reads a bot's conversation where its newest reply on the canvas is, or its main one", async () => {
+    const { backend, controller } = await started();
+    controller.readConversation("mira");
+    controller.readConversation("kai");
+    expect(backend.readConversations).toEqual([{ botId: "mira", threadId: "thread-mira" }, { botId: "kai" }]);
   });
 
   it("undoes and redoes a deletion with its connections, and drops redo after a new change", async () => {
