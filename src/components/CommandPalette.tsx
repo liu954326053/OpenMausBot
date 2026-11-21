@@ -135,6 +135,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
   const row = (key: string, index: number, onPick: () => void, children: React.ReactNode, twoLine = false) => (
     <button
       key={key}
+      data-palette-entry={key}
       ref={index === selected ? selectedRef : undefined}
       onClick={onPick}
       // mousemove, not mouseenter: rows shifting under a resting pointer must not steal the keyboard selection.
@@ -156,7 +157,7 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
       onKeyDown={onKeyDown}
     >
       <div
-        role="dialog" data-look="dialog"
+        role="dialog" data-look="dialog" data-command-palette=""
         aria-modal="true"
         aria-label={t("palette.label")}
         className="popover-surface flex max-h-[min(480px,70vh)] w-full max-w-[560px] flex-col overflow-hidden rounded-[var(--radius-menu)] border border-hairline/50 bg-menu shadow-2xl shadow-black/60"

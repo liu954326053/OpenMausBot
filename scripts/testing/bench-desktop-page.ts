@@ -223,16 +223,18 @@ export const FRAMES_STOP = `(() => {
     nodes: document.getElementsByTagName("*").length, top: el ? el.scrollTop : null, height: el ? el.scrollHeight : null };
 })()`;
 export type BenchBot = { id: string; name: string };
-/** The sidebar lists the main bot and the projects; a bot in no project has a row once the sidebar's search finds it by
- * name. Resolves true a frame after the row is there. */
+/** What a person clicks to open a bot: the main bot's sidebar row, or another bot's entry in the command palette. */
+export const botEntry = (bot: BenchBot) =>
+  `(document.querySelector('[data-sidebar-bot-row="${bot.id}"]') ?? document.querySelector('[data-command-palette] [data-palette-entry="bot:${bot.id}"]'))`;
+/** Opens the command palette on the bot's name unless the sidebar lists it. Resolves true a frame after its entry is there. */
 export const revealRowExpression = (bot: BenchBot) => `new Promise((resolve) => {
   const until = performance.now() + 15000;
   const step = () => {
-    if (document.querySelector('[data-sidebar-bot-row="${bot.id}"]')) { requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))); return; }
+    if (${botEntry(bot)}) { requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))); return; }
     if (performance.now() > until) { resolve(false); return; }
-    if (!document.querySelector("[data-sidebar] input")) document.querySelector("[data-sidebar-search-toggle]")?.click();
-    const input = document.querySelector("[data-sidebar] input");
-    if (input && input.value !== ${JSON.stringify(bot.name)}) {
+    const input = document.querySelector("[data-command-palette] input");
+    if (!input) window.dispatchEvent(new Event("omb:open-command-palette"));
+    else if (input.value !== ${JSON.stringify(bot.name)}) {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, ${JSON.stringify(bot.name)});
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }
@@ -240,10 +242,10 @@ export const revealRowExpression = (bot: BenchBot) => `new Promise((resolve) => 
   };
   step();
 })`;
-/** Clicks a bot's sidebar row and resolves, in the page, on the first frame after \`ready\` holds: the switch as a person
+/** Clicks what opens the bot and resolves, in the page, on the first frame after \`ready\` holds: the switch as a person
  * sees it. Finding the row is not timed. */
 export const switchExpression = (bot: BenchBot, ready: string) => `${revealRowExpression(bot)}.then(() => new Promise((resolve) => {
-  const row = document.querySelector('[data-sidebar-bot-row="${bot.id}"]');
+  const row = ${botEntry(bot)};
   if (!row) { resolve({ clicked: false }); return; }
   const started = performance.now();
   row.click();

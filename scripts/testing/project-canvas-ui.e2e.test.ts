@@ -26,7 +26,7 @@ import { startFakeGenerationMcp } from "../../server/testing/fake-generation-mcp
 import { hostTimeout } from "../../server/testing/host-timeout.ts";
 import { GENERATION_KEY } from "../../server/testing/project-generation-harness.ts";
 import { launchRestartableServer, type RestartableServer } from "../../server/testing/restartable-server.ts";
-import { agentBrowser, ensureUiBrowser, findInSidebar, sessionEnv, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, searchSidebar, sessionEnv, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
@@ -820,15 +820,15 @@ type Box = { x: number; y: number; w: number; h: number };
       await clickSelector(`[data-sidebar-bot-row=${JSON.stringify(main.id)}]`);
       await mainInstead("the main bot's chat in place of the canvas");
       const part = project.name.slice(project.name.indexOf(" ") + 1).toUpperCase();
-      await expect.poll(() => evaluate<boolean>(findInSidebar(part)), { timeout: 10_000, interval: 250 }).toBe(true);
+      await expect.poll(() => evaluate<boolean>(searchSidebar(part)), { timeout: 10_000, interval: 250 }).toBe(true);
       await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [[project.id, 1]], bots: [main.id], noMatch: null });
       await shot("28a-search-finds-the-project-by-a-part-of-its-name.png");
       await clickSelector(projectRow);
       await waitFor(`document.querySelector(${JSON.stringify(projectRow)})?.getAttribute("aria-current") === "page" && document.querySelector(${JSON.stringify(`${view} ${writerNode}`)})`, "the canvas open from the search");
-      await expect.poll(() => evaluate<boolean>(findInSidebar(writer.name)), { timeout: 10_000, interval: 250 }).toBe(true);
+      await expect.poll(() => evaluate<boolean>(searchSidebar(writer.name)), { timeout: 10_000, interval: 250 }).toBe(true);
       await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [], bots: [main.id], noMatch: `No project matches “${writer.name}”` });
       await shot("28b-search-for-the-writer-finds-no-project.png");
-      await evaluate(findInSidebar(""));
+      await evaluate(searchSidebar(""));
       await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [[project.id, 1]], bots: [main.id], noMatch: null });
       await clickSelector("[data-sidebar-search-toggle]");
       await waitFor(`!document.querySelector("[data-sidebar] input")`, "the search closed");
