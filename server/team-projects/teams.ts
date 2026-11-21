@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { ProjectTeamUnusable, ProjectTeamWire, TeamMemberWire } from "../../shared/team-projects.ts";
+import { projectTeamUnusable, type ProjectTeamWire, type TeamMemberWire } from "../../shared/team-projects.ts";
 import { sectionKey, type BotRecord } from "../store.ts";
 
 /** What the teams are read from. */
@@ -24,7 +24,7 @@ function teamOf(sources: TeamSources, name: string): ProjectTeamWire {
   const chief = sources.bots.find((bot) => !bot.hidden && bot.chiefOfStaff && sectionKey(bot.section) === name);
   const bots = teamBots(sources.bots, name);
   const members = chief && !chief.defaultBot ? [chief, ...bots.filter((bot) => bot !== chief)] : bots;
-  const unusable: ProjectTeamUnusable | undefined = chief?.defaultBot ? "main_bot_chief" : !bots.length ? "empty" : !chief ? "no_chief" : undefined;
+  const unusable = projectTeamUnusable(chief, bots.length);
   return {
     name, context: sources.context(name), chief: chief ? memberOf(chief) : null, members: members.map(memberOf),
     ...(unusable ? { unusable } : {}),

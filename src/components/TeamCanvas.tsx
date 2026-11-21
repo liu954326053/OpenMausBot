@@ -16,6 +16,7 @@ import { computerStepLine } from "@/lib/computer-step";
 import { localizedTaskTitle } from "@/lib/task-title";
 import type { MapComputer, MapComputerState } from "../../shared/map-computer";
 import { BotAvatar } from "./Avatar";
+import { botRoleLine, chiefTitle } from "./BotRole";
 import { ComputerNode } from "./ComputerNode";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 import { openBotSettings } from "./bot-panel/panel-link";
@@ -68,9 +69,9 @@ function BotCard({ bot, selected, moving, connected, tagged = false, sent, onCom
       <BotAvatar bot={bot} size={38} motion="none" motionKey={0} animated={false} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-semibold">{name}</span>
-          {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={t("chat.chiefOfStaff")} />}
+          {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={chiefTitle(bot)} />}
           {botShowsUnread(bot) && <span data-card-unread="" role="img" aria-label={t("task.unread")} className="size-2 shrink-0 rounded-full bg-accent" />}</span>
-        <span className="mt-1 block truncate text-[11px] text-ink-secondary">{bot.title || (bot.chiefOfStaff ? t("chat.chiefOfStaff") : t("canvas.bot"))}</span>
+        <span className="mt-1 block truncate text-[11px] text-ink-secondary">{botRoleLine(bot) || t("canvas.bot")}</span>
       </span>
     </button>
     <div className="flex h-[43px] items-center gap-1 border-t border-hairline/30 px-2">
@@ -463,7 +464,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
               }}>
               <h2 className="truncate text-[13px] font-semibold tracking-tight">{section.name}</h2>
             </button>
-            <TeamMapNote reason={section.key ? notes.get(section.key) : undefined} />
+            <TeamMapNote department={section.key} reason={notes.get(section.key)} canChoose={canManage} />
             {computer && <button aria-label={t("canvas.teamComputer", { team: section.name, name: computer.name })} title={`${computer.name}${computer.state ? ` · ${computer.state}` : ""}`}
               disabled={!onTeamComputer} onClick={() => onTeamComputer?.(section.key)}
               className="flex min-w-0 max-w-[120px] shrink items-center gap-1.5 rounded-md px-1.5 py-2 text-[10px] text-ink-secondary hover:bg-control hover:text-ink focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none">

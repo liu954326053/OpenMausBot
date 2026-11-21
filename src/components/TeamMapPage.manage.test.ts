@@ -87,12 +87,19 @@ describe("the team map as the place teams are managed", () => {
 
 describe("TeamMapNote", () => {
   it("says a department has no Chief, with the server's full reason", () => {
-    const note = render(createElement(TeamMapNote, { reason: "no_chief" }));
+    const note = render(createElement(TeamMapNote, { department: "Ops", reason: "no_chief", canChoose: false }));
     expect(note).toContain("No Chief of Staff");
     expect(note).toContain('title="It has no Chief of Staff to lead a project yet."');
   });
 
   it("says nothing for a department a project can be made from", () => {
-    expect(render(createElement(TeamMapNote, { reason: undefined }))).toBe("");
+    expect(render(createElement(TeamMapNote, { department: "Ops", reason: undefined, canChoose: true }))).toBe("");
+  });
+
+  it("is the way to choose a Chief of Staff on the map of someone who manages the team", () => {
+    const ops = render(createElement(TeamMapPage)).split("<section").find((section) => section.includes('data-team-key="Ops"'));
+    expect(ops).toMatch(/<button type="button" data-team-note="no_chief" aria-haspopup="menu"[^>]*>No Chief of Staff<\/button>/);
+    expect(ops).toContain(">Choose Chief of Staff<");
+    expect(ops).toContain(">New project from this department<");
   });
 });

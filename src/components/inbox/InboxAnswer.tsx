@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { Check, ExternalLink } from "lucide-react";
+import { Check, Crown, ExternalLink } from "lucide-react";
 import type { InboxRow, InboxView } from "../../../shared/inbox";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { Bot } from "@/state/store";
 import { replyToInboxRow, settleInboxRow } from "@/state/inbox";
 import { ASK_QUIET_ANSWER, AskReply } from "../AskCard";
+import { ChiefPicker } from "../ChiefPicker";
 import { ELEVATED_CARD } from "../elevated";
 import { pendingApprovals, PendingApprovalActions, PendingApprovalPanel } from "../PendingApproval";
 import { ConnectorCard } from "../ConnectorCard";
@@ -64,6 +65,19 @@ function SignInAnswer({ row, threadId, asker }: AnswerProps) {
   return botId && threadId ? <SignInRequestCard botId={botId} botName={asker?.name ?? row.from.name} color={asker?.color} threadId={threadId} message={asMessage(row)} /> : null;
 }
 
+function ChiefAnswer({ row }: AnswerProps) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const department = row.needsChief?.department;
+  if (!department) return null;
+  return (
+    <>
+      <button type="button" data-inbox-action="chief" aria-haspopup="menu" aria-expanded={anchor !== null} onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
+        className={ASK_QUIET_ANSWER}><Crown size={15} aria-hidden="true" />{t("chiefPicker.choose")}</button>
+      {anchor && <ChiefPicker department={department} anchor={anchor} onClose={() => setAnchor(null)} onChosen={() => settleInboxRow(row)} />}
+    </>
+  );
+}
+
 function DoneButton({ view, row }: AnswerProps) {
   const { run } = useInboxActions(view);
   if (row.tab !== "info") return null;
@@ -100,6 +114,7 @@ const ANSWERS: Record<InboxAnswerKind, (props: AnswerProps) => ReactNode> = {
   password: PasswordAnswer,
   "sign-in": SignInAnswer,
   connect: ConnectAnswer,
+  chief: ChiefAnswer,
   reply: ReplyAnswer,
   none: DoneButton,
 };

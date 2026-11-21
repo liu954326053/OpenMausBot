@@ -35,6 +35,12 @@ describe("a row's actions", () => {
     expect(quickActions(settledRow)).toEqual(["open"]);
   });
 
+  it("offers a department with no Chief of Staff the way to choose one, or to be done with it, until it is settled", () => {
+    const chiefless = { ...reportRow, kind: "notice" as const, tab: "needs-you" as const, needsChief: { department: "Night shift" } };
+    expect(quickActions(chiefless)).toEqual(["chief", "done"]);
+    expect(quickActions({ ...chiefless, tab: "done" })).toEqual(["open"]);
+  });
+
   it("names each line's subject plainly, or by the conversation a message came from", () => {
     expect([approvalRow, questionRow, reportRow].map(subjectOf)).toEqual(["Approval", "Question", "Routine report"]);
     expect(subjectOf(messageRow)).toBe("Message");

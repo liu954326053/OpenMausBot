@@ -93,7 +93,7 @@ describe("a project the main bot proposes", () => {
     expect(texts("dt")).toEqual(["Project folder", "Team", "Members"]);
     expect(texts("dd").slice(0, 2)).toEqual([FOLDER, "Urban romance crew"]);
     expect(host.querySelector("dd")?.className).toContain("font-mono");
-    expect(texts("li")).toEqual(["Pia (lead)Runs the production", "WenWrites the episodes", "SolDraws the shots"]);
+    expect(texts("li")).toEqual(["Pia (Chief of Staff)Runs the production", "WenWrites the episodes", "SolDraws the shots"]);
     expect(host.querySelector("pre")).toBeNull();
     expect(host.textContent).toContain("Waiting for your confirmation below. To change anything, just say so in the chat.");
     expect(openButton()).toBeNull();
@@ -139,7 +139,7 @@ describe("a project the main bot proposes", () => {
     setLocale("zh");
     await showCard(projectCard());
     expect(texts("dt")).toEqual(["项目文件夹", "团队", "成员"]);
-    expect(texts("li")[0]).toBe("Pia（负责人）Runs the production");
+    expect(texts("li")[0]).toBe("Pia（参谋长）Runs the production");
     expect(host.textContent).toContain("正在等待你在下方确认。想改什么，直接在对话里说。");
     await showActions(projectCard());
     expect(texts("button")).toEqual(["取消", "创建"]);
@@ -212,7 +212,7 @@ describe("once the person has answered", () => {
   it("shows a card that names a team template instead of a team, the template's lead first", async () => {
     await showCard(projectCard({ teamProjectProposal: { ...BEFORE_TEAMS, result: { ...CREATED, missingSkills: ["shot-list"] } }, answered: "allow" }));
     expect(texts("dd").slice(0, 2)).toEqual([FOLDER, "Urban romance crew"]);
-    expect(texts("li")).toEqual(["Pia (lead)Runs the production", "WenWrites the episodes", "SolDraws the shots"]);
+    expect(texts("li")).toEqual(["Pia (Chief of Staff)Runs the production", "WenWrites the episodes", "SolDraws the shots"]);
     expect(host.textContent).toContain("Project created");
     expect(host.textContent).not.toContain("shot-list");
   });

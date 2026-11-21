@@ -15,9 +15,10 @@ import { overtakenQuestions, personWait, type PersonWait } from "../../shared/pe
 import type { OptionCardData } from "../../shared/wire.ts";
 import { ASK_NOTIFICATIONS } from "../ask-routing.ts";
 import { writeFileAtomic } from "../atomic.ts";
+import { isMainBot } from "../peer-roster.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { conversationLanguage, serverLine } from "../server-lines.ts";
-import type { Message, Store, StoreChange } from "../store.ts";
+import { sectionKey, type Message, type Store, type StoreChange } from "../store.ts";
 import { clip, oneLine } from "./text-clip.ts";
 
 export const PLACE_INBOX_FILE = "place-inbox.json";
@@ -42,6 +43,8 @@ const lineSchema = z.object({
   job: id.optional(),
   /** A message posted in a room: only a reply to it (or Done) answers it, not the person's other talk there. */
   untilReply: z.boolean().optional(),
+  /** A department with no Chief of Staff: the line waits on the person to choose one, and settles once it has one. */
+  needsChief: z.string().min(1).max(200).optional(),
 });
 const fileSchema = z.object({ version: z.literal(1), lines: z.array(lineSchema).max(MAX_LINES), seenAsks: z.array(id).max(MAX_SEEN_ASKS) });
 type Line = z.infer<typeof lineSchema>;
@@ -62,7 +65,9 @@ export function placeInboxViewer(auth: RequestAuth, cloud: { personal: boolean; 
 
 export interface PlaceInboxDeps {
   dataDir: string;
-  store: Pick<Store, "bot" | "botByThread" | "taskByThread" | "groupByThread" | "appendMessage" | "patchTask" | "patchGroup" | "messagesFor" | "activePath" | "onChange">;
+  store: Pick<Store, "bot" | "bots" | "botByThread" | "taskByThread" | "groupByThread" | "appendMessage" | "patchTask" | "patchGroup" | "messagesFor" | "activePath" | "onChange">;
+  /** Departments an upgrade just left without a Chief of Staff: each gets one line from the main bot asking for one. */
+  needsChief?: readonly string[];
   openCards(): OpenCardRow[];
   /** A running turn waits on this card's answer. */
   live(threadId: string, requestId: string): boolean;
@@ -130,7 +135,15 @@ export function createPlaceInbox(deps: PlaceInboxDeps) {
 
   /** Finished work the person has read needs nothing more from them: it leaves the inbox. */
   const readWork = (line: Line): boolean => line.kind === "result" && line.seen === true;
-  const lineTab = (line: Line): InboxRow["tab"] => (line.done || answeredThere(line) || readWork(line) ? "done" : "info");
+  /** A department that has a Chief of Staff again, or no bots left to choose from. */
+  const chiefSettled = (department: string): boolean => {
+    const bots = store.bots.filter((bot) => !bot.hidden && sectionKey(bot.section) === department);
+    return !bots.length || bots.some((bot) => bot.chiefOfStaff);
+  };
+  const lineTab = (line: Line): InboxRow["tab"] => {
+    if (line.needsChief !== undefined) return line.done || chiefSettled(line.needsChief) ? "done" : "needs-you";
+    return line.done || answeredThere(line) || readWork(line) ? "done" : "info";
+  };
   const lineFor = (auth: RequestAuth, line: Line): boolean => {
     const viewer = deps.viewer(auth);
     if (viewer.kind === "nobody" || !deps.sees(auth, line.threadId)) return false;
@@ -191,11 +204,12 @@ export function createPlaceInbox(deps: PlaceInboxDeps) {
   const focusOf = (line: Line): string | undefined => line.kind === "message" ? line.id : store.messagesFor(line.threadId).at(-1)?.id;
 
   const lineRow = (line: Line): InboxRow => {
-    const focus = focusOf(line);
+    const focus = line.needsChief === undefined ? focusOf(line) : undefined;
     return {
       id: line.id, kind: line.kind, tab: lineTab(line), from: { name: line.from, botId: line.botId }, ...(line.workingFor ? { workingFor: line.workingFor } : {}),
       origin: { botId: line.botId, threadId: line.threadId, title: titleOf(line.botId, line.threadId), ...(line.groupId ? { groupId: line.groupId } : {}), ...(focus ? { messageId: focus } : {}) },
       text: clip(line.text, ROW_TEXT_MAX), at: line.at, unread: !line.seen, ...(line.kind === "message" ? { replies: true as const } : {}),
+      ...(line.needsChief !== undefined ? { needsChief: { department: line.needsChief } } : {}),
     };
   };
 
@@ -264,6 +278,13 @@ export function createPlaceInbox(deps: PlaceInboxDeps) {
     lines = lines.filter((line) => line.threadId !== change.threadId);
     if (lines.length !== before) save();
   });
+
+  const mainBot = store.bots.find((bot) => isMainBot(bot) && !bot.hidden && !bot.defaultBot?.person);
+  for (const department of deps.needsChief ?? []) {
+    if (!mainBot || lines.some((line) => line.needsChief === department && lineTab(line) !== "done")) continue;
+    addLine({ id: crypto.randomUUID(), botId: mainBot.id, threadId: mainBot.threadId, kind: "notice", from: mainBot.name.slice(0, 200), needsChief: department,
+      text: clip(serverLine(conversationLanguage(mainBot.threadId), "server.inbox.needsChief", { bot: mainBot.name, department }), NOTICE_TEXT_MAX), at: now() });
+  }
 
   return {
     view,
