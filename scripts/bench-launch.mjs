@@ -126,7 +126,7 @@ function launch(name, { prime = false, screenshot = false } = {}) {
   const config = {
     root, resources: staged.resources, blocker: staged.blocker, out, timeoutMs: 60_000, quietMs: Number(values["quiet-ms"]), dev: values.dev,
     target: { rows: Math.min(10, Number(values.seed.split(",")[0])), lastMessageId: seeded.bigLastMessageId },
-    ...(prime ? { prime: { storage: STORAGE, botId: seeded.bigBotId } } : {}),
+    ...(prime ? { prime: { storage: STORAGE, botId: seeded.bigBotId, botName: seeded.bigBotName } } : {}),
     ...(screenshot ? { screenshot: join(paths.results, `${values.label}-${name}.png`) } : {}),
   };
   const env = {
