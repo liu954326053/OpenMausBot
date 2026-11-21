@@ -3,6 +3,7 @@ import {
   CANVAS_MAX_NODES,
   CANVAS_NODE_SIZE,
   canvasFileNodeType,
+  generationKindOf,
   type CanvasConnection,
   type CanvasDocument,
   type CanvasNode,
@@ -25,7 +26,7 @@ import type { Message, Store } from "../store.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
 import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments } from "./document-store.ts";
-import { generationInput, generationKindOf } from "./generation.ts";
+import { generationInput } from "./generation.ts";
 import { handOver } from "./handover.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame } from "./ops.ts";
 import type { ProjectPathError } from "./paths.ts";

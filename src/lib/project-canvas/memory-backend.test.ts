@@ -99,6 +99,30 @@ describe("the in-memory canvas backend", () => {
     });
   });
 
+  it("fills an empty image node with its first picture, then puts the next to its right and hands over the node's own picture", async () => {
+    const inputs: StartGenerationInput[] = [];
+    const backend = sampleCanvasBackend({
+      delayMs: 50,
+      fail: (input) => {
+        inputs.push(input);
+      },
+    });
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "image", position: { x: 2000, y: 0 }, metadata: { prompt: "A bride at dawn" } }] });
+    await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "blank" });
+    await vi.advanceTimersByTimeAsync(100);
+    const filled = backend.current().nodes.find((node) => node.id === "blank")!;
+    expect(filled.metadata).toMatchObject({ status: "success", file: { mime: "image/png" } });
+    expect(backend.current().connections.filter((connection) => connection.fromNodeId === "blank")).toEqual([]);
+
+    await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "blank" });
+    await vi.advanceTimersByTimeAsync(100);
+    const snapshot = backend.current();
+    const made = snapshot.connections.filter((connection) => connection.fromNodeId === "blank").map((connection) => snapshot.nodes.find((node) => node.id === connection.toNodeId)!);
+    expect(made).toEqual([expect.objectContaining({ type: "image", position: { x: filled.position.x + filled.width + OUTPUT_OFFSET_X, y: filled.position.y } })]);
+    expect(snapshot.nodes.find((node) => node.id === "blank")!.metadata!.file).toEqual(filled.metadata!.file);
+    expect(inputs.map((input) => input.references?.images)).toEqual([[], [filled.metadata!.file!.path]]);
+  });
+
   it("refuses to generate a node without a prompt, or one that is not a shot, image, video or config", async () => {
     const backend = sampleCanvasBackend();
     await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "update_node", id: "shot-1", metadata: { prompt: "  " } }] });

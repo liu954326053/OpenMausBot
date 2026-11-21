@@ -3,7 +3,7 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { FileText, Music, Plus, RotateCcw, SlidersHorizontal, Video, X } from "lucide-react";
 import type { CanvasNode } from "../../../shared/project-canvas";
-import { connectedReferences, referenceLabel, type CanvasReference } from "../../../shared/project-canvas-references";
+import { referenceLabel, type CanvasReference } from "../../../shared/project-canvas-references";
 import type { GenerationKind, GenerationModel, ProjectGenerationSettings, SettingProblem } from "../../../shared/project-generation";
 import { MENU_ITEM, MENU_SHEET } from "@/components/menu-recipe";
 import { MentionTextarea } from "@/components/MentionTextarea";
@@ -26,7 +26,7 @@ function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; o
   const label = referenceLabel(reference, t);
   const Icon = reference.kind === "video" ? Video : reference.kind === "audio" ? Music : FileText;
   return (
-    <div className="relative flex w-12 flex-col items-center gap-1" title={reference.title || label}>
+    <div data-reference="" className="relative flex w-12 flex-col items-center gap-1" title={reference.title || label}>
       <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-inset text-ink-secondary">
         {reference.kind === "image" && reference.file ? (
           <img src={ui.controller.fileUrl(reference.file)} alt="" draggable={false} className="size-full object-cover" />
@@ -50,17 +50,18 @@ function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; o
   );
 }
 
-/** The node's inputs, with the "+" that picks more on the canvas. */
-export function ReferenceBar({ node, filter }: { node: CanvasNode; filter?: (reference: CanvasReference) => boolean }) {
+/** The references the panel's prompt names, labelled as it names them, with the "+" that picks more on the canvas. Only
+ * what is connected into the node itself can be taken off here. */
+export function ReferenceBar({ node, references }: { node: CanvasNode; references: readonly CanvasReference[] }) {
   const ui = useCanvasUi();
-  const references = connectedReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections).filter((reference) => !filter || filter(reference));
+  const connected = new Set(ui.snapshot.connections.flatMap((connection) => (connection.kind === "content" && connection.toNodeId === node.id ? [connection.fromNodeId] : [])));
   const picking = ui.pickingFor === node.id;
   return (
     <div className="flex flex-col gap-2">
       <PanelLabel>{t("projectCanvas.reference.title")}</PanelLabel>
       <div className="flex flex-wrap items-start gap-2">
         {references.map((reference) => (
-          <ReferenceThumb key={`${reference.sourceNodeId}:${reference.nodeId}`} reference={reference} onRemove={ui.readOnly ? undefined : () => ui.removeReference(node.id, reference.sourceNodeId)} />
+          <ReferenceThumb key={`${reference.sourceNodeId}:${reference.nodeId}`} reference={reference} onRemove={ui.readOnly || !connected.has(reference.sourceNodeId) ? undefined : () => ui.removeReference(node.id, reference.sourceNodeId)} />
         ))}
         {!ui.readOnly ? (
           <button

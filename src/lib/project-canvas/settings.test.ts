@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasNode } from "../../../shared/project-canvas";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationModel, type ProjectGenerationSettings } from "../../../shared/project-generation";
-import { generationKindOf, nodeSettings, overrideSetting, referenceProblems, restoreSetting, settingRows } from "./settings";
+import { nodeSettings, overrideSetting, referenceProblems, restoreSetting, settingRows } from "./settings";
 
 const project: ProjectGenerationSettings = {
   image: { ...DEFAULT_GENERATION_SETTINGS.image, server: "studio", defaults: { model: "pic-1", aspect: "1:1", quality: "auto", count: 1 } },
@@ -15,12 +15,6 @@ const models: GenerationModel[] = [
 const shot = (settings?: CanvasNode["metadata"]): CanvasNode => ({ id: "s", type: "shot", title: "Shot", position: { x: 0, y: 0 }, width: 340, height: 240, metadata: settings });
 
 describe("generation settings on a node", () => {
-  it("knows which generation each node runs", () => {
-    expect(["image", "video", "shot", "text", "bot"].map((type) => generationKindOf({ ...shot(), type: type as CanvasNode["type"] }))).toEqual(["image", "video", "video", null, null]);
-    expect(generationKindOf({ ...shot({ generationMode: "video" }), type: "config" })).toBe("video");
-    expect(generationKindOf({ ...shot(), type: "config" })).toBe("image");
-  });
-
   it("follows the project for every key the node leaves alone", () => {
     const node = shot({ settings: { seconds: 10, quality: "high" } });
     expect(nodeSettings("video", project, node)).toEqual({ model: "clip-1", resolution: "720p", aspect: "16:9", seconds: 10 });
