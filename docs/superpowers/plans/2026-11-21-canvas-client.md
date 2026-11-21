@@ -75,7 +75,13 @@
 1. **`src/lib/project-canvas/server-backend.ts`**：`createServerCanvasBackend(store)` 用 app 自己的 `api()` 发请求，用 `/api/events` 的帧（`listenLiveFrames`）听 `project-canvas` 事件，不另写 fetch。409 的冲突、过期和只读变成 `CanvasBackendError`；生成接口回的 `GenerationFailure` 变成 `Refused`。
 2. **契约外的几样**用 app 的东西：机器人的样子从 store 的 `bots` 读；最近的来往读机器人项目对话（`mainThreadId`，任务就发到这里）的最近消息；打开对话用 `openBot` / `openThread`；停止对它每个在忙的对话发 store 的 `interrupt`。
 3. **`baseRevision`**：取画布当时的修订号，但不早于自己上一批的修订号，免得和自己的上一批冲突。冲突时这一批不生效，显示服务器的原因，再读一次快照。
-4. **重读**：每个事件、以及实时流重连后漏掉事件时，都再读快照和机器人的样子。
-5. **生成**的开始和取消等 `canvas-server` 合进 `main`，照最终的路由和确认卡片做。
-6. **端到端**：`scripts/testing/project-canvas-server-preview.tsx` 把 `ProjectCanvas` 放在 app 的 `StoreProvider` 里，经预览的代理接真的服务器（`launchRestartableServer`，脚本化的假引擎）。`scripts/testing/project-canvas-ui.e2e.test.ts` 用 agent-browser 走：快照画出项目的机器人、操作刷新后还在、上传进 `素材`、带参考的任务到达机器人、外面的修改让打开的画布更新。
-7. 要服务器做的两处（`targetNodeId`、撤销时加回删掉的节点）写在报告里，等 `canvas-server` 合进 `main` 后加到它的模块里。
+4. **重读**：每个事件、以及实时流重连后漏掉事件时，都先读快照、再读机器人的样子。
+5. **样子跟着 store**：`src/components/project-canvas/ServerProjectCanvas.tsx` 是项目页要放的组件。它旁边有个不画东西的小组件读 store，store 里机器人的样子和交给画布的不一样时（app 刚读完数据、改了头像、新机器人进来）让画布重读；画布本身不跟着 store 的每次变化重画。
+6. **生成**的开始和取消等 `canvas-server` 合进 `main`，照最终的路由和确认卡片做。
+7. **端到端**：`scripts/testing/project-canvas-server-preview.tsx` 把 `ServerProjectCanvas` 放在 app 的 `StoreProvider` 里，经预览的代理接真的服务器（`launchRestartableServer`，脚本化的假引擎）。`scripts/testing/project-canvas-ui.e2e.test.ts` 用 agent-browser 走：快照画出项目的机器人（颜色来自 store）、改动刷新后还在、上传进 `素材`、带参考的任务到达机器人、外面的修改让打开的画布更新、打开对话和停止走 app 的导航和 Stop。
+8. **端到端找出的三处界面问题**（真鼠标才会出，happy-dom 里看不到）：在节点上一按就抓住指针，Chrome 把 click 和 dblclick 发给抓指针的元素，双击写字、双击改名、双击看大图都打开了“加节点”菜单——改成拖动起来才抓；平移工具下按画布空白处 `preventDefault`，焦点不走，正在写的文字不保存——只对中键（它会开浏览器的自动滚动）这样做；平移或拖动时面板被卸掉，回来时展开的对话等状态没了——改成只藏起来。
+9. **要服务器做的三处**写在报告里，等 `canvas-server` 合进 `main` 后加到它的模块里：
+   - **撤销时加回删掉的节点**：`add_node` 已经接受删掉的 id，但严格的 schema 没有 `createdBy`，机器人做的节点加回来就成了人的，机器人再也改不了、删不了、生成不了，也离开了它的那一列。文档存储把删掉的节点的 `createdBy` 在 `CANVAS_HISTORY` 的范围里留着，人加回同类型的同一个 id 时恢复它（或者加一个 `restore_nodes` 操作把节点和它的连线一起恢复）。测试：机器人加一个分镜，人删掉再加回同一个 id，机器人还能改它。
+   - **`targetNodeId`**：`CanvasTaskRequest` 加 `targetNodeId?`，检查它是这块画布上的文本节点；服务器记住这个任务，机器人在那个对话里给这条任务的最后回复落地时，把回复（照 `output` 的方式去掉不该给的）写进节点的 `metadata.content`，发 `document` 事件，节点的制作者不变；节点没了、回合失败或被停时不写。快照里给出还在写的目标（比如 `CanvasBotState.writingInto?: string[]`），刷新后画布还显示“正在写”。
+   - **参考的名字**：画布给参考起名“文本 1”“图片 1”（按种类和连进来的顺序，组会展开成里面的节点），人在消息里用 `@文本 1` 指它；服务器的 `references.ts` 写的是 `Text "<标题或 id>"`，没标题的节点给机器人看到的是一串 id，连进来的组整个被跳过。两边应该用同一套名字，最好把 `connectedReferences` 挪进 `shared/`，两边都用它。
+10. **接进项目页**等侧栏那一轨合进来：在 `StoreProvider` 里的项目页放 `<ServerProjectCanvas projectId={project.id} selectedBotId={…} topBarSlot={…团队有变化的提示…} />`，不用再写别的。
