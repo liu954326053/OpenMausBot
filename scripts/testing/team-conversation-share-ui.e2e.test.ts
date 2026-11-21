@@ -99,7 +99,6 @@ async function openAs(who: Who, size: readonly [string, string]) {
     },
     async openInboxLine(text: string) {
       await expect.poll(() => clickText("[data-inbox-row] button", text), { timeout: 30_000, interval: 500 }).toBe(true);
-      await expect.poll(() => evaluate<boolean>(`(() => { const open = document.querySelector('[data-inbox-action="open"]'); open?.click(); return Boolean(open); })()`), { timeout: 30_000 }).toBe(true);
     },
     async close() {
       await browser("close").catch(() => {});
@@ -213,8 +212,7 @@ async function openAs(who: Who, size: readonly [string, string]) {
     await marta.shot("07-marta-inbox-phone");
     await marta.openInboxLine("answered Rui");
     await expect.poll(marta.audience, { timeout: 30_000 }).toBe("team:Shared · only you and Rui can see");
-    await marta.evaluate(`(() => { document.querySelector('[data-inbox-panel] button[aria-label="Close inbox"]')?.click(); return true; })()`);
-    await expect.poll(() => marta.evaluate<boolean>("!document.querySelector('[data-inbox-panel]')"), { timeout: 10_000 }).toBe(true);
+    await expect.poll(() => marta.evaluate<boolean>("!document.querySelector('[data-inbox-panel]')"), { timeout: 10_000, message: "on a phone the inbox sheet closes for the conversation" }).toBe(true);
     await marta.shot("08-marta-shared-chat-phone");
     expect(await marta.evaluate<number>("document.scrollingElement.scrollWidth - window.innerWidth"), "no sideways scroll").toBeLessThanOrEqual(1);
     await marta.close();
