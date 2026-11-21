@@ -67,16 +67,17 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     await until(`document.querySelector(${JSON.stringify(selector)})`);
     await evaluate(`document.querySelector(${JSON.stringify(selector)}).click(); true`);
   };
+  const search = (name: string) => until(findInSidebar(name), 10_000);
   const app = {
-    who, evaluate, until, click, browser,
+    who, evaluate, until, click, browser, search,
     side: () => evaluate<string | null>("document.querySelector('[data-team-side]')?.dataset.teamSide ?? null"),
     audience: () => evaluate<string | null>("(() => { const label = document.querySelector('[data-team-audience]'); return label ? label.dataset.teamAudience + ':' + label.textContent : null; })()"),
     /** The bots a sidebar search for `name` lists; the search is cleared again. */
     async listed(name: string) {
-      await evaluate(findInSidebar(name));
+      await search(name);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const rows = await evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)");
-      await evaluate(findInSidebar(""));
+      await search("");
       return rows;
     },
     words: () => evaluate<string>("document.body.innerText"),
@@ -105,10 +106,10 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     },
     async openBot(bot: Pick<Bot, "id" | "name">) {
       await evaluate(DISMISS);
-      await evaluate(findInSidebar(bot.name));
+      await search(bot.name);
       await click(`[data-sidebar-bot-row="${bot.id}"]`);
       await until(`document.querySelector('textarea[placeholder^="Message"]')`);
-      await evaluate(findInSidebar(""));
+      await search("");
     },
     /** A bot in no project opens from its card on the team map. */
     async openFromMap(bot: Pick<Bot, "id" | "name">) {
@@ -300,7 +301,7 @@ async function openAs(who: Who, size: readonly [string, string], query = "") {
     const rui = await openAs("rui", DESKTOP);
     await rui.ready();
     const menu = async (id: string, name: string) => {
-      await rui.evaluate(findInSidebar(name));
+      await rui.search(name);
       await rui.until(`document.querySelector('[data-sidebar-bot-row="${id}"]')`);
       await rui.evaluate(`(() => { const row = document.querySelector('[data-sidebar-bot-row="${id}"]'); const box = row.getBoundingClientRect();
         row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: box.left + 20, clientY: box.top + 10 })); return true; })()`);

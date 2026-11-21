@@ -135,7 +135,7 @@ try {
   const page = chrome;
   const row = `[data-sidebar-bot-row="${payroll.id}"]`;
   const openPayroll = async () => {
-    await page.evaluate(findInSidebar("Payroll"));
+    await page.until(findInSidebar("Payroll"), "the sidebar search");
     await page.click(row, "Payroll's row");
     await page.until("document.querySelector('[data-chathead-identity]')?.textContent.includes('Payroll') === true", "Payroll's chat");
   };

@@ -133,8 +133,10 @@ const CONSOLE_ERRORS = async (handle: Handle): Promise<number> => {
 
 /** The sidebar lists a bot in no project or a room outside projects once it is searched for by name. */
 async function openRow(handle: Handle, row: string, name: string) {
-  await evaluate(handle, findInSidebar(name));
-  for (let tries = 0; tries < 40 && !(await evaluate(handle, `Boolean(document.querySelector(${JSON.stringify(row)}))`)); tries++) await pause(250);
+  for (let tries = 0; tries < 40 && !(await evaluate(handle, `Boolean(document.querySelector(${JSON.stringify(row)}))`)); tries++) {
+    await evaluate(handle, findInSidebar(name));
+    await pause(250);
+  }
   await evaluate(handle, `document.querySelector(${JSON.stringify(row)})?.click(); 'opened'`);
 }
 

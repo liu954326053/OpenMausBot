@@ -64,7 +64,7 @@ async function openAs(who: keyof typeof tokens, size: readonly [string, string])
     who, evaluate, side, audience,
     /** The bots the sidebar lists, or a sidebar search for `name` lists; the search is cleared again. */
     async listed(name?: string) {
-      if (name) await evaluate(findInSidebar(name));
+      if (name) await expect.poll(() => evaluate<boolean>(findInSidebar(name)), { timeout: 10_000, interval: 250 }).toBe(true);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const rows = await evaluate<string[]>("[...document.querySelectorAll('[data-sidebar-bot-row]')].map((row) => row.dataset.sidebarBotRow)");
       if (name) await evaluate(findInSidebar(""));
