@@ -14,14 +14,11 @@ const NTH_WEEKEND: Record<Nth, ServerLineKey> = {
   4: "server.routines.cron.nthWeekend.fourth", 5: "server.routines.cron.nthWeekend.fifth", last: "server.routines.cron.nthWeekend.last",
 };
 
-/** A Chinese line must name its weekday, the month and the zone in Chinese: the table inside `presetText` has no
- * Chinese entry, so those words came out in English. */
 const lineLocale = (language: string | undefined) =>
   byLanguage({ en: "en-US", de: "de-DE", "pt-br": "pt-BR", zh: "zh-CN", "zh-tw": "zh-TW" }, language);
 
 function presetText(preset: CronPreset, language: string | undefined): string {
-  const locale = byLanguage({ en: "en-US", de: "de-DE", "pt-br": "pt-BR", "zh-tw": "zh-TW" }, language);
-  const time = locale === "en-US" ? preset.time.replace(/^0(?=\d:)/, "") : preset.time;
+  const time = lineLocale(language) === "en-US" ? preset.time.replace(/^0(?=\d:)/, "") : preset.time;
   const weekdayName = (day: number) => new Intl.DateTimeFormat(lineLocale(language), { weekday: "long", timeZone: "UTC" }).format(Date.UTC(2023, 0, 1 + day));
   // Chinese writes the month with its marker ("3月") rather than the word ("三月"), which is what the line expects.
   const monthName = (month: number) => new Intl.DateTimeFormat(lineLocale(language), { month: lineLocale(language).startsWith("zh") ? "short" : "long", timeZone: "UTC" }).format(Date.UTC(2023, month, 1));

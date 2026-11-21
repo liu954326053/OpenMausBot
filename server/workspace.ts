@@ -4,6 +4,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 
 import { TEAM_PROJECT_FOLDER, type TeamProjectMembership } from "../shared/team-projects.ts";
 import { writeFileAtomic } from "./atomic.ts";
+import { byLanguage } from "./language.ts";
 import { alwaysCore, isExpired, isMemoryDate, parseMemoryEntries, untilMark, withoutExpired, withoutSuperseded, type MemoryEntryLine } from "./memory-entries.ts";
 import { parseTopicHeader, readTopicHead, renderTopicIndex } from "./memory-topics.ts";
 import { indexMemoryFile, indexedMemoryFiles, recallMemory, removeMemoryFile, type MemoryHit, type SearchMode } from "./message-db.ts";
@@ -40,7 +41,7 @@ export const MEMORY_ENTRY_MAX_CHARS = 1_000;
 export const MEMORY_ENTRY_MAX_LINES = 20;
 export const ARCHIVE_TOPIC = "archive.md";
 
-const MEMORY_SEEDS: Record<string, string> = {
+const MEMORY_SEEDS: { en: string } & Record<string, string> = {
   en: `# Memory
 
 Durable notes this bot keeps between tasks. The first ${MEMORY_MAX_LINES} lines
@@ -65,6 +66,12 @@ Las notas más largas van en memory/<tema>.md y se leen cuando es necesario.
 세션을 시작할 때마다 불러와요 — 이 파일은 짧고 잘 정리된 상태로 유지하세요.
 더 긴 메모는 memory/<주제>.md 파일에 두고, 필요할 때 읽어요.
 `,
+  zh: `# 记忆
+
+这个机器人在不同任务之间保留的长期笔记。前 ${MEMORY_MAX_LINES} 行
+会在每次会话开始时加载 — 请让这个文件保持简短、条理清楚。
+较长的笔记放在 memory/<主题>.md 文件里，需要时再读取。
+`,
   "zh-tw": `# 記憶
 
 這個機器人在不同任務之間保留的長期筆記。前 ${MEMORY_MAX_LINES} 行
@@ -80,12 +87,7 @@ export function isMemorySeed(text: string): boolean {
 }
 
 function memorySeedFor(language?: string): string {
-  const normalized = (language?.trim() || Intl.DateTimeFormat().resolvedOptions().locale).toLowerCase().replaceAll("_", "-");
-  if (normalized === "pt" || normalized.startsWith("pt-")) return MEMORY_SEEDS["pt-br"];
-  if (normalized === "es" || normalized.startsWith("es-")) return MEMORY_SEEDS.es;
-  if (normalized === "ko" || normalized.startsWith("ko-")) return MEMORY_SEEDS.ko;
-  if (/^zh-(?:tw|hant|hk|mo)(?:-|$)/.test(normalized)) return MEMORY_SEEDS["zh-tw"];
-  return MEMORY_SEEDS[normalized] ?? MEMORY_SEEDS.en;
+  return byLanguage(MEMORY_SEEDS, (language?.trim() || Intl.DateTimeFormat().resolvedOptions().locale).replaceAll("_", "-"));
 }
 
 /** The bot's folder in the app's data folder. A project bot's own files are not here: only its secret files and the

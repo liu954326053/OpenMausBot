@@ -23,6 +23,10 @@ describe("a routine line in Simplified Chinese", () => {
     expect(line).not.toContain("March");
   });
 
+  it("writes the hour with its leading zero, as the Traditional Chinese line does", () => {
+    for (const language of ["zh", "zh-CN", "zh-Hans", "zh-tw"]) expect(routineCronText(weekly, language)).toContain(" 09:00 ");
+  });
+
   it("keeps English whole and leaves Traditional Chinese on its own locale", () => {
     expect(routineCronText(weekly, "en")).toBe("Weekly on Monday at 9:00 China time");
     expect(routineCronText(weekly, "zh-tw")).toContain("星期一");

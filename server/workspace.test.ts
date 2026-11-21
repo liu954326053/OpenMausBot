@@ -119,7 +119,8 @@ describe("workspace", () => {
   });
 
   it("treats localized factory memory seeds as empty", () => {
-    for (const [language, heading] of [["pt-BR", "# Memória"], ["es", "# Memoria"], ["en", "# Memory"], ["zh-TW", "# 記憶"], ["zh-Hant", "# 記憶"], ["zh_HK", "# 記憶"], ["zh-MO", "# 記憶"]] as const) {
+    for (const [language, heading] of [["pt-BR", "# Memória"], ["es", "# Memoria"], ["en", "# Memory"], ["zh-TW", "# 記憶"], ["zh-Hant", "# 記憶"], ["zh_HK", "# 記憶"], ["zh-MO", "# 記憶"],
+      ["zh", "# 记忆"], ["zh-CN", "# 记忆"], ["zh-Hans", "# 记忆"]] as const) {
       const bot = `${BOT}-${language}`;
       const dir = ensureWorkspace(bot, language);
       expect(readFileSync(join(dir, "MEMORY.md"), "utf8")).toContain(heading);
