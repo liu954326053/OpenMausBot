@@ -15,8 +15,14 @@ import { cn } from "@/lib/cn";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { useCaptionChrome } from "@/components/DesktopCapabilities";
 import { placeOffered } from "@/lib/place";
+import { teamMapBots, teamMapDepartments } from "@/lib/team-map-scope";
+import { showOnTeamMap } from "@/state/team-map-focus";
+import { useTeamProjectSide } from "@/state/team-projects";
 import { TeamCanvas } from "./TeamCanvas";
 import { TeamDialog } from "./TeamDialog";
+import { useTeamMapAdd } from "./TeamMapAdd";
+import { TeamMapDepartmentDialogs } from "./TeamMapDepartment";
+import { TeamMapRooms } from "./TeamMapRooms";
 import { TeamMemoryDialog } from "./TeamMemoryDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { intlLocale, t } from "@/lib/i18n";
@@ -265,6 +271,7 @@ export function SectionContextDialog({ section, label, onClose }: { section: str
 
 /** How long a card acknowledges a message sent from the map; its border fades within this. */
 const SENT_HIGHLIGHT_MS = 1_400;
+const ADD_ITEM = "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control";
 
 export function TeamMapPage() {
   const { state, dispatch } = useStore();
@@ -287,12 +294,13 @@ export function TeamMapPage() {
   const pendingMoveRef = useRef(pendingMove);
   pendingMoveRef.current = pendingMove;
   useEffect(() => () => pendingMoveRef.current?.resolve(false), []);
-  const bots = useMemo(() => state.bots.filter((bot) => !bot.hidden), [state.bots]);
+  const side = useTeamProjectSide();
+  const bots = useMemo(() => teamMapBots(state.bots, side), [state.bots, side]);
   const sections = useMemo(() => {
-    const names = [...new Set([...(state.sections ?? []), ...state.groups.flatMap((group) => group.section ? [group.section] : [])])];
+    const names = teamMapDepartments([...new Set([...(state.sections ?? []), ...state.groups.flatMap((group) => group.section ? [group.section] : [])])], side);
     const order = (key: string) => key === "" ? -1 : names.includes(key) ? names.indexOf(key) : names.length;
     return buildTeamMapSections(bots, names).sort((a, b) => order(a.key) - order(b.key));
-  }, [bots, state.sections, state.groups]);
+  }, [bots, state.sections, state.groups, side]);
   const edges = useMemo(() => buildTeamMapEdges(bots, snapshot), [bots, snapshot]);
   const anyComputer = bots.some((bot) => bot.computer === "cloud" && bot.cloudBackend !== "vps") || computers.some((computer) => computer.section !== null);
   const { show: showComputers, loaded: computersChoiceLoaded, choose: setShowComputers } = useShowComputers(anyComputer);
@@ -306,6 +314,7 @@ export function TeamMapPage() {
     sentTimer.current = window.setTimeout(() => setSent(null), SENT_HIGHLIGHT_MS);
   }, []);
   useEffect(() => () => window.clearTimeout(sentTimer.current), []);
+  const add = useTeamMapAdd(ADD_ITEM);
   const composerTeams = useMemo(() => sections.map((section) => ({ key: section.key, name: section.name, count: section.chiefs.length + section.members.length })), [sections]);
 
   // `background`: the 3-second poll, which never wakes a Cloud home that went to sleep.
@@ -360,7 +369,7 @@ export function TeamMapPage() {
           </div>
           <p className="mt-1 text-[12px] text-ink-secondary">{t("canvas.description")}</p>
         </div>
-        {!remoteClient && <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2"><TeamMapRooms />{!remoteClient && <>
           <button onClick={() => setShowComputers(!showComputers)} aria-pressed={showComputers} title={t("canvas.showComputersHint")}
             className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-medium transition-colors", showComputers ? "border-accent/40 bg-accent/10 text-ink" : "border-hairline/60 bg-panel text-ink-secondary hover:bg-control hover:text-ink")}>
             <span aria-hidden className={cn("relative h-4 w-7 shrink-0 rounded-full transition-colors", showComputers ? "bg-accent" : "bg-control")}>
@@ -376,12 +385,14 @@ export function TeamMapPage() {
             <div className="absolute right-0 top-full z-40 mt-2 w-52 rounded-xl border border-hairline/60 bg-panel p-1.5 shadow-xl" onClick={(event) => {
               const details = event.currentTarget.closest("details"); details?.querySelector("summary")?.focus(); details?.removeAttribute("open");
             }}>
+              {add.newBot}
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control" onClick={() => setTeamEditor({})}><Users size={14} />{t("team.create")}</button>
+              {add.library}
               <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control" onClick={() => { setComputersOpen(true); setCreateComputerRequest((value) => value + 1); }}><Box size={14} />{t("canvas.cloudComputer")}</button>
               {placeOffered("vm", state.config) && <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] hover:bg-control" onClick={() => dispatch({ type: "toggleAppSettings", section: "computer", open: true })}><Monitor size={14} />{t("canvas.localVm")}</button>}
             </div>
           </details>}
-        </div>}
+        </>}</div>
       </header>
       {(error || refreshError) && <div role="alert" className="flex shrink-0 items-center justify-between gap-3 border-b border-danger/20 bg-danger/10 px-6 py-2 text-[12px] text-danger">
         {error || refreshError}
@@ -418,7 +429,9 @@ export function TeamMapPage() {
           onClose={() => setContextEditor(null)}
         />
       )}
-      {teamEditor && <TeamDialog {...teamEditor} onClose={() => setTeamEditor(null)} />}
+      {teamEditor && <TeamDialog {...teamEditor} onClose={() => setTeamEditor(null)} onCreated={(name) => showOnTeamMap(dispatch, { department: name })} />}
+      {add.dialogs}
+      <TeamMapDepartmentDialogs />
       {memoryEditor && <TeamMemoryDialog key={memoryEditor.section} {...memoryEditor} onClose={() => setMemoryEditor(null)} />}
       <ConfirmDialog open={pendingMove !== null} tone="neutral" title={t("canvas.moveConfirmTitle", { name: pendingMove?.bot.name ?? t("canvas.bot"), team: pendingMove?.destination || t("settings.section.general") })}
         body={t("canvas.moveConfirmBody")}
