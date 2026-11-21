@@ -182,7 +182,7 @@ export function ZoomDock({ viewport, minimapOpen, onMinimap, onReset, onZoom }: 
           max={MAX_ZOOM * 100}
           value={percent}
           aria-label={t("projectCanvas.zoom.level")}
-          className="w-24 accent-[var(--color-accent)]"
+          className="w-24 accent-accent"
           onChange={(event) => onZoom(Number(event.target.value) / 100)}
         />
         <span className="w-11 text-end text-[12px] leading-4 text-ink-secondary tabular-nums">{t("projectCanvas.zoom.percent", { count: percent })}</span>
