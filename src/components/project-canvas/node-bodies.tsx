@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, Clock, Crown, LoaderCircle, RotateCcw } from "lucide-react";
 import { botIdOfNode, type CanvasBotStatus, type CanvasNode } from "../../../shared/project-canvas";
-import { connectedReferences } from "../../../shared/project-canvas-references";
+import { connectedReferences, mentionReferences } from "../../../shared/project-canvas-references";
 import { BotAvatar } from "@/components/Avatar";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { cn } from "@/lib/cn";
@@ -130,7 +130,7 @@ function ShotBody({ node }: { node: CanvasNode }) {
   const project = ui.state.generation?.settings;
   const settings = project ? nodeSettings("video", project, node) : null;
   const model = settings && ui.state.models.video?.find((candidate) => candidate.id === settings.model);
-  const references = connectedReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections).filter((reference) => reference.kind === "image" || reference.kind === "audio").length;
+  const references = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections).length;
   const prompt = node.metadata?.prompt?.trim();
   if (node.metadata?.status === "error") return <GenerationState node={node}>{null}</GenerationState>;
   return (

@@ -182,6 +182,7 @@
   "server.projectCanvas.node.file": "Dosya",
   "server.projectCanvas.task.connected": "Proje tuvalinde düğümünüze bağlı olanlar:",
   "server.projectCanvas.task.textNode": "Proje tuvalindeki {title} metin düğümünün başvurduğu öğeler:",
+  "server.projectCanvas.task.editText": "Metni talimatlara göre düzenleyin.\n\nOrijinal:\n{source}\n\nTalimatlar:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(dosyası {path} şu an proje klasöründe değil)",
   "server.mcp.askedSignIn": "MCP sunucusu {name} için oturum açma istendi",
   "server.mcp.signIn.card": "{label} MCP sunucusu için oturum açmanız gerekiyor. Oturum açmak için bu konuşmayı MagicBot'ta açın.",

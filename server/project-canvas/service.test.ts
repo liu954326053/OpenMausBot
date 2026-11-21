@@ -215,7 +215,7 @@ describe("a task sent from the canvas", () => {
     expect(sent.map((one) => one.text)).toEqual([inChinese, inChinese, "@Text 1\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap."]);
   });
 
-  it("is numbered from the text node it was written in, as that node's panel numbers it, and only a text node of this canvas takes it", async () => {
+  it("is numbered from the text node it was written in, as that node's panel numbers it, its own text first as the text to revise, and only a text node of this canvas takes it", async () => {
     const { service, project, sent } = setup();
     const [brief, scene, logline, take] = service.apply(project, person, opsOf(
       { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "Goes to the bot only" } },
@@ -224,8 +224,11 @@ describe("a task sent from the canvas", () => {
       { type: "add_node", nodeType: "shot", title: "Shot 1" },
     )).nodeIds as [string, string, string, string];
     service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: brief, toNodeId: botNodeId("writer") }, { type: "connect_nodes", fromNodeId: scene, toNodeId: logline }));
-    expect(await service.task("p1", auth, { botId: "writer", text: "Write the logline from @Text 1", targetNodeId: logline })).toMatchObject({ references: 1 });
-    expect(sent.map((one) => one.text)).toEqual(["Write the logline from @Text 1\n\nWhat the text node \"Logline\" on the project's canvas refers to:\n\nText 1 \"Scene\":\n\n> Rain on the steps."]);
+    expect(await service.task("p1", auth, { botId: "writer", text: "Write the logline from @Text 2", targetNodeId: logline })).toMatchObject({ references: 1 });
+    expect(sent.map((one) => one.text)).toEqual([
+      "Revise the text according to the instructions.\n\nOriginal:\nText 1 \"Logline\":\n\n> Draft\n\nInstructions:\nWrite the logline from @Text 2"
+      + "\n\nWhat the text node \"Logline\" on the project's canvas refers to:\n\nText 2 \"Scene\":\n\n> Rain on the steps.",
+    ]);
     await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: take })).rejects.toMatchObject({ status: 404 });
     await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: "gone" })).rejects.toMatchObject({ status: 404 });
     await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: 7 })).rejects.toMatchObject({ status: 400 });
@@ -245,39 +248,71 @@ describe("a task sent from the canvas", () => {
   });
 });
 
-describe("a task whose reply goes into a text node", () => {
+describe("a task written in a text node", () => {
   const KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
   const turnEnd = (requestMessageId: string, text: string, patch: Partial<Message> = {}): Message => ({
     id: `reply-to-${requestMessageId}`, at: 5, role: "bot", kind: "text", text, turnId: "t1", turnTerminal: true, turnSucceeded: true, requestMessageId, ...patch,
   });
-  const textNodes = (service: ProjectCanvasService, project: TeamProjectWire, ...titles: string[]) =>
-    service.apply(project, person, opsOf(...titles.map((title) => ({ type: "add_node", nodeType: "text", title, metadata: { content: "Draft" } })))).nodeIds;
+  const textNodes = (service: ProjectCanvasService, project: TeamProjectWire, content: string | undefined, ...titles: string[]) =>
+    service.apply(project, person, opsOf(...titles.map((title) => ({ type: "add_node", nodeType: "text", title, ...(content ? { metadata: { content } } : {}) })))).nodeIds;
   const contentOf = (service: ProjectCanvasService, id: string | undefined) => nodeOf(service, id!)?.metadata?.content;
+  const beside = (service: ProjectCanvasService, id: string | undefined) => {
+    const view = service.botView(service.project("p1"));
+    const to = new Set(view.connections.filter((connection) => connection.fromNodeId === id && connection.kind === "content").map((connection) => connection.toNodeId));
+    return view.nodes.filter((node) => to.has(node.id));
+  };
   const writingInto = (service: ProjectCanvasService) => service.snapshot("p1", auth).bots.writer!.writingInto;
 
-  it("gets the bot's reply once its turn ends well, secrets redacted, and shows the bot writing into it until then", async () => {
+  it("fills an empty text node with the bot's reply once its turn ends well, secrets redacted, and shows the bot writing into it until then", async () => {
     let busy = true;
     const { service, project, events } = setup({ threadBusy: () => busy });
-    const [logline] = textNodes(service, project, "Logline");
+    const [logline] = textNodes(service, project, undefined, "Logline");
     await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
     expect(writingInto(service)).toEqual([logline]);
     service.taskLine("writer-main", turnEnd("sent-1", "A bride swaps places.", { turnSucceeded: undefined }));
-    expect(contentOf(service, logline)).toBe("Draft");
+    expect(contentOf(service, logline)).toBeUndefined();
     busy = false;
     const told = events.length;
     service.taskLine("writer-main", turnEnd("sent-1", `A bride swaps places. Key: ${KEY}`));
     expect(contentOf(service, logline)).toMatch(/^A bride swaps places\. Key: «redacted/);
     expect(contentOf(service, logline)).not.toContain(KEY);
     expect(nodeOf(service, logline!)?.createdBy).toEqual(person);
+    expect(beside(service, logline)).toEqual([]);
     expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
     expect(writingInto(service)).toBeUndefined();
+  });
+
+  it("keeps a text node's own text and puts each reply in the bot's new text node to its right, connected from it and titled by the request", async () => {
+    let busy = true;
+    const { service, project, events } = setup({ threadBusy: () => busy });
+    const [logline] = textNodes(service, project, "Draft", "Logline");
+    const request = "Make it one sentence,\nwith the rain and the ring in it";
+    await service.task("p1", auth, { botId: "writer", text: request, targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    busy = false;
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", `Rain, a ring, a swap. Key: ${KEY}`));
+    const source = nodeOf(service, logline!)!;
+    expect(source.metadata?.content).toBe("Draft");
+    const [first] = beside(service, logline);
+    expect(first).toMatchObject({ type: "text", title: "Make it one sentence, with the r", createdBy: writer, metadata: { content: expect.stringMatching(/^Rain, a ring, a swap\. Key: «redacted/) } });
+    expect(first!.metadata!.content).not.toContain(KEY);
+    expect(first!.position.x).toBeGreaterThanOrEqual(source.position.x + source.width);
+    expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
+    expect(writingInto(service)).toBeUndefined();
+    await service.task("p1", auth, { botId: "writer", text: "Shorter", targetNodeId: logline });
+    service.taskLine("writer-main", turnEnd("sent-1", "Rain, a swap."));
+    const second = beside(service, logline).find((node) => node.id !== first!.id)!;
+    expect(second).toMatchObject({ title: "Shorter", metadata: { content: "Rain, a swap." } });
+    expect(second.position.y).toBeGreaterThanOrEqual(first!.position.y + first!.height);
+    expect(contentOf(service, logline)).toBe("Draft");
   });
 
   it("waits for a queued task's message to reach the conversation, and takes no reply for a task steered into a running turn", async () => {
     let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
     const queued = new Set(["writer-main"]);
     const { service, project } = setup({ send: async () => receipt, queuedThreads: () => queued });
-    const [logline, notes] = textNodes(service, project, "Logline", "Notes");
+    const [logline, notes] = textNodes(service, project, undefined, "Logline", "Notes");
     await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
     expect(writingInto(service)).toEqual([logline]);
     queued.clear();
@@ -287,13 +322,17 @@ describe("a task whose reply goes into a text node", () => {
     receipt = { ok: true, threadId: "writer-main", message: { id: "m10", at: 10, role: "user", kind: "text", text: "Notes too" }, steered: true };
     await service.task("p1", auth, { botId: "writer", text: "Notes too", targetNodeId: notes });
     service.taskLine("writer-main", turnEnd("m10", "Both done.", { at: 12 }));
-    expect(contentOf(service, notes)).toBe("Draft");
+    expect(contentOf(service, notes)).toBeUndefined();
+    expect(beside(service, notes)).toEqual([]);
   });
 
-  it("stays as it was after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
+  it("adds nothing after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
     const { service, project, events } = setup({ threadBusy: () => true });
-    const [logline] = textNodes(service, project, "Logline");
-    const ask = () => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: logline });
+    const [logline, empty] = [...textNodes(service, project, "Draft", "Logline"), ...textNodes(service, project, undefined, "Empty")];
+    const ask = (targetNodeId = logline) => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId });
+    await ask(empty);
+    service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
+    expect(contentOf(service, empty)).toBeUndefined();
     await ask();
     service.taskLine("writer-main", turnEnd("earlier", "An older reply, changed again", { at: 0 }));
     expect(writingInto(service)).toEqual([logline]);
@@ -308,12 +347,27 @@ describe("a task whose reply goes into a text node", () => {
     service.taskLine("writer-main", turnEnd("sent-1", "Into an archived canvas"));
     delete project.archivedAt;
     expect(contentOf(service, logline)).toBe("Draft");
+    expect([...beside(service, logline), ...beside(service, empty)]).toEqual([]);
     await ask();
     service.apply(project, person, opsOf({ type: "delete_node", id: logline }));
     const told = events.length;
     service.taskLine("writer-main", turnEnd("sent-1", "Into nothing"));
     expect(nodeOf(service, logline!)).toBeUndefined();
     expect(events.slice(told)).toEqual([]);
+  });
+
+  it("adds nothing for a reply that ends its turn after a restart", async () => {
+    const before = setup();
+    const [logline, empty] = [...textNodes(before.service, before.project, "Draft", "Logline"), ...textNodes(before.service, before.project, undefined, "Empty")];
+    await before.service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: logline });
+    await before.service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: empty });
+    const after = setup();
+    const told = after.events.length;
+    after.service.taskLine("writer-main", turnEnd("sent-1", "After the restart"));
+    expect(contentOf(after.service, logline)).toBe("Draft");
+    expect(contentOf(after.service, empty)).toBeUndefined();
+    expect([...beside(after.service, logline), ...beside(after.service, empty)]).toEqual([]);
+    expect(after.events.slice(told)).toEqual([]);
   });
 
   it("is refused for anything but a text node of this canvas, and nothing is sent", async () => {

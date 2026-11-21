@@ -82,11 +82,15 @@ function inputNodes(nodeId: string, nodes: readonly CanvasNode[], connections: r
   });
 }
 
-/** The configs a node feeds pass their other inputs back to it, as in infinite-canvas. */
-function configInputNodes(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): CanvasNode[] {
-  const config = connections.find((connection) => connection.kind === "content" && connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === "config");
-  return config ? inputNodes(config.toNodeId, nodes, connections).filter((node) => node.id !== nodeId) : [];
+/** The node whose inputs a node's "@" lists: the config it feeds when that config has other inputs, which it passes
+ * back to the node as in infinite-canvas; else the node itself. */
+export function mentionHolder(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): string {
+  const config = connections.find((connection) => connection.kind === "content" && connection.fromNodeId === nodeId && nodes.find((node) => node.id === connection.toNodeId)?.type === "config")?.toNodeId;
+  return config && inputNodes(config, nodes, connections).some((node) => node.id !== nodeId) ? config : nodeId;
 }
+
+const sendsItself = (node: CanvasNode): boolean =>
+  (node.type === "image" && Boolean(node.metadata?.file)) || (node.type === "text" && Boolean(node.metadata?.content?.trim()));
 
 function expand(inputs: readonly CanvasNode[], nodes: readonly CanvasNode[]): Array<{ node: CanvasNode; sourceNodeId: string }> {
   const seen = new Set<string>();
@@ -113,14 +117,16 @@ export function connectedReferences(nodeId: string, nodes: readonly CanvasNode[]
   return label(expand(inputNodes(nodeId, nodes, connections), nodes));
 }
 
-/** What a node's prompt can name with "@", and so the references generating from it hands over and a task written in it
- * numbers, in this order: an image node's own picture first, since generating from it edits that picture; then the
- * inputs of a config the node feeds, else its own inputs; groups opened up, each node once. */
+/** What a node's prompt can name with "@", which is exactly what goes with it, numbered as it is sent: the node's own
+ * picture or text first when that goes too (generating from an image node edits its picture, and a task written in a
+ * text node revises its text); then the inputs of its `mentionHolder`; groups opened up, each node once. A generation
+ * hands over no video, so only a text node's list, a task's, holds videos. */
 export function mentionReferences(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): CanvasReference[] {
   const node = nodes.find((item) => item.id === nodeId);
-  const config = configInputNodes(nodeId, nodes, connections);
-  const inputs = config.length ? config : inputNodes(nodeId, nodes, connections);
-  return label(expand(node && resourceKind(node) === "image" ? [node, ...inputs] : inputs, nodes));
+  if (!node) return [];
+  const inputs = inputNodes(mentionHolder(nodeId, nodes, connections), nodes, connections).filter((input) => input.id !== nodeId);
+  const references = label(expand(sendsItself(node) ? [node, ...inputs] : inputs, nodes));
+  return node.type === "text" ? references : references.filter((reference) => reference.kind !== "video");
 }
 
 /** The project files of the images and audio among `references`, in their numbering's order. */

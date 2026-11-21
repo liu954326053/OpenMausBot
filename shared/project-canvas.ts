@@ -227,7 +227,7 @@ export interface CanvasBotState {
   /** The person or a bot set its node's position. False: the position is the server's default layout, moved down
    * clear of the canvas's other nodes, which the app may replace with its own by storing positions. */
   placed: boolean;
-  /** Text nodes its reply to a task running or waiting in its queue goes into. */
+  /** Text nodes a task running or waiting in its queue was written in, which its reply goes into or beside. */
   writingInto?: string[];
 }
 
@@ -254,16 +254,17 @@ export interface ProjectCanvasEvent {
 /** `POST /api/team-projects/:id/canvas/tasks`: the person's task for one bot of the project. What is connected into
  * the bot's node goes with it, each reference named by the label `connectedReferences` gives it and its title: a text
  * node's text, a shot's fields, media and other files as attachments. Without `threadId` it goes to the conversation
- * the bot has open. With `targetNodeId`, a text node of this canvas, the bot's reply to the task becomes the node's
- * text once its turn ends well, secrets redacted, cut to `CANVAS_CONTENT_MAX_CHARS`. A stopped or failed turn, a turn
- * the task joined while it ran, or a server restart before the reply leaves the node as it was. */
+ * the bot has open. With `targetNodeId` the bot's reply, once its turn ends well, secrets redacted and cut to
+ * `CANVAS_CONTENT_MAX_CHARS`, becomes the text of that node when it has none, and otherwise a new text node to its
+ * right, connected from it and titled by `replyTitle`. A stopped or failed turn, a turn the task joined while it ran,
+ * or a server restart before the reply adds nothing. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;
   threadId?: string;
-  /** A text node of this canvas the person wrote the task in. What goes with the task is then that node's: the
-   * references `mentionReferences` gives it, labelled as its prompt panel labels them, and the other nodes connected
-   * into it. */
+  /** A text node of this canvas the person wrote the task in. What goes with the task is then that node's, labelled
+   * as its panel labels them: the references `mentionReferences` gives it and the other nodes connected into it. Its
+   * own text, its first reference, goes first, with `text` as the request to revise it. */
   targetNodeId?: string;
   /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
    * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
@@ -278,6 +279,9 @@ export interface CanvasTaskResponse {
   /** How many connected nodes went with it. */
   references: number;
 }
+
+/** The title of the node a task's reply becomes beside the text node it was written in: the request's first words. */
+export const replyTitle = (request: string): string => Array.from(request.trim().replace(/\s+/g, " ")).slice(0, 32).join("");
 
 /** `POST /api/team-projects/:id/canvas/files?name=<file name>[&x=&y=]`, the raw bytes as the body and their type as
  * `content-type`: the file goes into the project folder's `素材` folder and a node of its type is added for it.
