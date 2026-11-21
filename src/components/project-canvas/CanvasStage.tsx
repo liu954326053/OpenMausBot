@@ -1,11 +1,11 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/pages/canvas/project.tsx (viewport and pointer handling), MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoaderCircle } from "lucide-react";
-import { generationKindOf, type CanvasNode, type CanvasPoint, type CanvasViewport } from "../../../shared/project-canvas";
+import type { CanvasNode, CanvasPoint, CanvasViewport } from "../../../shared/project-canvas";
 import { isReferenceNode } from "../../../shared/project-canvas-references";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { nextOutputFrame, takesResultInPlace } from "@/lib/project-canvas/generation";
+import { comingOutputs } from "@/lib/project-canvas/generation";
 import {
   connectionDropTarget,
   draftCurve,
@@ -267,11 +267,7 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
   const related = relatedNodeIds(selection, snapshot.connections);
   const activeConnections = new Set(snapshot.connections.filter((connection) => selection.has(connection.fromNodeId) || selection.has(connection.toNodeId)).map((connection) => connection.id));
   const ghosts: GhostFrame[] = [
-    ...displayNodes.flatMap((node) => {
-      const kind = generationKindOf(node);
-      if (!kind || node.metadata?.status !== "loading" || takesResultInPlace(node)) return [];
-      return [{ sourceId: node.id, frame: nextOutputFrame(node, kind, displayNodes, snapshot.connections, ui.state.replies), label: t("projectCanvas.node.generating") }];
-    }),
+    ...comingOutputs(displayNodes, snapshot.connections, ui.state.replies).map((output) => ({ ...output, label: t("projectCanvas.node.generating") })),
     ...ui.state.replies.map((reply) => ({ sourceId: reply.nodeId, frame: reply, label: t("projectCanvas.text.writing", { name: snapshot.bots[reply.botId]?.name ?? "" }), replyNodeId: reply.id })),
   ];
   let draft: string | null = null;

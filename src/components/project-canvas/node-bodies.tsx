@@ -7,8 +7,8 @@ import { BotAvatar } from "@/components/Avatar";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { fitNodeSize } from "@/lib/project-canvas/geometry";
 import { nodeSettings } from "@/lib/project-canvas/settings";
+import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
 import { formatBytes, NODE_ICONS, nodeLabel, nodeTypeLabel } from "./node-kinds";
@@ -102,7 +102,7 @@ function BotBody({ node }: { node: CanvasNode }) {
   const ui = useCanvasUi();
   const botId = botIdOfNode(node.id) ?? "";
   const bot = ui.snapshot.bots[botId];
-  const look = ui.state.looks[botId] ?? { color: "silver" as const };
+  const look: CanvasBotLook = ui.state.looks[botId] ?? { color: "silver" };
   if (!bot) return <Placeholder node={node} text={t("projectCanvas.bot.left")} />;
   return (
     <div className="flex size-full flex-col gap-2 p-3">
@@ -112,6 +112,7 @@ function BotBody({ node }: { node: CanvasNode }) {
           <div className="flex items-center gap-1">
             <span className="truncate text-[13px] font-medium leading-[18px] text-ink">{bot.name}</span>
             {bot.lead ? <Crown size={14} aria-label={t("projectCanvas.bot.lead")} className="shrink-0 text-ink-tertiary" /> : null}
+            {look.unread ? <span data-bot-unread="" role="img" aria-label={t("task.unread")} className="size-2 shrink-0 rounded-full bg-accent" /> : null}
           </div>
           <div className="truncate text-[12px] leading-4 text-ink-tertiary">{bot.title || nodeTypeLabel("bot")}</div>
         </div>
@@ -215,9 +216,7 @@ function ImageBody({ node }: { node: CanvasNode }) {
   const file = node.metadata?.file;
   const url = file ? ui.controller.fileUrl(file) : null;
   const fitToPicture = (image: HTMLImageElement) => {
-    if (node.metadata?.naturalWidth || !image.naturalWidth) return;
-    const size = fitNodeSize(image.naturalWidth, image.naturalHeight);
-    ui.controller.apply([{ type: "update_node", id: node.id, patch: size, metadata: { naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight } }], { record: false });
+    if (!node.metadata?.naturalWidth && image.naturalWidth) ui.fitPicture(node.id, image.naturalWidth, image.naturalHeight);
   };
   return (
     <GenerationState node={node}>

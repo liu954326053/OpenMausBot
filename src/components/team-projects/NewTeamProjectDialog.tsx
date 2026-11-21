@@ -1,5 +1,5 @@
-import { Check, Loader2 } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { Check, Crown, Loader2 } from "lucide-react";
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { isTeamProjectName, TEAM_PROJECT_NAME_MAX, type ProjectTeamWire, type TeamProjectRefusal } from "../../../shared/team-projects";
@@ -12,6 +12,7 @@ import { listProjectTeams } from "@/lib/team-projects-api";
 import type { SettingsPageId } from "@/state/store";
 import { useStoreDispatch } from "@/state/store-select";
 import { createProject, refreshTeamProjects, useTeamProjectSide } from "@/state/team-projects";
+import { ChiefPicker } from "../ChiefPicker";
 import { SETTINGS_INPUT } from "../SettingsPrimitives";
 import { dataSettingsPlace } from "./where-in-settings";
 
@@ -65,25 +66,35 @@ function Frame({ stage, title, onClose, children, footer }: { stage: Stage; titl
   );
 }
 
-export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
+/** `team`: the team it opens with, chosen once a project can be made from it; no other team is then chosen for the person. */
+export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string; onClose: () => void }) {
   const side = useTeamProjectSide();
   const dispatch = useStoreDispatch();
   const formId = useId(), nameId = useId(), teamsId = useId(), folderId = useId();
   const [teams, setTeams] = useState<ProjectTeamWire[] | "failed" | null>(null);
   const [name, setName] = useState("");
-  const [teamName, setTeamName] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(preset ?? null);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
+  const [choosingChief, setChoosingChief] = useState<{ team: string; anchor: HTMLElement } | null>(null);
   const teamRows = useRef<HTMLDivElement>(null);
+  const arriving = useRef<string | null>(null);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
+  useEffect(() => {
+    const row = usableRows(teamRows.current).find((one) => one.dataset.team === arriving.current);
+    if (!row) return;
+    arriving.current = null;
+    row.focus();
+  }, [teams]);
 
-  const loadTeams = () => {
+  const loadTeams = (prefer?: string) => {
     listProjectTeams().then((found) => {
       if (!live.current) return;
       const usable = found.filter((team) => !team.unusable);
+      const offered = (name: string | null | undefined) => usable.some((team) => team.name === name);
       setTeams(found);
-      setTeamName((chosen) => (usable.some((team) => team.name === chosen) ? chosen : usable.length === 1 ? usable[0]!.name : null));
+      setTeamName((chosen) => (offered(prefer) ? prefer! : offered(chosen) ? chosen : preset === undefined && usable.length === 1 ? usable[0]!.name : null));
     }, () => { if (live.current) setTeams("failed"); });
   };
   useEffect(() => {
@@ -141,7 +152,7 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
       const outcome = await createProject({ name: trimmed, team: teamName });
       if (!live.current) return;
       if ("project" in outcome) {
-        dispatch({ type: "select", id: outcome.project.leadBotId });
+        dispatch({ type: "showProject", projectId: outcome.project.id });
         onClose();
         return;
       }
@@ -203,24 +214,36 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
                 const members = teamLine(team);
                 const context = team.context.trim();
                 const dim = team.unusable && "opacity-50";
+                const picking = choosingChief?.team === team.name;
                 return (
-                  <button key={team.name} type="button" role="radio" aria-checked={chosen} data-team={team.name} data-team-unusable={team.unusable}
-                    disabled={busy || team.unusable !== undefined}
-                    tabIndex={chosen || (teamName === null && team.name === firstUsable) ? 0 : -1}
-                    onClick={() => choose(team.name)}
-                    className={cn("flex w-full shrink-0 items-start gap-3 rounded-lg px-2 py-2 text-start enabled:hover:bg-ink/[0.04] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-checked:bg-ink/[0.06]", !team.unusable && "disabled:opacity-50")}>
-                    <span className="min-w-0 flex-1">
-                      <span dir="auto" className={cn("block truncate text-[13px] font-medium leading-[18px] text-ink", dim)} title={team.name}>{team.name}</span>
-                      {context && <span dir="auto" className={cn("mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-secondary", dim)} title={context}>{context}</span>}
-                      {members && <span dir="auto" className={cn("mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-tertiary", dim)} title={members}>{members}</span>}
-                      {team.unusable && <span dir="auto" data-team-unusable-reason="" className="mt-0.5 block text-[12px] leading-4 text-ink-secondary">{t(unusableKey(team.unusable))}</span>}
-                    </span>
-                    <span className="flex h-[18px] w-4 shrink-0 items-center text-ink">{chosen && <Check size={16} aria-hidden="true" />}</span>
-                  </button>
+                  <Fragment key={team.name}>
+                    <button type="button" role="radio" aria-checked={chosen} data-team={team.name} data-team-unusable={team.unusable}
+                      disabled={busy || team.unusable !== undefined}
+                      tabIndex={chosen || (teamName === null && team.name === firstUsable) ? 0 : -1}
+                      onClick={() => choose(team.name)}
+                      className={cn("flex w-full shrink-0 items-start gap-3 rounded-lg px-2 py-2 text-start enabled:hover:bg-ink/[0.04] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-checked:bg-ink/[0.06]", !team.unusable && "disabled:opacity-50")}>
+                      <span className="min-w-0 flex-1">
+                        <span dir="auto" className={cn("block truncate text-[13px] font-medium leading-[18px] text-ink", dim)} title={team.name}>{team.name}</span>
+                        {context && <span dir="auto" className={cn("mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-secondary", dim)} title={context}>{context}</span>}
+                        {members && <span dir="auto" className={cn("mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-tertiary", dim)} title={members}>{members}</span>}
+                        {team.unusable && <span dir="auto" data-team-unusable-reason="" className="mt-0.5 block text-[12px] leading-4 text-ink-secondary">{t(unusableKey(team.unusable))}</span>}
+                      </span>
+                      <span className="flex h-[18px] w-4 shrink-0 items-center text-ink">{chosen && <Check size={16} aria-hidden="true" />}</span>
+                    </button>
+                    {team.unusable === "no_chief" && (
+                      <button type="button" data-choose-chief={team.name} aria-haspopup="menu" aria-expanded={picking} disabled={busy} title={t("chiefPicker.title", { team: team.name })}
+                        onClick={(event) => setChoosingChief(picking ? null : { team: team.name, anchor: event.currentTarget })}
+                        className="ui-button ui-button-sm mb-1.5 ms-2 self-start">
+                        <Crown size={14} aria-hidden="true" />{t("chiefPicker.choose")}
+                      </button>
+                    )}
+                  </Fragment>
                 );
               })}
             </div>
           )}
+          {choosingChief && <ChiefPicker department={choosingChief.team} anchor={choosingChief.anchor} onClose={() => setChoosingChief(null)}
+            onChosen={() => { arriving.current = choosingChief.team; loadTeams(choosingChief.team); if (refusal?.place === "team") setRefusal(null); }} />}
           {problem("team")}
         </div>
         <div>

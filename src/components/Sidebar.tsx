@@ -10,7 +10,7 @@ import { SidebarWorkingStep } from "./SidebarWorkingStep"; import { FadeLine } f
 import { openBotRow } from "@/state/thread-navigation";
 
 import { BotAvatar } from "./Avatar";
-import { BotEngineMark, BotModelBadge, botTooltip } from "./BotModelBadge"; import { SidebarBotRole } from "./BotRole";
+import { BotEngineMark, BotModelBadge, botTooltip } from "./BotModelBadge"; import { chiefTitle, SidebarBotRole } from "./BotRole";
 import { stateForBot } from "@/lib/mascot";
 import { cn } from "@/lib/cn";
 import { useRememberedDisclosure } from "@/lib/remembered-disclosure";
@@ -70,7 +70,8 @@ import { ShortcutHint } from "./ShortcutHint";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useViewerEmail, useWelcomingBot } from "@/lib/default-bot";
-import { archiveBotWithNotice, onArchiveNotice } from "./bot-archive";
+import { archiveBotWithNotice, onArchiveNotice, type ArchivedBot, type ArchiveNotice } from "./bot-archive";
+import { isBotMenuRequest, onBotMenuRequest, type BotMenuRequest } from "./bot-menu-request";
 import { ArchivedBotsPanel, botConfirmProps, type BotConfirmKind } from "./ArchivedBotsPanel"; import { MovedBotRows } from "./MoveToTeam"; import { MovedToMyCloudRow } from "./MoveToMyCloud";
 import { SectionPicker } from "./SidebarSectionPicker";
 
@@ -361,7 +362,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
   const visible = useVisibleMessages(bot);
   const last = lastNonReceipt(visible);
   const title = bot.title.trim();
-  const details = [props.held ? t("pause.badge") : "", title, bot.chiefOfStaff ? t("sidebar.bot.chiefOfStaff") : ""].filter(Boolean);
+  const details = [props.held ? t("pause.badge") : "", title, bot.chiefOfStaff ? chiefTitle(bot) : ""].filter(Boolean);
   const rowClass = cn(
     "flex w-full items-center rounded-xl text-left transition-colors duration-150", SIMPLE_ROW_FOCUS,
     iconOnly
@@ -403,8 +404,8 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
         {!simpleRow && <AvatarCornerDot activity={failed ? "failed" : teammateWait ? "teammate" : queued && !waiting && !working ? "queued" : null} large={iconOnly} />}
         {bot.chiefOfStaff && (iconOnly || simpleRow) && (
           <span className="absolute -left-1 -top-1 flex rounded-full bg-raised p-[3px]">
-            <Crown size={11} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={t("sidebar.bot.chiefOfStaff")} data-testid="chief-crown">
-              <title>{t("sidebar.bot.chiefOfStaff")}</title>
+            <Crown size={11} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={chiefTitle(bot)} data-testid="chief-crown">
+              <title>{chiefTitle(bot)}</title>
             </Crown>
           </span>
         )}
@@ -439,8 +440,8 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
               inputClassName={cn("w-full rounded bg-inset px-1 py-0.5", simpleRow ? "text-[14px] font-medium" : "text-[15px] font-semibold")}
             />
             {!simpleList && bot.chiefOfStaff && !renaming && (
-              <Crown size={13} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={t("sidebar.bot.chiefOfStaff")} data-testid="chief-crown">
-                <title>{t("sidebar.bot.chiefOfStaff")}</title>
+              <Crown size={13} strokeWidth={2.25} className="shrink-0 text-accent" role="img" aria-label={chiefTitle(bot)} data-testid="chief-crown">
+                <title>{chiefTitle(bot)}</title>
               </Crown>
             )}
             {onLiveCall && !iconOnly && !renaming && (
@@ -507,7 +508,7 @@ export const BotListItem = memo(function BotListItem(props: BotRowProps) {
           !renaming && iconOnly
             ? deleting
               ? t("sidebar.bot.deletingAria", { name: bot.name })
-              : `${bot.name}${bot.title?.trim() ? ` · ${bot.title.trim()}` : ""}${bot.chiefOfStaff ? ` · ${t("sidebar.bot.chiefOfStaff")}` : ""}${onLiveCall ? ` · ${t("call.live.badge")}` : ""}${waiting ? ` · ${t("sidebar.preview.waiting")}` : working ? ` · ${t("chat.activity.working")}` : failed ? ` · ${t("sidebar.preview.failed")}` : teammateWait ? ` · ${t("sidebar.preview.waitingOnTeammate")}` : queued ? ` · ${t("task.queued")}` : ""}${unread ? ` · ${t("task.unread")}` : ""}`
+              : `${bot.name}${bot.title?.trim() ? ` · ${bot.title.trim()}` : ""}${bot.chiefOfStaff ? ` · ${chiefTitle(bot)}` : ""}${onLiveCall ? ` · ${t("call.live.badge")}` : ""}${waiting ? ` · ${t("sidebar.preview.waiting")}` : working ? ` · ${t("chat.activity.working")}` : failed ? ` · ${t("sidebar.preview.failed")}` : teammateWait ? ` · ${t("sidebar.preview.waitingOnTeammate")}` : queued ? ` · ${t("task.queued")}` : ""}${unread ? ` · ${t("task.unread")}` : ""}`
             : undefined
         }
         aria-busy={deleting || undefined}
@@ -574,9 +575,9 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const phone = useMediaQuery(PHONE_LAYOUT, false);
   const importReturnRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
-  const [confirm, setConfirm] = useState<{ kind: BotConfirmKind; bot: Bot } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: BotConfirmKind; bot: Bot; inPlace: boolean } | null>(null);
   const cancelConfirm = useCallback(() => setConfirm(null), []);
-  const [menu, setMenu] = useState<MenuState | null>(null);
+  const [menu, setMenu] = useState<MenuState | BotMenuRequest | null>(null);
   const [renameRequest, setRenameRequest] = useState<{ botId: string; nonce: number } | null>(null);
   const [sectionPicker, setSectionPicker] = useState<MenuState | null>(null);
   const [newTeam, setNewTeam] = useState<{ botId?: string } | null>(null);
@@ -591,11 +592,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const newTaskFolderBot = state.bots.find((bot) => bot.id === newTaskFolderBotId);
   const [importUrl, setImportUrl] = useState<string | null>(null);
   const [archivedBotsOpen, setArchivedBotsOpen] = useState(false);
-  const [teamFeedback, setTeamFeedback] = useState<{
-    error: boolean;
-    text: string;
-    restoreBot?: { id: string; name: string };
-  } | null>(null);
+  const [teamFeedback, setTeamFeedback] = useState<ArchiveNotice | null>(null);
   const [query, setQuery] = useState("");
   const storedDensity = useSidebarDensity();
   const density = collapseToIcons ? "icons" : storedDensity;
@@ -649,17 +646,20 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
 
   const requestArchive = (bot: Bot) => {
     const current = currentArchivableBot(state.bots, bot.id);
-    if (current) setConfirm({ kind: "archive", bot: current });
+    if (current) setConfirm({ kind: "archive", bot: current, inPlace: isBotMenuRequest(menu) });
   };
 
-  const archiveBot = async ({ id }: Pick<Bot, "id">) => {
+  const archiveWithNotice = (bot: Bot, inPlace?: boolean) =>
+    archiveBotWithNotice(bot, { bots: state.bots, selectedId: state.selectedId, dispatch, showThreads, notify: setTeamFeedback, inPlace });
+  const archiveBot = async ({ id }: Pick<Bot, "id">, inPlace?: boolean) => {
     const bot = currentArchivableBot(state.bots, id);
-    if (bot) await archiveBotWithNotice(bot, { bots: state.bots, selectedId: state.selectedId, dispatch, showThreads, notify: setTeamFeedback });
+    if (bot) await archiveWithNotice(bot, inPlace);
   };
   // Archives from the bot panel report here too, with the same Undo.
   useEffect(() => onArchiveNotice(setTeamFeedback), []);
+  useEffect(() => onBotMenuRequest(setMenu), []);
 
-  const undoBotArchive = async (bot: { id: string; name: string }) => {
+  const undoBotArchive = async (bot: ArchivedBot) => {
     setTeamFeedback(null);
     try {
       const response = await api(`/api/bots/${bot.id}`, {
@@ -667,7 +667,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
         body: JSON.stringify({ hidden: false }),
       });
       dispatch({ type: "botPatched", bot: response.bot });
-      openBot(dispatch, response.bot, showThreads);
+      if (!bot.inPlace) openBot(dispatch, response.bot, showThreads);
       setTeamFeedback({ error: false, text: t("sidebar.archived.restored", { name: bot.name }) });
     } catch (cause) {
       setTeamFeedback({ error: true, text: cause instanceof Error ? cause.message : String(cause) });
@@ -893,22 +893,22 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           menu={menu}
           onClose={() => setMenu(null)}
           onArchive={requestArchive}
-          onDelete={(bot) => setConfirm({ kind: "delete", bot })}
+          onDelete={(bot) => setConfirm({ kind: "delete", bot, inPlace: isBotMenuRequest(menu) })}
           onMoveToSection={(botId) => {
             if (!menu) return;
             setSectionPicker({ botId, x: menu.x, y: menu.y });
           }}
           onNewFolder={setNewFolderBotId}
           onNewTaskFolder={setNewTaskFolderBotId}
-          onRename={(botId) => setRenameRequest((current) => ({ botId, nonce: (current?.nonce ?? 0) + 1 }))}
+          onRename={(botId) => isBotMenuRequest(menu) ? menu.rename(botId) : setRenameRequest((current) => ({ botId, nonce: (current?.nonce ?? 0) + 1 }))}
           onNewSection={remoteClient || teamSettingsAllowed === false ? undefined : (botId) => setNewTeam({ botId })}
         />
       {showThreads && newFolderBotId && state.bots.find((bot) => bot.id === newFolderBotId) && <BotProjectDialog bot={state.bots.find((bot) => bot.id === newFolderBotId)!} onClose={() => setNewFolderBotId(null)} />}
       {showThreads && newTaskFolderBot && <NewTaskFolderDialog bot={newTaskFolderBot} onClose={() => setNewTaskFolderBotId(null)} onReturnFocus={() => {
         sidebarRef.current?.querySelector<HTMLElement>(`[data-sidebar-bot-row="${CSS.escape(newTaskFolderBot.id)}"]`)?.focus();
       }} />}
-      <ConfirmDialog {...botConfirmProps(confirm, state.bots, { archive: (bot) => { setConfirm(null); void archiveBot(bot); }, remove: (bot) => { setConfirm(null); dispatch({ type: "deleteBot", botId: bot.id }); },
-        archiveInstead: (chief) => { setConfirm(null); void archiveBotWithNotice(chief, { bots: state.bots, selectedId: state.selectedId, dispatch, showThreads, notify: setTeamFeedback }); } })}
+      <ConfirmDialog {...botConfirmProps(confirm, state.bots, { archive: (bot) => { setConfirm(null); void archiveBot(bot, confirm?.inPlace); }, remove: (bot) => { setConfirm(null); dispatch({ type: "deleteBot", botId: bot.id }); },
+        archiveInstead: (chief) => { setConfirm(null); void archiveWithNotice(chief, confirm?.inPlace); } })}
         onCancel={cancelConfirm} returnFocusRef={sidebarRef} />
       <OwnerPickerHost />
       {newTeam && <TeamDialog onClose={() => setNewTeam(null)} onCreated={(name) => {

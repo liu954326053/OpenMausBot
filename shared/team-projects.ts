@@ -154,6 +154,10 @@ export interface TeamProjectsEvent {
  */
 export type ProjectTeamUnusable = "empty" | "no_chief" | "main_bot_chief";
 
+/** Why no project can be made from a department, from its Chief of Staff (if any) and how many of its bots are not the main bot. */
+export const projectTeamUnusable = (chief: { defaultBot?: unknown } | undefined, bots: number): ProjectTeamUnusable | undefined =>
+  chief?.defaultBot ? "main_bot_chief" : !bots ? "empty" : !chief ? "no_chief" : undefined;
+
 /** A team a project can be made from: one department that is no project's. */
 export interface ProjectTeamWire {
   name: string;

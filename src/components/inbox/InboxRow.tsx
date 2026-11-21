@@ -1,4 +1,4 @@
-import { Check, CornerUpLeft, ExternalLink, Split, X, type LucideIcon } from "lucide-react";
+import { Check, CornerUpLeft, Crown, ExternalLink, Split, X, type LucideIcon } from "lucide-react";
 import type { InboxRow } from "../../../shared/inbox";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -15,6 +15,7 @@ const ACTION_LOOK: Record<QuickAction, { Icon: LucideIcon; label: LocaleKey }> =
   close: { Icon: Check, label: "common.done" },
   done: { Icon: Check, label: "common.done" },
   open: { Icon: ExternalLink, label: "inbox.action.openInChat" },
+  chief: { Icon: Crown, label: "chiefPicker.choose" },
 };
 
 const ROW_ACTION = "flex size-7 shrink-0 items-center justify-center rounded-full text-ink-secondary transition-colors hover:bg-ink/[0.07] hover:text-ink active:bg-ink/[0.11] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus pointer-coarse:size-9";

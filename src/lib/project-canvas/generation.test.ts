@@ -46,4 +46,11 @@ describe("where a result lands", () => {
     const coming = [{ position: { x: column, y: 50 + 236 + OUTPUT_GAP_Y }, width: 340, height: 240 }, { position: { x: column + 900, y: 2000 }, width: 340, height: 240 }];
     expect(nextOutputFrame(shot, "text", [shot, first], [link("shot", "v1")], coming).position).toEqual({ x: column, y: 50 + 236 + OUTPUT_GAP_Y + 240 + OUTPUT_GAP_Y });
   });
+
+  it("goes down past every node in its way, a bot's among them, as the server puts it, and over a group", () => {
+    const note = node("note", "text", { position: { x: column + 100, y: 120 } });
+    const bot = node("bot:writer", "bot", { position: { x: column - 40, y: 120 + 240 + 10 }, width: 300, height: 180 });
+    const group = node("group", "group", { position: { x: column - 200, y: 0 }, width: 2000, height: 2000 });
+    expect(nextOutputFrame(shot, "video", [shot, note, bot, group], []).position).toEqual({ x: column, y: 120 + 240 + 10 + 180 + OUTPUT_GAP_Y });
+  });
 });

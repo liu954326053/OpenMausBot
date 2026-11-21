@@ -16,9 +16,11 @@ import { computerStepLine } from "@/lib/computer-step";
 import { localizedTaskTitle } from "@/lib/task-title";
 import type { MapComputer, MapComputerState } from "../../shared/map-computer";
 import { BotAvatar } from "./Avatar";
+import { botRoleLine, chiefTitle } from "./BotRole";
 import { ComputerNode } from "./ComputerNode";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 import { openBotSettings } from "./bot-panel/panel-link";
+import { requestBotMenu } from "./bot-menu-request";
 import { TeamMapDepartmentItems, TeamMapNote, useProjectTeamNotes } from "./TeamMapDepartment";
 import { menuPlacement, useTeamMapReveal, type MenuPlacement } from "./team-map-reveal";
 import { TeamFlowTree } from "./team-flow/TeamFlowTree";
@@ -53,8 +55,16 @@ function BotCard({ bot, selected, moving, connected, tagged = false, sent, onCom
   const name = teamBotName(bot, useTeamPeople());
   const instance = state.instances.find((item) => item.instanceId === bot.modelSelection.instanceId);
   const model = instance?.models.options.find((item) => item.id === bot.modelSelection.model)?.label ?? bot.modelSelection.model;
-  return <article className={cn("relative h-[126px] w-[236px] shrink-0 rounded-xl border bg-card shadow-sm transition-colors",
-    selected ? "border-accent/60 ring-1 ring-accent/15" : connected ? "border-accent/40" : "border-hairline/50 hover:border-ink-secondary/40", tagged && "border-accent ring-4 ring-accent/25", moving && "opacity-35")}>
+  const openMenu = (x: number, y: number) => requestBotMenu({ botId: bot.id, x, y, rename: (botId) => openBotSettings(dispatch, "identity", { botId }) });
+  const openMenuBelow = (element: Element) => { const rect = element.getBoundingClientRect(); openMenu(rect.left, rect.bottom); };
+  return <article className={cn("group/card relative h-[126px] w-[236px] shrink-0 rounded-xl border bg-card shadow-sm transition-colors",
+    selected ? "border-accent/60 ring-1 ring-accent/15" : connected ? "border-accent/40" : "border-hairline/50 hover:border-ink-secondary/40", tagged && "border-accent ring-4 ring-accent/25", moving && "opacity-35")}
+    onContextMenu={(event) => { event.preventDefault(); openMenu(event.clientX, event.clientY); }}
+    onKeyDown={(event) => {
+      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+      event.preventDefault();
+      openMenuBelow(event.currentTarget.querySelector("[data-card-actions]") ?? event.currentTarget);
+    }}>
     {sent !== undefined && <span key={sent} data-sent-highlight aria-hidden className="pointer-events-none absolute -inset-px animate-sent-border rounded-xl border-2 border-accent" />}
     <button data-bot-id={bot.id} aria-label={t("canvas.editBot", { name })}
       onClick={() => openBotSettings(dispatch, "identity", { botId: bot.id })}
@@ -64,15 +74,18 @@ function BotCard({ bot, selected, moving, connected, tagged = false, sent, onCom
         event.preventDefault(); event.stopPropagation();
         onArrange(bot, event.key === "ArrowUp" ? -1 : 1);
       }}
-      className="flex h-[82px] w-full cursor-grab items-center gap-3 rounded-t-xl px-4 text-left active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-accent">
+      className="flex h-[82px] w-full cursor-grab items-center gap-3 rounded-t-xl ps-4 pe-10 text-left active:cursor-grabbing focus-visible:outline-2 focus-visible:outline-accent">
       <BotAvatar bot={bot} size={38} motion="none" motionKey={0} animated={false} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5"><span className="truncate text-[14px] font-semibold">{name}</span>
-          {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={t("chat.chiefOfStaff")} />}
+          {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={chiefTitle(bot)} />}
           {botShowsUnread(bot) && <span data-card-unread="" role="img" aria-label={t("task.unread")} className="size-2 shrink-0 rounded-full bg-accent" />}</span>
-        <span className="mt-1 block truncate text-[11px] text-ink-secondary">{bot.title || (bot.chiefOfStaff ? t("chat.chiefOfStaff") : t("canvas.bot"))}</span>
+        <span className="mt-1 block truncate text-[11px] text-ink-secondary">{botRoleLine(bot) || t("canvas.bot")}</span>
       </span>
     </button>
+    <button type="button" data-card-actions={bot.id} aria-label={t("sidebar.bot.actions", { name: bot.name })} title={t("sidebar.bot.actions", { name: bot.name })} aria-haspopup="menu"
+      onClick={(event) => openMenuBelow(event.currentTarget)}
+      className="pointer-events-none absolute end-2 top-2 flex size-7 items-center justify-center rounded-lg text-ink-secondary opacity-0 hover:bg-control hover:text-ink focus-visible:outline-2 focus-visible:outline-accent group-hover/card:pointer-events-auto group-hover/card:opacity-100 group-focus-within/card:pointer-events-auto group-focus-within/card:opacity-100 max-md:pointer-events-auto max-md:opacity-70 touch:pointer-events-auto touch:opacity-70"><MoreHorizontal size={15} /></button>
     <div className="flex h-[43px] items-center gap-1 border-t border-hairline/30 px-2">
       <button className={cn(iconButton, "size-8")} aria-label={t("canvas.openBotChat", { name: bot.name })} title={t("canvas.openChat")}
         onClick={() => openBot(dispatch, bot, showThreads)}><MessageCircle size={13} /></button>
@@ -463,7 +476,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
               }}>
               <h2 className="truncate text-[13px] font-semibold tracking-tight">{section.name}</h2>
             </button>
-            <TeamMapNote reason={section.key ? notes.get(section.key) : undefined} />
+            <TeamMapNote department={section.key} reason={notes.get(section.key)} canChoose={canManage} />
             {computer && <button aria-label={t("canvas.teamComputer", { team: section.name, name: computer.name })} title={`${computer.name}${computer.state ? ` · ${computer.state}` : ""}`}
               disabled={!onTeamComputer} onClick={() => onTeamComputer?.(section.key)}
               className="flex min-w-0 max-w-[120px] shrink items-center gap-1.5 rounded-md px-1.5 py-2 text-[10px] text-ink-secondary hover:bg-control hover:text-ink focus-visible:outline-2 focus-visible:outline-accent disabled:pointer-events-none">

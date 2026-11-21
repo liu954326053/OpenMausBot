@@ -1,6 +1,7 @@
 import type { Bot, InstanceInfo } from "@/state/store";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { chiefTitle } from "./BotRole";
 import { engineDisplayName } from "@/lib/engine-name";
 import { InstanceProviderMark } from "./ProviderIcons";
 
@@ -12,12 +13,12 @@ export function botModel(bot: Pick<Bot, "modelSelection">, instances: InstanceIn
   return { instance, label: label || engineDisplayName(instance) };
 }
 
-export function botTooltip(bot: Pick<Bot, "name" | "title" | "chiefOfStaff" | "modelSelection">, instances: InstanceInfo[]): string {
+export function botTooltip(bot: Pick<Bot, "name" | "title" | "chiefOfStaff" | "defaultBot" | "modelSelection">, instances: InstanceInfo[]): string {
   const model = botModel(bot, instances);
   return [
     bot.name,
     bot.title.trim(),
-    bot.chiefOfStaff ? t("sidebar.bot.chiefOfStaff") : "",
+    bot.chiefOfStaff ? chiefTitle(bot) : "",
     model ? t("sidebar.bot.modelBadge", { model: model.label, engine: model.instance.displayName }) : "",
   ].filter(Boolean).join(" · ");
 }

@@ -5,8 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TEAM_PROJECT_NAME_MAX, type ProjectTeamWire, type TeamProjectsListWire, type TeamProjectWire } from "../../../shared/team-projects";
 
-const fixture = vi.hoisted(() => ({ dispatch: vi.fn() }));
-vi.mock("@/state/store-select", () => ({ useStoreDispatch: () => fixture.dispatch }));
+const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: {} as Record<string, unknown> }));
+vi.mock("@/state/store-select", () => ({
+  useStoreDispatch: () => fixture.dispatch,
+  useStoreSelector: <T,>(select: (state: never) => T) => select(fixture.state as never),
+  sameItems: (left: readonly unknown[], right: readonly unknown[]) => left.length === right.length && left.every((item, index) => item === right[index]),
+}));
 
 import { loadLocale, setLocale } from "@/lib/i18n";
 import { setTeamProjects } from "@/state/team-projects";
@@ -84,6 +88,8 @@ beforeEach(() => {
     const call = { path: String(input), method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined };
     calls.push(call);
     const [status, body] = call.path === "/api/team-projects/teams" ? (typeof teams === "number" ? [teams, { error: "Not now" }] : [200, { teams }])
+      : call.method === "PATCH" ? [200, { bot: { id: call.path.split("/").pop(), chiefOfStaff: true } }]
+      : call.path === "/api/inbox" ? [404, {}]
       : call.method === "POST" ? await created() : [200, list];
     return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   }));
@@ -151,6 +157,19 @@ describe("what the dialog asks for", () => {
     expect(all('[aria-checked="true"]').map((chosen) => chosen.dataset.team)).toEqual(["Urban romance"]);
     await submit();
     expect(posts().map((call) => call.body)).toEqual([{ name: "The bride", team: "Urban romance" }]);
+  });
+
+  it("opens with the team it was asked for, and then chooses no other team for the person", async () => {
+    setTeamProjects(list);
+    await act(async () => root.render(createElement(NewTeamProjectDialog, { team: "Costume drama", onClose })));
+    await settle();
+    expect(all('[data-team][aria-checked="true"]').map((chosen) => chosen.dataset.team)).toEqual(["Costume drama"]);
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    teams = [leaderless, costume];
+    await act(async () => root.render(createElement(NewTeamProjectDialog, { team: "Night shift", onClose })));
+    await settle();
+    expect(all('[data-team][aria-checked="true"]')).toEqual([]);
   });
 
   it("chooses the only team a project can be made from by itself, and none of several", async () => {
@@ -225,6 +244,43 @@ describe("what the dialog asks for", () => {
   });
 });
 
+describe("a team without a Chief of Staff", () => {
+  const member = (id: string, name: string) => ({ id, threadId: `thread-${id}`, name, title: "", color: "green", section: "Night shift", modelSelection: { instanceId: "codex", model: "m" } });
+  const ledNight: ProjectTeamWire = { ...leaderless, chief: { id: "nia", name: "Nia", title: "" } };
+  delete ledNight.unusable;
+  beforeEach(() => {
+    fixture.state = { bots: [member("nia", "Nia"), member("ode", "Ode")], instances: [{ instanceId: "codex", capabilities: { agentsMcp: true } }] };
+    teams = [leaderless, urban];
+  });
+
+  it("says so and offers to choose its Chief beside it, from the team's own bots", async () => {
+    await open();
+    const offer = q('[data-choose-chief="Night shift"]')!;
+    expect(lines("Night shift")).toContain("It has no Chief of Staff to lead a project yet.");
+    expect([offer.textContent, offer.getAttribute("aria-haspopup"), offer.getAttribute("aria-expanded")]).toEqual(["Choose Chief of Staff", "menu", "false"]);
+    expect(q('[data-choose-chief="Urban romance"]')).toBeNull();
+    await click(offer);
+    expect(q('[data-chief-picker="Night shift"]')).toBeTruthy();
+    expect(all("[data-chief-choice]").map((choice) => choice.dataset.chiefChoice)).toEqual(["nia", "ode"]);
+    expect(offer.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("chooses the team once its Chief is chosen, with the keyboard on it, ready to create", async () => {
+    await open();
+    await click(q('[data-choose-chief="Night shift"]'));
+    teams = [ledNight, urban];
+    await click(q('[data-chief-choice="nia"]'));
+    await settle();
+    expect(calls.filter((call) => call.method === "PATCH")).toEqual([{ path: "/api/bots/nia", method: "PATCH", body: { chiefOfStaff: true } }]);
+    expect([q("[data-chief-picker]"), q("[data-choose-chief]")]).toEqual([null, null]);
+    expect([row("Night shift").disabled, row("Night shift").getAttribute("aria-checked")]).toEqual([false, "true"]);
+    expect(document.activeElement).toBe(row("Night shift"));
+    await type("The bride");
+    await submit();
+    expect(posts().map((call) => call.body)).toEqual([{ name: "The bride", team: "Night shift" }]);
+  });
+});
+
 describe("making the project", () => {
   const fill = async () => {
     await open();
@@ -232,11 +288,11 @@ describe("making the project", () => {
     await click(row("Urban romance"));
   };
 
-  it("sends the trimmed name and the chosen team, then opens the lead's chat and closes", async () => {
+  it("sends the trimmed name and the chosen team, then opens the project's canvas and closes", async () => {
     await fill();
     await submit();
     expect(posts()).toEqual([{ path: "/api/team-projects", method: "POST", body: { name: "The bride", team: "Urban romance" } }]);
-    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead-1" }]]);
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "showProject", projectId: "p1" }]]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

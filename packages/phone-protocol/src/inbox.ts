@@ -7,7 +7,8 @@ import type { OptionCardData, SecretRequestCardData, SignInRequestCardData } fro
  * came from. */
 export interface InboxItem {
   /** "message": a teammate's or a bot's message, or an @mention; "ask": a question or approval card, copied here
-   * and answered here as there; "result": a routine's report; "notice": a failure or a sign-in it needs. */
+   * and answered here as there; "result": a routine's report; "notice": a failure or a sign-in it needs, or a
+   * department that needs a Chief of Staff. */
   kind: "message" | "ask" | "result" | "notice";
   /** Who it is from: a teammate (their address) or a bot (its id). */
   from: { name: string; email?: string; botId?: string };
@@ -35,7 +36,8 @@ export interface InboxTask {
 }
 
 /** Where a line of the inbox is listed: "needs-you" while it waits on the person (an ask whose card is open where it was
- * asked), "info" for news until they answer it or mark it done, "done" once it is settled or marked done. */
+ * asked, a department with no Chief of Staff), "info" for news until they answer it or mark it done, "done" once it is
+ * settled or marked done. */
 export type InboxTab = "needs-you" | "info" | "done";
 
 /** One line of a person's inbox as their inbox lists it, newest first. `kind` names its source; a new source adds a kind
@@ -65,7 +67,13 @@ export interface InboxRow {
   signIn?: SignInRequestCardData;
   /** An app the bot asked the person to connect, answered with the chat's own card for it. */
   connector?: ConnectorCardData;
+  /** A department with no Chief of Staff, answered by choosing one of its bots; the line settles once it has one. */
+  needsChief?: { department: string };
 }
+
+/** The title of the main bot's conversation that asks for each department's Chief of Staff; clients show it in the
+ * person's language. */
+export const CHOOSE_CHIEF_TITLE = "Choose a Chief of Staff";
 
 /** A person's inbox: where its lines live (none yet before the first arrives), and the line the inbox's card in that
  * conversation sits under (the newest that needed them, else the newest). Off a team `botId` and `threadId` are null: its
