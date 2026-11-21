@@ -26,6 +26,35 @@ This fixture covers the sidebar confirmation and bot-row result only; it does
 not exercise Settings > Computers deletion or provider completion polling.
 Those paths are covered by the computer-section and server Boat inventory tests.
 
+## Projects and the team map
+
+The sidebar lists, top to bottom, the main bot, Inbox, the projects and New
+project, then the footer tools. Bots in no project and group chats outside
+projects are reached through the sidebar search and the team map.
+
+In the UI fixture (`node --experimental-strip-types scripts/control-omb.ts ui launch`),
+set a projects folder under `/tmp` and make two projects from a department with
+a Chief through `/api/team-projects`, then check:
+
+1. Simple, Advanced, the icons rail and the phone drawer keep that order, with
+   two projects and with none.
+2. A project row opens the project view. Expanded, it lists the lead and then
+   the members; a member opens the project view with that bot chosen.
+3. The + menu offers exactly New project, New bot and Add department. A bot or
+   department made there, or a bot made from the team map's Add menu, opens the
+   team map and is brought into view.
+4. The team map leaves out the projects' teams, says when a department has no
+   Chief, puts a dot on a card with unread output and on the footer's Team map
+   entry, and does not take the main bot into a department.
+5. A project copy's chat locks its model picker and says why.
+
+`src/components/Sidebar.projects.test.ts`, `src/lib/sidebar-projects.test.ts`,
+`src/components/project-view/ProjectView.dom.test.ts`,
+`src/state/project-view.dom.test.ts`, `src/components/TeamMapPage.manage.test.ts`,
+`src/lib/team-map-scope.test.ts` and
+`src/components/team-projects/ConversationModelPicker.test.ts` cover these
+rules; the browser check above confirms them in the real renderer.
+
 ## Mark all of a bot's conversations as read
 
 Run `node --experimental-strip-types scripts/verify-sidebar.ts --unread`.
