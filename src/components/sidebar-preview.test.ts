@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Bot, Group, Message } from "@/state/store";
-import { botPreview, groupPreview, lastPreviewable, serverCardText } from "./sidebar-preview";
+import type { Bot, Message } from "@/state/store";
+import { botPreview, lastPreviewable, serverCardText } from "./sidebar-preview";
 import { setLocale } from "@/lib/i18n";
 
 let at = 0;
@@ -44,18 +44,6 @@ describe("sidebar previews", () => {
     expect(botPreview({ ...bot, chiefOfStaff: true } as Bot, [intro], [], false)).toBe("Hey! I'm Ada. I'm new here.");
     expect(botPreview(bot, [intro], [], false)).toBe("Hi! I'm Ada, your helper for everything here.");
     expect(botPreview({ ...bot, chiefOfStaff: true } as Bot, [intro], [], true), "Advanced mode's one-bubble intro").toBe("Hi, I'm Ada, your helper for everything here.");
-  });
-
-  it("quotes the bot in a Simple group chat too", () => {
-    const from = { botId: "ada", name: "Ada", color: "green" } as Message["from"];
-    const group = { id: "g", name: "Room", messages: [message({ role: "user", text: "Plan the launch" }), message({ text: "Here is the plan.", from }), message({ kind: "activity", tool: { name: "Read", ok: true }, from } as Partial<Message>)] } as unknown as Group;
-    expect(groupPreview(group, [bot], [], false)).toBe("Ada: Here is the plan.");
-    expect(groupPreview(group, [bot], [], true)).toBe("Ada: Read");
-  });
-
-  it("skips screen frames in a group chat's preview too", () => {
-    const group = { id: "g", name: "Room", messages: [message({ text: "Done.", from: { botId: "ada", name: "Ada", color: "green" } }), screen()] } as unknown as Group;
-    expect(groupPreview(group, [bot], [], false)).toBe("Ada: Done.");
   });
 });
 

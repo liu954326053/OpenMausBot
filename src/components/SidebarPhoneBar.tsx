@@ -96,8 +96,8 @@ export function SidebarPhoneBar({ query, onQuery, teamMapUnread = false }: { que
             value={query}
             onChange={(event) => onQuery(event.target.value)}
             onKeyDown={(event) => event.key === "Escape" && onQuery("")}
-            placeholder={t("sidebar.search")}
-            aria-label={t("sidebar.searchAria")}
+            placeholder={t("sidebar.searchProjects")}
+            aria-label={t("sidebar.searchProjects")}
             enterKeyHint="search"
             className="min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-secondary focus:outline-none"
           />

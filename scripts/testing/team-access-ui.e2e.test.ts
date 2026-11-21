@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { ENABLE_ADVANCED_UI, findInSidebar, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { ENABLE_ADVANCED_UI, openFromPalette, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
@@ -52,9 +52,7 @@ const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBin
     await api("/api/bots", { name: "Private accountant", section: "Finance" }, "POST");
     await api("/api/sidebar-sections", { name: "Empty delivery" }, "POST");
     await ui("eval", "--js", "location.reload(); true");
-    await expect.poll(async () => (await ui("eval", "--js", findInSidebar("Clive"))).result, { timeout: 15_000, interval: 250 }).toBe(true);
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Actions for Clive");
-    await clickRole("button", /^Clive .*Rename Clive\b/);
+    await expect.poll(async () => (await ui("eval", "--js", openFromPalette("Clive", `bot:${info.botId}`))).result, { timeout: 15_000, interval: 250 }).toBe(true);
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Open Clive's profile");
     await clickRole("button", "Open Clive's profile");
     await click("Permissions");
