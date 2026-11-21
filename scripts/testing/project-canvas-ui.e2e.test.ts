@@ -1,7 +1,8 @@
 // The project canvas in a real browser on a disposable server with the scripted fake engine and generation's test MCP
 // server, inside the app's store: the snapshot draws the project's bots, a change survives a reload, an upload lands in
 // 素材, a task takes what is connected to the bot, live events update the open canvas, opening a chat and Stop go
-// through the app, and a node generates a picture and stops a generation.
+// through the app, a node generates a picture and stops a generation, a task asked from a text node writes its reply
+// there, and undo gives a deleted bot node back to its bot.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -379,6 +380,61 @@ type Box = { x: number; y: number; w: number; h: number };
       evidence.generation = { made, held: held && { id: held.id, status: held.status }, calls: mcp.calls.map((call) => call.tool) };
       await waitFor(`[...document.querySelectorAll("[data-node-panel] button")].some((button) => button.textContent.trim() === "Generate")`, "the panel ready to generate again");
       await shot("11-generation-stopped.png");
+
+      const noteGate = join(fixture.dataDir, "gate-note");
+      const rule = "RULE: rain falls in every scene, even indoors.";
+      plan([{ key: "note", match: ["Turn the note into a rule"], gateFile: noteGate, reply: rule }]);
+      await clickEmpty();
+      const note = await box(node(outsideId));
+      await clickAt(note!.x + note!.w / 2, note!.y + 30);
+      const writtenBy = '[data-node-panel] select[aria-label="Written by"]';
+      await waitFor(`document.querySelector(${JSON.stringify(writtenBy)})`, "the note's panel");
+      await browser("select", writtenBy, writer.id);
+      await browser("find", "role", "textbox", "fill", "Turn the note into a rule", "--name", "What to write", "--exact");
+      await revealPanelEnd();
+      await clickButton(`Ask ${writer.name}`, "[data-node-panel]");
+      await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes("is writing")`, "the writer writing into the note on the open canvas");
+      const writingInto = (await snapshot()).bots[writer.id]!.writingInto;
+      expect(writingInto).toEqual([outsideId]);
+      await shot("12-writing-into-a-text-node.png");
+      writeFileSync(noteGate, "go");
+      await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes(${JSON.stringify(rule)})`, "the reply in the note on the open canvas");
+      await settled();
+      const filled = await snapshot();
+      expect(filled.nodes.find((one) => one.id === outsideId)).toMatchObject({ type: "text", createdBy: { kind: "person" }, metadata: { content: rule } });
+      expect(filled.bots[writer.id]!.writingInto).toBeUndefined();
+      evidence.reply = { writingInto, node: filled.nodes.find((one) => one.id === outsideId) };
+      await shot("13-reply-in-the-text-node.png");
+
+      const writersShot = async () => (await snapshot()).nodes.find((one) => one.type === "shot" && one.createdBy?.kind === "bot");
+      plan([{ key: "shot", match: ["ADD-SHOT"], reply: "SHOT ADDED", steps: [
+        { tool: "canvas_apply_ops", arguments: { ops: [{ type: "add_node", nodeType: "shot", title: "Opening shot", metadata: { prompt: "A bride alone at the altar" } }] } },
+      ] }]);
+      await api("POST", `${canvasPath}/tasks`, { botId: writer.id, text: "ADD-SHOT" });
+      await expect.poll(writersShot, { timeout: 30_000, message: "the writer's shot" }).toBeDefined();
+      await settled();
+      const botShot = (await writersShot())!;
+      expect(botShot.createdBy).toEqual({ kind: "bot", botId: writer.id });
+      await fit();
+      await waitFor(`document.querySelector(${JSON.stringify(node(botShot.id))})`, "the writer's shot on the open canvas");
+      await clickEmpty();
+      const shotBox = await box(node(botShot.id));
+      await clickAt(shotBox!.x + shotBox!.w / 2, shotBox!.y + 30);
+      await clickSelector('button[aria-label="Delete"]');
+      await expect.poll(async () => (await snapshot()).nodes.some((one) => one.id === botShot.id), { timeout: 15_000, message: "the writer's shot deleted" }).toBe(false);
+      await clickSelector('button[aria-label="Undo"]');
+      await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === botShot.id)?.createdBy, { timeout: 15_000, message: "the shot back as the writer's" }).toEqual({ kind: "bot", botId: writer.id });
+      expect((await snapshot()).connections).toContainEqual(expect.objectContaining({ fromNodeId: botNodeId(writer.id), toNodeId: botShot.id, kind: "content" }));
+      const rewritten = "A bride alone at the altar, rain on the windows";
+      plan([{ key: "shot-again", match: ["CHANGE-SHOT"], reply: "SHOT CHANGED", steps: [
+        { tool: "canvas_apply_ops", arguments: { ops: [{ type: "update_node", id: botShot.id, metadata: { prompt: rewritten } }] } },
+      ] }]);
+      await api("POST", `${canvasPath}/tasks`, { botId: writer.id, text: "CHANGE-SHOT" });
+      await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === botShot.id)?.metadata?.prompt, { timeout: 30_000, message: "the writer changes its shot again" }).toBe(rewritten);
+      await settled();
+      evidence.undo = { shot: (await snapshot()).nodes.find((one) => one.id === botShot.id) };
+      await fit();
+      await shot("14-bot-shot-back-after-undo.png");
 
       evidence.console = (await browser("console")).messages;
       expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
