@@ -54,9 +54,15 @@ const STATUS: Record<CanvasOpCode, number> = { invalid_op: 400, not_found: 404, 
 
 export class CanvasOpRefusal extends Error {
   readonly status: number;
-  constructor(readonly code: CanvasOpCode, message: string, readonly index = -1, readonly nodeId?: string) {
+  readonly code: CanvasOpCode;
+  readonly index: number;
+  readonly nodeId: string | undefined;
+  constructor(code: CanvasOpCode, message: string, index = -1, nodeId?: string) {
     super(index >= 0 ? `operation ${index + 1}: ${message}` : message);
     this.status = STATUS[code];
+    this.code = code;
+    this.index = index;
+    this.nodeId = nodeId;
   }
 }
 
@@ -187,7 +193,7 @@ const VIDEO_SETTINGS = new Set(["model", "resolution", "aspect", "seconds"]);
 const SETTINGS_OF: Partial<Record<CanvasNodeType, ReadonlySet<string>>> = { image: IMAGE_SETTINGS, video: VIDEO_SETTINGS, shot: VIDEO_SETTINGS };
 const BOT_ADDS: ReadonlySet<CanvasNodeType> = new Set(["text", "shot"]);
 
-function checkMetadata(type: CanvasNodeType, values: Record<string, unknown>, index: number): void {
+function checkMetadata(type: CanvasNodeType, values: { settings?: unknown }, index: number): void {
   for (const key of Object.keys(values)) {
     if (!TYPE_KEYS[type].includes(key as MetadataKey)) throw new CanvasOpRefusal("invalid_op", `a ${type} node takes no ${key}`, index);
   }

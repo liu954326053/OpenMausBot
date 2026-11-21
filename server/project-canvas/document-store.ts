@@ -77,14 +77,18 @@ export class CanvasUnreadableError extends Error {
 
 export class CanvasConflictError extends Error {
   readonly status = 409;
-  constructor(readonly body: CanvasConflict) {
+  readonly body: CanvasConflict;
+  constructor(body: CanvasConflict) {
     super(body.error);
+    this.body = body;
   }
 }
 
 export class CanvasRequestError extends Error {
-  constructor(readonly status: number, message: string) {
+  readonly status: number;
+  constructor(status: number, message: string) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -115,8 +119,13 @@ const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.
 export class CanvasDocuments {
   private readonly kept = new Map<string, Stored>();
   private readonly unreadable = new Map<string, string>();
+  private readonly dir: string;
+  private readonly log: (line: string) => void;
 
-  constructor(private readonly dir: string, private readonly log: (line: string) => void = (line) => console.error(line)) {}
+  constructor(dir: string, log: (line: string) => void = (line) => console.error(line)) {
+    this.dir = dir;
+    this.log = log;
+  }
 
   private file(projectId: string): string {
     return join(this.dir, `${projectId}.json`);

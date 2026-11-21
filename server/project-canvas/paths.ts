@@ -18,8 +18,10 @@ function pathError(code: ProjectPathCode, message: string): ProjectPathError {
   return Object.assign(new Error(message), { status: STATUS[code], code });
 }
 
-export const isProjectPathError = (error: unknown): error is ProjectPathError =>
-  error instanceof Error && typeof (error as { code?: unknown }).code === "string" && (error as { code: string }).code in STATUS;
+export function isProjectPathError(error: unknown): error is ProjectPathError {
+  const code = error instanceof Error ? (error as Error & { code?: unknown }).code : undefined;
+  return typeof code === "string" && code in STATUS;
+}
 
 const PATH_MAX_CHARS = 1024;
 const NAME_MAX_BYTES = 180;

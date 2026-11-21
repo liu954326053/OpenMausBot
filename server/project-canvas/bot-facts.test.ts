@@ -50,7 +50,7 @@ function deps(patch: Partial<BotFactsDeps> = {}): BotFactsDeps & { reads: string
   };
 }
 
-const card: OptionCardData = { title: "Allow?", options: ["Allow", "Deny"] };
+const card: OptionCardData = { title: "Allow?", subtitle: "Write to the shared folder", options: ["Allow", "Deny"] };
 
 describe("a bot's facts", () => {
   it("hold each conversation's state, reading its messages once until it changes", () => {

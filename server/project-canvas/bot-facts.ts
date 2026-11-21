@@ -59,8 +59,11 @@ function parsedCard(raw: string | null): OptionCardData | null {
 /** What each bot's node is derived from. A conversation's messages are read once and again only after `forget`. */
 export class BotFactsReader {
   private readonly reads = new Map<string, ThreadRead>();
+  private readonly deps: BotFactsDeps;
 
-  constructor(private readonly deps: BotFactsDeps) {}
+  constructor(deps: BotFactsDeps) {
+    this.deps = deps;
+  }
 
   forget(threadId: string): void {
     this.reads.delete(threadId);
