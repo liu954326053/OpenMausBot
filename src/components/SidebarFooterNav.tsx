@@ -1,5 +1,5 @@
 import { AppWindow, BookOpen, FolderOpen, FolderTree, Globe, Puzzle, Rocket, Server, UsersRound, Zap } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { useId, useMemo, type ReactNode } from "react";
 
 import { useAppTriggers } from "@/lib/app-triggers";
 import { appsOpen, mcpOpen } from "@/lib/apps-panel";
@@ -41,13 +41,15 @@ function NavRow({
   tourId?: string;
   onClick: () => void;
 }) {
+  const unreadId = useId();
   return (
     <button
       type="button"
       data-tour={tourId}
       data-sidebar-nav={id}
       onClick={onClick}
-      aria-label={iconsOnly ? (unread ? `${label}, ${t("task.unread")}` : label) : undefined}
+      aria-label={iconsOnly ? label : undefined}
+      aria-describedby={unread ? unreadId : undefined}
       title={iconsOnly ? label : undefined}
       aria-current={active ? "page" : undefined}
       className={cn(
@@ -68,7 +70,7 @@ function NavRow({
         <span data-sidebar-nav-unread="" aria-hidden="true"
           className={cn("size-2 shrink-0 rounded-full bg-accent", iconsOnly && (rail ? "absolute end-1 top-1" : "absolute end-2 top-2"))} />
       )}
-      {unread && !iconsOnly && <span className="sr-only">{t("task.unread")}</span>}
+      {unread && <span id={unreadId} className="sr-only">{t("task.unread")}</span>}
     </button>
   );
 }
