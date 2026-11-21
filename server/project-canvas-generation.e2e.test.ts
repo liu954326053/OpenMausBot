@@ -49,7 +49,6 @@ describe("generating on a project's canvas", () => {
   let root: string;
   let project: TeamProjectWire;
   let writer: Bot;
-  let starts = 1;
 
   const api = async (method: string, path: string, body?: unknown) => {
     const response = await fetch(server.url + path, {
@@ -58,14 +57,6 @@ describe("generating on a project's canvas", () => {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     return { status: response.status, body: await response.json() as any };
-  };
-  /** Another suite's server can take the port between the fixture's probe and its own listen, and answer its health check. */
-  const ownServerListening = async () => {
-    const deadline = Date.now() + 30_000;
-    while (readFileSync(server.logPath, "utf8").split(`openmausbot server on ${server.url}\n`).length - 1 < starts) {
-      if (Date.now() > deadline) throw new Error(`something answered on ${server.url}, but this fixture's server never listened there; see ${server.logPath}`);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
   };
   const canvasPath = () => `/api/team-projects/${project.id}/canvas`;
   const canvas = async (): Promise<CanvasSnapshot> => {
@@ -134,7 +125,6 @@ describe("generating on a project's canvas", () => {
   beforeAll(async () => {
     fake = await startFakeGenerationMcp({ key: GENERATION_KEY, taskMs: 2_000 });
     server = await launchRestartableServer({ scripted: true });
-    await ownServerListening();
     root = realpathSync(mkdtempSync(join(tmpdir(), "omb-canvas-generation-")));
     expect((await api("PUT", "/api/team-projects/root", { path: root })).status).toBe(200);
     const member = async (name: string) => {
@@ -224,8 +214,6 @@ describe("generating on a project's canvas", () => {
     expect(before.metadata).toEqual({ prompt: "A storm over the sea [hold]", status: "loading", jobId: started.body.jobId });
     await server.stop();
     await server.start();
-    starts += 1;
-    await ownServerListening();
     const after = await node("held");
     expect(after.metadata).toMatchObject({ status: "loading", jobId: started.body.jobId });
 
