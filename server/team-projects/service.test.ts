@@ -53,7 +53,7 @@ describe("the list of projects", () => {
     renameSync(project.folder, join(app.home, "unplugged"));
     expect(app.projects.list()[0]).toMatchObject({ folderState: "missing", botIds: project.botIds });
     expect(app.projects.lookup(project.id)).toEqual({ folder: project.folder });
-    app.store.patchBotProfile(project.botIds[0]!, { soul: "Changed while the drive was away." });
+    app.store.patchBotProfile(app.store.bot(project.botIds[0]!)!.teamProject!.source!, { soul: "Changed while the drive was away." });
     app.projects.flushCopies();
     expect(existsSync(project.folder)).toBe(false);
   });
@@ -235,9 +235,9 @@ describe("keeping a project's copies up to date", () => {
 
   it("writes a bot's persona again a moment after it changes", async () => {
     const { app, project } = await withProject();
-    const writer = app.byRole(project.id).get("writer")!;
+    const source = app.byRole(project.id).get("writer")!.teamProject!.source!;
     const before = app.scheduled();
-    app.store.patchBotProfile(writer.id, { soul: "You write every episode's script.", title: "Head writer" });
+    app.store.patchBotProfile(source, { soul: "You write every episode's script.", title: "Head writer" });
     expect(app.scheduled()).toBeGreaterThan(before);
     expect(copy(project, "team/personas/writer.md")).not.toContain("You write every episode's script.");
     app.projects.flushCopies();
@@ -279,7 +279,9 @@ describe("keeping a project's copies up to date", () => {
     if (!("project" in second)) throw new Error(second.error);
     app.projects.flushCopies();
     rmSync(join(second.project.folder, ".magic-team", "team", "context.md"));
-    app.store.patchBotProfile(app.byRole(project.id).get("writer")!.id, { soul: "New." });
+    const writer = app.byRole(project.id).get("writer")!;
+    app.store.patchBot(writer.id, { teamProject: { ...writer.teamProject!, sourceLeft: true } });
+    app.store.patchBotProfile(writer.id, { soul: "New." });
     app.projects.flushCopies();
     expect(copy(project, "team/personas/writer.md")).toContain("New.");
     expect(existsSync(join(second.project.folder, ".magic-team", "team", "context.md"))).toBe(false);
@@ -289,7 +291,7 @@ describe("keeping a project's copies up to date", () => {
     const { app, project } = await withProject();
     const away = join(app.home, "unplugged");
     renameSync(project.folder, away);
-    app.store.patchBotProfile(app.byRole(project.id).get("writer")!.id, { soul: "Written while away." });
+    app.store.patchBotProfile(app.byRole(project.id).get("writer")!.teamProject!.source!, { soul: "Written while away." });
     app.projects.flushCopies();
     renameSync(away, project.folder);
     expect(copy(project, "team/personas/writer.md")).not.toContain("Written while away.");
@@ -319,9 +321,9 @@ describe("keeping a project's copies up to date", () => {
     if (!("project" in second)) throw new Error(second.error);
     rmSync(join(project.folder, ".magic-team", "team"), { recursive: true });
     writeFileSync(join(project.folder, ".magic-team", "team"), "not a folder");
-    app.sections.writeSectionContext("Season two", "Second season.");
-    app.store.patchBotProfile(app.byRole(project.id).get("writer")!.id, { soul: "New." });
-    app.projects.touchAll();
+    app.sections.writeSectionContext("Sales desk", "Second season.");
+    app.store.patchBotProfile(app.byRole(project.id).get("writer")!.teamProject!.source!, { soul: "New." });
+    app.projects.contextsChanged();
     expect(() => app.projects.flushCopies()).not.toThrow();
     expect(copy(second.project, "team/context.md")).toBe("Second season.\n");
     expect(app.logged.filter((line) => line.includes("Season one") && line.includes("not a real folder"))).toHaveLength(1);

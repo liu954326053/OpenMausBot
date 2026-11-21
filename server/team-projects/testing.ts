@@ -109,6 +109,7 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
     teamKey: sections.ensureSectionMemoryKey,
     teamOfKey: sections.sectionOfMemoryKey,
     context: (section) => sections.readSectionContext(section)?.text ?? "",
+    setContext: (section, text) => void sections.writeSectionContext(section, text),
     memory: (section) => memory.get(section) ?? [],
     schedule: () => { scheduled += 1; },
     newId: () => `project-${++ids}`,

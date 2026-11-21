@@ -8,7 +8,7 @@ import type { PackageImportDeps } from "../package-import.ts";
 import { createTeamProjectRoutes } from "../routes/team-projects.ts";
 import type { RouteHandler } from "../routes/table.ts";
 import type { Routine, RoutineManager } from "../routines.ts";
-import { SECTION_CONTEXTS_FILE, ensureSectionMemoryKey, readSectionContext, sectionOfMemoryKey } from "../section-context.ts";
+import { SECTION_CONTEXTS_FILE, ensureSectionMemoryKey, readSectionContext, sectionOfMemoryKey, writeSectionContext } from "../section-context.ts";
 import type { ShareTarget } from "../share.ts";
 import type { BotRecord, Store } from "../store.ts";
 import type { TeamMemory } from "../team-memory.ts";
@@ -60,6 +60,7 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
     teamKey: ensureSectionMemoryKey,
     teamOfKey: sectionOfMemoryKey,
     context: (section) => readSectionContext(section)?.text ?? "",
+    setContext: (section, text) => { writeSectionContext(section, text); },
     memory: (section) => deps.teamMemory.list(section),
     schedule: (flush) => {
       timer ??= setTimeout(() => { timer = undefined; flush(); }, COPIES_SETTLE_MS);
@@ -70,6 +71,7 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
   projects.start();
   // fs.watch follows the file it opened, and both files are replaced by a rename on every save, so only polling by
   // path keeps seeing them (Node.js docs, fs.watch caveats, "Inodes").
-  for (const file of [SECTION_CONTEXTS_FILE, TEAM_MEMORY_FILE]) watchFile(file, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.touchAll());
+  watchFile(SECTION_CONTEXTS_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.contextsChanged());
+  watchFile(TEAM_MEMORY_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.touchAll());
   return { api: projects, root: () => projects.listWire().root, lookup: projects.lookup, routes: createTeamProjectRoutes(projects), checkSetupChange: (before, fields) => projects.checkSetupChange(before, fields) };
 }

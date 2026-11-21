@@ -12,7 +12,7 @@ import { userError, userErrorThrown, type UserError } from "../user-errors.ts";
 import { teamProjectFolderReady } from "../workspace.ts";
 import { renderTeamProjectCopies, writeTeamProjectCopies, type TeamMemoryLine } from "./copies.ts";
 import { createTeamProject, type ExportedTeam } from "./create.ts";
-import { copyUpdate } from "./follow.ts";
+import { Following } from "./following.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 import { checkTeamProjectsRoot } from "./root.ts";
 import { findProjectTeam, projectTeams, teamBots, type TeamSources } from "./teams.ts";
@@ -35,6 +35,7 @@ export interface TeamProjectsDeps {
   /** The department that holds a memory key now; null when none does. */
   teamOfKey(key: string): string | null;
   context(section: string): string;
+  setContext(section: string, text: string): void;
   memory(section: string): readonly TeamMemoryLine[];
   /** Calls `flush` a moment after the first call since the last flush. */
   schedule(flush: () => void): void;
@@ -69,9 +70,11 @@ export class TeamProjects implements TeamProjectsApi {
   private readonly writtenCopies = new Map<string, string>();
   private readonly refusedCopies = new Set<string>();
   private everyCopyStale = false;
+  private readonly following: Following;
 
   constructor(deps: TeamProjectsDeps) {
     this.deps = deps;
+    this.following = new Following({ ...deps, log: (line) => this.log(line) });
   }
 
   private log(line: string): void {
@@ -88,8 +91,15 @@ export class TeamProjects implements TeamProjectsApi {
       this.knownBots.add(bot.id);
       this.defaultBotToProjectFolder(bot);
     }
+    this.following.all();
     this.touchAll();
     return this.deps.store.onChange((change) => this.onStoreChange(change));
+  }
+
+  /** The departments' contexts or names changed on disk. */
+  contextsChanged(): void {
+    this.following.all();
+    this.touchAll();
   }
 
   readonly lookup: TeamProjectLookup = (projectId) => {
@@ -146,21 +156,6 @@ export class TeamProjects implements TeamProjectsApi {
     });
   }
 
-  /** Brings a copy that follows its source in line with it: only what differs is written. */
-  syncCopy(botId: string): void {
-    const { store } = this.deps;
-    const copy = store.bot(botId);
-    const membership = copy?.teamProject;
-    const source = membership?.source && !membership.sourceLeft ? store.bot(membership.source) : undefined;
-    if (!copy || !membership || !source) return;
-    const others = this.botsOf(membership.id).filter((bot) => bot.id !== copy.id).map((bot) => bot.name);
-    const update = copyUpdate(source, copy, others);
-    if (!update) return;
-    if (Object.keys(update.fields).length) store.patchBot(copy.id, update.fields);
-    if (update.soul !== undefined) store.patchBotProfile(copy.id, { soul: update.soul });
-    if (update.model) store.applyModelDefault(copy.id, update.model);
-  }
-
   async create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> {
     const outcome = await createTeamProject(input, {
       registry: this.deps.registry,
@@ -169,7 +164,7 @@ export class TeamProjects implements TeamProjectsApi {
       team: (name) => findProjectTeam(this.teams(), name),
       exportTeam: (section) => this.exportOf({ scope: "department", section, bots: teamBots(this.deps.store.bots, section) }),
       teamKey: this.deps.teamKey,
-      syncCopy: (botId) => this.syncCopy(botId),
+      syncCopy: (botId) => void this.following.sync(botId),
       ensureWorkspace: this.deps.ensureWorkspace,
       pending: this.pending,
       writeCopies: (project) => {
@@ -287,11 +282,18 @@ export class TeamProjects implements TeamProjectsApi {
   private onStoreChange(change: StoreChange): void {
     if (change.type === "bot.deleted") {
       this.knownBots.delete(change.botId);
+      this.following.sourceChanged(change.botId);
       this.touchAll();
       return;
     }
-    if (change.type === "sections") return this.touchAll();
-    if (change.type === "group") return this.defaultRoomToProjectFolder(change.groupId);
+    if (change.type === "sections") {
+      this.following.all();
+      return this.touchAll();
+    }
+    if (change.type === "group") {
+      this.following.groupChanged(change.groupId);
+      return this.defaultRoomToProjectFolder(change.groupId);
+    }
     if (change.type !== "bot") return;
     const bot = this.deps.store.bots.find((candidate) => candidate.id === change.botId);
     if (!bot) return;
@@ -299,6 +301,7 @@ export class TeamProjects implements TeamProjectsApi {
       this.knownBots.add(bot.id);
       this.takeIntoProjectOfItsDepartment(bot);
     }
+    this.following.changed(bot.id);
     const projectId = bot.teamProject?.id;
     if (!projectId) return;
     this.defaultBotToProjectFolder(bot);
