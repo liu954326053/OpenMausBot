@@ -241,7 +241,8 @@ function TextPanel({ node }: { node: CanvasNode }) {
   const [request, setRequest] = useDraft(node.id, "");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const writing = Boolean(ui.state.writing[node.id]);
+  const fillingIn = ui.state.writing[node.id];
+  const writers = new Set([...(fillingIn ? [fillingIn.botId] : []), ...ui.state.replies.filter((reply) => reply.nodeId === node.id).map((reply) => reply.botId)]);
   const bot = ui.snapshot.bots[botId];
   const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
   const placeholder = node.metadata?.content?.trim() ? "projectCanvas.text.revisePlaceholder" : "projectCanvas.text.requestPlaceholder";
@@ -278,13 +279,13 @@ function TextPanel({ node }: { node: CanvasNode }) {
       />
       {error ? <p role="alert" className="text-[12px] leading-4 text-danger">{error}</p> : null}
       <div className="flex items-center justify-end gap-2">
-        {writing ? (
-          <button type="button" className="ui-button ui-button-md" disabled={ui.readOnly} onClick={() => void ui.controller.stopBot(botId)}>
+        {writers.size ? (
+          <button type="button" className="ui-button ui-button-md" disabled={ui.readOnly} onClick={() => writers.forEach((writer) => void ui.controller.stopBot(writer))}>
             <Square size={14} aria-hidden="true" />
             {t("projectCanvas.bot.stop")}
           </button>
         ) : null}
-        <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={ui.readOnly || sending || writing || !request.trim() || !bot} onClick={() => void send()}>
+        <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={ui.readOnly || sending || Boolean(fillingIn) || !request.trim() || !bot} onClick={() => void send()}>
           {sending ? <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={14} aria-hidden="true" />}
           {t("projectCanvas.text.ask", { name: bot?.name ?? "" })}
         </button>

@@ -190,7 +190,7 @@ describe("the project canvas", () => {
     expect(shown("shot-1")!.metadata?.settings).toBeUndefined();
   });
 
-  it("asks a bot to revise a text node's text, shows the node written from, and its reply in a new node beside it once it arrives", async () => {
+  it("asks a bot to revise a text node's text, draws the node its reply becomes beside it while the bot writes, and the reply takes exactly that place", async () => {
     await mount({ delayMs: 150 });
     const text = shown("logline")!.metadata?.content;
     await clickNode("logline");
@@ -201,12 +201,23 @@ describe("the project canvas", () => {
     const ask = [...open.querySelectorAll("button")].find((button) => button.textContent?.startsWith("Ask "))!;
     await act(async () => ask.click());
     await settle();
-    expect(nodeElement("logline")!.textContent).toContain("is writing");
-    await settle(250);
+    const writer = Object.values(backend.current().bots).find((bot) => bot.writingBeside?.length)!;
+    const [placeholder] = writer.writingBeside!;
+    const ghost = host.querySelector<HTMLElement>(`[data-reply-placeholder="${placeholder!.id}"]`)!;
+    const frame = (element: HTMLElement) => [element.style.left, element.style.top, element.style.width, element.style.height];
+    expect(ghost.getAttribute("role")).toBe("status");
+    expect(ghost.textContent).toBe(`${writer.name} is writing…`);
+    expect(frame(ghost)).toEqual([placeholder!.position.x, placeholder!.position.y, placeholder!.width, placeholder!.height].map((value) => `${value}px`));
+    expect(host.querySelector(`[data-ghost-connection="${placeholder!.id}"]`)).not.toBeNull();
+    expect(nodeElement(placeholder!.id)).toBeNull();
     expect(nodeElement("logline")!.textContent).not.toContain("is writing");
+    await settle(250);
+    expect(host.querySelector("[data-reply-placeholder]")).toBeNull();
+    expect(host.querySelector("[data-ghost-connection]")).toBeNull();
     expect(shown("logline")!.metadata?.content).toBe(text);
     const replies = backend.current().connections.filter((connection) => connection.fromNodeId === "logline" && connection.kind === "content").map((connection) => shown(connection.toNodeId)!);
-    expect(replies).toEqual([expect.objectContaining({ type: "text", createdBy: { kind: "bot", botId: expect.any(String) }, metadata: { content: expect.stringContaining("A tighter logline, one sentence") } })]);
+    expect(replies).toEqual([expect.objectContaining({ id: placeholder!.id, type: "text", createdBy: { kind: "bot", botId: writer.botId }, metadata: { content: expect.stringContaining("A tighter logline, one sentence") } })]);
+    expect(frame(nodeElement(placeholder!.id)!)).toEqual(frame(ghost));
   });
 
   it("names a text node's own text first in its references and its @, with the videos a task attaches, and no video in a generation's", async () => {
@@ -327,6 +338,39 @@ describe("the project canvas", () => {
     await settle(120);
     expect(host.querySelector('[data-generation-ghost="blank"]')).toBeNull();
     expect(madeFromBlank()).toHaveLength(1);
+  });
+
+  it("draws a reply's placeholder and its connection as it draws the next picture's, and takes them away when the bot is stopped, leaving the node as it was", async () => {
+    await mount({ delayMs: 150 });
+    await act(async () => {
+      await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "poster", nodeType: "image", position: { x: 2400, y: 600 }, metadata: { prompt: "A bride at dawn", file: { path: "素材/poster.png", name: "poster.png", mime: "image/png", bytes: 1 } } }] });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const before = { nodes: backend.current().nodes, connections: backend.current().connections };
+    await clickNode("poster");
+    await act(async () => buttonByText(panel()!, "Generate")!.click());
+    await settle();
+    await clickNode("logline");
+    await type(panel()!.querySelector<HTMLTextAreaElement>("textarea")!, "A tighter logline");
+    await act(async () => [...panel()!.querySelectorAll("button")].find((button) => button.textContent?.startsWith("Ask "))!.click());
+    await settle();
+    const picture = host.querySelector<HTMLElement>('[data-generation-ghost="poster"]')!;
+    const reply = host.querySelector<HTMLElement>("[data-reply-placeholder]")!;
+    expect(reply.className).toBe(picture.className);
+    expect(reply.querySelector("svg")!.getAttribute("class")).toBe(picture.querySelector("svg")!.getAttribute("class"));
+    const look = (path: Element) => ["fill", "stroke", "stroke-width", "stroke-dasharray"].map((name) => path.getAttribute(name));
+    const replyLink = host.querySelector(`[data-ghost-connection="${reply.dataset.replyPlaceholder}"]`)!;
+    expect(look(replyLink)).toEqual(look(host.querySelector('[data-ghost-connection="poster"]')!));
+    expect(look(replyLink)).toEqual(["none", "var(--color-ink-tertiary)", "2", "5 5"]);
+
+    await act(async () => buttonByText(panel()!, "Stop")!.click());
+    await settle();
+    expect(host.querySelector("[data-reply-placeholder]")).toBeNull();
+    expect(host.querySelector(`[data-ghost-connection="${reply.dataset.replyPlaceholder}"]`)).toBeNull();
+    await settle(400);
+    expect(shown("logline")).toEqual(before.nodes.find((node) => node.id === "logline"));
+    expect(backend.current().connections.filter((connection) => connection.fromNodeId === "logline")).toEqual(before.connections.filter((connection) => connection.fromNodeId === "logline"));
+    expect(backend.current().nodes.filter((node) => node.type === "text")).toEqual(before.nodes.filter((node) => node.type === "text"));
   });
 
   it("takes the pointer on a node only once it drags, so a double-click on the node reaches it", async () => {

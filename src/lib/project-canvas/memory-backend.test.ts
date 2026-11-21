@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botNodeId } from "../../../shared/project-canvas";
+import { botNodeId, CANVAS_NODE_SIZE } from "../../../shared/project-canvas";
 import type { StartGenerationInput } from "../../../shared/project-generation";
 import { SAMPLE_IMAGE_PATH, SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
 import { OUTPUT_GAP_Y, OUTPUT_OFFSET_X } from "./generation";
@@ -33,29 +33,87 @@ describe("the in-memory canvas backend", () => {
     await expect(backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "set_background", backgroundMode: "blank" }] })).rejects.toMatchObject({ body: { code: "canvas_read_only" } });
   });
 
-  it("lets a bot answer a task written in a text node: beside a node with text, into an empty one, numbered from the node, and shows the bot writing until then", async () => {
+  it("lets a bot answer a task written in a text node: in the node shown beside a node with text from the moment it is sent, or into an empty one, which shows the bot writing", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
     const logline = backend.current().nodes.find((node) => node.id === "logline")!;
     const response = await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "logline" });
     expect(response).toMatchObject({ threadId: "thread-kai", references: 0 });
-    expect(backend.current().bots.kai).toMatchObject({ status: "working", writingInto: ["logline"] });
+    const [placeholder] = backend.current().bots.kai!.writingBeside!;
+    expect(backend.current().bots.kai).toMatchObject({
+      status: "working",
+      writingBeside: [{ id: expect.any(String), nodeId: "logline", position: { x: logline.position.x + logline.width + OUTPUT_OFFSET_X, y: logline.position.y }, ...CANVAS_NODE_SIZE.text }],
+    });
+    expect(backend.current().bots.kai!.writingInto).toBeUndefined();
+    expect(backend.current().nodes.map((node) => node.id)).not.toContain(placeholder!.id);
     await vi.advanceTimersByTimeAsync(100);
     const after = backend.current();
     expect(after.bots.kai).toMatchObject({ status: "idle", output: { text: "Wrote: a tagline" } });
-    expect(after.bots.kai!.writingInto).toBeUndefined();
+    expect(after.bots.kai!.writingBeside).toBeUndefined();
     expect(after.nodes.find((node) => node.id === "logline")!.metadata).toEqual(logline.metadata);
     const replies = after.connections.filter((connection) => connection.fromNodeId === "logline" && connection.kind === "content").map((connection) => after.nodes.find((node) => node.id === connection.toNodeId)!);
-    expect(replies).toEqual([expect.objectContaining({ type: "text", title: "a tagline", createdBy: { kind: "bot", botId: "kai" }, metadata: { content: "Wrote: a tagline" } })]);
-    expect(replies[0]!.position).toEqual({ x: logline.position.x + logline.width + OUTPUT_OFFSET_X, y: logline.position.y });
+    expect(replies).toEqual([expect.objectContaining({
+      id: placeholder!.id, type: "text", title: "a tagline", position: placeholder!.position, width: placeholder!.width, height: placeholder!.height,
+      createdBy: { kind: "bot", botId: "kai" }, metadata: { content: "Wrote: a tagline" },
+    })]);
     expect((await backend.readExchange(SAMPLE_PROJECT_ID, "kai")).map((message) => message.role)).toEqual(["person", "bot"]);
 
     await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "tagline", nodeType: "text", title: "Tagline" }, { type: "connect_nodes", fromNodeId: "city-night", toNodeId: "tagline" }] });
     expect(await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline from @Image 1", targetNodeId: "tagline" })).toMatchObject({ references: 1 });
+    expect(backend.current().bots.kai).toMatchObject({ status: "working", writingInto: ["tagline"] });
+    expect(backend.current().bots.kai!.writingBeside).toBeUndefined();
     await vi.advanceTimersByTimeAsync(100);
     const filled = backend.current();
     expect(filled.nodes.find((node) => node.id === "tagline")!.metadata).toEqual({ content: "Wrote: a tagline from @Image 1" });
     expect(filled.connections.filter((connection) => connection.fromNodeId === "tagline")).toEqual([]);
     await expect(backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "bot:kai" })).rejects.toThrow("text node");
+  });
+
+  it("queues a bot's tasks, giving two revisions of a node two placeholders that do not overlap, each taken by its own reply", async () => {
+    const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "shorter", targetNodeId: "logline" });
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "darker", targetNodeId: "logline" });
+    const [first, second] = backend.current().bots.kai!.writingBeside!;
+    expect(second!.position).toEqual({ x: first!.position.x, y: first!.position.y + first!.height + OUTPUT_GAP_Y });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(backend.current().bots.kai).toMatchObject({ status: "working", writingBeside: [second] });
+    await vi.advanceTimersByTimeAsync(100);
+    const after = backend.current();
+    expect(after.bots.kai).toMatchObject({ status: "idle" });
+    expect(after.bots.kai!.writingBeside).toBeUndefined();
+    const replies = after.connections.filter((connection) => connection.fromNodeId === "logline").map((connection) => after.nodes.find((node) => node.id === connection.toNodeId)!);
+    expect(replies).toEqual([
+      expect.objectContaining({ id: first!.id, position: first!.position, metadata: { content: "Wrote: shorter" } }),
+      expect.objectContaining({ id: second!.id, position: second!.position, metadata: { content: "Wrote: darker" } }),
+    ]);
+  });
+
+  it("ends only the running task on Stop, adding nothing and leaving the node as it was, and then runs what waits in the queue", async () => {
+    const backend = sampleCanvasBackend({ delayMs: 100 });
+    const before = backend.current();
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "shorter", targetNodeId: "logline" });
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "darker", targetNodeId: "logline" });
+    const [, waiting] = backend.current().bots.kai!.writingBeside!;
+    await backend.stopBot(SAMPLE_PROJECT_ID, "kai");
+    expect(backend.current().bots.kai).toMatchObject({ status: "working", writingBeside: [waiting] });
+    await backend.stopBot(SAMPLE_PROJECT_ID, "kai");
+    expect(backend.current().bots.kai).toMatchObject({ status: "idle" });
+    expect(backend.current().bots.kai!.writingBeside).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(backend.current().nodes).toEqual(before.nodes);
+    expect(backend.current().connections).toEqual(before.connections);
+  });
+
+  it("decides when a task is sent whether its reply fills the node, so what the person types meanwhile stays", async () => {
+    const backend = sampleCanvasBackend({ delayMs: 100, reply: () => "The bot's line" });
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "text", position: { x: 3000, y: 0 } }] });
+    await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "fill it", targetNodeId: "blank" });
+    expect(backend.current().bots.kai).toMatchObject({ writingInto: ["blank"] });
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "update_node", id: "blank", metadata: { content: "Typed meanwhile" } }] });
+    await vi.advanceTimersByTimeAsync(100);
+    const after = backend.current();
+    expect(after.nodes.find((node) => node.id === "blank")!.metadata).toEqual({ content: "Typed meanwhile" });
+    const made = after.connections.filter((connection) => connection.fromNodeId === "blank").map((connection) => after.nodes.find((node) => node.id === connection.toNodeId)!);
+    expect(made).toEqual([expect.objectContaining({ type: "text", position: { x: 3000 + CANVAS_NODE_SIZE.text.width + OUTPUT_OFFSET_X, y: 0 }, metadata: { content: "The bot's line" } })]);
   });
 
   it("fills an empty image node with the first picture it generates and puts the rest to its right", async () => {

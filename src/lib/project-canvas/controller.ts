@@ -1,4 +1,4 @@
-import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasSnapshot, CanvasTaskRequest, CanvasUploadResponse, CanvasViewport } from "../../../shared/project-canvas";
+import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasReplyPlaceholder, CanvasSnapshot, CanvasTaskRequest, CanvasUploadResponse, CanvasViewport } from "../../../shared/project-canvas";
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
 import { activeLocale } from "../i18n";
 import { randomUuid } from "../random-uuid";
@@ -29,6 +29,8 @@ export interface CanvasState {
   writeError?: string;
   /** Text nodes a bot's reply goes into, by node id. */
   writing: Record<string, { botId: string }>;
+  /** The nodes the replies being written beside text nodes of the canvas become, with the bot writing each. */
+  replies: Array<CanvasReplyPlaceholder & { botId: string }>;
 }
 
 interface Batch {
@@ -53,7 +55,7 @@ function withIds(ops: readonly CanvasOp[]): CanvasOp[] {
 
 /** The project canvas's state outside React: what the page draws, and every change it makes, through `CanvasBackend`. */
 export class CanvasController {
-  private state: CanvasState = { phase: "loading", snapshot: null, viewport: { x: 0, y: 0, k: 1 }, looks: {}, generation: null, models: { image: null, video: null }, modelsRefused: {}, canUndo: false, canRedo: false, writing: {} };
+  private state: CanvasState = { phase: "loading", snapshot: null, viewport: { x: 0, y: 0, k: 1 }, looks: {}, generation: null, models: { image: null, video: null }, modelsRefused: {}, canUndo: false, canRedo: false, writing: {}, replies: [] };
   private readonly listeners = new Set<() => void>();
   private server: CanvasSnapshot | null = null;
   /** The newest revision a batch of this person's made. */
@@ -291,7 +293,9 @@ export class CanvasController {
     this.pending = this.pending.filter((batch) => batch.revision === undefined || batch.revision > server.revision);
     const snapshot = this.pending.length ? applyCanvasOps(server, this.pending.flatMap((batch) => batch.ops)) : server;
     const writing = Object.fromEntries(Object.values(snapshot.bots).flatMap((bot) => (bot.writingInto ?? []).map((nodeId) => [nodeId, { botId: bot.botId }])));
-    this.set({ ...change, snapshot, writing, canUndo: this.history.past.length > 0, canRedo: this.history.future.length > 0 });
+    const present = new Set(snapshot.nodes.map((node) => node.id));
+    const replies = Object.values(snapshot.bots).flatMap((bot) => (bot.writingBeside ?? []).filter((reply) => present.has(reply.nodeId)).map((reply) => ({ ...reply, botId: bot.botId })));
+    this.set({ ...change, snapshot, writing, replies, canUndo: this.history.past.length > 0, canRedo: this.history.future.length > 0 });
   }
 
   private set(change: Partial<CanvasState>): void {

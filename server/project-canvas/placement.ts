@@ -67,11 +67,12 @@ interface Rect { x: number; y: number; width: number; height: number }
 const rectOf = (frame: CanvasFrame): Rect => ({ x: frame.position.x, y: frame.position.y, width: frame.width, height: frame.height });
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-function obstacles(document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>): Rect[] {
+function obstacles(document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[]): Rect[] {
   const stored = new Set(document.nodes.map((one) => one.id));
   return [
     ...document.nodes.filter((one) => one.type !== "group").map(rectOf),
     ...[...bots].filter(([id]) => !stored.has(id)).map(([, frame]) => rectOf(frame)),
+    ...reserved.map(rectOf),
   ];
 }
 
@@ -92,28 +93,29 @@ export function clearBelow(frame: CanvasFrame, taken: readonly CanvasFrame[]): C
   return { ...frame, position: freeBelow(frame.position.x, frame.position.y, frame, taken.map(rectOf)) };
 }
 
-/** To the right of `anchor`, below the lane members already there, clear of every other node. */
-function placeInLane(document: CanvasDocument, anchor: CanvasFrame, member: (node: CanvasNode) => boolean, node: CanvasNode, bots: ReadonlyMap<string, CanvasFrame>): CanvasPoint {
+/** To the right of `anchor`, below the lane members already there, clear of every other node and of `reserved`. */
+function placeInLane(document: CanvasDocument, anchor: CanvasFrame, member: (node: CanvasNode) => boolean, size: Pick<CanvasFrame, "width" | "height">, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[]): CanvasPoint {
   const x = anchor.position.x + anchor.width + LANE_GAP;
   const inLane = document.nodes.filter((one) => member(one) && one.position.x < x + LANE_WIDTH && one.position.x + one.width > x);
   const y = inLane.reduce((lowest, one) => Math.max(lowest, one.position.y + one.height + NODE_GAP), anchor.position.y);
-  return freeBelow(x, y, node, obstacles(document, bots));
+  return freeBelow(x, y, size, obstacles(document, bots, reserved));
 }
 
 /** Where a node added without a position goes: a bot's in its lane, below what it made there; the person's at the
- * right of everything. */
-export function placeForActor(document: CanvasDocument, node: CanvasNode, actor: CanvasNodeCreator, bots: ReadonlyMap<string, CanvasFrame>): CanvasPoint {
+ * right of everything. Clear of `reserved`, the frames of nodes still to come. */
+export function placeForActor(document: CanvasDocument, node: CanvasNode, actor: CanvasNodeCreator, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[] = []): CanvasPoint {
   if (actor.kind === "bot") {
     const own = bots.get(botNodeId(actor.botId));
-    if (own) return placeInLane(document, own, (one) => one.createdBy?.kind === "bot" && one.createdBy.botId === actor.botId, node, bots);
+    if (own) return placeInLane(document, own, (one) => one.createdBy?.kind === "bot" && one.createdBy.botId === actor.botId, node, bots, reserved);
   }
-  const all = obstacles(document, bots);
+  const all = obstacles(document, bots, reserved);
   if (!all.length) return { x: 0, y: 0 };
   return { x: Math.max(...all.map((rect) => rect.x + rect.width)) + LANE_GAP, y: Math.min(...all.map((rect) => rect.y)) };
 }
 
-/** A result of `source`: to its right, below the results already connected from it. */
-export function placeAfter(document: CanvasDocument, source: CanvasNode, node: CanvasNode, bots: ReadonlyMap<string, CanvasFrame>): CanvasPoint {
+/** A result of `source`: to its right, below the results already connected from it, clear of `reserved`, the frames of
+ * nodes still to come. */
+export function placeAfter(document: CanvasDocument, source: CanvasNode, size: Pick<CanvasFrame, "width" | "height">, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[] = []): CanvasPoint {
   const fromSource = new Set(document.connections.filter((one) => one.fromNodeId === source.id).map((one) => one.toNodeId));
-  return placeInLane(document, source, (one) => fromSource.has(one.id), node, bots);
+  return placeInLane(document, source, (one) => fromSource.has(one.id), size, bots, reserved);
 }

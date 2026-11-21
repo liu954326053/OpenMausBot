@@ -63,6 +63,12 @@ describe("where a node a bot adds lands", () => {
     const placed = placeForActor(canvas([node("a", 0, 50), node("b", 500, -20)]), node("new", 0, 0), { kind: "person" }, new Map([["bot:lead", { position: { x: 900, y: 0 }, width: 300, height: 180 }]]));
     expect(placed).toEqual({ x: 1200 + LANE_GAP, y: -20 });
   });
+
+  it("keeps clear of the frames of nodes still to come, for the bot and for the person", () => {
+    const coming = { position: { x: laneX, y: 100 }, width: 340, height: 240 };
+    expect(placeForActor(canvas(), node("new", 0, 0), WRITER, new Map([["bot:writer", bot]]), [coming])).toEqual({ x: laneX, y: 100 + 240 + NODE_GAP });
+    expect(placeForActor(canvas([node("a", 0, 50)]), node("new", 0, 0), { kind: "person" }, new Map(), [coming])).toEqual({ x: laneX + 340 + LANE_GAP, y: 50 });
+  });
 });
 
 describe("where a generated result lands", () => {
@@ -71,5 +77,11 @@ describe("where a generated result lands", () => {
     const first = node("video-1", 340 + LANE_GAP, 0, { type: "video", height: 236 });
     const document = canvas([shot, first], [{ id: "c1", fromNodeId: "shot", toNodeId: "video-1", kind: "content" }]);
     expect(placeAfter(document, shot, node("video-2", 0, 0, { type: "video", height: 236 }), new Map())).toEqual({ x: 340 + LANE_GAP, y: 236 + NODE_GAP });
+  });
+
+  it("is below the frames of results still to come from its source, as replies being written", () => {
+    const logline = node("logline", 0, 0);
+    const coming = [{ position: { x: 340 + LANE_GAP, y: 0 }, width: 340, height: 240 }, { position: { x: 340 + LANE_GAP, y: 240 + NODE_GAP }, width: 340, height: 240 }];
+    expect(placeAfter(canvas([logline]), logline, { width: 340, height: 240 }, new Map(), coming)).toEqual({ x: 340 + LANE_GAP, y: 2 * (240 + NODE_GAP) });
   });
 });

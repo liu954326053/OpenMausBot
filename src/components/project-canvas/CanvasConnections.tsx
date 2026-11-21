@@ -4,10 +4,15 @@ import type { CanvasConnection, CanvasNode } from "../../../shared/project-canva
 import { t } from "@/lib/i18n";
 import { connectionCurve, curveInView, type CanvasBounds } from "@/lib/project-canvas/geometry";
 
+/** A node still to come from `sourceId`: a generation's next result, or the node a reply becomes, `replyNodeId`. */
 export interface GhostFrame {
   sourceId: string;
   frame: Pick<CanvasNode, "position" | "width" | "height">;
+  label: string;
+  replyNodeId?: string;
 }
+
+export const ghostKey = (ghost: GhostFrame) => ghost.replyNodeId ?? ghost.sourceId;
 
 export function CanvasConnections({ nodes, connections, bounds, selectedId, active, draft, ghosts, k, readOnly, onSelect, onDelete }: {
   nodes: ReadonlyMap<string, CanvasNode>;
@@ -58,9 +63,9 @@ export function CanvasConnections({ nodes, connections, bounds, selectedId, acti
             </g>
           );
         })}
-        {ghosts.map(({ sourceId, frame }) => {
-          const from = nodes.get(sourceId);
-          return from ? <path key={`ghost:${sourceId}`} d={connectionCurve(from, frame).path} fill="none" stroke="var(--color-ink-tertiary)" strokeWidth={2} strokeDasharray="5 5" /> : null;
+        {ghosts.map((ghost) => {
+          const from = nodes.get(ghost.sourceId);
+          return from ? <path key={`ghost:${ghostKey(ghost)}`} data-ghost-connection={ghostKey(ghost)} d={connectionCurve(from, ghost.frame).path} fill="none" stroke="var(--color-ink-tertiary)" strokeWidth={2} strokeDasharray="5 5" /> : null;
         })}
         {draft ? <path d={draft} fill="none" stroke="var(--color-accent)" strokeWidth={2} strokeDasharray="5 5" /> : null}
       </svg>

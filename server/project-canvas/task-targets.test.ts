@@ -20,12 +20,15 @@ describe("a reply as a text node's text", () => {
 });
 
 describe("the text nodes replies go into", () => {
-  it("keep the newest task for a node, and a blank reply ends its task with nothing to write", () => {
+  it("keep each task for a node until the turn for it ends, and a blank reply ends its task with nothing to write", () => {
     const targets = new TaskTargets();
-    targets.add({ ...where, nodeId: "n1", requestId: "m1", requestAt: 1 });
-    targets.add({ ...where, nodeId: "n1", requestId: "m2", requestAt: 2 });
-    expect(targets.of("p1")).toEqual([{ ...where, nodeId: "n1", requestId: "m2", requestAt: 2 }]);
-    expect(targets.heard("w", turnEnd("m2", 3, "  "))).toEqual({ target: expect.objectContaining({ nodeId: "n1" }) });
+    const [first, second] = [{ ...where, nodeId: "n1", requestId: "m1", requestAt: 1 }, { ...where, nodeId: "n1", requestId: "m2", requestAt: 3 }];
+    targets.add(first);
+    targets.add(second);
+    expect(targets.of("p1")).toEqual([first, second]);
+    expect(targets.heard("w", turnEnd("m1", 2, "Done"))).toEqual({ target: first, reply: "Done" });
+    expect(targets.of("p1")).toEqual([second]);
+    expect(targets.heard("w", turnEnd("m2", 4, "  "))).toEqual({ target: second });
     expect(targets.of("p1")).toEqual([]);
   });
 });

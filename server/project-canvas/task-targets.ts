@@ -1,4 +1,4 @@
-import { CANVAS_CONTENT_MAX_CHARS } from "../../shared/project-canvas.ts";
+import { CANVAS_CONTENT_MAX_CHARS, type CanvasReplyPlaceholder } from "../../shared/project-canvas.ts";
 import { redactSecretsInText } from "../redact.ts";
 import type { Message } from "../store.ts";
 
@@ -11,6 +11,8 @@ export interface TaskTarget {
   nodeId: string;
   /** The title of the node the reply becomes beside a node with text. */
   title: string;
+  /** The node the reply becomes, given when the node had text as the task was sent. */
+  beside?: CanvasReplyPlaceholder;
   requestId?: string;
   /** When the task's message joined the conversation. */
   requestAt?: number;
@@ -45,9 +47,8 @@ export function replyText(reply: string): string {
 export class TaskTargets {
   private targets: TaskTarget[] = [];
 
-  /** A newer task for the same node takes the place of the older. */
   add(target: TaskTarget): void {
-    this.targets = [...this.targets.filter((one) => one.projectId !== target.projectId || one.nodeId !== target.nodeId), target].slice(-MAX_TARGETS);
+    this.targets = [...this.targets, target].slice(-MAX_TARGETS);
   }
 
   of(projectId: string): readonly TaskTarget[] {
