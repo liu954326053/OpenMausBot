@@ -2,7 +2,9 @@
 // server, inside the app's store: the snapshot draws the project's bots, a change survives a reload, an upload lands in
 // 素材, a task takes what is connected to the bot, live events update the open canvas, opening a chat and Stop go
 // through the app, a node generates a picture and stops a generation, a task asked from a text node writes its reply
-// there, and undo gives a deleted bot node back to its bot.
+// there, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's project row opens the
+// canvas, its top bar reaches the project's group chats and team changes, a member row chooses its bot, and a project
+// archived while open gives way to the main bot.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,7 +29,7 @@ const TEAM = "Canvas crew";
 const BRIEF = "Episode one: the bride is swapped at the altar.";
 const IMAGE = { server: "gen", defaults: { model: "pixel-1", aspect: "1:1", quality: "standard", count: 1 } };
 const VIDEO = { server: "gen", defaults: { model: "motion-1", resolution: "720p", aspect: "16:9", seconds: 5 } };
-type Bot = { id: string; name: string; title?: string; color: string; threadId: string; mainThreadId?: string; busy?: boolean; tasks?: Array<{ threadId: string; busy?: boolean }> };
+type Bot = { id: string; name: string; title?: string; color: string; threadId: string; mainThreadId?: string; busy?: boolean; defaultBot?: object; tasks?: Array<{ threadId: string; busy?: boolean }> };
 type Line = { id: string; role?: string; kind?: string; text?: string };
 type Box = { x: number; y: number; w: number; h: number };
 
@@ -438,6 +440,75 @@ type Box = { x: number; y: number; w: number; h: number };
 
       evidence.console = (await browser("console")).messages;
       expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
+
+      const main = (await bots()).find((one) => one.defaultBot)!;
+      await api("PATCH", `/api/bots/${main.id}`, { welcomed: true });
+      const room = (await api("POST", "/api/groups", { name: "Table read", memberIds: [lead.id, writer.id], section: project.section })).group as { id: string };
+      await api("PATCH", `/api/groups/${room.id}/setup`, { action: "complete", bulletin: "", defaultResponder: { kind: "member", botId: lead.id } });
+      await member("Colorist", "Grades the picture", "orange");
+      await settled();
+      await preview.close();
+      preview = await mountPreview({ info: { url: fixture.url } }, { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Projects in the app", logLevel: "warn" });
+      await browser("open", preview.previewUrl);
+      const projectRow = `[data-sidebar-project-row=${JSON.stringify(project.id)}]`;
+      const view = `[data-project-view=${JSON.stringify(project.id)}]`;
+      const slot = `${view} [data-project-canvas-slot]`;
+      const mainOpen = `[data-sidebar-bot-row=${JSON.stringify(main.id)}][aria-current="page"]`;
+      const openProject = async () => {
+        await waitFor(`document.querySelector(${JSON.stringify(projectRow)})`, "the project in the sidebar", 120_000);
+        await clickSelector(projectRow);
+        await waitFor(`document.querySelector(${JSON.stringify(`${view} ${writerNode}`)})`, "the project's canvas in the app");
+      };
+      const mainInstead = (message: string) => waitFor(`!document.querySelector(${JSON.stringify(view)}) && document.querySelector(${JSON.stringify(mainOpen)})`, message);
+      await openProject();
+      expect(await text(`${slot} [data-project-folder]`)).toBe(project.folder);
+      await waitFor(`document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the team's change in the top bar");
+      await shot("15-project-row-opens-its-canvas.png");
+
+      await clickSelector(`${slot} button[aria-label="Group chats"]`);
+      const roomItem = `[role="menu"] [data-menu-key=${JSON.stringify(room.id)}]`;
+      await waitFor(`document.querySelector(${JSON.stringify(roomItem)})`, "the project's group chat in the top bar's menu");
+      await shot("16-group-chats-menu.png");
+      await clickSelector(roomItem);
+      await waitFor(`!document.querySelector(${JSON.stringify(view)}) && !document.querySelector('[role="menu"]') && document.body.innerText.includes("Table read")`, "the group chat open");
+
+      await openProject();
+      await clickSelector(`${slot} [data-project-team-changes]`);
+      await waitFor(`document.querySelector("[data-team-changes] [data-team-changes-apply]")`, "the team's changes to review");
+      await clickSelector("[data-team-changes] [data-team-changes-apply]");
+      const botNodes = `${view} [data-canvas-node^="bot:"]`;
+      await waitFor(`document.querySelectorAll(${JSON.stringify(botNodes)}).length === 3 && !document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the colorist's copy on the canvas");
+      await fit();
+      await shot("17-team-change-adds-a-bot.png");
+
+      const toggle = `[data-sidebar-team-project=${JSON.stringify(project.id)}] button[aria-expanded="false"]:not([aria-haspopup])`;
+      if (await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(toggle)}))`)) await clickSelector(toggle);
+      const writerRow = `[data-sidebar-project-member=${JSON.stringify(writer.id)}]`;
+      await waitFor(`document.querySelector(${JSON.stringify(writerRow)})`, "the project's members in the sidebar");
+      await clickSelector(writerRow);
+      const corners = (selector: string) => `document.querySelectorAll(${JSON.stringify(`${view} ${selector} [data-resize-corner]`)}).length`;
+      await waitFor(`${corners(writerNode)} === 4`, "the writer chosen on the canvas");
+      expect(await evaluate(corners(leadNode))).toBe(0);
+      expect(await evaluate(`document.querySelector(${JSON.stringify(writerRow)}).getAttribute("aria-current")`)).toBe("page");
+      await shot("18-member-row-chooses-its-bot.png");
+
+      await api("POST", `/api/team-projects/${project.id}/archive`);
+      await evaluate("window.dispatchEvent(new Event('focus')); true");
+      await mainInstead("the main bot in place of the project archived elsewhere");
+      await shot("19-archived-elsewhere-opens-the-main-bot.png");
+      await api("POST", `/api/team-projects/${project.id}/restore`);
+      await evaluate("window.dispatchEvent(new Event('focus')); true");
+      await openProject();
+      const row = (await box(projectRow))!;
+      await evaluate(`document.querySelector(${JSON.stringify(projectRow)}).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: ${Math.round(row.x + 40)}, clientY: ${Math.round(row.y + row.h / 2)} })); true`);
+      await waitFor(`document.querySelector("[data-team-project-archive]")`, "the project's menu in the sidebar");
+      await clickSelector("[data-team-project-archive]");
+      await mainInstead("the main bot in place of the project archived from the sidebar");
+      const listed = (await api("GET", "/api/team-projects")).projects as TeamProjectWire[];
+      expect(listed.find((one) => one.id === project.id)?.archivedAt).toEqual(expect.any(Number));
+      await shot("20-archived-from-the-sidebar-opens-the-main-bot.png");
+      evidence.app = { main: main.id, room: room.id, folder: project.folder, bots: (await snapshot()).nodes.filter((one) => one.type === "bot").map((one) => one.id) };
+      expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {
       await shot("failed.png").catch(() => {});
       throw error;
@@ -451,4 +522,4 @@ type Box = { x: number; y: number; w: number; h: number };
     if (root) await removeTempDir(root);
     if (home) await removeTempDir(home);
   }
-}, hostTimeout(300_000));
+}, hostTimeout(480_000));
