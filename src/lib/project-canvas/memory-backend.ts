@@ -10,7 +10,6 @@ import {
   type CanvasOpsResponse,
   type CanvasPoint,
   type CanvasSnapshot,
-  type ProjectCanvasEvent,
 } from "../../../shared/project-canvas";
 import {
   resolveSettings,
@@ -85,7 +84,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const projectId = snapshot.project.id;
   const fileUrls = new Map(Object.entries(options.fileUrls ?? {}));
   const exchanges = new Map(Object.entries(structuredClone(options.exchanges ?? {})));
-  const listeners = new Set<(event: ProjectCanvasEvent) => void>();
+  const listeners = new Set<() => void>();
   const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const jobTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const jobs = new Map<string, GenerationJob>();
@@ -94,13 +93,12 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   let counter = 0;
   const newId = (prefix: string) => `${prefix}-${++counter}`;
 
-  const emit = (reason: ProjectCanvasEvent["reason"]) => {
-    const event: ProjectCanvasEvent = { kind: "project-canvas", projectId, revision: snapshot.revision, reason };
-    queueMicrotask(() => listeners.forEach((listener) => listener(event)));
+  const emit = () => {
+    queueMicrotask(() => listeners.forEach((listener) => listener()));
   };
   const commit = (ops: CanvasOp[]) => {
     snapshot = { ...applyCanvasOps(snapshot, ops), revision: snapshot.revision + 1 };
-    emit("document");
+    emit();
   };
   const ensureProject = (id: string) => {
     if (id !== projectId) throw new Error(`No project ${id}`);
@@ -114,7 +112,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     const bot = snapshot.bots[botId];
     if (!bot) return;
     snapshot = { ...snapshot, bots: { ...snapshot.bots, [botId]: { ...bot, ...change } } };
-    emit("bots");
+    emit();
   };
 
   const finishJob = (job: GenerationJob, input: StartGenerationInput) => {
@@ -164,7 +162,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       const next = structuredClone(snapshot);
       change(next);
       snapshot = next;
-      emit("bots");
+      emit();
     },
 
     async readSnapshot(id) {
@@ -196,10 +194,10 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       return { revision: snapshot.revision, nodeIds, connectionIds };
     },
 
-    subscribe(id, onEvent) {
+    subscribe(id, onChange) {
       ensureProject(id);
-      listeners.add(onEvent);
-      return () => listeners.delete(onEvent);
+      listeners.add(onChange);
+      return () => listeners.delete(onChange);
     },
 
     async uploadFile(id, file, at?: CanvasPoint) {

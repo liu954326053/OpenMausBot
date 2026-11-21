@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botNodeId, type ProjectCanvasEvent } from "../../../shared/project-canvas";
+import { botNodeId } from "../../../shared/project-canvas";
 import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
 
 beforeEach(() => vi.useFakeTimers());
@@ -8,15 +8,17 @@ afterEach(() => vi.useRealTimers());
 describe("the in-memory canvas backend", () => {
   it("applies a person's operations with a new revision, makes missing ids and tells listeners", async () => {
     const backend = sampleCanvasBackend();
-    const events: ProjectCanvasEvent[] = [];
-    backend.subscribe(SAMPLE_PROJECT_ID, (event) => events.push(event));
+    let told = 0;
+    backend.subscribe(SAMPLE_PROJECT_ID, () => {
+      told += 1;
+    });
     const response = await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", nodeType: "text", title: "Note" }, { type: "connect_nodes", fromNodeId: "logline", toNodeId: "shot-1" }] });
     await vi.advanceTimersByTimeAsync(0);
     expect(response.revision).toBe(2);
     expect(response.nodeIds).toHaveLength(1);
     expect(response.connectionIds).toHaveLength(1);
     expect(backend.current().nodes.find((node) => node.id === response.nodeIds[0])).toMatchObject({ title: "Note", createdBy: { kind: "person" } });
-    expect(events).toEqual([{ kind: "project-canvas", projectId: SAMPLE_PROJECT_ID, revision: 2, reason: "document" }]);
+    expect(told).toBe(1);
   });
 
   it("refuses a bot node's deletion, a reused live id, and every change once archived", async () => {

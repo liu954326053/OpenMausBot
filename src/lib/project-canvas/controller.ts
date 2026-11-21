@@ -33,10 +33,21 @@ export interface CanvasState {
 
 interface Batch {
   ops: CanvasOp[];
+  /** The server's revision under the canvas this person saw when they made it. */
+  seen: number;
   revision?: number;
 }
 
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+const ARRANGING = new Set(["position", "width", "height"]);
+
+/** Moving and sizing nodes and the view are last-writer-wins: a drag is never refused because the server changed the
+ * node meanwhile, as generation does. */
+const arranges = (op: CanvasOp) =>
+  op.type === "set_viewport" ||
+  op.type === "set_background" ||
+  (op.type === "update_node" && !op.metadata && Object.keys(op.patch ?? {}).every((key) => ARRANGING.has(key)));
 
 function withIds(ops: readonly CanvasOp[]): CanvasOp[] {
   return ops.map((op) => (op.type === "add_node" || op.type === "connect_nodes") && !op.id ? { ...op, id: randomUuid() } : op);
@@ -47,6 +58,8 @@ export class CanvasController {
   private state: CanvasState = { phase: "loading", snapshot: null, viewport: { x: 0, y: 0, k: 1 }, looks: {}, generation: null, models: { image: null, video: null }, modelsRefused: {}, canUndo: false, canRedo: false, writing: {} };
   private readonly listeners = new Set<() => void>();
   private server: CanvasSnapshot | null = null;
+  /** The newest revision a batch of this person's made. */
+  private ownRevision = 0;
   private pending: Batch[] = [];
   private queue: Promise<void> = Promise.resolve();
   private history = emptyHistory();
@@ -66,9 +79,7 @@ export class CanvasController {
   };
 
   async start(): Promise<void> {
-    this.unsubscribe = this.backend.subscribe(this.projectId, (event) => {
-      if (event.projectId === this.projectId) void this.refresh();
-    });
+    this.unsubscribe = this.backend.subscribe(this.projectId, () => void this.refresh());
     try {
       const [snapshot, looks, generation] = await Promise.all([
         this.backend.readSnapshot(this.projectId),
@@ -97,7 +108,7 @@ export class CanvasController {
   apply(ops: readonly CanvasOp[], { record = true }: { record?: boolean } = {}): CanvasOp[] {
     const shown = this.state.snapshot;
     if (!shown || shown.readOnly || !ops.length) return [];
-    const batch: Batch = { ops: withIds(ops) };
+    const batch: Batch = { ops: withIds(ops), seen: this.server?.revision ?? 0 };
     if (record) this.history = recordHistory(this.history, { forward: batch.ops, inverse: invertCanvasOps(shown, batch.ops) });
     this.pending.push(batch);
     this.recompute();
@@ -234,7 +245,7 @@ export class CanvasController {
     this.set({ writeError: undefined });
   }
 
-  /** Reads the snapshot again; calls that overlap share one read and one more after it. */
+  /** Reads the snapshot and the bots' looks again; calls that overlap share one read and one more after it. */
   refresh(): Promise<void> {
     if (this.refreshing) {
       this.refreshAgain = true;
@@ -244,10 +255,13 @@ export class CanvasController {
       do {
         this.refreshAgain = false;
         try {
-          const snapshot = await this.backend.readSnapshot(this.projectId);
+          const [snapshot, looks] = await Promise.all([
+            this.backend.readSnapshot(this.projectId),
+            this.backend.readBotLooks(this.projectId).catch(() => this.state.looks),
+          ]);
           if (this.disposed) return;
           if (!this.server || snapshot.revision >= this.server.revision) this.server = snapshot;
-          this.recompute();
+          this.recompute({ looks });
         } catch (error) {
           this.set({ writeError: messageOf(error) });
         }
@@ -260,7 +274,9 @@ export class CanvasController {
 
   private async send(batch: Batch): Promise<void> {
     try {
-      batch.revision = (await this.backend.applyOps(this.projectId, { ops: batch.ops })).revision;
+      const request = batch.ops.every(arranges) ? { ops: batch.ops } : { baseRevision: Math.max(batch.seen, this.ownRevision), ops: batch.ops };
+      batch.revision = (await this.backend.applyOps(this.projectId, request)).revision;
+      this.ownRevision = Math.max(this.ownRevision, batch.revision);
     } catch (error) {
       this.pending = this.pending.filter((candidate) => candidate !== batch);
       this.set({ writeError: messageOf(error) });
@@ -274,7 +290,7 @@ export class CanvasController {
     if (this.state.snapshot && !this.state.snapshot.readOnly) this.apply([{ type: "set_viewport", viewport: this.state.viewport }], { record: false });
   }
 
-  private recompute(): void {
+  private recompute(change: Partial<CanvasState> = {}): void {
     const server = this.server;
     if (!server) return;
     this.pending = this.pending.filter((batch) => batch.revision === undefined || batch.revision > server.revision);
@@ -283,7 +299,7 @@ export class CanvasController {
       const bot = snapshot.bots[botId];
       return snapshot.nodes.some((node) => node.id === nodeId) && bot && bot.status !== "error" && !(bot.output && bot.output.at >= since && bot.status !== "working" && bot.status !== "queued");
     }));
-    this.set({ snapshot, writing, canUndo: this.history.past.length > 0, canRedo: this.history.future.length > 0 });
+    this.set({ ...change, snapshot, writing, canUndo: this.history.past.length > 0, canRedo: this.history.future.length > 0 });
   }
 
   private set(change: Partial<CanvasState>): void {

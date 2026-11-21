@@ -8,7 +8,6 @@ import type {
   CanvasSnapshot,
   CanvasTaskResponse,
   CanvasUploadResponse,
-  ProjectCanvasEvent,
 } from "../../../shared/project-canvas";
 import type {
   GenerationJobWire,
@@ -39,8 +38,9 @@ export interface CanvasBackend {
   readSnapshot(projectId: string): Promise<CanvasSnapshot>;
   /** `POST /api/team-projects/:id/canvas/ops`. */
   applyOps(projectId: string, request: CanvasOpsRequest): Promise<CanvasOpsResponse>;
-  /** Hears the project's `ProjectCanvasEvent`s. Returns the way to stop listening. */
-  subscribe(projectId: string, onEvent: (event: ProjectCanvasEvent) => void): () => void;
+  /** Calls `onChange` when the project's canvas may have changed: on its `ProjectCanvasEvent`s, and when the app missed
+   * live events. Returns the way to stop listening. */
+  subscribe(projectId: string, onChange: () => void): () => void;
 
   /** `POST /api/team-projects/:id/canvas/files`: the file goes into `素材/` and the server adds its node at `at`. */
   uploadFile(projectId: string, file: File, at?: CanvasPoint): Promise<CanvasUploadResponse>;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId, type CanvasOpsRequest } from "../../../shared/project-canvas";
-import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
+import { SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
 import { CanvasController, VIEWPORT_SAVE_DELAY_MS } from "./controller";
 
 beforeEach(() => vi.useFakeTimers());
@@ -32,19 +32,41 @@ describe("the canvas controller", () => {
     expect(state.models.video?.map((model) => model.id)).toEqual(["kling-2", "veo-lite"]);
   });
 
-  it("shows a change at once, sends changes in order without a base revision, and keeps them over a newer snapshot", async () => {
+  it("shows a change at once, sends changes in order, and keeps them over a newer snapshot", async () => {
     const { backend, controller, sent } = await started();
     controller.apply([{ type: "update_node", id: "logline", patch: { title: "Logline v2" } }]);
     controller.apply([{ type: "add_node", nodeType: "text", title: "Note", position: { x: 10, y: 10 } }]);
     expect(node(controller, "logline")!.title).toBe("Logline v2");
     expect(controller.getState().snapshot!.nodes.some((candidate) => candidate.title === "Note")).toBe(true);
     await controller.settled();
-    await vi.advanceTimersByTimeAsync(0);
+    await controller.refresh();
     expect(sent.map((request) => request.ops[0]!.type)).toEqual(["update_node", "add_node"]);
-    expect(sent.every((request) => request.baseRevision === undefined)).toBe(true);
     expect(sent[1]!.ops[0]).toMatchObject({ id: expect.any(String) });
     expect(backend.current().nodes.find((candidate) => candidate.id === "logline")!.title).toBe("Logline v2");
     expect(controller.getState().snapshot!.revision).toBe(backend.current().revision);
+  });
+
+  it("sends a change with the revision it was made on, never one older than its own last change, and arranging without one", async () => {
+    const { backend, controller, sent } = await started();
+    const start = backend.current().revision;
+    controller.apply([{ type: "update_node", id: "logline", patch: { title: "Logline v2" } }]);
+    controller.apply([{ type: "add_node", nodeType: "text", title: "Note", position: { x: 10, y: 10 } }]);
+    controller.apply([{ type: "update_node", id: "logline", patch: { position: { x: 5, y: 5 }, width: 300 } }]);
+    controller.setBackground("dots");
+    await controller.settled();
+    expect(sent.map((request) => request.baseRevision)).toEqual([start, start + 1, undefined, undefined]);
+  });
+
+  it("reads the canvas and the bots' looks again whenever the backend says something changed", async () => {
+    const { backend, controller } = await started();
+    backend.readBotLooks = async () => ({ ...SAMPLE_LOOKS, mira: { color: "green" } });
+    backend.updateBots((snapshot) => {
+      snapshot.bots.mira!.status = "working";
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await controller.refresh();
+    expect(controller.getState().snapshot!.bots.mira!.status).toBe("working");
+    expect(controller.getState().looks.mira).toEqual({ color: "green" });
   });
 
   it("undoes and redoes a deletion with its connections, and drops redo after a new change", async () => {
