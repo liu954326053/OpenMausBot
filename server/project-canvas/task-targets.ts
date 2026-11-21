@@ -9,6 +9,8 @@ export interface TaskTarget {
   botId: string;
   threadId: string;
   nodeId: string;
+  /** The title of the node the reply becomes beside a node with text. */
+  title: string;
   requestId?: string;
   /** When the task's message joined the conversation. */
   requestAt?: number;

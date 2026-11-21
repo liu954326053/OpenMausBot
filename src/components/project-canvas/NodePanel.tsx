@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
 import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
-import { connectedReferences, generationReferences, mentionReferences, referenceCounts } from "../../../shared/project-canvas-references";
+import { connectedReferences, mentionReferences, referenceCounts, referenceFiles } from "../../../shared/project-canvas-references";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
@@ -50,7 +50,7 @@ function PromptPanel({ node }: { node: CanvasNode }) {
   const loading = node.metadata?.status === "loading";
   const models = ui.state.models[kind];
   const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
-  const counts = referenceCounts(generationReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections));
+  const counts = referenceCounts(referenceFiles(mentions));
   const problems = project ? referenceProblems(kind, project, node, models ?? [], counts) : [];
   const noServer = !project?.[kind].server;
   const keepPrompt = () => {
@@ -89,7 +89,7 @@ function PromptPanel({ node }: { node: CanvasNode }) {
           onChange={(generationMode) => ui.updateMetadata(node.id, { generationMode })}
         />
       ) : null}
-      <ReferenceBar node={node} references={isShot ? mentions.filter((reference) => reference.kind === "image" || reference.kind === "audio") : mentions} />
+      <ReferenceBar node={node} references={mentions} />
       <div className={cn("flex flex-col", expanded && "[&_textarea]:min-h-72")} onBlur={keepPrompt}>
         <PromptInput
           value={prompt}
@@ -244,6 +244,7 @@ function TextPanel({ node }: { node: CanvasNode }) {
   const writing = Boolean(ui.state.writing[node.id]);
   const bot = ui.snapshot.bots[botId];
   const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
+  const placeholder = node.metadata?.content?.trim() ? "projectCanvas.text.revisePlaceholder" : "projectCanvas.text.requestPlaceholder";
   const send = async () => {
     if (!request.trim() || !bot) return;
     setSending(true);
@@ -271,7 +272,7 @@ function TextPanel({ node }: { node: CanvasNode }) {
         onChange={setRequest}
         references={mentions}
         label={t("projectCanvas.text.request")}
-        placeholder={t("projectCanvas.text.requestPlaceholder", { name: bot?.name ?? "" })}
+        placeholder={t(placeholder, { name: bot?.name ?? "" })}
         disabled={ui.readOnly || !bot}
         onSubmit={() => void send()}
       />

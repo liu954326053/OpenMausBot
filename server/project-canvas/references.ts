@@ -17,6 +17,8 @@ export interface ReferenceDeps {
 }
 
 export interface TaskReferences {
+  /** A text node's own text under its label, which the task revises. */
+  source?: string;
   text: string;
   count: number;
 }
@@ -70,7 +72,8 @@ function heading(document: CanvasDocument, nodeId: string, language: string | un
 
 /** The references of the node a task was written in, a bot's node or a text node, under a line saying whose they are:
  * each named by its label and title as the app numbered them, words quoted, images as the model's own input while the
- * turn's image limits allow, other files by their path. */
+ * turn's image limits allow, other files by their path. A text node's own text, its first reference, is the `source`
+ * instead. */
 export async function taskReferences(document: CanvasDocument, nodeId: string, deps: ReferenceDeps): Promise<TaskReferences> {
   const word = (key: ServerLineKey) => serverLine(deps.language, key);
   let images = 0;
@@ -100,6 +103,7 @@ export async function taskReferences(document: CanvasDocument, nodeId: string, d
   }
 
   const parts: string[] = [];
+  let source: string | undefined;
   for (const entry of entries(document, nodeId)) {
     const { node } = entry;
     const meta = node.metadata ?? {};
@@ -110,11 +114,16 @@ export async function taskReferences(document: CanvasDocument, nodeId: string, d
     if (node.type !== "text" && meta.prompt) lines.push(quoted(meta.prompt));
     const settings = settingsLine(meta.settings);
     if (settings) lines.push(settings);
-    parts.push(lines.join("\n\n"));
+    if (node.id === nodeId) source = lines.join("\n\n");
+    else parts.push(lines.join("\n\n"));
   }
-  return { text: parts.length ? [heading(document, nodeId, deps.language), ...parts].join("\n\n") : "", count: parts.length };
+  return { ...(source ? { source } : {}), text: parts.length ? [heading(document, nodeId, deps.language), ...parts].join("\n\n") : "", count: parts.length };
 }
 
-export function taskMessage(text: string, references: TaskReferences): string {
-  return [text.trim(), references.text].filter(Boolean).join("\n\n");
+/** The person's words, framed in `language` as the revision of the node's own text when the task has a `source`, then
+ * the references. */
+export function taskMessage(text: string, references: TaskReferences, language: string | undefined): string {
+  const request = text.trim();
+  const asked = references.source ? serverLine(language, "server.projectCanvas.task.editText", { source: references.source, prompt: request }) : request;
+  return [asked, references.text].filter(Boolean).join("\n\n");
 }

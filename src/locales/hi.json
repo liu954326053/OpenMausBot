@@ -151,6 +151,7 @@
   "server.projectCanvas.node.file": "फ़ाइल",
   "server.projectCanvas.task.connected": "प्रोजेक्ट कैनवस पर आपके नोड से जुड़ा हुआ:",
   "server.projectCanvas.task.textNode": "प्रोजेक्ट कैनवस पर टेक्स्ट नोड {title} जिनका संदर्भ देता है:",
+  "server.projectCanvas.task.editText": "निर्देशों के अनुसार टेक्स्ट को संशोधित करें।\n\nमूल टेक्स्ट:\n{source}\n\nनिर्देश:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(इसकी फ़ाइल {path} अब प्रोजेक्ट फ़ोल्डर में नहीं है)",
   "server.mcp.askedSignIn": "MCP सर्वर {name} में साइन इन करने का अनुरोध किया",
   "server.mcp.signIn.card": "{label} के MCP सर्वर में साइन इन करना ज़रूरी है। साइन इन करने के लिए यह बातचीत MagicBot में खोलें।",

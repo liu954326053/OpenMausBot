@@ -202,6 +202,7 @@
   "server.projectCanvas.node.file": "Datei",
   "server.projectCanvas.task.connected": "Mit deinem Knoten auf der Canvas des Projekts verbunden:",
   "server.projectCanvas.task.textNode": "Worauf sich der Textknoten {title} auf der Canvas des Projekts bezieht:",
+  "server.projectCanvas.task.editText": "Überarbeite den Text gemäß den Anweisungen.\n\nOriginal:\n{source}\n\nAnweisungen:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(seine Datei {path} ist gerade nicht im Projektordner)",
   "server.mcp.askedSignIn": "Anmeldung bei MCP-Server {name} angefragt",
   "server.mcp.signIn.card": "Der MCP-Server von {label} braucht eine Anmeldung. Öffne diese Unterhaltung in MagicBot, um dich anzumelden.",

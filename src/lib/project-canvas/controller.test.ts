@@ -163,15 +163,18 @@ describe("the canvas controller", () => {
     expect(generations).toEqual([{ nodeId: "shot-1", language: "zh" }]);
   });
 
-  it("marks a text node a bot's reply goes into, as the backend has it, until the reply is in", async () => {
+  it("marks a text node a bot's task was written in, as the backend has it, until the reply is in beside it", async () => {
     const { controller } = await started({ delayMs: 100, reply: () => "Rain never stops in this city." });
+    const text = node(controller, "logline")!.metadata!.content;
     await controller.sendTask({ botId: "otto", text: "a tagline", targetNodeId: "logline" });
     await vi.advanceTimersByTimeAsync(0);
     expect(controller.getState().writing.logline).toMatchObject({ botId: "otto" });
     await vi.advanceTimersByTimeAsync(100);
     await controller.refresh();
     expect(controller.getState().writing.logline).toBeUndefined();
-    expect(node(controller, "logline")!.metadata!.content).toBe("Rain never stops in this city.");
+    expect(node(controller, "logline")!.metadata!.content).toBe(text);
+    const beside = controller.getState().snapshot!.connections.filter((connection) => connection.fromNodeId === "logline" && connection.kind === "content").map((connection) => node(controller, connection.toNodeId));
+    expect(beside).toEqual([expect.objectContaining({ type: "text", createdBy: { kind: "bot", botId: "otto" }, metadata: { content: "Rain never stops in this city." } })]);
   });
 
   it("records an upload so undo removes the node", async () => {

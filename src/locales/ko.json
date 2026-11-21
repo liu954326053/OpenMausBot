@@ -236,6 +236,7 @@
   "server.projectCanvas.node.file": "파일",
   "server.projectCanvas.task.connected": "프로젝트 캔버스에서 당신의 노드에 연결된 항목:",
   "server.projectCanvas.task.textNode": "프로젝트 캔버스의 텍스트 노드 {title}이(가) 참조하는 항목:",
+  "server.projectCanvas.task.editText": "지시에 따라 다음 텍스트를 수정하세요.\n\n원문:\n{source}\n\n수정 지시:\n{prompt}",
   "server.projectCanvas.task.fileGone": "(파일 {path}이(가) 지금 프로젝트 폴더에 없습니다)",
   "server.mcp.askedSignIn": "MCP 서버 {name} 로그인을 요청함",
   "server.mcp.signIn.card": "{label}의 MCP 서버에 로그인해야 해요. 로그인하려면 MagicBot에서 이 대화를 여세요.",

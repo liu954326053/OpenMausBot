@@ -15,6 +15,7 @@ import {
   type CanvasSnapshot,
   type CanvasTaskResponse,
   type ProjectCanvasEvent,
+  replyTitle,
 } from "../../shared/project-canvas.ts";
 import { nodeStatusOf, type GenerationJob, type GenerationRequester, type ProjectGenerationApi, type Refused } from "../../shared/project-generation.ts";
 import type { ServerTextParams } from "../../shared/server-text.ts";
@@ -320,10 +321,10 @@ export class ProjectCanvasService {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
     }
     const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
-    const message = taskMessage(text, references);
+    const message = taskMessage(text, references, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = await this.deps.send(auth, { botId, threadId, text: message });
-    if (targetNodeId !== undefined) this.awaitReply({ projectId: project.id, botId, threadId: receipt.threadId, nodeId: targetNodeId }, receipt);
+    if (targetNodeId !== undefined) this.awaitReply({ projectId: project.id, botId, threadId: receipt.threadId, nodeId: targetNodeId, title: replyTitle(text) }, receipt);
     return "queued" in receipt
       ? { threadId: receipt.threadId, queued: true, references: references.count }
       : { threadId: receipt.threadId, messageId: receipt.message.id, references: references.count };
@@ -334,23 +335,33 @@ export class ProjectCanvasService {
     else if (!receipt.steered) this.targets.add({ ...where, requestId: receipt.message.id, requestAt: receipt.message.at });
   }
 
-  /** A line of a conversation: the bot's reply to a task with a text node becomes the node's text. */
+  /** A line of a conversation: the bot's reply to a task written in a text node becomes the node's text when it has
+   * none, and otherwise the bot's new text node to its right, connected from it. */
   taskLine(threadId: string, message: Message): void {
     const settled = this.targets.heard(threadId, message);
     if (!settled?.reply) return;
-    const { projectId, nodeId } = settled.target;
+    const { projectId, botId, nodeId, title } = settled.target;
     const project = this.deps.projects.list().find((one) => one.id === projectId);
     if (!project || project.archivedAt !== undefined) return;
     const content = replyText(settled.reply);
     try {
-      this.serverChange(project, (document) => {
+      this.serverChange(project, (document, bots) => {
         const node = document.nodes.find((one) => one.id === nodeId);
         if (node?.type !== "text") return null;
-        node.metadata = { ...node.metadata, content };
-        return { nodes: [node.id], connections: [] };
+        if (!node.metadata?.content?.trim()) {
+          node.metadata = { ...node.metadata, content };
+          return { nodes: [node.id], connections: [] };
+        }
+        if (document.nodes.length >= CANVAS_MAX_NODES) throw new Error("the canvas is full");
+        const made: CanvasNode = { id: this.deps.newId(), type: "text", title, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE.text, metadata: { content }, createdBy: { kind: "bot", botId } };
+        made.position = placeAfter(document, node, made, bots);
+        const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: node.id, toNodeId: made.id, kind: "content" };
+        document.nodes.push(made);
+        document.connections.push(connection);
+        return { nodes: [made.id], connections: [connection.id] };
       });
     } catch (error) {
-      this.deps.log(`[project-canvas] ${projectId}: a reply could not go into ${nodeId} (${error instanceof Error ? error.message : "unknown"})`);
+      this.deps.log(`[project-canvas] ${projectId}: the reply to a task written in ${nodeId} could not be put on the canvas (${error instanceof Error ? error.message : "unknown"})`);
     }
   }
 
