@@ -6,6 +6,7 @@ function decision(card: OptionCardData | undefined): { kind: string; request: { 
   if (card?.teamSetupRequest) return { kind: "team setup decision", request: card.teamSetupRequest };
   if (card?.mcpRequest) return { kind: "MCP server decision", request: card.mcpRequest };
   if (card?.teamProjectProposal) return { kind: "project decision", request: { result: mainBotDecision(card.teamProjectProposal), resumed: card.teamProjectProposal.resumed } };
+  if (card?.canvasGeneration) return { kind: "generation decision", request: card.canvasGeneration };
   return null;
 }
 

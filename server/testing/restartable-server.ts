@@ -27,6 +27,27 @@ export interface RestartableServer {
   close(): Promise<void>;
 }
 
+export async function healthAnswerer(url: string, ownPid: number | undefined): Promise<"nobody" | "ours" | "theirs"> {
+  let response: Response;
+  try {
+    response = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1_000) });
+  } catch {
+    return "nobody";
+  }
+  const body = await response.json().catch(() => null) as { app?: unknown; pid?: unknown } | null;
+  return ownPid !== undefined && response.ok && body?.app === "openmausbot" && body.pid === ownPid ? "ours" : "theirs";
+}
+
+export async function webhookPortRefusal(url: string, webhookPort: number, headers: Record<string, string> = {}): Promise<string | null> {
+  const response = await fetch(`${url}/api/webhooks`, { headers, signal: AbortSignal.timeout(5_000) });
+  const body = await response.json().catch(() => null) as { ingress?: { available?: unknown; error?: unknown } } | null;
+  if (response.ok && body?.ingress?.available === true) return null;
+  const reason = typeof body?.ingress?.error === "string" ? body.ingress.error : `GET /api/webhooks answered ${response.status}`;
+  return reason.includes("EADDRINUSE")
+    ? `webhook port ${webhookPort} is taken by another process: the server's own webhook receiver could not listen there (${reason})`
+    : `the server's webhook receiver is not listening on port ${webhookPort}: ${reason}`;
+}
+
 export async function launchRestartableServer(options: { scripted?: boolean; dataDirRoot?: string } = {}): Promise<RestartableServer> {
   const port = await freePortBlock([0, 1]);
   // Native browser daemons use UNIX sockets, and a macOS temp home can exceed their path limit.
@@ -48,15 +69,18 @@ export async function launchRestartableServer(options: { scripted?: boolean; dat
   const start = async () => {
     const env = verificationServerEnvironment(process.env, dataDir, port);
     const log = openSync(logPath, "a", 0o600);
-    child = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
+    const spawned = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
+    child = spawned;
     closeSync(log);
     const deadline = Date.now() + 30_000;
     for (;;) {
-      if (child.exitCode !== null) throw new Error(`the server exited before it was ready; see ${logPath}`);
-      try {
-        const body = await (await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1_000) })).json() as { app?: string };
-        if (body.app === "openmausbot") return;
-      } catch { /* not listening yet */ }
+      const answerer = await healthAnswerer(url, spawned.pid);
+      if (answerer === "ours") return;
+      if (answerer === "theirs") {
+        await stop();
+        throw new Error(`port ${port} is taken by another process: it answers /api/health there, not this server (pid ${spawned.pid}); see ${logPath}`);
+      }
+      if (spawned.exitCode !== null) throw new Error(`the server exited before it was ready; see ${logPath}`);
       if (Date.now() > deadline) throw new Error(`the server did not become ready; see ${logPath}`);
       await new Promise((resolve) => setTimeout(resolve, 150));
     }

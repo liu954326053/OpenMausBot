@@ -1,6 +1,6 @@
 # Bring your own MCP servers
 
-Open **Plugins → MCP servers → Add server** to give your bots tools from an
+Open **Apps → MCP servers → Add MCP server** to give your bots tools from an
 MCP server you trust. Paste what you were given into the one box: the
 server's link, a `claude mcp add …` or `claude mcp add-json …` command, an
 `npx`, `uvx` or `docker run` line, or an `mcpServers` JSON block. OpenMausBot
@@ -50,7 +50,7 @@ checks (for Cloudflare Access, a service token's `CF-Access-Client-Id` and
 
 ### Whop
 
-In Plugins, find **Whop** alongside Gmail, Slack and the other apps and click **Connect**. The built-in card
+In Apps, find **Whop** alongside Gmail, Slack and the other apps and click **Connect**. The built-in card
 uses Whop's official hosted MCP endpoint and opens Whop's browser sign-in;
 no API key, local CLI or Composio connection is needed. After successful
 sign-in and tool discovery it enables the connection. A cancelled or failed
@@ -70,7 +70,7 @@ This is an optional connected tool, not a change to OMB's subscription billing.
 
 ### Agentcard
 
-In Plugins, find **Agentcard** beside Whop and click **Connect**. The card uses
+In Apps, find **Agentcard** beside Whop and click **Connect**. The card uses
 Agentcard's official hosted MCP endpoint, `https://mcp.agentcard.sh/mcp`, and
 opens Agentcard's browser sign-in with your own Agentcard account. No API key
 is needed. After sign-in and tool discovery it enables the connection, and
@@ -110,7 +110,7 @@ have a bot answer new mail, texts or calls, add a webhook for that bot in
 
 ### BubblaV
 
-In Plugins, find **BubblaV** and click **Connect**. The card uses BubblaV's
+In Apps, find **BubblaV** and click **Connect**. The card uses BubblaV's
 official hosted MCP endpoint, `https://www.bubblav.com/mcp`, and opens BubblaV's
 browser sign-in. Sign in (or create a free account), choose the one chatbot
 (website) the connection may reach, and choose **Full access** or **Read
@@ -280,7 +280,7 @@ and any bot made later with New bot, the API, a template, a Chief
 of Staff team or a package. Each turn lists them after the bot's own skills,
 with a budget of their own, links them into the task folder's `.claude`,
 `.agents` and `.grok` skills, and runs them as `/name`. A bot's own or library
-skill of the same name wins; **Bot Settings → Skills** shows the rest as
+skill of the same name wins; **Bot settings → Skills** shows the rest as
 coming from this computer, with a switch for that bot. A skill the scan flags
 (a download piped into a shell, invisible characters, a long encoded blob, in
 SKILL.md or any file beside it) comes in switched off for every bot: read it
@@ -300,7 +300,7 @@ included). The copies travel with backups and Copy to My Cloud. The step never
 opens credential, session or history files, and it is skipped when there is
 nothing new.
 
-Skills an engine loads by itself show in **Bot Settings → Skills** with a
+Skills an engine loads by itself show in **Bot settings → Skills** with a
 switch for that bot: for Codex, `$CODEX_HOME/skills`, `~/.agents/skills` and
 `/etc/codex/skills`. Switching one off passes Codex that skill's `SKILL.md`
 path for the bot's turns, so a same-named skill in the turn's own
@@ -312,7 +312,7 @@ every such skill counts as on (skills from this computer switched off for the
 bot stay off), turns run as usual and the server logs it once; the next switch
 writes a good file.
 
-Open a bot’s **Tools → Access → MCP servers** to narrow the enabled global
+Open a bot’s **Bot settings → Access → MCP servers** to narrow the enabled global
 servers offered to it. Existing bots keep all enabled global servers until you
 choose a subset; switching them all off means none. **Use every enabled server**
 restores the default, including future additions. Stop all of that bot’s running
@@ -334,8 +334,8 @@ There a server whose files are in the bot's own folder (`workspaces/<bot>`) or
 its conversation folders is that bot's own: it starts only for that bot, and
 the `config.json` entry says so with `"bot": "<bot id>"`. A command that uses
 another bot's files is refused there. On a desktop every bot reaches every
-folder, so such a server stays every bot's. Servers you add in Settings stay
-every bot's. The first time bots run boxed after an update, a server no bot
+folder, so such a server stays every bot's. Servers you add in Apps → MCP
+servers stay every bot's. The first time bots run boxed after an update, a server no bot
 owns whose files are in the folders of one existing bot becomes that bot's own
 the same way, once, and you hear about it once: "The Blender tool only works
 for Iris, so it's off for your other bots."
@@ -346,7 +346,7 @@ folder), when it is added, changed or turned on, before a bot's first turn
 with it, and again whenever the bot's AI reports it did not connect. A server
 that doesn't start for a bot is left out of that bot's turns, so its failure
 doesn't follow every session or tool search; you hear about it once, the
-server's row in Settings says who it is off for, and it is tried again on its
+server's row in Apps → MCP servers says who it is off for, and it is tried again on its
 own every half hour (one that started is checked again every six hours). The
 checks are kept in `<data>/mcp-health.json`.
 
@@ -413,7 +413,7 @@ engine allows (the connector adds no deadline of its own, except for the
 tool search used by bots that cannot search tools themselves, two minutes).
 An HTTP 401 tells the bot to send the message again (a sign-in is refreshed
 when a message starts) and, if that fails, to sign in again or check the
-server's header values in Plugins → MCP servers.
+server's header values in Apps → MCP servers.
 
 ### Which bot made a call, on a server that runs on a lent computer
 
@@ -445,7 +445,7 @@ MCP servers in `~/.codex/config.toml`, which is why the two engines looked
 different.
 
 If you want Claude bots to see your own Claude Code MCP servers too, switch on
-**Also use my Claude Code MCP servers** at the top of Plugins → MCP servers.
+**Also use my Claude Code MCP servers** at the top of Apps → MCP servers.
 With it on, every Claude bot also loads the servers and connectors from your
 Claude Code config on every message; skills, hooks and the personal
 `CLAUDE.md` still stay out. More tools means more tokens per message, so keep
@@ -485,19 +485,19 @@ while keeping `--setting-sources project` (1.0.122+). The environment variable
 escape hatch back to the old launch: it restores everything, for every Claude
 bot, until you remove it. The harness also picks the session's compaction
 window with `--autocompact` (2.1.122+). OpenMausBot reads `claude --version`
-whenever it lists engines (app load, the Engines page, after an update) and
+whenever it lists engines (app load, Settings → AI, after an update) and
 only passes each flag to a CLI that accepts it, so an older CLI keeps working
-— without the controls it predates — and the Engines page shows an update
+— without the controls it predates — and Settings → AI shows an update
 notice with the exact command. `claude update` clears it.
 
 ## When your organization manages MCP servers
 
-If this computer is connected to an organization (Settings → Organization)
-and its Admin turns off custom MCP servers, only servers whose name or address
+If this computer is connected to an organization (Settings → Your account →
+Organization) and its Admin turns off custom MCP servers, only servers whose name or address
 is on the organization's approved list reach bots. Other configured servers
 stay in your list, marked **Managed by** your organization, but bots do not
 get them, and the "Also use my Claude Code MCP servers" switch has no effect.
-**Add server** accepts only approved servers.
+**Add MCP server** accepts only approved servers.
 Nothing is written to `config.json`; disconnecting the organization restores
 the list as you configured it. With no organization connection, none of this
 applies.

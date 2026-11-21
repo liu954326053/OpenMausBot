@@ -26,6 +26,8 @@
 
 import type { OptionCardData } from "./wire.ts";
 
+export type { CanvasGenerationConfirmation, CanvasGenerationDecision } from "../packages/phone-protocol/src/canvas-generation-card.ts";
+
 export type CanvasNodeType = "bot" | "shot" | "text" | "image" | "video" | "audio" | "file" | "config" | "group";
 /** Every type but `bot`: bot nodes come from the project's members and are never added or deleted. */
 export type CanvasContentNodeType = Exclude<CanvasNodeType, "bot">;
@@ -266,28 +268,14 @@ export interface CanvasUploadResponse {
   file: CanvasFileRef;
 }
 
-/** What the canvas asks of generation for one node: everything is taken from the node and what is connected into
- * it, so a model never rewrites it. `references` are the files of the image and audio nodes connected into it. */
-export interface CanvasGenerationRequest {
-  projectId: string;
-  nodeId: string;
-  kind: "image" | "video";
-  prompt: string;
-  settings: CanvasNodeSettings;
-  references: CanvasFileRef[];
-  by: CanvasNodeCreator;
-}
-
-/** What generation reports for a job, at each change. `outputs` come with `success`: files it saved in the project
- * folder. An empty image or video node takes the first; the others, and every output of a node that already shows
- * a file or of a shot, become new nodes to its right, connected from it, below the ones made before. */
-export interface CanvasGenerationUpdate {
-  projectId: string;
-  nodeId: string;
+/** `POST /api/team-projects/:id/canvas/generate {nodeId}`: the project's generation starts for a shot, image or video
+ * node, from its prompt, its `settings` and the files of the image and audio nodes connected into it, so a model never
+ * rewrites the request. Answered 202; a refusal is answered with generation's own `GenerationFailure`. The node shows
+ * `loading` while the job runs. On success each file the job made becomes a node to its right, connected from it, below
+ * the ones made before; on failure `errorDetails` says why. A bot past its ceiling is asked about on a card instead
+ * (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the person answers. */
+export interface CanvasGenerateResponse {
   jobId: string;
-  status: CanvasGenerationStatus;
-  errorDetails?: string;
-  outputs?: CanvasFileRef[];
 }
 
 /** Uploads go here, in the project folder. */

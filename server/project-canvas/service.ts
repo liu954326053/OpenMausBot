@@ -5,8 +5,6 @@ import {
   canvasFileNodeType,
   type CanvasConnection,
   type CanvasDocument,
-  type CanvasGenerationRequest,
-  type CanvasGenerationUpdate,
   type CanvasNode,
   type CanvasNodeCreator,
   type CanvasNodeMetadata,
@@ -17,6 +15,7 @@ import {
   type CanvasTaskResponse,
   type ProjectCanvasEvent,
 } from "../../shared/project-canvas.ts";
+import { nodeStatusOf, type GenerationJob, type GenerationRequester, type ProjectGenerationApi, type Refused } from "../../shared/project-generation.ts";
 import type { TeamProjectWire, TeamProjectsApi } from "../../shared/team-projects.ts";
 import { FILE_MAX_BYTES } from "../attachments.ts";
 import type { DirectSendReceipt } from "../direct-send.ts";
@@ -25,6 +24,7 @@ import type { Message, Store } from "../store.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
 import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments } from "./document-store.ts";
+import { generationInput } from "./generation.ts";
 import { handOver } from "./handover.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame } from "./ops.ts";
 import type { ProjectPathError } from "./paths.ts";
@@ -72,8 +72,6 @@ export function canvasRefusalOf(error: unknown): { status: number; body: { error
   return { status: sent.status, body };
 }
 
-export type StartGeneration = (request: CanvasGenerationRequest, onUpdate: (update: CanvasGenerationUpdate) => void) => Promise<{ jobId: string }>;
-
 export interface ProjectCanvasServiceDeps {
   store: Pick<Store, "bot" | "botByThread" | "tasks" | "taskByThread" | "messagesTail">;
   projects: Pick<TeamProjectsApi, "list">;
@@ -87,7 +85,7 @@ export interface ProjectCanvasServiceDeps {
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
   /** A project bot's superior in the flow. */
   parentOf(projectId: string, botId: string): string | undefined;
-  startGeneration: StartGeneration;
+  generation: Pick<ProjectGenerationApi, "start" | "job">;
   openCards(): OpenCardRow[];
   queuedThreads(): ReadonlySet<string>;
   /** Keeps an image as the app's own attachment, which a message may carry. */
@@ -96,9 +94,8 @@ export interface ProjectCanvasServiceDeps {
   log(line: string): void;
 }
 
-/** At most this many of a bot's own nodes are generated at once; it asks the person for more. */
-export const BOT_GENERATIONS_AT_ONCE = 4;
 const TASK_MAX_CHARS = 20_000;
+const JOB_KEYS = ["status", "jobId", "errorDetails"] as const;
 const NOT_A_PROJECT_BOT = "Only the bots of a project have its canvas, and you are not one of a project's bots now.";
 
 const NONE: CanvasChangeSet = { nodes: [], connections: [] };
@@ -289,71 +286,73 @@ export class ProjectCanvasService {
       : { threadId: receipt.threadId, messageId: receipt.message.id, references: references.count };
   }
 
-  /** Asks generation for a shot, image or video node, from its prompt and settings and the image and audio files
-   * connected into it. A bot asks only for its own nodes, a few at a time. */
-  async generate(project: TeamProjectWire, actor: CanvasNodeCreator, nodeId: unknown): Promise<{ jobId: string }> {
+  nodeOf(projectId: string, nodeId: string): CanvasNode | undefined {
+    return this.deps.documents.read(projectId).nodes.find((one) => one.id === nodeId);
+  }
+
+  private patchNode(project: TeamProjectWire, nodeId: string, next: (metadata: CanvasNodeMetadata) => CanvasNodeMetadata | null): void {
+    this.serverChange(project, (document) => {
+      const node = document.nodes.find((one) => one.id === nodeId);
+      const metadata = node && next(node.metadata ?? {});
+      if (!node || !metadata) return null;
+      node.metadata = metadata;
+      return { nodes: [node.id], connections: [] };
+    });
+  }
+
+  /** Starts the project's generation for a shot, image or video node, which shows `loading` until its job ends. A bot
+   * starts only its own nodes. A refusal leaves the node as it was. */
+  async generate(project: TeamProjectWire, requester: GenerationRequester, nodeId: unknown): Promise<{ job: GenerationJob } | Refused> {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
-    if (project.folderState !== "ready") throw refusal(409, "serverError.projectCanvas.folderMissing", { folder: project.folder });
     if (typeof nodeId !== "string") throw new CanvasOpRefusal("invalid_op", "nodeId is required");
     const document = this.deps.documents.read(project.id);
     const node = document.nodes.find((one) => one.id === nodeId);
     if (!node) throw new CanvasOpRefusal("not_found", `no node ${nodeId} on this canvas`);
     if (node.type !== "shot" && node.type !== "image" && node.type !== "video") throw new CanvasOpRefusal("invalid_op", "only shot, image and video nodes are generated");
-    if (actor.kind === "bot" && !madeBy(node, actor.botId)) throw new CanvasOpRefusal("not_yours", `${nodeId} was not put there by you; ask the person to generate it`);
+    if (requester.kind === "bot" && !madeBy(node, requester.botId)) throw new CanvasOpRefusal("not_yours", `${nodeId} was not put there by you; ask the person to generate it`);
     if (node.metadata?.status === "loading") throw new CanvasRefusal(409, { error: `${nodeId} is being generated already` });
-    if (actor.kind === "bot" && document.nodes.filter((one) => one.metadata?.status === "loading" && madeBy(one, actor.botId)).length >= BOT_GENERATIONS_AT_ONCE) {
-      throw new CanvasRefusal(429, { error: `${BOT_GENERATIONS_AT_ONCE} of your nodes are being generated already. Wait for them, or ask the person to generate more.` });
-    }
     const prompt = node.metadata?.prompt?.trim();
     if (!prompt) throw new CanvasOpRefusal("invalid_op", `${nodeId} has no prompt; give it one first`);
-    const byId = new Map(document.nodes.map((one) => [one.id, one]));
-    const references = document.connections
-      .filter((one) => one.toNodeId === node.id)
-      .flatMap((one) => {
-        const from = byId.get(one.fromNodeId);
-        return from && (from.type === "image" || from.type === "audio") && from.metadata?.file ? [from.metadata.file] : [];
-      });
-    const request: CanvasGenerationRequest = { projectId: project.id, nodeId: node.id, kind: node.type === "image" ? "image" : "video", prompt, settings: node.metadata?.settings ?? {}, references, by: actor };
-    const before = node.metadata?.status;
-    const setStatus = (next: (metadata: CanvasNodeMetadata) => CanvasNodeMetadata | null) => this.serverChange(project, (current) => {
-      const target = current.nodes.find((one) => one.id === node.id);
-      const metadata = target && next(target.metadata ?? {});
-      if (!target || !metadata) return null;
-      target.metadata = metadata;
-      return { nodes: [target.id], connections: [] };
-    });
-    setStatus((metadata) => ({ ...without(metadata, "jobId", "errorDetails"), status: "loading" }));
+    const before = Object.fromEntries(JOB_KEYS.flatMap((key) => (node.metadata?.[key] === undefined ? [] : [[key, node.metadata[key]]]))) as CanvasNodeMetadata;
+    const reserved = (metadata: CanvasNodeMetadata) => metadata.status === "loading" && metadata.jobId === undefined;
+    const restore = () => this.patchNode(project, node.id, (metadata) => (reserved(metadata) ? { ...without(metadata, ...JOB_KEYS), ...before } : null));
+    this.patchNode(project, node.id, (metadata) => ({ ...without(metadata, ...JOB_KEYS), status: "loading" }));
+    let started: { job: GenerationJob } | Refused;
     try {
-      const { jobId } = await this.deps.startGeneration(request, (update) => this.generationChanged(update));
-      setStatus((metadata) => (metadata.status === "loading" && metadata.jobId === undefined ? { ...metadata, jobId } : null));
-      return { jobId };
+      started = await this.deps.generation.start(project.id, generationInput(document, node, prompt), { requester });
     } catch (error) {
-      setStatus((metadata) => {
-        if (metadata.status !== "loading" || metadata.jobId !== undefined) return null;
-        return before ? { ...metadata, status: before } : without(metadata, "status");
-      });
+      restore();
       throw error;
     }
+    if ("refused" in started) {
+      restore();
+      return started;
+    }
+    const { job } = started;
+    this.patchNode(project, node.id, (metadata) => (reserved(metadata) ? { ...metadata, jobId: job.id } : null));
+    this.jobChanged(this.deps.generation.job(project.id, job.id) ?? job);
+    return started;
   }
 
-  /** A job's change: the node's status, and on success its files. An empty image or video node takes the first; the
-   * rest become nodes to its right, connected from it. Kept for an archived project too: the job began before. */
-  generationChanged(update: CanvasGenerationUpdate): void {
-    const project = this.deps.projects.list().find((one) => one.id === update.projectId);
+  /** A job's change, on its node: `loading` while it runs, then each file it made as a node to its right, connected from
+   * it, or its failure in `errorDetails`. A node given another job since, or none, is left as it is. Kept for an
+   * archived project too: the job began before. */
+  jobChanged(job: GenerationJob): void {
+    const project = this.deps.projects.list().find((one) => one.id === job.projectId);
     if (!project) return;
     try {
       this.serverChange(project, (document, bots) => {
-        const node = document.nodes.find((one) => one.id === update.nodeId);
-        if (!node || (node.metadata?.jobId !== undefined && node.metadata.jobId !== update.jobId)) return null;
-        const metadata: CanvasNodeMetadata = { ...node.metadata, status: update.status, jobId: update.jobId };
-        if (update.status === "error" && update.errorDetails) metadata.errorDetails = update.errorDetails;
-        else delete metadata.errorDetails;
-        const outputs = update.status === "success" ? [...(update.outputs ?? [])] : [];
-        if ((node.type === "image" || node.type === "video") && !metadata.file && outputs.length) metadata.file = outputs.shift();
-        node.metadata = metadata;
+        const node = document.nodes.find((one) => one.id === job.nodeId);
+        const metadata = node?.metadata;
+        if (!node || !metadata || metadata.jobId !== job.id) return null;
+        const status = nodeStatusOf(job.status);
+        const errorDetails = status === "error" ? job.failure?.error : undefined;
+        if (metadata.status === status && metadata.errorDetails === errorDetails) return null;
+        node.metadata = { ...without(metadata, "errorDetails"), status, ...(errorDetails ? { errorDetails } : {}) };
         const changed: CanvasChangeSet = { nodes: [node.id], connections: [] };
-        for (const file of outputs) {
+        for (const file of status === "success" ? job.files : []) {
           if (document.nodes.length >= CANVAS_MAX_NODES) break;
+          if (document.nodes.some((one) => one.metadata?.file?.path === file.path)) continue;
           const type = canvasFileNodeType(file.mime);
           const made: CanvasNode = { id: this.deps.newId(), type, title: file.name, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE[type], metadata: { file }, ...(node.createdBy ? { createdBy: node.createdBy } : {}) };
           made.position = placeAfter(document, node, made, bots);
@@ -366,7 +365,32 @@ export class ProjectCanvasService {
         return changed;
       });
     } catch (error) {
-      this.deps.log(`[project-canvas] ${update.projectId}: a generation result could not be put on the canvas (${error instanceof Error ? error.message : "unknown"})`);
+      this.deps.log(`[project-canvas] ${job.projectId}: job ${job.id} could not be shown on the canvas (${error instanceof Error ? error.message : "unknown"})`);
+    }
+  }
+
+  /** At start, each node still loading follows its job as generation has it now, since a change made while nobody
+   * listened is not told again. A node whose job is gone shows that; one that never got a job is no longer loading. */
+  reconcileGenerations(): void {
+    try {
+      for (const project of this.deps.projects.list()) {
+        try {
+          for (const node of this.deps.documents.read(project.id).nodes) {
+            if (node.metadata?.status !== "loading") continue;
+            const { jobId } = node.metadata;
+            const job = jobId ? this.deps.generation.job(project.id, jobId) : null;
+            if (job) this.jobChanged(job);
+            else this.patchNode(project, node.id, (metadata) => {
+              if (metadata.status !== "loading" || metadata.jobId !== jobId) return null;
+              return jobId ? { ...metadata, status: "error", errorDetails: userError("serverError.projectGeneration.jobGone").error } : without(metadata, "status");
+            });
+          }
+        } catch (error) {
+          this.deps.log(`[project-canvas] ${project.id}: its generations could not be followed again (${error instanceof Error ? error.message : "unknown"})`);
+        }
+      }
+    } catch (error) {
+      this.deps.log(`[project-canvas] generations could not be followed again (${error instanceof Error ? error.message : "unknown"})`);
     }
   }
 }

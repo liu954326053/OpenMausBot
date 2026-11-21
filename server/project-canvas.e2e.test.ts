@@ -203,7 +203,7 @@ describe("a project's canvas", () => {
     expect(answer(turn, 2)).toEqual({ isError: true, text: expect.stringMatching(/was not put there by you|only nodes you made|not yours/i) });
     expect(answer(turn, 3).isError).toBe(true);
     expect(JSON.parse(answer(turn, 4).text).nodes.map((node: CanvasNode) => node.id)).toEqual([shotId]);
-    expect(answer(turn, 5)).toEqual({ isError: true, text: "Generation is not set up yet." });
+    expect(answer(turn, 5)).toEqual({ isError: true, text: "Choose an MCP server for videos in this project's settings first." });
     const after = await canvas();
     keep("03-bot-adds-a-shot-and-is-refused.json", { tools: turn.evidence.filter((item) => item.step).map((item) => ({ step: item.step, response: item.response })), nodes: after.nodes, connections: after.connections, bots: after.bots });
     const shot = after.nodes.find((node) => node.id === shotId)!;

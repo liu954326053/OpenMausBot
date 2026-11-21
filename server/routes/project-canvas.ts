@@ -1,7 +1,9 @@
+import type { CanvasGenerateResponse } from "../../shared/project-canvas.ts";
 import { serveCanvasFile, uploadToCanvas } from "../project-canvas/files.ts";
 import { canvasRefusalOf, type ProjectCanvasService } from "../project-canvas/service.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
 import { userError } from "../user-errors.ts";
+import { statusOf } from "./project-generation.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
 const CANVAS = /^\/api\/team-projects\/([\w-]+)\/canvas(?:\/(ops|files|tasks|generate))?$/;
@@ -31,7 +33,8 @@ export function createProjectCanvasRoutes(service: ProjectCanvasService): RouteH
       if (part === "tasks" && method === "POST") return json(res, 202, await service.task(projectId, auth, await readBody(req)));
       if (part === "generate" && method === "POST") {
         const project = service.project(projectId);
-        return json(res, 202, await service.generate(project, { kind: "person" }, record(await readBody(req)).nodeId));
+        const outcome = await service.generate(project, { kind: "person" }, record(await readBody(req)).nodeId);
+        return "refused" in outcome ? json(res, statusOf(outcome.refused), outcome.refused) : json(res, 202, { jobId: outcome.job.id } satisfies CanvasGenerateResponse);
       }
       req.resume();
       return json(res, 405, { error: `${method} is not answered at ${path}` });

@@ -79,11 +79,11 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
   },
   {
     name: "canvas_generate",
-    description: "Generate a shot node you made, from its prompt and settings and the images connected into it. Its node shows the progress; what it makes lands to its right. Nothing is asked of the person, so generate only what the task needs.",
+    description: "Generate a shot, image or video node you made, from its prompt and settings and the image and audio nodes connected into it. Its node shows the progress; what it makes lands to its right, connected from it. Past a daily allowance a card asks the person to confirm first, so generate only what the task needs.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      properties: { node_id: { type: "string", maxLength: 200, description: "The shot node's id." } },
+      properties: { node_id: { type: "string", maxLength: 200, description: "The node's id." } },
       required: ["node_id"],
     },
   },

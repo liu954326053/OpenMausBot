@@ -3,19 +3,42 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { botNodeId, type CanvasFileRef, type CanvasGenerationUpdate, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
+import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
+import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import { parseCanvasOps } from "./ops.ts";
-import { BOT_GENERATIONS_AT_ONCE, CanvasRefusal, canvasRefusalOf, ProjectCanvasService, type ProjectCanvasServiceDeps } from "./service.ts";
+import { canvasRefusalOf, ProjectCanvasService, type ProjectCanvasServiceDeps } from "./service.ts";
 
 let dir: string;
 let folder: string;
 const auth = {} as RequestAuth;
 const person = { kind: "person" } as const;
 const writer = { kind: "bot", botId: "writer" } as const;
+
+const jobOf = (id: string, nodeId: string): GenerationJob => ({
+  id, projectId: "p1", nodeId, kind: "image", settings: DEFAULT_GENERATION_SETTINGS.image.defaults, status: "queued", requester: person, prompt: "A poster",
+  references: { images: [], audio: [] }, server: "gen", tool: "generate_image", files: [], createdAt: 1, updatedAt: 1,
+});
+
+function fakeGeneration() {
+  const jobs = new Map<string, GenerationJob>();
+  const started: Array<{ input: StartGenerationInput; requester: GenerationRequester }> = [];
+  let refusal: GenerationFailure | undefined;
+  const api: ProjectCanvasServiceDeps["generation"] = {
+    start: async (projectId, input, { requester }) => {
+      started.push({ input, requester });
+      if (refusal) return { refused: refusal };
+      const job = { ...jobOf(`job-${jobs.size + 1}`, input.nodeId), projectId, requester, prompt: input.prompt };
+      jobs.set(job.id, job);
+      return { job };
+    },
+    job: (_projectId, jobId) => jobs.get(jobId) ?? null,
+  };
+  return { api, jobs, started, refuseWith: (failure: GenerationFailure) => { refusal = failure; } };
+}
 
 beforeEach(() => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), "omb-canvas-service-")));
@@ -37,6 +60,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     plain: { id: "plain", name: "Plain", threadId: "plain-main" },
   };
   let next = 0;
+  const generation = fakeGeneration();
   const service = new ProjectCanvasService({
     store: {
       bot: (id) => (bots[id] ?? null) as BotRecord | null,
@@ -56,9 +80,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
       return { ok: true, threadId: message.threadId, message: { id: "sent-1", at: 1, role: "user", kind: "text", text: message.text } };
     },
     parentOf: () => undefined,
-    startGeneration: async () => {
-      throw new CanvasRefusal(503, { error: "Generation is not set up yet." });
-    },
+    generation: generation.api,
     openCards: () => [],
     queuedThreads: () => new Set(),
     saveImage: () => ({ path: join(dir, "attachments", "saved.png") }),
@@ -66,7 +88,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     log: () => undefined,
     ...patch,
   });
-  return { service, project, events, sent, threads };
+  return { service, project, events, sent, threads, generation };
 }
 
 const opsOf = (...ops: unknown[]): CanvasOp[] => parseCanvasOps(ops);
@@ -154,40 +176,90 @@ describe("a task sent from the canvas", () => {
 describe("generating a node", () => {
   const shot = (prompt = "A bride alone at the altar") => ({ type: "add_node", nodeType: "shot", metadata: { prompt } });
 
-  it("is refused while generation is not set up, and leaves the node as it was", async () => {
-    const { service, project } = setup();
-    const id = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
-    await expect(service.generate(project, person, id)).rejects.toMatchObject({ status: 503, message: "Generation is not set up yet." });
-    expect(nodeOf(service, id)!.metadata).toEqual({ prompt: "A bride alone at the altar" });
+  const file = (path: string, mime = "image/png"): CanvasFileRef => ({ path, mime, bytes: 3, name: path.split("/").at(-1)! });
+
+  it("starts the node's prompt, settings and title with the files connected into it, and shows the node loading", async () => {
+    const { service, project, generation } = setup();
+    const [still, song, poster] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "audio", metadata: { file: file("refs/song.mp3", "audio/mpeg") } },
+      { type: "add_node", nodeType: "image", title: " Poster ", metadata: { prompt: "A poster", settings: { aspect: "16:9", count: 2 } } },
+    )).nodeIds as [string, string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: poster }, { type: "connect_nodes", fromNodeId: song, toNodeId: poster }));
+    const take = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
+    expect(await service.generate(project, person, poster)).toEqual({ job: expect.objectContaining({ id: "job-1" }) });
+    await service.generate(project, person, take);
+    expect(generation.started).toEqual([
+      { input: { kind: "image", nodeId: poster, prompt: "A poster", references: { images: ["refs/still.png"], audio: ["refs/song.mp3"] }, overrides: { aspect: "16:9", count: 2 }, name: "Poster" }, requester: person },
+      { input: { kind: "video", nodeId: take, prompt: "A bride alone at the altar", references: { images: [], audio: [] } }, requester: person },
+    ]);
+    expect(nodeOf(service, poster)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
   });
 
-  it("lets a bot ask only for its own nodes, and a few at a time", async () => {
-    let jobs = 0;
-    const { service, project } = setup({ startGeneration: async () => ({ jobId: `job-${++jobs}` }) });
+  it("answers generation's refusal as it is, and leaves the node as it was", async () => {
+    const { service, project, generation } = setup();
+    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", status: "error", errorDetails: "Timed out.", jobId: "old" } })).nodeIds[0]!;
+    const before = nodeOf(service, id)!.metadata;
+    const refusal: GenerationFailure = { code: "no_server", error: "Choose an MCP server for videos in this project's settings first.", errorKey: "serverError.projectGeneration.noVideoServer" };
+    generation.refuseWith(refusal);
+    expect(await service.generate(project, person, id)).toEqual({ refused: refusal });
+    expect(nodeOf(service, id)!.metadata).toEqual(before);
+  });
+
+  it("lets a bot start only its own nodes, and a node only once while its job runs", async () => {
+    const { service, project, generation } = setup();
     const theirs = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
     await expect(service.generate(project, writer, theirs)).rejects.toMatchObject({ code: "not_yours" });
-    const mine = service.apply(project, writer, opsOf(...Array.from({ length: BOT_GENERATIONS_AT_ONCE + 1 }, () => shot()))).nodeIds;
-    for (const id of mine.slice(0, BOT_GENERATIONS_AT_ONCE)) expect(await service.generate(project, writer, id)).toEqual({ jobId: expect.stringMatching(/^job-/) });
-    await expect(service.generate(project, writer, mine.at(-1))).rejects.toMatchObject({ status: 429 });
-    await expect(service.generate(project, writer, mine[0])).rejects.toMatchObject({ status: 409 });
-    expect(nodeOf(service, mine[0]!)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
+    const mine = service.apply(project, writer, opsOf(shot())).nodeIds[0]!;
+    await service.generate(project, writer, mine);
+    await expect(service.generate(project, writer, mine)).rejects.toMatchObject({ status: 409 });
+    expect(generation.started.map((one) => one.requester)).toEqual([writer]);
   });
 
-  it("puts a finished job's first file in an empty image node and the rest to its right, connected from it", async () => {
-    let told!: (update: CanvasGenerationUpdate) => void;
-    const { service, project } = setup({ startGeneration: async (_request, onUpdate) => { told = onUpdate; return { jobId: "j1" }; } });
-    const id = service.apply(project, person, opsOf({ type: "add_node", nodeType: "image", position: { x: 0, y: 0 }, metadata: { prompt: "A poster" } })).nodeIds[0]!;
-    await service.generate(project, person, id);
-    const file = (name: string): CanvasFileRef => ({ path: `产出/${name}`, mime: "image/png", bytes: 3, name });
-    told({ projectId: "p1", nodeId: id, jobId: "other", status: "success", outputs: [file("stray.png")] });
-    told({ projectId: "p1", nodeId: id, jobId: "j1", status: "success", outputs: [file("a.png"), file("b.png")] });
+  it("shows a job on its node: each file it made as a node to its right, connected from it, once", async () => {
+    const { service, project, generation } = setup();
+    const id = service.apply(project, writer, opsOf(shot("A poster"))).nodeIds[0]!;
+    await service.generate(project, writer, id);
+    service.jobChanged({ ...jobOf("stray", id), status: "done", files: [file("产出/视频/stray.mp4", "video/mp4")] });
+    const done: GenerationJob = { ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/视频/a.mp4", "video/mp4"), file("产出/视频/b.mp4", "video/mp4")] };
+    service.jobChanged(done);
+    service.jobChanged(done);
     const view = service.botView(project);
     const node = view.nodes.find((one) => one.id === id)!;
-    expect(node.metadata).toEqual({ prompt: "A poster", status: "success", jobId: "j1", file: file("a.png") });
-    const rest = view.nodes.find((one) => one.metadata?.file?.name === "b.png")!;
-    expect(rest).toMatchObject({ type: "image", position: { x: node.position.x + node.width + 80, y: node.position.y }, createdBy: person });
-    expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: id, toNodeId: rest.id, kind: "content" }));
-    expect(view.nodes.some((one) => one.metadata?.file?.name === "stray.png")).toBe(false);
+    expect(node.metadata).toEqual({ prompt: "A poster", status: "success", jobId: "job-1" });
+    const made = view.nodes.filter((one) => one.metadata?.file);
+    expect(made.map((one) => [one.type, one.title, one.metadata!.file!.path])).toEqual([["video", "a.mp4", "产出/视频/a.mp4"], ["video", "b.mp4", "产出/视频/b.mp4"]]);
+    expect(made.map((one) => one.position.x)).toEqual([node.position.x + node.width + 80, node.position.x + node.width + 80]);
+    expect(made[1]!.position.y).toBeGreaterThan(made[0]!.position.y);
+    expect(made.every((one) => one.createdBy?.kind === "bot" && one.createdBy.botId === "writer")).toBe(true);
+    for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: id, toNodeId: one.id, kind: "content" }));
+  });
+
+  it("puts a failure in errorDetails, and a cancelled job leaves the node idle", async () => {
+    const { service, project, generation } = setup();
+    const [failed, cancelled] = service.apply(project, person, opsOf(shot(), shot())).nodeIds as [string, string];
+    await service.generate(project, person, failed);
+    await service.generate(project, person, cancelled);
+    const failure = { code: "task_failed", error: "The server said: no faces.", errorKey: "serverError.projectGeneration.taskFailed", reason: "no faces" } as const;
+    service.jobChanged({ ...generation.jobs.get("job-1")!, status: "failed", failure });
+    service.jobChanged({ ...generation.jobs.get("job-2")!, status: "cancelled" });
+    expect(nodeOf(service, failed)!.metadata).toMatchObject({ status: "error", errorDetails: "The server said: no faces." });
+    expect(nodeOf(service, cancelled)!.metadata).toMatchObject({ status: "idle", jobId: "job-2" });
+  });
+
+  it("follows each loading node again at start: an ended job's outcome, a job generation no longer has, a node that never got one", () => {
+    const { service, project, generation } = setup();
+    const [ended, gone, never] = service.apply(project, person, opsOf(
+      { ...shot(), metadata: { prompt: "A", status: "loading", jobId: "j-ended" } },
+      { ...shot(), metadata: { prompt: "B", status: "loading", jobId: "j-gone" } },
+      { ...shot(), metadata: { prompt: "C", status: "loading" } },
+    )).nodeIds as [string, string, string];
+    generation.jobs.set("j-ended", { ...jobOf("j-ended", ended), kind: "video", settings: DEFAULT_GENERATION_SETTINGS.video.defaults, status: "done", files: [file("产出/视频/a.mp4", "video/mp4")] });
+    service.reconcileGenerations();
+    expect(nodeOf(service, ended)!.metadata).toMatchObject({ status: "success" });
+    expect(service.botView(project).nodes.find((one) => one.metadata?.file?.path === "产出/视频/a.mp4")).toMatchObject({ type: "video" });
+    expect(nodeOf(service, gone)!.metadata).toMatchObject({ status: "error", errorDetails: "That generation is no longer there." });
+    expect(nodeOf(service, never)!.metadata).toEqual({ prompt: "C" });
   });
 });
 

@@ -2,6 +2,7 @@ import type { ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
 
 import { botNodeId, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import type { GenerationFailure, GenerationJob } from "../../shared/project-generation.ts";
 import type { HelperToolContext } from "../routes/helper-tools.ts";
 import { PASS } from "../routes/table.ts";
 import { canvasStateText, createProjectCanvasToolRoutes, PROJECT_CANVAS_TOOL_PATHS } from "./agent-tools.ts";
@@ -64,21 +65,44 @@ describe("what a bot reads of its project's canvas", () => {
 });
 
 describe("the bots' canvas routes", () => {
-  function call(path: string, refuse: boolean) {
+  function call(path: string, refuse: boolean, generated: Awaited<ReturnType<ProjectCanvasService["generate"]>> = { refused: failure("no_server") }) {
     const answers: Array<{ status: number; body: unknown }> = [];
+    const asked: unknown[] = [];
     const service = {
       projectOfBot: () => {
         if (refuse) throw new CanvasRefusal(403, { error: "Only the bots of a project have its canvas." });
         return { id: "p1" };
       },
       botView: () => snapshot(),
+      generate: async () => generated,
+      nodeOf: (_projectId: string, nodeId: string) => snapshot().nodes.find((one) => one.id === nodeId),
     } as unknown as ProjectCanvasService;
+    const cards = { ask: (request: unknown) => { asked.push(request); return { requestId: "r1", already: asked.length > 1 }; } };
     const ctx = {
-      method: "POST", path, res: {} as ServerResponse, botId: "writer", threadId: "t1", readBody: async () => ({}), folders: {},
+      method: "POST", path, res: {} as ServerResponse, botId: "writer", threadId: "t1", readBody: async () => ({ node_id: "shot" }), folders: {},
       json: (_res: ServerResponse, status: number, body: unknown) => { answers.push({ status, body }); },
     } as unknown as HelperToolContext & { threadId: string };
-    return { run: () => createProjectCanvasToolRoutes(service)(ctx), answers };
+    return { run: () => createProjectCanvasToolRoutes(service, cards)(ctx), answers, asked };
   }
+  const failure = (code: GenerationFailure["code"]): GenerationFailure => ({ code, error: `Refused: ${code}.`, errorKey: `serverError.projectGeneration.${code}` });
+
+  it("start a bot's generation, answer a refusal with generation's words and status, and put one past the ceiling on a card", async () => {
+    const started = call(PROJECT_CANVAS_TOOL_PATHS.generate, false, { job: { id: "job-1" } as GenerationJob });
+    await started.run();
+    expect(started.answers).toEqual([{ status: 202, body: { text: expect.stringContaining("started (job job-1)") } }]);
+    const refused = call(PROJECT_CANVAS_TOOL_PATHS.generate, false);
+    await refused.run();
+    expect(refused.answers).toEqual([{ status: 422, body: { error: "Refused: no_server." } }]);
+    expect(refused.asked).toEqual([]);
+    const past = call(PROJECT_CANVAS_TOOL_PATHS.generate, false, { refused: failure("confirmation_needed") });
+    await past.run();
+    await past.run();
+    const asked = { projectId: "p1", botId: "writer", threadId: "t1", nodeId: "shot", title: "Shot", failure: failure("confirmation_needed") };
+    expect(past.asked).toEqual([asked, asked]);
+    expect(past.answers.map((one) => one.status)).toEqual([200, 200]);
+    expect(past.answers[0]!.body).toEqual({ text: expect.stringMatching(/^Refused: confirmation_needed\. A card now asks the person to confirm it/) });
+    expect(past.answers[1]!.body).toEqual({ text: expect.stringMatching(/^A card already asks the person/) });
+  });
 
   it("refuse a bot that is not one of a project's bots in words, and pass every other path on", async () => {
     const refused = call(PROJECT_CANVAS_TOOL_PATHS.read, true);

@@ -1,5 +1,7 @@
 import { botNodeId, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import { statusOf } from "../routes/project-generation.ts";
 import { PASS } from "../routes/table.ts";
+import type { CanvasGenerationCards } from "./generation-card.ts";
 import { CanvasRefusal, canvasRefusalOf, type ProjectCanvasService } from "./service.ts";
 import type { ProjectCanvasToolRoute } from "./tool-route.ts";
 
@@ -13,6 +15,9 @@ const TOOL_OF_PATH = new Map<string, keyof typeof PROJECT_CANVAS_TOOL_PATHS>(Obj
 /** The newest content nodes the whole canvas lists; one node at a time reads the rest. */
 const LISTED_NODES = 300;
 const SHORT_CHARS = 240;
+const CARD_TITLE_CHARS = 60;
+const ASKED = "A card now asks the person to confirm it, and nothing is generated until they press Confirm. Say so in one short line and end your turn: their answer reaches you once they give it.";
+const ALREADY_ASKED = "A card already asks the person to confirm generating this node. End your turn: their answer reaches you once they give it.";
 
 const record = (body: unknown): Record<string, unknown> => (body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {});
 const shortened = (text: string) => (text.length > SHORT_CHARS ? `${text.slice(0, SHORT_CHARS / 2)}...` : text);
@@ -64,7 +69,7 @@ export function canvasStateText(snapshot: CanvasSnapshot, me: string, ask: Recor
 }
 
 /** Security: every call is checked against the bot the capability names: only a project's bots reach its canvas. */
-export function createProjectCanvasToolRoutes(service: ProjectCanvasService): ProjectCanvasToolRoute {
+export function createProjectCanvasToolRoutes(service: ProjectCanvasService, cards: Pick<CanvasGenerationCards, "ask">): ProjectCanvasToolRoute {
   return async (ctx) => {
     const tool = ctx.method === "POST" ? TOOL_OF_PATH.get(ctx.path) : undefined;
     if (!tool) return PASS;
@@ -77,8 +82,17 @@ export function createProjectCanvasToolRoutes(service: ProjectCanvasService): Pr
         const outcome = service.applyRequest(project, actor, { ops: body.ops });
         return void ctx.json(ctx.res, 200, { text: JSON.stringify(outcome) });
       }
-      const { jobId } = await service.generate(project, actor, body.node_id);
-      return void ctx.json(ctx.res, 202, { text: `Generation of ${String(body.node_id)} started (job ${jobId}). Its node shows how it goes; what it makes lands to its right, connected from it.` });
+      const nodeId = String(body.node_id);
+      const outcome = await service.generate(project, actor, body.node_id);
+      if ("job" in outcome) {
+        return void ctx.json(ctx.res, 202, { text: `Generation of ${nodeId} started (job ${outcome.job.id}). Its node shows how it goes; what it makes lands to its right, connected from it.` });
+      }
+      const failure = outcome.refused;
+      if (failure.code !== "confirmation_needed") return void ctx.json(ctx.res, statusOf(failure), { error: failure.error });
+      const node = service.nodeOf(project.id, nodeId);
+      const title = node?.title.trim() || node?.metadata?.prompt?.trim().slice(0, CARD_TITLE_CHARS) || nodeId;
+      const asked = cards.ask({ projectId: project.id, botId: ctx.botId, threadId: ctx.threadId, nodeId, title, failure });
+      return void ctx.json(ctx.res, 200, { text: asked.already ? ALREADY_ASKED : `${failure.error} ${ASKED}` });
     } catch (error) {
       const refused = canvasRefusalOf(error);
       if (!refused) throw error;
