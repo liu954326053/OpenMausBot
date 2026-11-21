@@ -25,7 +25,7 @@ import {
 import { diffCanvasOps } from "@/lib/project-canvas/ops";
 import { clickSelection, dragNodeIds, nodesInRect, rectFromPoints } from "@/lib/project-canvas/selection";
 import { relatedNodeIds, useCanvasUi, type CanvasTool } from "./canvas-ui";
-import { CanvasConnections, type GhostFrame } from "./CanvasConnections";
+import { CanvasConnections, ghostKey, type GhostFrame } from "./CanvasConnections";
 import { CanvasNodeView, StageHandlersContext, type StageHandlers } from "./CanvasNodeView";
 
 const DRAG_THRESHOLD = 3;
@@ -266,11 +266,14 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
   const shownNodes = displayNodes.filter((node) => intersects(node, bounds) || selection.has(node.id) || node.id === ui.panelNodeId);
   const related = relatedNodeIds(selection, snapshot.connections);
   const activeConnections = new Set(snapshot.connections.filter((connection) => selection.has(connection.fromNodeId) || selection.has(connection.toNodeId)).map((connection) => connection.id));
-  const ghosts: GhostFrame[] = displayNodes.flatMap((node) => {
-    const kind = generationKindOf(node);
-    if (!kind || node.metadata?.status !== "loading" || takesResultInPlace(node)) return [];
-    return [{ sourceId: node.id, frame: nextOutputFrame(node, kind, displayNodes, snapshot.connections) }];
-  });
+  const ghosts: GhostFrame[] = [
+    ...displayNodes.flatMap((node) => {
+      const kind = generationKindOf(node);
+      if (!kind || node.metadata?.status !== "loading" || takesResultInPlace(node)) return [];
+      return [{ sourceId: node.id, frame: nextOutputFrame(node, kind, displayNodes, snapshot.connections, ui.state.replies), label: t("projectCanvas.node.generating") }];
+    }),
+    ...ui.state.replies.map((reply) => ({ sourceId: reply.nodeId, frame: reply, label: t("projectCanvas.text.writing", { name: snapshot.bots[reply.botId]?.name ?? "" }), replyNodeId: reply.id })),
+  ];
   let draft: string | null = null;
   if (interaction?.kind === "connect") {
     const from = displayById.get(interaction.nodeId);
@@ -344,16 +347,17 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
           {shownNodes.map((node) => (
             <CanvasNodeView key={node.id} node={node} selected={selection.has(node.id)} related={related.has(node.id)} panelOpen={ui.panelNodeId === node.id} panelHidden={Boolean(interaction)} />
           ))}
-          {ghosts.map(({ sourceId, frame }) => (
+          {ghosts.map((ghost) => (
             <div
-              key={`ghost:${sourceId}`}
+              key={`ghost:${ghostKey(ghost)}`}
               role="status"
-              data-generation-ghost={sourceId}
+              data-generation-ghost={ghost.replyNodeId ? undefined : ghost.sourceId}
+              data-reply-placeholder={ghost.replyNodeId}
               className="absolute z-10 flex items-center justify-center gap-2 rounded-xl border border-dashed border-ink-tertiary text-[12px] text-ink-secondary"
-              style={{ left: frame.position.x, top: frame.position.y, width: frame.width, height: frame.height }}
+              style={{ left: ghost.frame.position.x, top: ghost.frame.position.y, width: ghost.frame.width, height: ghost.frame.height }}
             >
               <LoaderCircle size={16} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />
-              {t("projectCanvas.node.generating")}
+              {ghost.label}
             </div>
           ))}
         </div>

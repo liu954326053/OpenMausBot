@@ -11,7 +11,7 @@ import { openCardRows } from "../message-db.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { createProjectCanvasRoutes } from "../routes/project-canvas.ts";
 import type { RouteHandler } from "../routes/table.ts";
-import { onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
+import { isSteeredMessageQueued, onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
 import type { Store } from "../store.ts";
 import { onTeamFlowsChange, projectParents } from "../team-flow/flows.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
@@ -67,6 +67,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     generation: deps.generation,
     openCards: openCardRows,
     queuedThreads,
+    stillQueued: isSteeredMessageQueued,
     saveImage: (bytes, mime) => saveImage(bytes, mime),
     language: deps.language,
     newId: randomUUID,

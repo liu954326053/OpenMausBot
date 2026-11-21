@@ -4,9 +4,10 @@
 // through the app, a node generates a picture and stops a generation, a config node generates from its inputs on a
 // page in Chinese, its references numbered in Chinese and its failure said in Chinese, an empty image node on that
 // page generates into itself and then beside itself, its @ list starting with its own picture and naming nothing a
-// generation won't take, a text node with text there names its own text first in its @, a clip too, and gets the bot's
-// revision in a new node to its right, an empty text node takes the reply itself, a note's task in English is answered
-// beside the note, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
+// generation won't take, a text node with text there names its own text first in its @, a clip too, and shows the bot
+// writing its revision as a placeholder to its right, through a reload, that the revision takes and that goes when a
+// revision is stopped or fails, an empty text node takes the reply itself, a note's task in English is answered in the
+// same way beside the note, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
 // drawn clear of the others, a search for the writer names it on the project's one row and that row opens the canvas
 // with the writer chosen, a project archived while open gives way to the main bot, and the project's settings and a
@@ -570,11 +571,42 @@ type Box = { x: number; y: number; w: number; h: number };
       const reviseRequest = "REVISE-THE-LOGLINE 把 @文本 1 改得更紧凑，参考 @图片 1 和 @视频 1";
       plan([{ key: "revise", match: ["REVISE-THE-LOGLINE"], gateFile: reviseGate, reply: revised }]);
       await askInChinese(reviseRequest);
-      await waitFor(`document.querySelector(${JSON.stringify(node(loglineId))})?.textContent.includes(${JSON.stringify(`${writer.name} 正在写`)})`, "the writer writing from the logline on the open canvas");
-      expect((await snapshot()).bots[writer.id]!.writingInto).toEqual([loglineId]);
+      const placeholders = "[data-reply-placeholder]";
+      const placeholderOf = (id: string) => `[data-reply-placeholder=${JSON.stringify(id)}]`;
+      const writingShown = `${writer.name} 正在写…`;
+      await waitFor(`document.querySelector(${JSON.stringify(placeholders)})?.textContent === ${JSON.stringify(writingShown)}`, "the revision's placeholder beside the logline on the open canvas");
+      const whileWriting = await snapshot();
+      const [upcoming] = whileWriting.bots[writer.id]!.writingBeside!;
+      const loglineWhileWriting = whileWriting.nodes.find((one) => one.id === loglineId)!;
+      expect(whileWriting.bots[writer.id]!.writingBeside).toEqual([{ id: expect.any(String), nodeId: loglineId, position: { x: loglineWhileWriting.position.x + loglineWhileWriting.width + 80, y: expect.any(Number) }, width: 340, height: 240 }]);
+      expect(upcoming!.position.y).toBeGreaterThanOrEqual(loglineWhileWriting.position.y);
+      expect(whileWriting.bots[writer.id]!.writingInto).toBeUndefined();
+      expect(whileWriting.nodes.some((one) => one.id === upcoming!.id)).toBe(false);
+      expect(await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(node(upcoming!.id))}))`)).toBe(false);
+      expect(await text(node(loglineId))).not.toContain("正在写");
+      const ghostLink = `[data-ghost-connection=${JSON.stringify(upcoming!.id)}]`;
+      expect(await evaluate(`["fill", "stroke", "stroke-width", "stroke-dasharray"].map((name) => document.querySelector(${JSON.stringify(ghostLink)})?.getAttribute(name))`)).toEqual(["none", "var(--color-ink-tertiary)", "2", "5 5"]);
+      expect(await evaluate(`(() => { const shown = document.querySelector(${JSON.stringify(placeholderOf(upcoming!.id))}); return { border: getComputedStyle(shown).borderTopStyle, spinning: Boolean(shown.querySelector("svg.animate-spin")) }; })()`)).toEqual({ border: "dashed", spinning: true });
+      await focusOn(loglineTitle);
+      await shot("34-revision-placeholder-beside-the-logline.png");
+
+      await browser("open", `${pageUrl}&lang=zh`);
+      await waitFor(`document.querySelector(${JSON.stringify(node(loglineId))}) && document.querySelector('button[aria-label="${fitZh}"]')`, "the canvas in Chinese after a reload", 120_000);
+      await focusOn(loglineTitle);
+      await waitFor(`document.querySelector(${JSON.stringify(placeholderOf(upcoming!.id))})?.textContent === ${JSON.stringify(writingShown)}`, "the revision's placeholder after a reload");
+      expect(await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(ghostLink)}))`)).toBe(true);
+      expect((await snapshot()).bots[writer.id]!.writingBeside).toEqual([upcoming]);
+      const placeholderBox = (await box(placeholderOf(upcoming!.id)))!;
+      await shot("35-revision-placeholder-after-a-reload.png");
+
       writeFileSync(reviseGate, "go");
       await expect.poll(async () => (await results(loglineId)).map((one) => one.metadata?.content), { timeout: 30_000, message: "the revision beside the logline" }).toEqual([revised]);
       const [revision] = await results(loglineId);
+      expect(revision).toMatchObject({ id: upcoming!.id, position: upcoming!.position, width: upcoming!.width, height: upcoming!.height });
+      await waitFor(`document.querySelector(${JSON.stringify(node(revision!.id))}) && !document.querySelector(${JSON.stringify(placeholders)})`, "the revision drawn where its placeholder was");
+      const revisionBox = (await box(node(revision!.id)))!;
+      for (const side of ["x", "y", "w", "h"] as const) expect(Math.abs(revisionBox[side] - placeholderBox[side])).toBeLessThan(1);
+      evidence.placeholder = { upcoming, shown: placeholderBox, revision: revisionBox };
       await fitUntilDrawn(revision!.id, "the revision on the open canvas");
       await waitFor(`document.querySelector(${JSON.stringify(node(revision!.id))})?.textContent.includes(${JSON.stringify(revised)})`, "the revision's text on the open canvas");
       await settled();
@@ -584,6 +616,7 @@ type Box = { x: number; y: number; w: number; h: number };
       expect(revision).toMatchObject({ type: "text", title: replyTitle(reviseRequest), createdBy: { kind: "bot", botId: writer.id }, metadata: { content: revised } });
       expect(revision!.position.x).toBeGreaterThanOrEqual(logline.position.x + logline.width);
       expect(afterRevision.bots[writer.id]!.writingInto).toBeUndefined();
+      expect(afterRevision.bots[writer.id]!.writingBeside).toBeUndefined();
       const revisionAsked = await sentToWriter("REVISE-THE-LOGLINE");
       const framed = `请根据要求修改以下文本。\n\n原文：\n文本 1 "${loglineTitle}":\n\n> ${loglineText}\n\n修改要求：\n${reviseRequest}\n\n项目画布上文本节点 "${loglineTitle}" 引用的内容：\n\n图片 1 "${sceneTitle}":\n\n<attached-image `;
       expect(revisionAsked.slice(0, framed.length)).toBe(framed);
@@ -591,6 +624,49 @@ type Box = { x: number; y: number; w: number; h: number };
       evidence.revision = { mentions: loglineMentions, thumbs: loglineThumbs, logline, revision, asked: revisionAsked };
       await focusOn(loglineTitle);
       await shot("20-revision-in-a-new-node-to-its-right.png");
+
+      const loglineState = async () => {
+        const now = await snapshot();
+        return { logline: now.nodes.find((one) => one.id === loglineId), replies: (await results(loglineId)).map((one) => one.id), nodes: now.nodes.length };
+      };
+      const asRevised = await loglineState();
+      const askHeld = async (request: string, what: string) => {
+        await openPanelOf(loglineId, `the logline's panel for ${what}`);
+        await askInChinese(request);
+        await waitFor(`document.querySelector(${JSON.stringify(placeholders)})?.textContent === ${JSON.stringify(writingShown)}`, `the placeholder of ${what}`);
+        const pending = (await snapshot()).bots[writer.id]!.writingBeside!;
+        expect(pending).toEqual([expect.objectContaining({ nodeId: loglineId, width: 340, height: 240 })]);
+        return pending[0]!;
+      };
+      const stoppedReply = "这一句不该出现在画布上";
+      plan([{ key: "stopped", match: ["STOP-THIS-REVISION"], gateFile: join(fixture.dataDir, "gate-never"), reply: stoppedReply }]);
+      const stopped = await askHeld("STOP-THIS-REVISION 换一个开头", "a revision to stop");
+      await waitFor(`[...document.querySelectorAll("[data-node-panel] button")].some((button) => button.textContent.trim() === "停止")`, "Stop in the logline's panel");
+      await clickButton("停止", "[data-node-panel]");
+      await settled();
+      await waitFor(`!document.querySelector(${JSON.stringify(placeholders)}) && !document.querySelector(${JSON.stringify(`[data-ghost-connection=${JSON.stringify(stopped.id)}]`)})`, "the stopped revision's placeholder gone from the open canvas");
+      expect((await snapshot()).bots[writer.id]!.writingBeside).toBeUndefined();
+      expect(await loglineState()).toEqual(asRevised);
+      expect((await messages(conversation)).some((line) => line.text?.includes(stoppedReply))).toBe(false);
+      await focusOn(loglineTitle);
+      await shot("36-stopped-revision-leaves-the-logline-as-it-was.png");
+
+      const failGate = join(fixture.dataDir, "gate-fail-revision");
+      plan([{ key: "failed", match: ["FAIL-THIS-REVISION"], gateFile: failGate, fail: true }]);
+      const failing = await askHeld("FAIL-THIS-REVISION 改成第一人称", "a revision that fails");
+      writeFileSync(failGate, "go");
+      await settled();
+      await waitFor(`!document.querySelector(${JSON.stringify(placeholders)})`, "the failed revision's placeholder gone from the open canvas");
+      const afterFailure = await snapshot();
+      expect(afterFailure.bots[writer.id]).toMatchObject({ status: "error" });
+      expect(afterFailure.bots[writer.id]!.writingBeside).toBeUndefined();
+      expect(await loglineState()).toEqual(asRevised);
+      evidence.unwritten = { stopped, failing, writerAfterFailure: afterFailure.bots[writer.id], logline: asRevised };
+      await focusOn(loglineTitle);
+      await shot("37-failed-revision-leaves-the-logline-as-it-was.png");
+      await focusOn(writer.name);
+      await waitFor(`document.querySelector(${JSON.stringify(writerNode)})?.textContent.includes("出错")`, "the failed revision on the writer's node, where a failed task shows");
+      await shot("38-failed-revision-shown-on-the-writer.png");
 
       const taglineTitle = "宣传语";
       const tagline = "雨不停，婚礼照常。";
@@ -631,9 +707,13 @@ type Box = { x: number; y: number; w: number; h: number };
       await browser("find", "role", "textbox", "fill", noteRequest, "--name", "What to write", "--exact");
       await revealPanelEnd();
       await clickButton(`Ask ${writer.name}`, "[data-node-panel]");
-      await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes("is writing")`, "the writer writing from the note on the open canvas");
-      const writingInto = (await snapshot()).bots[writer.id]!.writingInto;
-      expect(writingInto).toEqual([outsideId]);
+      await waitFor(`document.querySelector(${JSON.stringify(placeholders)})?.textContent === ${JSON.stringify(`${writer.name} is writing…`)}`, "the reply's placeholder beside the note on the open canvas");
+      const noteWriter = (await snapshot()).bots[writer.id]!;
+      expect(noteWriter.writingBeside).toEqual([expect.objectContaining({ nodeId: outsideId })]);
+      expect(noteWriter.writingInto).toBeUndefined();
+      expect(await text(node(outsideId))).not.toContain("is writing");
+      const [noteReply] = noteWriter.writingBeside!;
+      await focusOn("From the director", { list: "Nodes", search: "Search nodes", close: "Close" });
       await shot("22-writing-from-a-text-node.png");
       writeFileSync(noteGate, "go");
       const ruleNode = async () => (await results(outsideId)).find((one) => one.type === "text");
@@ -647,10 +727,11 @@ type Box = { x: number; y: number; w: number; h: number };
       const filled = await snapshot();
       const noteAfter = filled.nodes.find((one) => one.id === outsideId)!;
       expect(noteAfter).toMatchObject({ type: "text", createdBy: { kind: "person" }, metadata: { content: "Keep the rain in every scene." } });
-      expect(replied).toMatchObject({ type: "text", title: replyTitle(noteRequest), createdBy: { kind: "bot", botId: writer.id }, metadata: { content: rule } });
+      expect(replied).toMatchObject({ id: noteReply!.id, type: "text", title: replyTitle(noteRequest), createdBy: { kind: "bot", botId: writer.id }, metadata: { content: rule }, position: noteReply!.position, width: noteReply!.width, height: noteReply!.height });
       expect(replied.position.x).toBeGreaterThanOrEqual(noteAfter.position.x + noteAfter.width);
       expect(filled.bots[writer.id]!.writingInto).toBeUndefined();
-      evidence.reply = { writingInto, note: noteAfter, reply: replied };
+      expect(filled.bots[writer.id]!.writingBeside).toBeUndefined();
+      evidence.reply = { placeholder: noteReply, note: noteAfter, reply: replied };
       await shot("23-reply-beside-the-text-node.png");
 
       const writersShot = async () => (await snapshot()).nodes.find((one) => one.type === "shot" && one.createdBy?.kind === "bot");

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel.ts";
+import { failedTurnTool } from "../../shared/failed-turn.ts";
 import { CANVAS_CONTENT_MAX_CHARS } from "../../shared/project-canvas.ts";
 import type { Message } from "../store.ts";
-import { replyText, TaskTargets } from "./task-targets.ts";
+import { replyText, type TaskTarget, TaskTargets } from "./task-targets.ts";
 
 const KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
 const where = { projectId: "p1", botId: "writer", threadId: "w", title: "Write the logline" };
@@ -20,12 +22,43 @@ describe("a reply as a text node's text", () => {
 });
 
 describe("the text nodes replies go into", () => {
-  it("keep the newest task for a node, and a blank reply ends its task with nothing to write", () => {
+  it("keep each task for a node until the turn for it ends, and a blank reply ends its task with nothing to write", () => {
     const targets = new TaskTargets();
-    targets.add({ ...where, nodeId: "n1", requestId: "m1", requestAt: 1 });
-    targets.add({ ...where, nodeId: "n1", requestId: "m2", requestAt: 2 });
-    expect(targets.of("p1")).toEqual([{ ...where, nodeId: "n1", requestId: "m2", requestAt: 2 }]);
-    expect(targets.heard("w", turnEnd("m2", 3, "  "))).toEqual({ target: expect.objectContaining({ nodeId: "n1" }) });
+    const [first, second] = [{ ...where, nodeId: "n1", requestId: "m1", requestAt: 1 }, { ...where, nodeId: "n1", requestId: "m2", requestAt: 3 }];
+    targets.add(first);
+    targets.add(second);
+    expect(targets.of("p1")).toEqual([first, second]);
+    expect(targets.heard("w", turnEnd("m1", 2, "Done"))).toEqual({ target: first, reply: "Done" });
+    expect(targets.of("p1")).toEqual([second]);
+    expect(targets.heard("w", turnEnd("m2", 4, "  "))).toEqual({ target: second });
     expect(targets.of("p1")).toEqual([]);
+  });
+
+  it("end every earlier task of a conversation once a turn there fails or is stopped with no line of its own, or queued messages start the next turn there", () => {
+    const targets = new TaskTargets();
+    const task = (nodeId: string, sent: Pick<TaskTarget, "requestId" | "requestAt" | "queueId">, threadId = "w"): TaskTarget => ({ ...where, threadId, nodeId, ...sent });
+    const row = (id: string, at: number, tool: NonNullable<Message["tool"]>): Message => ({ id, at, role: "bot", kind: "activity", tool, turnId: `t${at}` });
+    const elsewhere = task("n2", { requestId: "x1", requestAt: 1 }, "x");
+    const failing = task("n1", { requestId: "m1", requestAt: 1 });
+    targets.add(elsewhere);
+    targets.add(failing);
+    expect(targets.heard("w", row("a2", 2, { ...failedTurnTool("one step failed"), partial: true }))).toBeNull();
+    expect(targets.of("p1")).toEqual([elsewhere, failing]);
+    expect(targets.heard("w", row("a3", 3, failedTurnTool("The engine stopped answering.")))).toBeNull();
+    expect(targets.of("p1")).toEqual([elsewhere]);
+
+    targets.add(task("n1", { requestId: "m4", requestAt: 4 }));
+    expect(targets.heard("w", row("a5", 5, { name: PERSON_STOPPED_TURN_NAME, ok: true }))).toBeNull();
+    expect(targets.of("p1")).toEqual([elsewhere]);
+
+    const [merged, last, waiting] = [task("n1", { queueId: "q1" }), task("n3", { queueId: "q2" }), task("n1", { queueId: "q3" })];
+    for (const one of [merged, last, waiting]) targets.add(one);
+    targets.heard("w", { id: "m6", at: 6, role: "user", kind: "text", text: "Revise it", queueId: "q1" });
+    expect(targets.of("p1")).toEqual([elsewhere, merged, last, waiting]);
+    targets.heard("w", { id: "m7", at: 6, role: "user", kind: "text", text: "Write it", queueId: "q2" });
+    expect(targets.of("p1")).toEqual([elsewhere, last, waiting]);
+    expect(last).toMatchObject({ requestId: "m7", requestAt: 6 });
+    expect(targets.heard("w", turnEnd("m7", 8, "Both"))).toEqual({ target: last, reply: "Both" });
+    expect(targets.of("p1")).toEqual([elsewhere, waiting]);
   });
 });
