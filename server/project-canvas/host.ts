@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { ProjectCanvasEvent } from "../../shared/project-canvas.ts";
+import type { ProjectGenerationApi } from "../../shared/project-generation.ts";
 import type { TeamProjectsApi } from "../../shared/team-projects.ts";
 import { saveImage } from "../attachments.ts";
 import { DATA_DIR } from "../config.ts";
@@ -14,7 +15,9 @@ import { onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
 import type { Store } from "../store.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
-import { CanvasRefusal, ProjectCanvasService, type StartGeneration } from "./service.ts";
+import { setCanvasGenerationCardAnswer } from "./card-route.ts";
+import { CanvasGenerationCards } from "./generation-card.ts";
+import { ProjectCanvasService } from "./service.ts";
 import { setProjectCanvasToolRoutes } from "./tool-route.ts";
 
 export interface ProjectCanvasHostDeps {
@@ -28,8 +31,9 @@ export interface ProjectCanvasHostDeps {
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
   /** A bot's superior in its project's flow; without it the project's lead is every other bot's superior. */
   parentOf?(projectId: string, botId: string): string | undefined;
-  /** Without it, generation is refused as not set up. */
-  startGeneration?: StartGeneration;
+  generation: ProjectGenerationApi;
+  /** Hands a card's decision to the turn parked on it; false when none took it. */
+  answerCard(threadId: string, messageId: string, text: string): boolean;
   dataDir?: string;
 }
 
@@ -39,10 +43,6 @@ export interface ProjectCanvasHost {
 }
 
 const BOTS_SETTLE_MS = 500;
-
-const generationNotSetUp: StartGeneration = async () => {
-  throw new CanvasRefusal(503, { error: "Generation is not set up yet.", code: "generation_not_set_up" });
-};
 
 function queuedThreads(): Set<string> {
   return new Set(Object.entries(queuedSteerSnapshot(() => true)).filter(([, items]) => items.length > 0).map(([threadId]) => threadId));
@@ -61,7 +61,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     mainThread: deps.mainThread,
     send: deps.send,
     parentOf: deps.parentOf ?? (() => undefined),
-    startGeneration: deps.startGeneration ?? generationNotSetUp,
+    generation: deps.generation,
     openCards: openCardRows,
     queuedThreads,
     saveImage: (bytes, mime) => saveImage(bytes, mime),
@@ -118,6 +118,10 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     queued = now;
   });
 
-  setProjectCanvasToolRoutes(createProjectCanvasToolRoutes(service));
+  deps.generation.onJobChange((job) => service.jobChanged(job));
+  service.reconcileGenerations();
+  const cards = new CanvasGenerationCards({ store: deps.store, service, answer: deps.answerCard });
+  setCanvasGenerationCardAnswer((threadId, requestId, behavior) => cards.answer(threadId, requestId, behavior));
+  setProjectCanvasToolRoutes(createProjectCanvasToolRoutes(service, cards));
   return { routes: createProjectCanvasRoutes(service), service };
 }

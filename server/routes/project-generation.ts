@@ -17,7 +17,7 @@ const STATUS: Record<GenerationFailure["code"], number> = {
   bad_answer: 502, task_failed: 502, download_failed: 502, timed_out: 504, interrupted: 409,
 };
 
-const statusOf = (refusal: GenerationFailure) =>
+export const statusOf = (refusal: GenerationFailure) =>
   (refusal.errorKey === "serverError.teamProject.notFound" ? 404 : STATUS[refusal.code]);
 
 /** A project's generation settings, its MCP server's models and its jobs; the owner's or an admin's, as the project is. */

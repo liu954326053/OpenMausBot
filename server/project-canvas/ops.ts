@@ -46,6 +46,7 @@ import {
   type CanvasOp,
   type CanvasPoint,
 } from "../../shared/project-canvas.ts";
+import { IMAGE_COUNT_MAX } from "../../shared/project-generation.ts";
 import { cleanProjectPath } from "./paths.ts";
 
 export type CanvasOpCode = "invalid_op" | "not_found" | "not_yours" | "not_allowed" | "limit";
@@ -108,7 +109,7 @@ const settings = z.object({
   model: short(200).optional(),
   aspect: short(40).optional(),
   quality: short(40).optional(),
-  count: z.number().int().min(1).max(16).optional(),
+  count: z.number().int().min(1).max(IMAGE_COUNT_MAX).optional(),
   resolution: short(40).optional(),
   seconds: z.number().finite().min(1).max(600).optional(),
 }).strict();
