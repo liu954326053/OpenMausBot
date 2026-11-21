@@ -9,7 +9,8 @@
 // revision is stopped or fails, an empty text node takes the reply itself, a note's task in English is answered in the
 // same way beside the note, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
-// drawn clear of the others, a project archived while open gives way to the main bot, and the project's settings and a
+// drawn clear of the others, a search for the writer names it on the project's one row and that row opens the canvas
+// with the writer chosen, a project archived while open gives way to the main bot, and the project's settings and a
 // picture's preview cover the whole canvas while a terminal's sign-in card stays above them.
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
@@ -25,7 +26,7 @@ import { startFakeGenerationMcp } from "../../server/testing/fake-generation-mcp
 import { hostTimeout } from "../../server/testing/host-timeout.ts";
 import { GENERATION_KEY } from "../../server/testing/project-generation-harness.ts";
 import { launchRestartableServer, type RestartableServer } from "../../server/testing/restartable-server.ts";
-import { agentBrowser, ensureUiBrowser, sessionEnv, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { agentBrowser, ensureUiBrowser, findInSidebar, sessionEnv, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
 
 const enabled = process.env.OMB_UI_E2E === "1" || Boolean(resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env }));
@@ -811,6 +812,27 @@ type Box = { x: number; y: number; w: number; h: number };
       expect(under).toEqual([]);
       await fit();
       await shot("27-team-change-adds-a-bot.png");
+
+      const projectBlock = `[data-sidebar-team-project=${JSON.stringify(project.id)}]`;
+      const projectFound = `${projectRow} [data-sidebar-project-found]`;
+      const corners = (selector: string) => `document.querySelectorAll(${JSON.stringify(`${view} ${selector} [data-resize-corner]`)}).length`;
+      await clickSelector(`[data-sidebar-bot-row=${JSON.stringify(main.id)}]`);
+      await mainInstead("the main bot's chat in place of the canvas");
+      await expect.poll(() => evaluate<boolean>(findInSidebar(writer.name)), { timeout: 10_000, interval: 250 }).toBe(true);
+      await waitFor(`document.querySelector(${JSON.stringify(projectFound)})?.textContent === ${JSON.stringify(`· ${writer.name}`)}`, "the writer named on the project's row");
+      const searched = await evaluate<{ under: number; rows: number }>(`(() => { const block = document.querySelector(${JSON.stringify(projectBlock)}); return { under: block.children.length - 1, rows: block.querySelectorAll("[data-sidebar-bot-row]").length }; })()`);
+      expect(searched).toEqual({ under: 0, rows: 0 });
+      await shot("28a-search-names-the-writer-on-the-project-row.png");
+      await clickSelector(projectRow);
+      await waitFor(`${corners(writerNode)} === 4`, "the canvas open with the writer chosen");
+      const chosen = await evaluate<{ lead: number; current: string | null }>(`({ lead: ${corners(leadNode)}, current: document.querySelector(${JSON.stringify(projectRow)}).getAttribute("aria-current") })`);
+      expect(chosen).toEqual({ lead: 0, current: "page" });
+      await shot("28b-search-opens-the-canvas-with-the-writer-chosen.png");
+      await evaluate(findInSidebar(""));
+      await waitFor(`!document.querySelector(${JSON.stringify(projectFound)}) && !document.querySelector("[data-sidebar-outside-projects]")`, "the plain list once the search is cleared");
+      await clickSelector("[data-sidebar-search-toggle]");
+      await waitFor(`!document.querySelector("[data-sidebar] input")`, "the search closed");
+      evidence.search = { found: `· ${writer.name}`, ...searched, ...chosen };
 
       await api("POST", `/api/team-projects/${project.id}/archive`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");

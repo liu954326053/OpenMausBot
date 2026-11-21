@@ -1,25 +1,25 @@
-import { Crown, FolderClosed, MoreHorizontal } from "lucide-react";
+import { FolderClosed, MoreHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
-import { botShowsUnread } from "@/lib/bot-unread";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { sidebarAttentionLabel, type SidebarSectionAttention } from "@/lib/sidebar-attention";
-import { visibleMessages, type Bot } from "@/state/store";
-import { BotAvatar } from "../Avatar";
-import { sidebarBotStatus } from "../SidebarBotActivity";
-import { AvatarActivityDot, RowStatusText, rowSelectedSurface, rowSurface, type RowActivity } from "../SidebarRowMarkers";
+import { rowSelectedSurface } from "../SidebarRowMarkers";
 import { SectionAttention } from "../SidebarSectionHeader";
 import { SIMPLE_RAIL_BUTTON, SIMPLE_ROW_FOCUS } from "../SidebarSimpleTop";
 
 const HOVER_CONTROL = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-70 touch:opacity-70";
 
+const rowLabel = (project: TeamProjectWire, found: string | undefined) => (found ? `${project.name} · ${found}` : project.name);
+
 /** One project in the sidebar: a click opens its canvas. */
-export function SidebarProjectRow({ project, attention, simple, selected, menuOpen, onOpen, onMenu }: {
+export function SidebarProjectRow({ project, attention, found, simple, selected, menuOpen, onOpen, onMenu }: {
   project: TeamProjectWire;
   /** Over all the project's bots and group chats. */
   attention: SidebarSectionAttention;
+  /** The names of the bots and group chats a search found in the project. */
+  found?: string;
   simple: boolean;
   selected: boolean;
   menuOpen: boolean;
@@ -33,7 +33,7 @@ export function SidebarProjectRow({ project, attention, simple, selected, menuOp
   };
   return (
     <div className="group relative">
-      <button type="button" data-sidebar-project-row={project.id} aria-current={selected ? "page" : undefined} onClick={onOpen}
+      <button type="button" data-sidebar-project-row={project.id} aria-current={selected ? "page" : undefined} title={found ? rowLabel(project, found) : undefined} onClick={onOpen}
         onContextMenu={onMenu ? (event) => { event.preventDefault(); onMenu(event.clientX, event.clientY, event.currentTarget); } : undefined}
         onKeyDown={onMenu ? (event) => {
           if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
@@ -49,7 +49,10 @@ export function SidebarProjectRow({ project, attention, simple, selected, menuOp
         <span aria-hidden="true" className={cn("grid shrink-0 place-items-center bg-raised text-ink-secondary", simple ? "size-8 rounded-[10px]" : "size-7 rounded-lg")}>
           <FolderClosed size={simple ? 16 : 15} strokeWidth={1.75} />
         </span>
-        <span className={cn("min-w-0 flex-1 truncate text-ink", simple ? "text-[14px] font-medium leading-5" : "text-[14px] font-semibold leading-5")}>{project.name}</span>
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span className={cn("min-w-0 truncate text-ink", simple ? "text-[14px] font-medium leading-5" : "text-[14px] font-semibold leading-5")}>{project.name}</span>
+          {found && <span data-sidebar-project-found="" className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink-secondary">· {found}</span>}
+        </span>
         <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
       </button>
       {onMenu && (
@@ -64,16 +67,18 @@ export function SidebarProjectRow({ project, attention, simple, selected, menuOp
 }
 
 /** A project in the narrow sidebar: its first letter in a square, with the mark of its team's state. */
-export function SidebarProjectTile({ project, attention, selected, onOpen, onMenu }: {
+export function SidebarProjectTile({ project, attention, found, selected, onOpen, onMenu }: {
   project: TeamProjectWire;
   attention: SidebarSectionAttention;
+  found?: string;
   selected: boolean;
   onOpen: () => void;
   onMenu?: (x: number, y: number, returnTo: HTMLElement) => void;
 }) {
+  const name = rowLabel(project, found);
   const label = sidebarAttentionLabel(attention);
   return (
-    <button type="button" data-sidebar-project-row={project.id} aria-label={label ? `${project.name}, ${label}` : project.name} title={project.name}
+    <button type="button" data-sidebar-project-row={project.id} aria-label={label ? `${name}, ${label}` : name} title={name}
       aria-current={selected ? "page" : undefined} onClick={onOpen}
       onContextMenu={onMenu ? (event) => { event.preventDefault(); onMenu(event.clientX, event.clientY, event.currentTarget); } : undefined}
       className={cn(SIMPLE_RAIL_BUTTON, "relative mx-auto size-[46px]", selected && "bg-raised text-ink")}>
@@ -81,42 +86,6 @@ export function SidebarProjectTile({ project, attention, selected, onOpen, onMen
         {[...project.name.trim()][0]?.toLocaleUpperCase() ?? <FolderClosed size={16} />}
       </span>
       <span aria-hidden="true" className="absolute -end-0.5 -top-0.5 flex"><SectionAttention attention={attention} label="" /></span>
-    </button>
-  );
-}
-
-/** A project's bot a search found: a click opens the project's canvas with this bot's node chosen. */
-export function SidebarProjectMember({ bot, lead, simple, selected, queued, onOpen }: {
-  bot: Bot;
-  lead: boolean;
-  simple: boolean;
-  selected: boolean;
-  queued: Record<string, unknown[]>;
-  onOpen: () => void;
-}) {
-  const { waiting, working, failed, teammateWait, queued: inQueue } = sidebarBotStatus(bot, queued, visibleMessages(bot));
-  const unread = botShowsUnread(bot);
-  const activity: RowActivity | null = working ? "working" : failed ? "failed" : teammateWait ? "teammate" : inQueue ? "queued" : null;
-  return (
-    <button type="button" data-sidebar-bot-row={bot.id} data-sidebar-project-member={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen}
-      className={cn(
-        "relative flex w-full min-w-0 items-center gap-2 text-start", SIMPLE_ROW_FOCUS, rowSurface(selected),
-        simple ? "h-10 rounded-[8px] ps-5 pe-3" : "h-8 rounded-md ps-5 pe-3",
-        selected ? rowSelectedSurface : "hover:bg-raised/50",
-      )}>
-      <span className="relative flex shrink-0">
-        <BotAvatar bot={bot} size={simple ? 26 : 22} animated={working} />
-        <AvatarActivityDot activity={activity} />
-      </span>
-      <span className="min-w-0 truncate text-[13px] text-ink">{bot.name}</span>
-      {lead && <Crown size={11} aria-label={t("sidebar.bot.chiefOfStaff")} className="shrink-0 text-warning" />}
-      <span className="flex-1" />
-      {(waiting || unread) && (
-        <span aria-hidden="true" data-testid={waiting ? "waiting-dot" : "unread-dot"} title={waiting ? t("sidebar.preview.waiting") : t("task.unread")}
-          className={cn("size-2 shrink-0 rounded-full", waiting ? "bg-warning" : "bg-accent")} />
-      )}
-      {waiting && <span className="sr-only">{t("sidebar.preview.waiting")}</span>}
-      <RowStatusText working={working} failed={failed} unread={unread} />
     </button>
   );
 }
