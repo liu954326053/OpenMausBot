@@ -121,12 +121,3 @@ export interface TeamProjectsApi {
    */
   restore(id: string): TeamProjectWire | null;
 }
-
-/** What template sync asks of projects. */
-export interface TeamProjectTemplateSetter {
-  /**
-   * Records the template, and the version of it, that the project's team now matches: after the team was updated from
-   * a template, or saved back as a template's next version. Null: no project has that id.
-   */
-  setTemplate(id: string, template: TeamProjectRecord["template"]): TeamProjectWire | null;
-}

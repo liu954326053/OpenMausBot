@@ -21,7 +21,6 @@ import { useHeldMenuMotion } from "../MenuMotion";
 import { SidebarSectionHeader } from "../SidebarSectionHeader";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
 import { SIMPLE_RAIL_BUTTON } from "../SidebarSimpleTop";
-import { TemplateSyncMenuItems } from "../template-sync";
 import { NewTeamProjectDialog } from "./NewTeamProjectDialog";
 import { dataSettingsPlace } from "./where-in-settings";
 
@@ -125,7 +124,6 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
               if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); event.stopPropagation(); closeMenu(); return; }
               navigateThreadMenu(event);
             }}>
-            <TemplateSyncMenuItems project={menuMotion.value.project} onChoose={closeMenu} />
             <button type="button" role="menuitem" autoFocus data-team-project-archive="" className={cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary")}
               onClick={() => void archive(menuMotion.value!.project)}>
               <Archive size={16} aria-hidden="true" />{t("teamProjects.archive")}

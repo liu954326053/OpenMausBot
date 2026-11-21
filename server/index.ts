@@ -594,7 +594,6 @@ import { createBotSkillsRoutes } from "./routes/bot-skills.ts";
 import { createTemplateLibraryRoutes } from "./routes/template-library.ts"; import { createTemplateLibrary } from "./template-library.ts";
 import { createTeamProjectProposals } from "./team-project-proposal-routes.ts";
 import { createTeamProjectsHost } from "./team-projects/host.ts";
-import { createTemplateSyncHost } from "./template-sync-host.ts";
 import { createSkillShareRoutes } from "./routes/skill-share.ts";
 import { createTeamContextRoutes } from "./routes/team-context.ts";
 import { createAppSuggestions } from "./host/app-suggestions.ts"; import { createAppFindRoute, createAppSuggestionRoutes } from "./routes/app-suggestions.ts"; import { appPickAvailable } from "./decider/app-picks.ts"; import { managedConnectorUnavailableReason } from "../shared/connector-availability.ts"; import { createDeciderRoutes } from "./routes/decider.ts"; import { createCloudSendRoutes } from "./routes/cloud-send.ts"; import { claudeCodeSkillInputs } from "./setup-import.ts"; import { createCloudConnectionsHost } from "./cloud-connections-host.ts";
@@ -12369,7 +12368,6 @@ const share = createShareWiring({ dataDir: DATA_DIR, bots: () => store.bots, gro
   visibleBot: (auth) => (botId) => visibleTo(viewerFor(auth)).bot(botId), visibleRoutine: (auth) => (routine) => routineVisible(routine, visibleTo(viewerFor(auth))), patchMessage: (threadId, messageId, patch) => void store.patchMessage(threadId, messageId, patch), importDeps: async () => packageImportDeps(await defaultSelection()), publicBot, publicGroup: publicGroupState, broadcast, team: CLOUD_TEAM, personOf: (auth) => (CLOUD_TEAM && auth.kind === "session" ? personKey(auth.session) : null), who: (auth) => (auth.kind === "session" ? teamHost.personName(personKey(auth.session)) ?? auth.session.email ?? undefined : undefined), github: { cfg: () => cfg, composio, personApps: () => teamConnections.personApps(), appsAccess: (person) => teamConnections.people.appsAccess(person), appRefusal: (slug) => managedPolicy.appRefusal(slug) ?? null } }); ROUTES.push(share.routes);
 const templateLibrary = createTemplateLibrary({ root: join(DATA_DIR, "templates"), bots: () => store.bots, routines: () => routines?.listRoutines() ?? [], exportDocument: share.host.document, ownSkillNames: (botId) => listSkills(botId).map((skill) => skill.name) });
 ROUTES.push(createTemplateLibraryRoutes(templateLibrary));
-ROUTES.push(createTemplateSyncHost({ store, projects: teamProjects.api, templates: templateLibrary, skills: { install: installSkill, setEnabled: setSkillEnabled, held: (botId) => listSkills(botId).map((skill) => skill.name) } }));
 ROUTES.push(createBrowserSiteRoutes({
   target: (which, threadId) => signedInSitesTarget(which, threadId === null ? "team" : teamHost.browserAudience(threadId)),
   list: (target) => listSignedInSites(target),

@@ -104,51 +104,6 @@ describe("the folder for projects", () => {
   });
 });
 
-describe("the template a project's team matches", () => {
-  it("is recorded when the team is updated from a template or saved back to one, and reaches the copy", async () => {
-    const { app, project } = await withProject();
-    expect(project.template).toEqual({ id: "sales", name: "Sales crew", version: 3 });
-    const updated = app.projects.setTemplate(project.id, { id: "sales", name: "Sales crew, renamed", version: 4 });
-    expect(updated).toEqual({ ...project, template: { id: "sales", name: "Sales crew, renamed", version: 4 } });
-    expect(app.projects.list()[0]!.template).toEqual({ id: "sales", name: "Sales crew, renamed", version: 4 });
-    expect(JSON.parse(copy(project, "project.json")).template).toEqual({ id: "sales", name: "Sales crew, renamed", version: 4 });
-    expect(app.restarted().list()[0]!.template).toEqual({ id: "sales", name: "Sales crew, renamed", version: 4 });
-  });
-
-  it("keeps everything else about the project, archived or not", async () => {
-    const { app, project } = await withProject();
-    app.routines.update(app.routines.listRoutines()[0]!.id, { enabled: true });
-    const archived = app.projects.archive(project.id)!;
-    const stored = app.registry.projects()[0]!;
-    app.projects.setTemplate(project.id, { id: "other", name: "Another crew", version: 1 });
-    expect(app.registry.projects()[0]).toEqual({ ...stored, template: { id: "other", name: "Another crew", version: 1 } });
-    expect(app.projects.list()[0]).toMatchObject({ archivedAt: archived.archivedAt, botIds: project.botIds, leadBotId: project.leadBotId });
-  });
-
-  it("takes only a template's id, name and version, and writes nothing when they are the ones recorded", async () => {
-    const { app, project } = await withProject();
-    const before = readFileSync(app.registryFile, "utf8");
-    const mtime = statSync(app.registryFile).mtimeMs;
-    app.projects.setTemplate(project.id, { ...project.template });
-    expect(statSync(app.registryFile).mtimeMs).toBe(mtime);
-    const summary = { id: "sales", name: "Sales crew", version: 5, genre: "Selling", roles: [] } as { id: string; name: string; version: number };
-    app.projects.setTemplate(project.id, summary);
-    expect(app.registry.projects()[0]!.template).toEqual({ id: "sales", name: "Sales crew", version: 5 });
-    expect(readFileSync(app.registryFile, "utf8")).not.toBe(before);
-  });
-
-  it("answers null for a project that is not there, and refuses a version that is not a number without touching the list", async () => {
-    const { app, project } = await withProject();
-    expect(app.projects.setTemplate("no-such-project", { id: "sales", name: "Sales crew", version: 4 })).toBeNull();
-    const before = readFileSync(app.registryFile, "utf8");
-    expect(() => app.projects.setTemplate(project.id, { id: "sales", name: "Sales crew", version: Number.NaN })).toThrow();
-    expect(() => app.projects.setTemplate(project.id, { id: "sales", name: "Sales crew" } as never)).toThrow();
-    expect(readFileSync(app.registryFile, "utf8")).toBe(before);
-    expect(app.projects.list()[0]!.template).toEqual(project.template);
-    expect(app.restarted().list()).toHaveLength(1);
-  });
-});
-
 describe("archiving a project and restoring it", () => {
   async function withRoutines() {
     const { app, project } = await withProject();

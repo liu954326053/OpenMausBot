@@ -240,7 +240,7 @@ describe("the project's menu", () => {
     expect(menuButton("The bride")!.getAttribute("aria-label")).toBe("Actions for the project The bride");
     await click(menuButton("The bride"));
     expect(q('[role="menu"]')!.getAttribute("aria-label")).toBe("The bride");
-    expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Update from template…", "Save back to template…", "Archive"]);
+    expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Archive"]);
     expect(menuButton("The bride")!.getAttribute("aria-expanded")).toBe("true");
   });
 
@@ -255,7 +255,7 @@ describe("the project's menu", () => {
     await draw();
     expect(block("The bride")!.querySelector("[data-sidebar-section-line]")).toBeNull();
     await click(menuButton("The bride"));
-    expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Update from template…", "Save back to template…", "Archive"]);
+    expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Archive"]);
   });
 
   it("closes on Escape without archiving", async () => {

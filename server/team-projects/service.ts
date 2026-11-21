@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type {
-  CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectLookup, TeamProjectRecord, TeamProjectTemplateSetter, TeamProjectWire, TeamProjectsApi,
+  CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectLookup, TeamProjectRecord, TeamProjectWire, TeamProjectsApi,
   TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
 import type { TemplateLibraryApi } from "../../shared/template-library.ts";
@@ -53,7 +53,7 @@ function roleNoTemplateGives(botId: string, taken: ReadonlySet<string>): string 
   }
 }
 
-export class TeamProjects implements TeamProjectsApi, TeamProjectTemplateSetter {
+export class TeamProjects implements TeamProjectsApi {
   private readonly deps: TeamProjectsDeps;
   private readonly pending = new Map<string, { folder: string }>();
   private readonly knownBots = new Set<string>();
@@ -189,14 +189,6 @@ export class TeamProjects implements TeamProjectsApi, TeamProjectTemplateSetter 
       }
       throw error;
     }
-    return this.afterChange(id);
-  }
-
-  setTemplate(id: string, template: TeamProjectRecord["template"]): TeamProjectWire | null {
-    const project = this.stored(id);
-    if (!project) return null;
-    const next = { id: template.id, name: template.name, version: template.version };
-    if (JSON.stringify(next) !== JSON.stringify(project.template)) this.deps.registry.replace({ ...project, template: next });
     return this.afterChange(id);
   }
 

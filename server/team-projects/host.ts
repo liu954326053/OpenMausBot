@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { watchFile } from "node:fs";
 import { join } from "node:path";
 
-import type { TeamProjectLookup, TeamProjectTemplateSetter, TeamProjectsApi } from "../../shared/team-projects.ts";
+import type { TeamProjectLookup, TeamProjectsApi } from "../../shared/team-projects.ts";
 import type { TemplateLibraryApi } from "../../shared/template-library.ts";
 import { DATA_DIR } from "../config.ts";
 import type { PackageImportDeps } from "../package-import.ts";
@@ -28,7 +28,7 @@ export interface TeamProjectsHostDeps {
 }
 
 export interface TeamProjectsHost {
-  api: TeamProjectsApi & TeamProjectTemplateSetter;
+  api: TeamProjectsApi;
   /** The folder new projects are made in; null until a person chooses one. Throws while the list of projects cannot be read. */
   root(): string | null;
   /** For whoever places a project bot's own files and decides whether it may run. */

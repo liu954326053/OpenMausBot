@@ -12,7 +12,7 @@ import { inputCls } from "./field";
 import { OrgSkillsCard } from "./OrgSkillsCard";
 import { WriteCommandCard } from "./WriteCommandCard";
 import { Select } from "../Select";
-import { DepositSkillButton } from "../template-sync";
+import { DepositSkillButton } from "./DepositSkillButton";
 
 export interface ManagedSkill {
   name: string;

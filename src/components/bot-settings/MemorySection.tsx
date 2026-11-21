@@ -37,7 +37,6 @@ import { roomMemoryCaptureEnabled } from "@/lib/feature-flags";
 import { api, ApiError, useStore, type Bot, type ConfigStatus } from "@/state/store";
 import { Switch } from "../SettingsPrimitives";
 import { useDesktopCapabilities } from "../DesktopCapabilities";
-import { DepositMemoryButton } from "../template-sync";
 import { inputCls } from "./field";
 
 const buttonCls = "rounded-lg bg-control px-3 py-1.5 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50";
@@ -361,7 +360,6 @@ export function MemorySection({ bot, active = true, onToggle }: { bot: Bot; acti
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-mono text-[13px] text-ink">{editing.path}</span>
             <div className="flex shrink-0 items-center gap-1">
-              {!editing.readOnly && <DepositMemoryButton botId={bot.id} path={editing.path} />}
               {editing.path !== MEMORY_INDEX && (
                 <button type="button" className={quietButtonCls} onClick={() => void open(MEMORY_INDEX)}>
                   {t("memory.backToIndex")}
