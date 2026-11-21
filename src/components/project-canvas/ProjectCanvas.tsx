@@ -484,7 +484,7 @@ function ImagePreview({ url, title, onClose }: { url: string; title: string; onC
   const dialogRef = useRef<HTMLDivElement>(null);
   useModalDialog(dialogRef, onClose);
   return createPortal(
-    <div className="ui-scrim fixed inset-0 z-[100] flex items-center justify-center p-8" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="ui-scrim fixed inset-0 z-[70] flex items-center justify-center p-8" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} className="relative flex max-h-full max-w-full outline-none">
         <img src={url} alt={title} className="max-h-[calc(100vh-64px)] max-w-full rounded-xl object-contain" />
         <button type="button" className="ui-icon-button absolute end-2 top-2 bg-menu" aria-label={t("projectCanvas.dismiss")} onClick={onClose}>
