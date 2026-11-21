@@ -38,8 +38,10 @@ a Chief through `/api/team-projects`, then check:
 
 1. Simple, Advanced, the icons rail and the phone drawer keep that order, with
    two projects and with none.
-2. A project row opens the project view. Expanded, it lists the lead and then
-   the members; a member opens the project view with that bot chosen.
+2. A project is one row, with no chevron and no members under it, and opens
+   the project's canvas. Its mark stays on and counts all the project's bots
+   and group chats. A search lists a project's matching bots under its row,
+   the lead first; one of them opens the canvas with that bot's node chosen.
 3. The + menu offers exactly New project, New bot and Add department. A bot or
    department made there, or a bot made from the team map's Add menu, opens the
    team map and is brought into view.
@@ -49,6 +51,7 @@ a Chief through `/api/team-projects`, then check:
 5. A project copy's chat locks its model picker and says why.
 
 `src/components/Sidebar.projects.test.ts`, `src/lib/sidebar-projects.test.ts`,
+`src/components/team-projects/SidebarTeamProjects.dom.test.ts`,
 `src/components/project-view/ProjectView.dom.test.ts`,
 `src/state/project-view.dom.test.ts`, `src/components/TeamMapPage.manage.test.ts`,
 `src/lib/team-map-scope.test.ts` and

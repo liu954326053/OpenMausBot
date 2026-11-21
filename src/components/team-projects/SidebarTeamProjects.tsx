@@ -6,8 +6,8 @@ import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
 import { t } from "@/lib/i18n";
+import { sidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
-import { setProjectOpen, useOpenProjects } from "@/lib/sidebar-projects";
 import { teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
 import { useShowThreads } from "@/lib/thread-preferences";
 import type { Bot, Group } from "@/state/store";
@@ -41,9 +41,10 @@ interface Lists {
 }
 
 const MENU_WIDTH = 200;
+const NO_HITS: Lists = { bots: [], groups: [] };
 
-/** One row per project. A click opens the project's view; an open project shows its lead, then its members, and a click
- * on one opens the project with that bot chosen. */
+/** One row per project; a click opens its canvas. A search also lists under a project the bots and group chats it found
+ * there, the lead first, and a click on a bot opens the canvas with that bot's node chosen. */
 export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, onNew, onError }: {
   side: TeamProjectSide;
   /** Every bot and group chat the sidebar lists on this side, and those a search found (all of them without a search). */
@@ -65,7 +66,6 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
   const activeView = useStoreSelector((state) => state.activeView);
   const shownProject = useStoreSelector((state) => (state.activeView === "project" ? state.project : undefined));
   const queued = useStoreSelector((state) => state.pendingQueued);
-  const openProjects = useOpenProjects();
   const latest = useRef({ selectedId, shownProject });
   latest.current = { selectedId, shownProject };
   const [menu, setMenu] = useState<{ project: TeamProjectWire; x: number; y: number } | null>(null);
@@ -119,16 +119,18 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
   };
   const show = (project: TeamProjectWire, botId?: string) => dispatch({ type: "showProject", projectId: project.id, ...(botId ? { botId } : {}) });
 
+  const listedBots = all.bots.filter((bot) => !bot.hidden);
   const shownProjects = side.projects.flatMap((project) => {
-    const named = Boolean(query) && project.name.toLowerCase().includes(query);
-    const from = named ? { bots: all.bots.filter((bot) => !bot.hidden), groups: all.groups } : found;
-    const team = side.team(project, from.bots), rooms = side.teamRooms(project, from.groups);
-    const open = Boolean(query) || openProjects.has(project.id);
-    return !query || named || team.length + rooms.length > 0 ? [{ project, team, rooms, open }] : [];
+    const whole: Lists = { bots: side.team(project, listedBots), groups: side.teamRooms(project, all.groups) };
+    const attention = sidebarSectionAttention(whole.bots, whole.groups);
+    if (!query) return [{ project, attention, hits: NO_HITS }];
+    const named = project.name.toLowerCase().includes(query);
+    const hits: Lists = named ? whole : { bots: side.team(project, found.bots), groups: side.teamRooms(project, found.groups) };
+    return named || hits.bots.length + hits.groups.length > 0 ? [{ project, attention, hits }] : [];
   });
   const mayCreate = !remote && !query;
-  const projectSelected = (project: TeamProjectWire, open: boolean) =>
-    shownProject?.id === project.id && (!shownProject.botId || !open || !shownProjects.some((one) => one.project.id === project.id && one.team.some((bot) => bot.id === shownProject.botId)));
+  const projectSelected = (project: TeamProjectWire, hits: Lists) =>
+    shownProject?.id === project.id && !hits.bots.some((bot) => bot.id === shownProject.botId);
   const memberSelected = (project: TeamProjectWire, bot: Bot) =>
     shownProject ? shownProject.id === project.id && shownProject.botId === bot.id : activeView === "chat" && selectedId === bot.id;
 
@@ -167,13 +169,13 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
     return (
       <div data-sidebar-team-projects="" className={cn("flex flex-col", gap)}>
         {shownProjects.length > 0 && <SidebarRailSeparator />}
-        {shownProjects.map(({ project, team, rooms }) => {
+        {shownProjects.map(({ project, attention }) => {
           const missing = project.folderState === "missing";
           const missingText = t("teamProjects.folderMissingNamed", { name: project.name });
           const changedText = t("teamProjects.changes.noticeNamed", { name: project.name });
           return (
             <div key={project.id} role="group" aria-label={project.name} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-              <SidebarProjectTile project={project} team={team} rooms={rooms} selected={shownProject?.id === project.id}
+              <SidebarProjectTile project={project} attention={attention} selected={shownProject?.id === project.id}
                 onOpen={() => show(project)} onMenu={openMenu?.(project)} />
               {missing && (
                 <span role="img" data-team-project-missing="" aria-label={missingText} title={missingText} className="mx-auto flex size-6 shrink-0 items-center justify-center text-warning">
@@ -203,13 +205,13 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
 
   return (
     <div data-sidebar-team-projects="" className={cn("flex flex-col", gap, advanced && mode.followed && "pb-3")}>
-      {shownProjects.map(({ project, team, rooms, open }) => {
+      {shownProjects.map(({ project, attention, hits }) => {
         const missing = project.folderState === "missing";
         return (
           <div key={project.id} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-            <SidebarProjectRow project={project} team={team} rooms={rooms} simple={simple} open={open}
-              selected={projectSelected(project, open)} menuOpen={menu?.project.id === project.id}
-              onOpen={() => show(project)} onToggle={query ? undefined : () => setProjectOpen(project.id, !open)} onMenu={openMenu?.(project)} />
+            <SidebarProjectRow project={project} attention={attention} simple={simple}
+              selected={projectSelected(project, hits)} menuOpen={menu?.project.id === project.id}
+              onOpen={() => show(project)} onMenu={openMenu?.(project)} />
             {missing && (
               <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
                 <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
@@ -221,13 +223,13 @@ export function SidebarTeamProjects({ side, all, found, query, mode, roomRow, on
                 <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
               </button>
             )}
-            {open && (
+            {hits.bots.length + hits.groups.length > 0 && (
               <div role="group" aria-label={project.name} data-team-project-team="" className={cn("flex flex-col", gap, missing && "opacity-50")}>
-                {team.map((bot) => (
+                {hits.bots.map((bot) => (
                   <SidebarProjectMember key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} queued={queued}
                     selected={memberSelected(project, bot)} onOpen={() => show(project, bot.id)} />
                 ))}
-                {query && rooms.map(roomRow)}
+                {hits.groups.map(roomRow)}
               </div>
             )}
           </div>
