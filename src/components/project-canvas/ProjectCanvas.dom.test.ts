@@ -44,6 +44,14 @@ async function key(init: KeyboardEventInit) {
   await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init })); });
 }
 
+async function paste(clipboardData: { files: File[]; getData: (type: string) => string }) {
+  await act(async () => {
+    const event = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: clipboardData });
+    window.dispatchEvent(event);
+  });
+}
+
 async function choose(select: HTMLSelectElement, value: string) {
   await act(async () => {
     select.value = value;
@@ -193,6 +201,19 @@ describe("the project canvas", () => {
     await key({ key: "z", metaKey: true });
     await settle();
     expect(backend.current().nodes).toHaveLength(before);
+  });
+
+  it("makes pasted text a text node and uploads a pasted file", async () => {
+    await mount();
+    const before = backend.current().nodes.length;
+    await paste({ files: [], getData: () => "Rain on the rooftop" });
+    await settle(20);
+    expect(backend.current().nodes.find((node) => node.type === "text" && node.metadata?.content === "Rain on the rooftop")).toBeDefined();
+
+    await paste({ files: [new File(["png"], "board.png", { type: "image/png" })], getData: () => "" });
+    await settle(20);
+    expect(backend.current().nodes.find((node) => node.metadata?.file?.name === "board.png")?.type).toBe("image");
+    expect(backend.current().nodes).toHaveLength(before + 2);
   });
 
   it("renames a content node from its title and leaves a bot's name alone", async () => {
