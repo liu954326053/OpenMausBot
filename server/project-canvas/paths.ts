@@ -73,6 +73,21 @@ async function inside(root: string, target: string): Promise<string> {
 
 const toPosix = (path: string) => path.split(sep).join("/");
 
+/** Where an absolute path really is in the project folder, as a path relative to it; null when it is elsewhere, is
+ * the folder itself, or is in the app's own folder or a secret folder. */
+export async function projectPathOf(folder: string, absolute: string): Promise<string | null> {
+  if (!isAbsolute(absolute)) return null;
+  const root = await projectRoot(folder);
+  let real: string;
+  try {
+    real = await realpath(absolute);
+  } catch {
+    return null;
+  }
+  const suffix = within(root, real);
+  return suffix ? cleanProjectPath(toPosix(suffix)) : null;
+}
+
 export interface OpenedProjectFile {
   handle: FileHandle;
   bytes: number;

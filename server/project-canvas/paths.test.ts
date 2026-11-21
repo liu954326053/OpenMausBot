@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { cleanProjectPath, createProjectFile, openProjectFile, safeFileName } from "./paths.ts";
+import { cleanProjectPath, createProjectFile, openProjectFile, projectPathOf, safeFileName } from "./paths.ts";
 
 let dir: string;
 let project: string;
@@ -109,6 +109,25 @@ describe("reading a file of the project", () => {
     expect(await refusal(openProjectFile(project, "素材/none.png", 1024))).toEqual({ status: 404, code: "not_found" });
     expect(await refusal(openProjectFile(project, "素材/bride.png", 3))).toEqual({ status: 413, code: "too_large" });
     expect(await refusal(openProjectFile(join(dir, "gone"), "素材/bride.png", 1024))).toEqual({ status: 409, code: "folder_missing" });
+  });
+});
+
+describe("where a file named by its absolute path is in the project", () => {
+  it("is its path relative to the folder when it really is inside", async () => {
+    symlinkSync(join(project, "素材", "bride.png"), join(dir, "shortcut.png"));
+    expect(await projectPathOf(project, join(project, "素材", "bride.png"))).toBe("素材/bride.png");
+    expect(await projectPathOf(project, join(dir, "shortcut.png"))).toBe("素材/bride.png");
+  });
+
+  it("is nowhere when it is outside, the folder itself, the app's own folder, missing or relative", async () => {
+    symlinkSync(join(outside, "secret.txt"), join(project, "素材", "link.txt"));
+    expect(await projectPathOf(project, join(outside, "secret.txt"))).toBeNull();
+    expect(await projectPathOf(project, join(project, "素材", "link.txt"))).toBeNull();
+    expect(await projectPathOf(project, project)).toBeNull();
+    expect(await projectPathOf(project, join(project, ".magic-team", "team.json"))).toBeNull();
+    expect(await projectPathOf(project, join(project, "素材", "gone.png"))).toBeNull();
+    expect(await projectPathOf(project, "素材/bride.png")).toBeNull();
+    expect(await refusal(projectPathOf(join(dir, "gone"), join(outside, "secret.txt")))).toEqual({ status: 409, code: "folder_missing" });
   });
 });
 
