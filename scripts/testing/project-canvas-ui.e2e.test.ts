@@ -1,10 +1,12 @@
 // The project canvas in a real browser on a disposable server with the scripted fake engine and generation's test MCP
 // server, inside the app's store: the snapshot draws the project's bots, a change survives a reload, an upload lands in
 // 素材, a task takes what is connected to the bot, live events update the open canvas, opening a chat and Stop go
-// through the app, a node generates a picture and stops a generation, a task asked from a text node writes its reply
-// there, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's project row opens the
-// canvas, its top bar reaches the project's group chats and team changes, a member row chooses its bot, and a project
-// archived while open gives way to the main bot.
+// through the app, a node generates a picture and stops a generation, a config node generates from its inputs on a
+// page in Chinese, its references numbered in Chinese and its failure said in Chinese, a task asked from a text node
+// writes its reply there, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
+// project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
+// drawn clear of the others, a member row chooses its bot, and a project archived while open gives way to the main bot.
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -164,9 +166,9 @@ type Box = { x: number; y: number; w: number; h: number };
       if (!spot) throw new Error("no empty canvas to click");
       await clickAt(spot.x, spot.y);
     };
-    const fit = async () => {
+    const fit = async (label = "Fit to view") => {
       await clickEmpty();
-      await clickSelector('button[aria-label="Fit to view"]');
+      await clickSelector(`button[aria-label="${label}"]`);
       await new Promise((resolve) => setTimeout(resolve, 500));
     };
     const openPage = async () => {
@@ -269,15 +271,15 @@ type Box = { x: number; y: number; w: number; h: number };
       await fit();
       await shot("03-upload-in-sucai.png");
 
-      const connectInto = async (fromId: string) => {
+      const connectInto = async (fromId: string, toId = botNodeId(writer.id)) => {
         await clickEmpty();
         const from = await box(node(fromId));
         await move(from!.x + from!.w / 2, from!.y + from!.h / 2);
         await waitFor(`document.querySelector(${JSON.stringify(`${node(fromId)} [data-handle="source"]`)})`, `${fromId}'s handle`);
         const handle = await box(`${node(fromId)} [data-handle="source"]`);
-        const target = await box(writerNode);
+        const target = await box(node(toId));
         await drag(centre(handle!), centre(target!));
-        await expect.poll(async () => (await snapshot()).connections.some((one) => one.fromNodeId === fromId && one.toNodeId === botNodeId(writer.id)), { timeout: 15_000, message: `${fromId} connected into the writer` }).toBe(true);
+        await expect.poll(async () => (await snapshot()).connections.some((one) => one.fromNodeId === fromId && one.toNodeId === toId), { timeout: 15_000, message: `${fromId} connected into ${toId}` }).toBe(true);
       };
       await connectInto(textId);
       await connectInto(upload.id);
@@ -306,8 +308,8 @@ type Box = { x: number; y: number; w: number; h: number };
         promptImage: image ? { sameBytesAsTheUpload: image.source?.data === readFileSync(onDisk).toString("base64") } : null,
       };
       expect(asked.text).toMatch(/^Write the opening scene\n\nConnected to your node on the project's canvas:\n\n/);
-      expect(asked.text).toContain(`> ${BRIEF}`);
-      expect(asked.text).toMatch(/Image "[^"]+":/);
+      expect(asked.text).toContain(`Text 1:\n\n> ${BRIEF}`);
+      expect(asked.text).toContain('Image 1 "board.png":');
       expect(JSON.stringify(blocks)).toContain(BRIEF);
       expect(image).toBeDefined();
       await shot("05-writer-replied.png");
@@ -373,15 +375,63 @@ type Box = { x: number; y: number; w: number; h: number };
       await shot("10-generated.png");
 
       await openImagePanel();
-      await generateFromPanel("[hold] The groom waits in the rain");
+      await generateFromPanel("[task][hold] The groom waits in the rain");
       await clickButton("Stop", "[data-node-panel]");
       await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === imageId)?.metadata?.status, { timeout: 15_000, message: "the stopped generation leaves its node" }).toBe("idle");
-      const held = (await jobs()).find((job) => job.nodeId === imageId && job.prompt.startsWith("[hold]"));
+      const held = (await jobs()).find((job) => job.nodeId === imageId && job.prompt.startsWith("[task][hold]"));
       expect(held?.status).toBe("cancelled");
       expect(await results(imageId)).toHaveLength(1);
       evidence.generation = { made, held: held && { id: held.id, status: held.status }, calls: mcp.calls.map((call) => call.tool) };
       await waitFor(`[...document.querySelectorAll("[data-node-panel] button")].some((button) => button.textContent.trim() === "Generate")`, "the panel ready to generate again");
       await shot("11-generation-stopped.png");
+
+      const fitZh = "适合视图";
+      await browser("open", `${pageUrl}&lang=zh`);
+      await waitFor(`document.querySelector(${JSON.stringify(writerNode)}) && document.querySelector('button[aria-label="${fitZh}"]')`, "the canvas in Chinese", 120_000);
+      const laidOut = await snapshot();
+      const configAt = { x: Math.max(...laidOut.nodes.map((one) => one.position.x + one.width)) + 160, y: Math.min(...laidOut.nodes.map((one) => one.position.y)) };
+      const configId = (await api("POST", `${canvasPath}/ops`, { ops: [{ type: "add_node", nodeType: "config", title: "Dawn look", position: configAt, metadata: { generationMode: "image" } }] })).nodeIds[0] as string;
+      await waitFor(`document.querySelector(${JSON.stringify(node(configId))})`, "the config node on the open canvas");
+      await fit(fitZh);
+      await connectInto(upload.id, configId);
+      const openConfigPanel = async () => {
+        await clickEmpty();
+        const shown = await box(node(configId));
+        await clickAt(shown!.x + shown!.w / 2, shown!.y + 30);
+        await waitFor("document.querySelector('[data-node-panel]')", "the config node's panel");
+      };
+      const generateConfig = async (prompt: string) => {
+        await browser("find", "role", "textbox", "fill", prompt, "--name", "提示词", "--exact");
+        await revealPanelEnd();
+        await clickButton("生成", "[data-node-panel]");
+      };
+      await openConfigPanel();
+      await waitFor(`document.querySelector("[data-node-panel]")?.textContent.includes("图片 1")`, "the board named 图片 1 among the config's references");
+      const dawn = "黎明时分重画图片 1，雨停了";
+      await generateConfig(dawn);
+      await expect.poll(async () => (await results(configId)).length, { timeout: 30_000, message: "the config's picture on the canvas" }).toBe(1);
+      const [fromConfig] = await results(configId);
+      const config = (await snapshot()).nodes.find((one) => one.id === configId)!;
+      expect(config.metadata).toMatchObject({ prompt: dawn, status: "success" });
+      expect(fromConfig).toMatchObject({ type: "image", createdBy: { kind: "person" }, metadata: { file: { mime: "image/png" } } });
+      expect(fromConfig!.position.x).toBeGreaterThanOrEqual(config.position.x + config.width);
+      const configCall = mcp.calls.filter((call) => call.tool === "generate_image").at(-1)!;
+      expect(configCall.arguments.prompt).toBe(`参考图片编号：图片 1。请按这些编号理解提示词中的图片引用。\n\n${dawn}`);
+      expect(configCall.arguments.referenceImages).toEqual([expect.objectContaining({ sha256: createHash("sha256").update(readFileSync(onDisk)).digest("hex") })]);
+      await fit(fitZh);
+      await shot("12-config-generates-in-chinese.png");
+
+      await openConfigPanel();
+      await generateConfig(`[task][fail:没有灵感] ${dawn}`);
+      await expect.poll(async () => (await snapshot()).nodes.find((one) => one.id === configId)?.metadata?.status, { timeout: 30_000, message: "the config's generation fails" }).toBe("error");
+      const failed = (await snapshot()).nodes.find((one) => one.id === configId)!;
+      expect(failed.metadata).toMatchObject({ errorDetails: "gen couldn't make it: 没有灵感", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "没有灵感" } });
+      const configAlert = `${node(configId)} [role="alert"]`;
+      await waitFor(`document.querySelector(${JSON.stringify(configAlert)})?.textContent.includes("gen 没能生成：没有灵感")`, "the config's failure in Chinese on the open canvas");
+      expect(await text(configAlert)).not.toContain("couldn't make it");
+      evidence.config = { node: failed, made: fromConfig, prompt: configCall.arguments.prompt, referenceImages: configCall.arguments.referenceImages, failureShown: await text(configAlert) };
+      await shot("13-config-failure-in-chinese.png");
+      await openPage();
 
       const noteGate = join(fixture.dataDir, "gate-note");
       const rule = "RULE: rain falls in every scene, even indoors.";
@@ -398,7 +448,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes("is writing")`, "the writer writing into the note on the open canvas");
       const writingInto = (await snapshot()).bots[writer.id]!.writingInto;
       expect(writingInto).toEqual([outsideId]);
-      await shot("12-writing-into-a-text-node.png");
+      await shot("14-writing-into-a-text-node.png");
       writeFileSync(noteGate, "go");
       await waitFor(`document.querySelector(${JSON.stringify(node(outsideId))})?.textContent.includes(${JSON.stringify(rule)})`, "the reply in the note on the open canvas");
       await settled();
@@ -406,7 +456,7 @@ type Box = { x: number; y: number; w: number; h: number };
       expect(filled.nodes.find((one) => one.id === outsideId)).toMatchObject({ type: "text", createdBy: { kind: "person" }, metadata: { content: rule } });
       expect(filled.bots[writer.id]!.writingInto).toBeUndefined();
       evidence.reply = { writingInto, node: filled.nodes.find((one) => one.id === outsideId) };
-      await shot("13-reply-in-the-text-node.png");
+      await shot("15-reply-in-the-text-node.png");
 
       const writersShot = async () => (await snapshot()).nodes.find((one) => one.type === "shot" && one.createdBy?.kind === "bot");
       plan([{ key: "shot", match: ["ADD-SHOT"], reply: "SHOT ADDED", steps: [
@@ -436,7 +486,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await settled();
       evidence.undo = { shot: (await snapshot()).nodes.find((one) => one.id === botShot.id) };
       await fit();
-      await shot("14-bot-shot-back-after-undo.png");
+      await shot("16-bot-shot-back-after-undo.png");
 
       evidence.console = (await browser("console")).messages;
       expect(evidence.console).not.toEqual(expect.arrayContaining([expect.objectContaining({ type: "error" })]));
@@ -463,12 +513,12 @@ type Box = { x: number; y: number; w: number; h: number };
       await openProject();
       expect(await text(`${slot} [data-project-folder]`)).toBe(project.folder);
       await waitFor(`document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the team's change in the top bar");
-      await shot("15-project-row-opens-its-canvas.png");
+      await shot("17-project-row-opens-its-canvas.png");
 
       await clickSelector(`${slot} button[aria-label="Group chats"]`);
       const roomItem = `[role="menu"] [data-menu-key=${JSON.stringify(room.id)}]`;
       await waitFor(`document.querySelector(${JSON.stringify(roomItem)})`, "the project's group chat in the top bar's menu");
-      await shot("16-group-chats-menu.png");
+      await shot("18-group-chats-menu.png");
       await clickSelector(roomItem);
       await waitFor(`!document.querySelector(${JSON.stringify(view)}) && !document.querySelector('[role="menu"]') && document.body.innerText.includes("Table read")`, "the group chat open");
 
@@ -478,8 +528,14 @@ type Box = { x: number; y: number; w: number; h: number };
       await clickSelector("[data-team-changes] [data-team-changes-apply]");
       const botNodes = `${view} [data-canvas-node^="bot:"]`;
       await waitFor(`document.querySelectorAll(${JSON.stringify(botNodes)}).length === 3 && !document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the colorist's copy on the canvas");
+      const joined = await snapshot();
+      const colorist = joined.nodes.find((one) => one.type === "bot" && one.id !== botNodeId(lead.id) && one.id !== botNodeId(writer.id))!;
+      const covers = (a: CanvasNode, b: CanvasNode) => a.position.x < b.position.x + b.width && b.position.x < a.position.x + a.width && a.position.y < b.position.y + b.height && b.position.y < a.position.y + a.height;
+      const under = joined.nodes.filter((one) => one.id !== colorist.id && one.type !== "group" && covers(one, colorist)).map((one) => one.id);
+      evidence.colorist = { node: colorist, under };
+      expect(under).toEqual([]);
       await fit();
-      await shot("17-team-change-adds-a-bot.png");
+      await shot("19-team-change-adds-a-bot.png");
 
       const toggle = `[data-sidebar-team-project=${JSON.stringify(project.id)}] button[aria-expanded="false"]:not([aria-haspopup])`;
       if (await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(toggle)}))`)) await clickSelector(toggle);
@@ -490,12 +546,12 @@ type Box = { x: number; y: number; w: number; h: number };
       await waitFor(`${corners(writerNode)} === 4`, "the writer chosen on the canvas");
       expect(await evaluate(corners(leadNode))).toBe(0);
       expect(await evaluate(`document.querySelector(${JSON.stringify(writerRow)}).getAttribute("aria-current")`)).toBe("page");
-      await shot("18-member-row-chooses-its-bot.png");
+      await shot("20-member-row-chooses-its-bot.png");
 
       await api("POST", `/api/team-projects/${project.id}/archive`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
       await mainInstead("the main bot in place of the project archived elsewhere");
-      await shot("19-archived-elsewhere-opens-the-main-bot.png");
+      await shot("21-archived-elsewhere-opens-the-main-bot.png");
       await api("POST", `/api/team-projects/${project.id}/restore`);
       await evaluate("window.dispatchEvent(new Event('focus')); true");
       await openProject();
@@ -506,7 +562,7 @@ type Box = { x: number; y: number; w: number; h: number };
       await mainInstead("the main bot in place of the project archived from the sidebar");
       const listed = (await api("GET", "/api/team-projects")).projects as TeamProjectWire[];
       expect(listed.find((one) => one.id === project.id)?.archivedAt).toEqual(expect.any(Number));
-      await shot("20-archived-from-the-sidebar-opens-the-main-bot.png");
+      await shot("22-archived-from-the-sidebar-opens-the-main-bot.png");
       evidence.app = { main: main.id, room: room.id, folder: project.folder, bots: (await snapshot()).nodes.filter((one) => one.type === "bot").map((one) => one.id) };
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {
