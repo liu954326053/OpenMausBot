@@ -180,7 +180,7 @@ function probe(options: ProbeOptions): void {
   };
 
   const milestones: Array<[string, string]> = [
-    ["sidebar", "[data-sidebar-bot-row], [data-sidebar-group-row]"],
+    ["sidebar", "[data-sidebar-bot-row]"],
     ["transcript", "[data-mid]"],
   ];
   const watcher = new MutationObserver(() => {

@@ -60,6 +60,7 @@ const q = (selector: string) => host.querySelector<HTMLElement>(selector);
 const all = (selector: string) => [...host.querySelectorAll<HTMLElement>(selector)];
 const projects = () => all("[data-sidebar-team-project]").map((one) => one.dataset.sidebarTeamProject);
 const botRows = () => all("[data-sidebar-bot-row]").map((one) => one.dataset.sidebarBotRow);
+const roomRows = () => all("button").filter((one) => state.groups.some((group) => one.textContent?.includes(group.name))).map((one) => one.textContent);
 const noMatch = () => q("[data-sidebar-no-project-match]")?.textContent ?? null;
 
 async function draw() {
@@ -108,14 +109,14 @@ describe.each([["Advanced", true], ["Simple", false]] as const)("the sidebar's s
   it("is named for projects, and lists every project with nothing under any until something is typed", () => {
     const input = field();
     expect([input.placeholder, input.getAttribute("aria-label")]).toEqual(["Search projects", "Search projects"]);
-    expect([projects(), botRows(), all("[data-sidebar-group-row]"), noMatch()]).toEqual([["work", "bride"], ["magic"], [], null]);
+    expect([projects(), botRows(), roomRows(), noMatch()]).toEqual([["work", "bride"], ["magic"], [], null]);
   });
 
   it("finds a project by a part of its name in any case, as one row with nothing under it, and keeps the main bot and the inbox", async () => {
     await search(" LAUNCH ");
     expect([projects(), noMatch()]).toEqual([["work"], null]);
     expect([...q('[data-sidebar-team-project="work"]')!.children].map((one) => one.querySelector("[data-sidebar-project-row]") !== null)).toEqual([true]);
-    expect([botRows(), all("[data-sidebar-group-row]"), q("[data-sidebar-inbox]") !== null]).toEqual([["magic"], [], true]);
+    expect([botRows(), roomRows(), q("[data-sidebar-inbox]") !== null]).toEqual([["magic"], [], true]);
     q('[data-sidebar-project-row="work"]')!.click();
     expect(dispatch.mock.calls.at(-1)).toEqual([{ type: "showProject", projectId: "work" }]);
   });
@@ -124,7 +125,7 @@ describe.each([["Advanced", true], ["Simple", false]] as const)("the sidebar's s
     for (const asked of ["Echo", "atlas", "Launch room", "zebra"]) {
       await search(asked);
       expect([asked, projects(), noMatch()]).toEqual([asked, [], `No project matches “${asked}”`]);
-      expect([botRows(), all("[data-sidebar-group-row]"), q("mark"), q("[data-sidebar-inbox]") !== null]).toEqual([["magic"], [], null, true]);
+      expect([botRows(), roomRows(), q("mark"), q("[data-sidebar-inbox]") !== null]).toEqual([["magic"], [], null, true]);
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(fetched.mock.calls.filter(([path]) => String(path).includes("/api/search"))).toEqual([]);

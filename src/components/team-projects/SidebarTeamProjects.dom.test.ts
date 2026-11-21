@@ -215,7 +215,7 @@ describe("a search", () => {
     query = "the";
     await draw();
     expect([listed(), under("The bride"), under("The heir")]).toEqual([["The bride", "The heir"], [], []]);
-    expect([chevron("The bride"), chevron("The heir"), q("[data-sidebar-bot-row], [data-sidebar-group-row], [data-row]")]).toEqual([null, null, null]);
+    expect([chevron("The bride"), chevron("The heir"), q("[data-sidebar-bot-row], [data-row]")]).toEqual([null, null, null]);
   });
 
   it("finds no project by a bot's name, a group chat's or a message's text, and says so in one muted line", async () => {
@@ -223,7 +223,7 @@ describe("a search", () => {
     for (const asked of ["writer", "bride-lead", "bride-room", "zebra"]) {
       query = asked;
       await draw();
-      expect([asked, listed(), noMatch(), q("[data-sidebar-bot-row], [data-sidebar-group-row]")]).toEqual([asked, [], `No project matches “${asked}”`, null]);
+      expect([asked, listed(), noMatch(), q("[data-sidebar-bot-row]")]).toEqual([asked, [], `No project matches “${asked}”`, null]);
     }
     expect(q("[data-sidebar-no-project-match]")!.className).toContain("text-ink-secondary");
     expect(all("[data-sidebar-no-project-match]")).toHaveLength(1);
