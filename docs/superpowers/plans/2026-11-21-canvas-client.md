@@ -27,7 +27,7 @@
 
 ## 约束
 
-- 新代码都在 `src/lib/project-canvas/` 和 `src/components/project-canvas/`，不碰 `ProjectView.tsx`（`sidebar` 轨道的）和章程列出的其他热点文件，`server/index.ts` 加 0 行。
+- 新代码都在 `src/lib/project-canvas/` 和 `src/components/project-canvas/`，前两个阶段不碰 `ProjectView.tsx`（`sidebar` 轨道的，第三阶段按任务接进画布）和章程列出的其他热点文件，`server/index.ts` 加 0 行。
 - 页面组件 `ProjectCanvas`（`src/components/project-canvas/ProjectCanvas.tsx`）的属性是 `{ projectId: string; selectedBotId?: string; backend: CanvasBackend; topBarSlot?: ReactNode }`；`topBarSlot` 是顶栏里“团队有变化”的位置，任务说明里没有，报告里列出。
 - 每个新文件不超过 1,000 行（`file-size-ratchet`）。
 - 新文字都在 `projectCanvas.` 前缀下，四个语言文件（英文、简体、繁体、巴西葡萄牙语）各加在一处，不动原有的键。
@@ -45,7 +45,7 @@
 | `src/lib/project-canvas/history.ts` | 撤销和重做 |
 | `src/lib/project-canvas/geometry.ts` | 节点范围、分组、连线规则、曲线、视口换算、聚焦（搬自 infinite-canvas） |
 | `src/lib/project-canvas/selection.ts` | 框选、多选、相关高亮、复制粘贴 |
-| `src/lib/project-canvas/references.ts` | 连进来的参考内容和它们的标签 |
+| `shared/project-canvas-references.ts` | 连进来的参考内容和它们的编号（`canvas-server` 的，画布、机器人的任务和生成共用） |
 | `src/lib/project-canvas/settings.ts` | 面板里每一项是继承还是改过、恢复默认（在 `resolveSettings` 之上） |
 | `src/lib/project-canvas/tree-layout.ts` | 机器人树的排列和“整理” |
 | `src/lib/project-canvas/generation.ts` | 交给生成的参数、分镜“生成中”占位的位置 |
@@ -88,3 +88,25 @@
     - **生成配置节点**：契约给 `config` 节点 `prompt`、`settings` 和 `generationMode`，但服务器只生成分镜、图片和视频节点，画布上的“生成配置”节点现在点生成会被拒。
     - **`canvas-server` 下一次合进来的**：节点的错误和拒绝带上目录键（`5cb525b19`），合进来后画布用人的语言显示；派发线跟着团队的流程走（`6c5ac5ddc`），画布照快照画派发线、收到事件就重读，应该不用改。
 11. **接进项目页**等侧栏那一轨合进 `main`：在 `StoreProvider` 里的项目页放 `<ServerProjectCanvas projectId={project.id} selectedBotId={…} topBarSlot={…团队有变化的提示…} />`，不用再写别的。
+
+## 第三阶段：接进项目页
+
+合进侧栏（`538d05793`）、`canvas-server` 的第二次（`58d8d2cff`）和 `main-fixes`（`13e88638d`）之后。
+
+1. **项目页**（`ProjectView`）里面换成 `<ServerProjectCanvas projectId selectedBotId topBarSlot />`。属性、读列表时的转圈、项目没了（归档或删除）就打开主机器人，都留着。原来页面上有、画布画不出的，放进画布的顶栏（`topBarSlot`）：
+   - 项目文件夹的路径，文件夹在的时候显示；
+   - “团队有变化”，点开 `TeamChangesDialog`，远程客户端不显示；
+   - 项目自己的群聊：有群聊时才出现的一个按钮，点开是 `SidebarPopoverMenu` 的菜单，未读的带强调色的点，选一个就打开它。
+2. **从侧栏打开**：项目行打开画布；成员行打开画布并选中那个机器人的节点；打开着的项目在别处或在侧栏菜单里被归档，就回到主机器人。没有删除项目的接口，归档走的是同一条路。
+3. **合进 `canvas-server` 的第二次之后**：
+   - 参考的编号用 `shared/project-canvas-references.ts`，画布自己那份 `references.ts` 和 `projectCanvas.reference.label` 删掉。名字是 `{种类} {序号}`，种类的词是 `server.projectCanvas.reference.*`，和服务器写给机器人、写进生成提示词的一样。
+   - 任务和生成带上页面的语言（`CanvasTaskRequest.language`、`CanvasGenerateRequest.language`，取 `activeLocale()`），服务器用它给参考起名、写生成提示词开头的编号行。`startGeneration` 改为接 `CanvasGenerateRequest`。
+   - 节点的错误按 `errorKey` 和 `errorParams` 用人的语言显示，没有键、键不是 `serverError.*`、或参数不全时显示 `errorDetails`。拒绝和请求失败（`body` 里带键）也一样，都走 `serverErrorText`（画布里是 `canvasErrorText`）。
+   - 生成配置节点：画布这边本来就能点生成，内存实现照服务器的规则放结果（在配置右边，从配置连出）。
+4. **端到端找出的问题**：
+   - 后进团队的机器人，默认位置可能正好是一个已经摆过的机器人的位置（树的顺序变了，摆过的没动），画在它下面。服务器的 `botFrames` 改成：没人摆过的机器人从默认位置往下挪，避开画布上的节点和排在它前面的机器人（`clearBelow`）。
+   - 第二阶段“停止一个生成”那一步，图片提示词没有 `[task]`，假的 MCP 300 毫秒就答完，那一步要在这 300 毫秒里点到“停止”才过。改成 `[task][hold]`，生成一直等到被停。
+5. **端到端加的步骤**：
+   - 页面换成中文，一张图连进一个生成配置节点：面板的参考写着“图片 1”，生成的图在配置右边、从配置连出；MCP 收到的提示词以中文的编号行开头，参考图就是那张图。再让它失败，节点上是“gen 没能生成：没有灵感”。
+   - 发给机器人的任务里，参考写成 `Text 1`、`Image 1 "board.png"`。
+   - 项目页的几步之外，新进团队的机器人不压着任何节点。
