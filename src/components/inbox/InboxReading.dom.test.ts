@@ -11,6 +11,7 @@ vi.mock("../../state/api", () => ({
   api: vi.fn(async (path: string, init?: RequestInit) => {
     server.calls.push({ path, method: init?.method ?? "GET", ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}) });
     if (/^\/api\/threads\/[\w-]+\/messages\?/.test(path)) return { messages: server.context };
+    if (init?.method === "PATCH" && path.startsWith("/api/bots/")) return { bot: { id: path.slice("/api/bots/".length), chiefOfStaff: true } };
     return null;
   }),
 }));
@@ -215,5 +216,31 @@ describe("a line read in full", () => {
     await click('[data-inbox-reading] [data-inbox-action="done"]');
     expect(server.calls).toContainEqual({ path: "/api/inbox/n1/done", method: "POST" });
     expect(currentInboxPanel().reading, "news was last in the list: the line above it opens").toBe("q2");
+  });
+
+  it("answers a department with no Chief of Staff by choosing one of its bots there, which settles it", async () => {
+    const chiefless: InboxRow = {
+      id: "c1", kind: "notice", tab: "needs-you", unread: true, at: AT + 1, from: { name: "MagicBot", botId: "maus" },
+      origin: { botId: "maus", threadId: "maus-main", title: "MagicBot" }, text: "Night shift has no Chief of Staff now.", needsChief: { department: "Night shift" },
+    };
+    const member = (id: string, name: string) => ({ id, threadId: `${id}-main`, name, title: "", color: "green", section: "Night shift", modelSelection: { instanceId: "codex", model: "m" }, tasks: [], messages: [] });
+    setInboxView(placeView([chiefless, news]));
+    await act(async () => {
+      root.render(createElement(StoreContext.Provider, { value: {
+        state: { ...initialState, bots: [member("nia", "Nia"), member("ode", "Ode")], instances: [{ instanceId: "codex", capabilities: { agentsMcp: true } }] } as unknown as AppState,
+        dispatch, flushBotPatches: vi.fn(), refreshInstances: vi.fn(), refreshModels: vi.fn(),
+      } as never }, createElement(InboxPanel)));
+    });
+    expect([...document.querySelectorAll<HTMLElement>('[data-inbox-row="c1"] [data-inbox-action]')].map((action) => action.dataset.inboxAction)).toEqual(["chief", "done"]);
+    await click('[data-inbox-row="c1"] [data-inbox-action="chief"]');
+    expect(currentInboxPanel().reading).toBe("c1");
+    expect(document.querySelector("[data-inbox-answer-kind]")!.getAttribute("data-inbox-answer-kind")).toBe("chief");
+    await click('[data-inbox-reading] [data-inbox-action="chief"]');
+    expect([...document.querySelectorAll<HTMLElement>('[data-chief-picker="Night shift"] [data-chief-choice]')].map((choice) => choice.textContent)).toEqual(["Nia", "Ode"]);
+    await click('[data-chief-choice="nia"]');
+    await act(async () => { await new Promise((done) => setTimeout(done, 0)); });
+    expect(server.calls).toContainEqual({ path: "/api/bots/nia", method: "PATCH", body: { chiefOfStaff: true } });
+    expect(dispatch).toHaveBeenCalledWith({ type: "botPatched", bot: { id: "nia", chiefOfStaff: true } });
+    expect(currentInbox()!.rows.find((row) => row.id === "c1")!.tab).toBe("done");
   });
 });

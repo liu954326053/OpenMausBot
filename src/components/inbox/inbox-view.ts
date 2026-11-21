@@ -73,7 +73,7 @@ export function choiceResponse(row: InboxRow, label: string): CardResponse {
 /** What closing a question without an answer sends; an approval closes as a deny. */
 export const closeResponse = (row: InboxRow): CardResponse => dismissResponse(row.card ?? {});
 
-export type QuickAction = "allow" | "deny" | "reply" | "close" | "done" | "open";
+export type QuickAction = "allow" | "deny" | "reply" | "close" | "done" | "open" | "chief";
 
 /** The actions a row offers on hover or focus, the ask's own answer first. */
 export function quickActions(row: InboxRow): QuickAction[] {
@@ -81,6 +81,7 @@ export function quickActions(row: InboxRow): QuickAction[] {
   if (ask === "approval") return ["allow", "deny", "reply"];
   if (ask === "question") return ["reply", "close"];
   if (ask === "review") return ["open"];
+  if (row.needsChief && row.tab === "needs-you") return ["chief", "done"];
   if (row.tab === "info") return ["done", "open"];
   return ["open"];
 }

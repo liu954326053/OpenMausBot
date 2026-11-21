@@ -12,6 +12,9 @@ export function SidebarBotRole({ role }: { role: string }) {
   );
 }
 
+export const botRoleLine = (bot: Pick<Bot, "title" | "chiefOfStaff" | "defaultBot">): string =>
+  bot.title.trim() || (bot.defaultBot ? t("defaultBot.description") : bot.chiefOfStaff ? t("chat.chiefOfStaff") : "");
+
 export function ChatHeadRole({ bot }: { bot: Pick<Bot, "title" | "chiefOfStaff"> }) {
   const role = bot.title.trim();
   const repeatsChiefBadge = bot.chiefOfStaff && role.toLocaleLowerCase() === t("chat.chiefOfStaff").toLocaleLowerCase();

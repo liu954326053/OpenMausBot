@@ -205,7 +205,7 @@ type Box = { x: number; y: number; w: number; h: number };
       const writerNode = node(botNodeId(writer.id));
       const middleStop = (selector: string) => evaluate<string | null>(`document.querySelector(${JSON.stringify(`${selector} stop[offset="55%"]`)})?.getAttribute("stop-color") ?? null`);
       evidence.bots = {
-        lead: { text: await text(leadNode), crown: await evaluate(`Boolean(document.querySelector(${JSON.stringify(`${leadNode} [aria-label="Lead"]`)}))`), fill: await middleStop(leadNode), color: lead.color },
+        lead: { text: await text(leadNode), crown: await evaluate(`Boolean(document.querySelector(${JSON.stringify(`${leadNode} [aria-label="Chief of Staff"]`)}))`), fill: await middleStop(leadNode), color: lead.color },
         writer: { text: await text(writerNode), fill: await middleStop(writerNode), color: writer.color },
         dispatch: await evaluate(`document.querySelector('[data-connection=${JSON.stringify(dispatchConnectionId(lead.id, writer.id))}]')?.getAttribute("data-kind") ?? null`),
       };
