@@ -13,10 +13,11 @@ import {
 } from "../imported-skills.ts";
 import { isNativeSkillEnabled } from "../native-skill-choices.ts";
 import { nativeSkillListing, nativeSkills, projectSkillListing, projectSkills, projectSkillsPrompt, readNativeSkillFile, type NativeSkill } from "../native-skills.ts";
+import { isMainBot } from "../peer-roster.ts";
 import { redactSecretsInText } from "../redact.ts";
 import { readSectionContext } from "../section-context.ts";
 import { librarySkillOptOuts, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, skillsLibraryEnabled } from "../skill-library.ts";
-import { libraryOfferPrompt, listedOffers, offeredSkillViews } from "../skill-library-offer.ts";
+import { libraryOfferPrompt, listedOffers, MAIN_BOT_OFFER_BUDGET, offeredSkillViews } from "../skill-library-offer.ts";
 import { librarySkillFiles, ownSkillFiles, type StoredSkillFiles } from "../skill-side-files.ts";
 import {
   conversationAssignedSkills,
@@ -147,8 +148,8 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
   /** The library's skills on offer to the bot; none while the library is off (`assigned` undefined). */
   const offersFor = (bot: BotRecord, assigned: readonly string[] | undefined): ImportedSkillView[] =>
     assigned === undefined ? [] : offeredSkillViews(bot.id, assigned, new Set(listSkills(bot.id).map((skill) => skill.name)));
-  /** The ones of those the bot's prompt lists; it searches for the rest. */
-  const listedOffersFor = (bot: BotRecord, offers: readonly ImportedSkillView[]) => listedOffers(offers, aboutBot(bot));
+  /** The ones of those the bot's prompt lists, every one for the main bot; another bot searches for the rest. */
+  const listedOffersFor = (bot: BotRecord, offers: readonly ImportedSkillView[]) => (isMainBot(bot) ? [...offers] : listedOffers(offers, aboutBot(bot)));
   const turnSkillFiles = (bot: BotRecord, threadId: string, instance?: TurnInstance): string[] => {
     const assigned = skillsLibraryEnabled(cfg) ? liveAssigned(bot) : undefined;
     const names = resolveBotSkills(bot.id, assigned).filter((skill) => skill.enabled).map((skill) => skill.name);
@@ -325,7 +326,7 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
       const project = thread ? projectInUse(bot, thread, cwd, instance, assigned) : [];
       const offers = offersFor(bot, assigned), listedOffer = listedOffersFor(bot, offers);
       return skillsSystemPrompt(bot.id, assigned, threadId === undefined ? undefined : conversationStartedAt(threadId)) +
-        libraryOfferPrompt(listedOffer, offers.length - listedOffer.length) +
+        libraryOfferPrompt(listedOffer, offers.length - listedOffer.length, isMainBot(bot) ? MAIN_BOT_OFFER_BUDGET : undefined) +
         importedSkillsPrompt(listed, available.length - listed.length) + projectSkillsPrompt(project);
     },
 

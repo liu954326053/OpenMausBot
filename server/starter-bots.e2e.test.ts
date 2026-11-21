@@ -102,16 +102,14 @@ await import(${JSON.stringify(pathToFileURL(join(SERVER_DIR, "testing", "fake-cl
       expect(made.status, JSON.stringify(made.body)).toBe(201);
     }
   }
-  /** The capability of a real turn of this Cloud's Chief, for what the bot's own tools call. */
-  async chiefTurn() {
-    const chief = (await this.bots()).find((bot) => bot.chiefOfStaff);
-    expect(chief, "a new Cloud's MagicBot is its Chief").toBeTruthy();
-    const sent = await this.api("POST", `/api/bots/${chief.id}/messages`, { text: "Add a specialist." });
+  /** The capability of a real turn of `bot`, for what the bot's own tools call. */
+  async turnOf(bot: { id: string }) {
+    const sent = await this.api("POST", `/api/bots/${bot.id}/messages`, { text: "Add a specialist." });
     expect(sent.status, JSON.stringify(sent.body)).toBe(202);
     await expect.poll(() => existsSync(this.dump), { timeout: 20_000 }).toBe(true);
     const agents = JSON.parse(readFileSync(this.dump, "utf8")).mcpConfig.mcpServers.agents;
     const env = agents.env.OMB_GATE_UPSTREAM ? JSON.parse(agents.env.OMB_GATE_UPSTREAM).env : agents.env;
-    return { chief, token: env.OMB_COMMS_TOKEN as string };
+    return env.OMB_COMMS_TOKEN as string;
   }
   async internal(path: string, token: string, body: unknown) {
     const response = await fetch(`${this.base}${path}`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
@@ -190,10 +188,12 @@ describe("a Starter Cloud's bots, on a real server", () => {
     expect(await paused()).toEqual([first]);
   }, 120_000);
 
-  it("a Chief's create_bot and team setup make bots past five, and the bot is told the new one is paused", async () => {
+  it("a department Chief's create_bot and team setup make bots past five, and the bot is told the new one is paused", async () => {
     await starter();
+    const chief = made(await cloud.api("POST", "/api/bots", { name: "Ops Chief", section: "Ops", modelSelection: CLAUDE, useDefaults: false })).bot;
+    expect((await cloud.api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true })).status).toBe(200);
     await cloud.fill(5);
-    const { token, chief } = await cloud.chiefTurn();
+    const token = await cloud.turnOf(chief);
     const tool = await cloud.internal("/api/internal/create-bot", token, { fromBotId: chief.id, fromThreadId: chief.threadId, name: "Scout", role: "Specialist", instructions: "Work." });
     expect(tool.status, JSON.stringify(tool.body)).toBe(201);
     expect(tool.body).toMatchObject({ state: "applied", name: "Scout" });

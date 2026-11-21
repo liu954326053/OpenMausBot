@@ -541,8 +541,8 @@
     ]
   },
   "default+mausbot": {
-    "bytes": 18064,
-    "sha256": "fe5d9261b2a437314a8fec9b1f0f301e038a68777c87bfd6ab1bc3fe2cada14e",
+    "bytes": 18052,
+    "sha256": "c65129eb8cc5d6adf82d9ed2d3861c82e7fda295a6669ef2d88fb0b7071be249",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -565,8 +565,8 @@
     ]
   },
   "skills+shared+voice+mausbot": {
-    "bytes": 18912,
-    "sha256": "c53e1ad5894d7df272a683c2e3340570f5dc0dd4fda848fe7898ae940e784113",
+    "bytes": 18900,
+    "sha256": "a3fd6c60e6a0648cb6ea65e1b7da7ead7b47eeea6accb273ff3e4d6dc1e7ad6f",
     "tools": [
       "tool_result_read",
       "list_room_targets",

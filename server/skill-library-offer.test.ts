@@ -96,6 +96,19 @@ describe("a bot's turn with skills on offer", () => {
     expect(row).toMatchObject({ enabled: true, editable: false, listed: true, file: library.librarySkillFilePath(name) });
   });
 
+  it("lists every offered skill to the main bot, however many there are, and only the ones that fit to any other bot", () => {
+    const names = Array.from({ length: FIT_MAX_SKILLS + 5 }, (_, i) => unique(`many-${i}`));
+    for (const name of names) add(name, { description: `Topic ${name}.` });
+    const main = { id: bot, threadId: "main", name: "MagicBot", defaultBot: {}, modelSelection: { instanceId: "none" } } as unknown as BotRecord;
+    const index = hostFor(main).skillsIndex(main, "main");
+    for (const name of names) expect(index, name).toContain(`- ${name}:`);
+    expect(index).not.toContain("not listed here");
+    const picker = { ...main, name: "Picker", defaultBot: undefined } as BotRecord;
+    const capped = hostFor(picker).skillsIndex(picker, "main");
+    expect(names.filter((name) => capped.includes(`- ${name}:`)).length).toBeLessThanOrEqual(FIT_MAX_SKILLS);
+    expect(capped).toContain("not listed here");
+  });
+
   it("offers nothing while the library is off, and never a skill the bot owns under the same name", () => {
     const name = unique("held");
     add(name);

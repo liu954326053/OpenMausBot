@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { rankSkills } from "../shared/skill-fit.ts";
-import { FIT_MAX_SKILLS, skillIndexBlock, type ImportedSkillView } from "./imported-skills.ts";
+import { FIT_MAX_SKILLS, skillIndexBlock, type ImportedSkillView, type SkillIndexBudget } from "./imported-skills.ts";
 import { librarySkillDirectory, librarySkillsOnOffer, skillsLibraryRoot } from "./skill-library.ts";
 
 export function offeredSkillViews(botId: string, assigned: readonly string[], owned: ReadonlySet<string>): ImportedSkillView[] {
@@ -20,7 +20,11 @@ export function listedOffers<T extends { name: string; description: string }>(of
   return offered.filter((skill) => fit.has(skill.name));
 }
 
-export function libraryOfferPrompt(listed: readonly ImportedSkillView[], unlisted = 0): string {
+/** The main bot plans teams for any kind of work, so its prompt lists every skill on offer, not the best matches, within
+ * a budget that still keeps a library of hundreds from filling every turn. */
+export const MAIN_BOT_OFFER_BUDGET: SkillIndexBudget = { skills: Number.POSITIVE_INFINITY, bytes: 32_000 };
+
+export function libraryOfferPrompt(listed: readonly ImportedSkillView[], unlisted = 0, budget?: SkillIndexBudget): string {
   return skillIndexBlock({
     intro: "Skills from the skills library:",
     guidance: "The person added these to the skills library for every bot. Before starting a task one of them covers, " +
@@ -29,5 +33,5 @@ export function libraryOfferPrompt(listed: readonly ImportedSkillView[], unliste
     more: (count) =>
       `${count} more skill${count === 1 ? "" : "s"} in the skills library ${count === 1 ? "is" : "are"} not listed here. When a task ` +
       "might need one, call skills_list with a few words about the task if it is available, and read the SKILL.md it names.",
-  }, listed, unlisted);
+  }, listed, unlisted, budget);
 }

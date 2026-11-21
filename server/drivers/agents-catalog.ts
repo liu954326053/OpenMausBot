@@ -809,6 +809,8 @@ const CHIEF_ONLY_TOOL_NAMES = new Set([
   "create_bot", "list_team_setup", "list_team_library", "propose_team_setup", "propose_bot_deletion", "manage_room", "retry_thread",
 ]);
 const CHIEF_TARGET_TOOL_NAMES = new Set(["propose_profile", "propose_model", "reset_cloud_computer"]);
+const MAIN_BOT_HIDDEN_TOOL_NAMES = new Set(["create_bot"]);
+const MAIN_BOT_LIBRARY_DESCRIPTION = "Ready-made teams, each with a summary and roles (lead = the team's Chief). Propose a team from one with propose_team_setup, its lead appointed Chief of Staff.";
 const CHIEF_TARGET_FIELDS = new Set(["for_bot_id", "browserProfile"]);
 const WATCHER_TOOL_NAMES = new Set(["create_options_card"]);
 
@@ -848,6 +850,12 @@ export function fullInputSchema(name: string): unknown {
   return FULL_INPUT_SCHEMAS.get(name);
 }
 
+/** The person's MagicBot makes bots only through a team setup the person confirms on a card. */
+function mainBotTools<T extends { name: string; description: string }>(tools: readonly T[]): T[] {
+  return tools.filter((tool) => !MAIN_BOT_HIDDEN_TOOL_NAMES.has(tool.name))
+    .map((tool) => (tool.name === "list_team_library" ? { ...tool, description: MAIN_BOT_LIBRARY_DESCRIPTION } : tool));
+}
+
 function catalogTools(profile: CatalogProfile) {
   const BOT_SCOPED_TOOLS = TOOL_DEFINITIONS.filter((tool) =>
     (profile.botId === WATCHER_OPTIONS_CARD_BOT_ID || !WATCHER_TOOL_NAMES.has(tool.name)) &&
@@ -869,7 +877,7 @@ function catalogTools(profile: CatalogProfile) {
   const RESEARCH_READY_TOOLS = VOICE_READY_TOOLS.filter((tool) => !RESEARCH_TOOL_NAMES.has(tool.name) ||
     (profile.xResearch === true && (profile.research === true || X_TOOL_NAMES.has(tool.name))));
   const ROLE_TOOLS = profile.chief
-    ? RESEARCH_READY_TOOLS
+    ? profile.mausbot === true ? mainBotTools(RESEARCH_READY_TOOLS) : RESEARCH_READY_TOOLS
     : RESEARCH_READY_TOOLS.filter((tool) => !CHIEF_ONLY_TOOL_NAMES.has(tool.name)).map((tool) => {
       if (!CHIEF_TARGET_TOOL_NAMES.has(tool.name)) return tool;
       const properties = Object.fromEntries(Object.entries(tool.inputSchema.properties).filter(([key]) => !CHIEF_TARGET_FIELDS.has(key)));

@@ -454,20 +454,25 @@ export function codexSkillRoots(home: string, codexHome: string | undefined): st
   return [join(own, "skills"), join(home, ".agents", "skills"), ...(process.platform === "win32" ? [] : ["/etc/codex/skills"])];
 }
 
+export interface SkillIndexBudget { skills: number; bytes: number }
+
+const INDEX_BUDGET: SkillIndexBudget = { skills: INDEX_MAX_SKILLS, bytes: INDEX_MAX_BYTES };
+
 /** One source's part of a turn's skills index, with a budget of its own so one source never pushes another out. `more`
  * says how to find the `unlisted` ones and those left over the budget. */
 export function skillIndexBlock(
   copy: { intro: string; guidance: string; more(count: number): string },
   skills: readonly ImportedSkillView[],
   unlisted = 0,
+  budget: SkillIndexBudget = INDEX_BUDGET,
 ): string {
   if (!skills.length && !unlisted) return "";
   const block = (lines: string[], omitted: number) =>
     `\n\n${copy.intro}\n` + (lines.length ? `${lines.join("\n")}\n${copy.guidance}` : "") + (omitted ? `${lines.length ? "\n" : ""}${copy.more(omitted)}` : "");
   const lines: string[] = [];
-  for (const skill of skills.slice(0, INDEX_MAX_SKILLS)) {
+  for (const skill of skills.slice(0, budget.skills)) {
     const line = `- ${skill.name}: ${skill.description} Read ${JSON.stringify(skill.file)}.`;
-    if (Buffer.byteLength(block([...lines, line], skills.length - lines.length - 1 + unlisted), "utf8") > INDEX_MAX_BYTES) break;
+    if (Buffer.byteLength(block([...lines, line], skills.length - lines.length - 1 + unlisted), "utf8") > budget.bytes) break;
     lines.push(line);
   }
   return block(lines, skills.length - lines.length + unlisted);

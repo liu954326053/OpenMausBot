@@ -77,6 +77,8 @@ const CHIEF_TARGET_TOOLS = ["propose_profile", "propose_model"];
 const CHIEF_PROFILE_TARGET = " A Chief of Staff may pass for_bot_id (from list_bots) for a requested change to another bot in its section.";
 const TEAMWORK_TOOLS = ["list_room_targets", "coordinate_bots", "assignment_status", "list_bots", "list_rooms", "list_threads", "close_thread", "start_thread", "post_to_room"];
 const MAUSBOT_TOOLS = ["list_unread_notifications", "mark_notifications_read"];
+/** MagicBot makes bots only through a team setup the person confirms on a card. */
+const MAUSBOT_HIDDEN_TOOLS = ["create_bot"];
 /** MagicBot's tools may make its list at most this much longer than the same Chief's without them. */
 const MAUSBOT_ADDS = 0.02;
 const RESEARCH_TOOLS = ["x_search", "research_search", "research_endpoint", "research_call"];
@@ -106,8 +108,8 @@ const BUDGET_BASELINE: Record<string, number> = {
   "skills+shared+voice+cloud-home": 62843,
   "skills+shared+voice+non-chief+cloud-home": 54426,
   "default+legacy-switches": 57945,
-  "default+mausbot": 58596,
-  "skills+shared+voice+mausbot": 63728,
+  "default+mausbot": 58175,
+  "skills+shared+voice+mausbot": 63542,
   "skills+shared+voice+x": 67179,
   "skills+shared+voice+x+team": 67179,
   "default+no-computer-pick": 56733,
@@ -220,7 +222,7 @@ describe("agents proxy tools/list golden", () => {
       for (const tool of toolsOf(wires[name]!)) {
         if (profile.env.OMB_CLOUD_HOME === "1" && (tool.name === "select_computer" || OWN_CLOUD_TOOLS.includes(tool.name))) continue;
         if (profile.env.OMB_CHIEF_OF_STAFF === "0" && CHIEF_TARGET_TOOLS.includes(tool.name)) continue;
-        if (profile.env.OMB_MAUSBOT === "1" && MAUSBOT_TOOLS.includes(tool.name)) continue;
+        if (profile.env.OMB_MAUSBOT === "1" && (MAUSBOT_TOOLS.includes(tool.name) || tool.name === "list_team_library")) continue;
         expect(JSON.stringify(tool), `${name}: ${tool.name}`).toBe(full.get(tool.name));
       }
     }
@@ -253,6 +255,16 @@ describe("agents proxy tools/list golden", () => {
     }
   });
 
+
+  it("gives MagicBot no create_bot, and points its team library at propose_team_setup", () => {
+    type Described = Tool & { description: string };
+    for (const name of Object.keys(PROFILES).filter((profile) => profile.endsWith("+mausbot"))) {
+      const tools = new Map((toolsOf(wires[name]!) as Described[]).map((tool) => [tool.name, tool]));
+      for (const hidden of MAUSBOT_HIDDEN_TOOLS) expect(tools.has(hidden), `${name}: ${hidden}`).toBe(false);
+      expect(tools.get("list_team_library")!.description, name).toContain("propose_team_setup");
+      expect(tools.get("list_team_library")!.description, name).not.toContain("create_bot");
+    }
+  });
 
   it("mounts message_person everywhere: every plan's bots can reach the person's Inbox", () => {
     const names = (wire: string) => toolsOf(wire).map((tool) => tool.name);
@@ -456,7 +468,7 @@ describe("agents proxy tools/list wire size", () => {
     const without = name.slice(0, -"+mausbot".length);
     const tools = toolsOf(wires[name]!).map((tool) => tool.name);
     expect(tools.slice(-MAUSBOT_TOOLS.length)).toEqual(MAUSBOT_TOOLS);
-    expect(tools.slice(0, -MAUSBOT_TOOLS.length)).toEqual(toolsOf(wires[without]!).map((tool) => tool.name));
+    expect(tools.slice(0, -MAUSBOT_TOOLS.length)).toEqual(toolsOf(wires[without]!).map((tool) => tool.name).filter((tool) => !MAUSBOT_HIDDEN_TOOLS.includes(tool)));
     expect(bytes(wires[name]!)).toBeLessThanOrEqual(Math.floor(bytes(wires[without]!) * (1 + MAUSBOT_ADDS)));
   });
 

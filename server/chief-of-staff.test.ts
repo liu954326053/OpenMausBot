@@ -119,6 +119,20 @@ describe("chiefOfStaffSystemPrompt", () => {
     expect(prompt, "a suggestion no longer waits on a card").not.toMatch(/suggestion|Not now/);
   });
 
+  it("tells MagicBot it makes bots only on a card, a new team led by one of them, while a project lead keeps create_bot", () => {
+    const main = chiefOfStaffSystemPrompt("maus", [{ id: "maus", name: "MagicBot", chiefOfStaff: true, defaultBot: {} }], true);
+    expect(main).toContain("You make no bots yourself.");
+    expect(main).toContain("one of its bots appointed its Chief of Staff");
+    expect(main).toContain("Nothing is made until the person confirms the card.");
+    expect(main).toContain("The person confirms your plan on a card: end your turn once it is proposed");
+    expect(main).not.toContain("create_bot");
+    expect(main).not.toContain("The plan applies immediately");
+
+    const lead = chiefOfStaffSystemPrompt("lead", [{ id: "lead", name: "Lead", chiefOfStaff: true, section: "Pilot", teamProject: { id: "project-a" } }], true);
+    expect(lead).toContain("add one with create_bot without asking first");
+    expect(lead).toContain("The plan applies immediately");
+  });
+
   it("does not promise delegation when the engine cannot mount agent tools", () => {
     const prompt = chiefOfStaffSystemPrompt("chief", bots, false);
 

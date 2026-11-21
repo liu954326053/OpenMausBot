@@ -20,6 +20,9 @@ const STARTER_NAMES = [DEFAULT_BOT_NAME, "MausBot"];
 
 export const HELPER_ASKS = ["What are my bots up to?", "Set up a bot for my inbox", "Make me a morning routine", "How do I connect my email?"];
 
+/** What create_bot answers the person's MagicBot: it makes bots only through a team setup the person confirms on a card. */
+export const MAIN_BOT_CREATE_BOT_REFUSAL = "You make bots only by proposing them with propose_team_setup, which the person confirms on a card; a new team needs one of its bots appointed Chief of Staff. create_bot is not yours to use.";
+
 export function defaultBotRefusal(name: string): string {
   return `${name} can't be deleted or archived. To take it off the sidebar, choose Hide in its menu, or turn off "Show ${name} in the sidebar" in Settings → General.`;
 }

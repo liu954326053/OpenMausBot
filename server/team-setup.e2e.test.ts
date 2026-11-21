@@ -138,3 +138,47 @@ it("Clive sets up multi-provider teams at Ask with no card, keeps existing threa
     await fixture.close(); await removeTempDir(gates);
   }
 }, 150_000);
+
+it("MagicBot makes bots only on a card the person confirms: create_bot is refused, and its new team's Chief is one of the bots it proposes", async () => {
+  const gates = mkdtempSync(join(tmpdir(), "omb-main-bot-setup-gates-"));
+  const gate = join(gates, "finish");
+  const fixture = await launchVerificationServer({ FAKE_CLAUDE_MODE: "slow", FAKE_CLAUDE_SLOW_FINISH_GATE: gate });
+  const api = async (method: string, path: string, body?: unknown, expected = 200, token?: string) => {
+    const response = await fetch(fixture.info.url + path, { method, headers: { "content-type": "application/json", origin: fixture.info.url,
+      ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const result = await response.json() as any;
+    expect(response.status, JSON.stringify(result)).toBe(expected); return result;
+  };
+  try {
+    const bots = async () => (await api("GET", "/api/bots")).bots as any[];
+    const main = (await bots()).find((bot) => bot.defaultBot);
+    const claude = (await api("GET", "/api/instances")).instances.find((item: any) => item.instanceId === "claude");
+    const modelSelection = { instanceId: claude.instanceId, model: claude.models.default };
+    const text = "Set up a short drama team for me.";
+    await runControlOmb(["send", "--bot", main.id, "--task", main.threadId, "--text", text, "--url", fixture.info.url]);
+    await expect.poll(() => existsSync(fixture.fixtureDumpPath) && JSON.stringify(JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).prompt).includes(text),
+      { timeout: 15_000 }).toBe(true);
+    const token = JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")).mcpConfig.mcpServers.agents.env.OMB_COMMS_TOKEN as string;
+    const before = (await bots()).map((bot) => bot.id).sort();
+
+    const refused = await api("POST", "/api/internal/create-bot", { name: "Scout", role: "Research scout", instructions: "Find sources." }, 403, token);
+    expect(refused.error).toContain("propose_team_setup");
+    const plan = { reason: "Set up a short drama team as asked", newTeams: ["Short drama"], operations: [
+      { action: "create", key: "Writer", fields: { name: "Writer", title: "Head writer", soul: "Write the scripts.", section: "Short drama", modelSelection, chiefOfStaff: true } },
+      { action: "create", key: "Editor", fields: { name: "Editor", title: "Editor", soul: "Cut the episodes.", section: "Short drama", modelSelection } },
+    ] };
+    const proposed = await api("POST", "/api/internal/team-setup-requests", { plan }, 201, token);
+    expect(proposed).toMatchObject({ state: "pending" });
+    expect((await bots()).map((bot) => bot.id).sort()).toEqual(before);
+
+    writeFileSync(gate, "finish");
+    await expect.poll(async () => (await bots()).every((bot) => !bot.busy), { timeout: 20_000 }).toBe(true);
+    await api("POST", `/api/threads/${main.threadId}/respond`, { requestId: proposed.requestId, behavior: "allow" });
+    const made = (await bots()).filter((bot) => !before.includes(bot.id));
+    expect(made.map((bot) => [bot.name, bot.section, bot.chiefOfStaff === true]).sort()).toEqual([["Editor", "Short drama", false], ["Writer", "Short drama", true]]);
+    expect((await bots()).find((bot) => bot.id === main.id).section).toBeUndefined();
+  } finally {
+    writeFileSync(gate, "finish");
+    await fixture.close(); await removeTempDir(gates);
+  }
+}, 90_000);
