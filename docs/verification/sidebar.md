@@ -8,9 +8,11 @@ removes only the fixture data.
 The preview mounts the actual Sidebar and StoreProvider. The sidebar lists only
 the main bot and the projects, and its search finds projects, so Atlas has no
 row there; the main bot's menu offers Hide from sidebar and Make this a regular
-bot rather than Archive and Delete. Until bot management has a place outside
-the sidebar, the steps below have no entry point in the app and only the unit
-tests named after them run.
+bot rather than Archive and Delete. In the app the same menu opens from a bot's
+card on the team map (its ⋯, a right-click, the ContextMenu key or Shift+F10).
+This preview has no team map, so the steps below have no entry point here and
+only the unit tests named after them run; the automations journey deletes a bot
+from its card.
 Verify:
 
 1. Click Archive Sidebar Atlas: Cancel receives focus by default.
@@ -86,9 +88,9 @@ Run `node --experimental-strip-types scripts/verify-sidebar.ts --unread`.
 This opt-in fixture seeds Sidebar Atlas with twelve unread webhook-like
 conversations across a folder and unfiled history, plus a running fake-provider
 turn and a sibling report queued behind its capacity limit. The data directory contains `bulk-read-before.json`.
-The action is in a bot's sidebar menu, and Atlas has no sidebar row now (see
-above), so step 1 has no entry point until bot management has a place outside
-the sidebar; the tests named after the steps still run.
+The action is in a bot's menu, which this preview opens only from a sidebar row,
+and Atlas has no row (see above), so step 1 has no entry point here; the tests
+named after the steps still run.
 Open only the printed `previewUrl`:
 
 1. Open **Actions for Sidebar Atlas → Mark all conversations as read**.
