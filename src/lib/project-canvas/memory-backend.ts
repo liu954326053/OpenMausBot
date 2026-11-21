@@ -1,0 +1,336 @@
+import {
+  CANVAS_NODE_SIZE,
+  CANVAS_UPLOAD_FOLDER,
+  botNodeId,
+  canvasFileNodeType,
+  type CanvasBotState,
+  type CanvasFileRef,
+  type CanvasOp,
+  type CanvasOpsRequest,
+  type CanvasOpsResponse,
+  type CanvasPoint,
+  type CanvasSnapshot,
+  type ProjectCanvasEvent,
+} from "../../../shared/project-canvas";
+import {
+  resolveSettings,
+  settingProblems,
+  type GenerationFailure,
+  type GenerationFailureCode,
+  type GenerationJob,
+  type GenerationKind,
+  type GenerationModel,
+  type ImageOverrides,
+  type ProjectGenerationSettings,
+  type Refused,
+  type StartGenerationInput,
+  type VideoOverrides,
+} from "../../../shared/project-generation";
+import { CanvasBackendError, type CanvasBackend } from "./backend";
+import { nextOutputFrame, showsResultInPlace } from "./generation";
+import { applyCanvasOps } from "./ops";
+import { connectedReferences } from "./references";
+import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
+
+export interface MemoryGenerationOutput {
+  file: CanvasFileRef;
+  url: string;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  durationMs?: number;
+}
+
+export interface MemoryCanvasOptions {
+  snapshot: CanvasSnapshot;
+  looks?: Record<string, CanvasBotLook>;
+  /** Where the page loads each sample file from, by path. */
+  fileUrls?: Record<string, string>;
+  generation: { settings: ProjectGenerationSettings; servers: string[]; models: Record<string, GenerationModel[]> };
+  exchanges?: Record<string, CanvasExchangeMessage[]>;
+  /** What a bot answers a task with. */
+  reply?: (task: CanvasBotTask, bot: CanvasBotState) => string;
+  /** The file each result of a generation is. */
+  output?: (input: StartGenerationInput, index: number) => MemoryGenerationOutput;
+  /** A reason to fail a generation, if it should. */
+  fail?: (input: StartGenerationInput) => string | undefined;
+  /** How long a bot or a generation takes, in milliseconds. */
+  delayMs?: number;
+  onOpenChat?: (botId: string, threadId?: string) => void;
+}
+
+export interface MemoryCanvasBackend extends CanvasBackend {
+  /** The canvas as the "server" holds it. */
+  current(): CanvasSnapshot;
+  /** Changes what the server derives (bots, members) and tells listeners, as a `bots` event does. */
+  updateBots(change: (snapshot: CanvasSnapshot) => void): void;
+  readonly openedChats: Array<{ botId: string; threadId?: string }>;
+}
+
+const failure = (code: GenerationFailureCode, error: string, extra: Partial<GenerationFailure> = {}): Refused => ({ refused: { code, error, errorKey: `serverError.generation.${code}`, ...extra } });
+
+function uniquePath(folder: string, name: string, taken: ReadonlySet<string>): string {
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const extension = dot > 0 ? name.slice(dot) : "";
+  for (let index = 1; ; index += 1) {
+    const path = `${folder}/${index === 1 ? name : `${stem} (${index})${extension}`}`;
+    if (!taken.has(path)) return path;
+  }
+}
+
+/** A `CanvasBackend` that keeps one project's canvas in memory and plays the server's part, for previews and tests. */
+export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryCanvasBackend {
+  let snapshot = structuredClone(options.snapshot);
+  let generation = structuredClone(options.generation.settings);
+  const projectId = snapshot.project.id;
+  const fileUrls = new Map(Object.entries(options.fileUrls ?? {}));
+  const exchanges = new Map(Object.entries(structuredClone(options.exchanges ?? {})));
+  const listeners = new Set<(event: ProjectCanvasEvent) => void>();
+  const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const jobTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const jobs = new Map<string, GenerationJob>();
+  const delay = options.delayMs ?? 900;
+  const openedChats: Array<{ botId: string; threadId?: string }> = [];
+  let counter = 0;
+  const newId = (prefix: string) => `${prefix}-${++counter}`;
+
+  const emit = (reason: ProjectCanvasEvent["reason"]) => {
+    const event: ProjectCanvasEvent = { kind: "project-canvas", projectId, revision: snapshot.revision, reason };
+    queueMicrotask(() => listeners.forEach((listener) => listener(event)));
+  };
+  const commit = (ops: CanvasOp[]) => {
+    snapshot = { ...applyCanvasOps(snapshot, ops), revision: snapshot.revision + 1 };
+    emit("document");
+  };
+  const ensureProject = (id: string) => {
+    if (id !== projectId) throw new Error(`No project ${id}`);
+  };
+  const ensureWritable = () => {
+    if (snapshot.readOnly) throw new CanvasBackendError("This project is archived, so its canvas can't change.", { code: "canvas_read_only", error: "This project is archived.", reason: "archived" });
+  };
+  const nodeById = (id: string) => snapshot.nodes.find((node) => node.id === id);
+  const rightEdge = () => Math.max(0, ...snapshot.nodes.map((node) => node.position.x + node.width)) + 96;
+  const setBot = (botId: string, change: Partial<CanvasBotState>) => {
+    const bot = snapshot.bots[botId];
+    if (!bot) return;
+    snapshot = { ...snapshot, bots: { ...snapshot.bots, [botId]: { ...bot, ...change } } };
+    emit("bots");
+  };
+
+  const finishJob = (job: GenerationJob, input: StartGenerationInput) => {
+    jobTimers.delete(job.id);
+    const node = nodeById(job.nodeId);
+    const reason = options.fail?.(input);
+    if (!node || reason) {
+      jobs.set(job.id, { ...job, status: "failed", updatedAt: Date.now() });
+      if (node) commit([{ type: "update_node", id: node.id, metadata: { status: "error", errorDetails: reason ?? null, jobId: null } }]);
+      return;
+    }
+    const count = job.kind === "image" ? job.settings.count : 1;
+    const outputs = Array.from({ length: count }, (_, index) => options.output?.(input, index) ?? {
+      file: { path: `产出/${job.kind === "image" ? "图片" : "视频"}/${input.name ?? "result"}-${job.id}-${index + 1}.${job.kind === "image" ? "png" : "mp4"}`, mime: job.kind === "image" ? "image/png" : "video/mp4", bytes: 1, name: `result-${index + 1}` },
+      url: "",
+    });
+    const ops: CanvasOp[] = [];
+    let document = snapshot;
+    outputs.forEach((output, index) => {
+      if (output.url) fileUrls.set(output.file.path, output.url);
+      const media = { file: output.file, ...(output.naturalWidth ? { naturalWidth: output.naturalWidth, naturalHeight: output.naturalHeight } : {}), ...(output.durationMs ? { durationMs: output.durationMs } : {}) };
+      if (index === 0 && showsResultInPlace(node)) {
+        const step: CanvasOp = { type: "update_node", id: node.id, metadata: media };
+        ops.push(step);
+        document = applyCanvasOps(document, [step]);
+        return;
+      }
+      const source = document.nodes.find((item) => item.id === node.id)!;
+      const frame = nextOutputFrame(source, job.kind, document.nodes, document.connections);
+      const id = newId("node");
+      const steps: CanvasOp[] = [
+        { type: "add_node", id, nodeType: job.kind, title: input.name ?? "", ...frame, metadata: { ...media, prompt: input.prompt, status: "success" } },
+        { type: "connect_nodes", id: newId("connection"), fromNodeId: node.id, toNodeId: id },
+      ];
+      ops.push(...steps);
+      document = applyCanvasOps(document, steps);
+    });
+    ops.push({ type: "update_node", id: node.id, metadata: { status: "success", errorDetails: null, jobId: null } });
+    jobs.set(job.id, { ...job, status: "done", updatedAt: Date.now(), files: outputs.map((output) => output.file) });
+    commit(ops);
+  };
+
+  const backend: MemoryCanvasBackend = {
+    openedChats,
+    current: () => structuredClone(snapshot),
+    updateBots(change) {
+      const next = structuredClone(snapshot);
+      change(next);
+      snapshot = next;
+      emit("bots");
+    },
+
+    async readSnapshot(id) {
+      ensureProject(id);
+      return structuredClone(snapshot);
+    },
+
+    async applyOps(id, request: CanvasOpsRequest): Promise<CanvasOpsResponse> {
+      ensureProject(id);
+      ensureWritable();
+      const nodeIds: string[] = [];
+      const connectionIds: string[] = [];
+      const ops = request.ops.map((op): CanvasOp => {
+        if (op.type === "add_node") {
+          if (op.id && nodeById(op.id)) throw new Error(`Node ${op.id} already exists.`);
+          const added = { ...op, id: op.id ?? newId("node"), position: op.position ?? { x: rightEdge(), y: 0 } };
+          nodeIds.push(added.id);
+          return added;
+        }
+        if (op.type === "connect_nodes") {
+          const added = { ...op, id: op.id ?? newId("connection") };
+          connectionIds.push(added.id);
+          return added;
+        }
+        if (op.type === "delete_node" && [...(op.ids ?? []), ...(op.id ? [op.id] : [])].some((nodeId) => nodeById(nodeId)?.type === "bot")) throw new Error("A bot's node can't be deleted.");
+        return op;
+      });
+      commit(ops);
+      return { revision: snapshot.revision, nodeIds, connectionIds };
+    },
+
+    subscribe(id, onEvent) {
+      ensureProject(id);
+      listeners.add(onEvent);
+      return () => listeners.delete(onEvent);
+    },
+
+    async uploadFile(id, file, at?: CanvasPoint) {
+      ensureProject(id);
+      ensureWritable();
+      if (snapshot.project.folderState === "missing") throw new Error("The project's folder isn't there, so files can't be added.");
+      const taken = new Set(snapshot.nodes.flatMap((node) => (node.metadata?.file ? [node.metadata.file.path] : [])));
+      const ref: CanvasFileRef = { path: uniquePath(CANVAS_UPLOAD_FOLDER, file.name, taken), mime: file.type || "application/octet-stream", bytes: file.size, name: file.name };
+      const url = typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : "";
+      if (url) fileUrls.set(ref.path, url);
+      const nodeType = canvasFileNodeType(ref.mime);
+      const nodeId = newId("node");
+      commit([{ type: "add_node", id: nodeId, nodeType, title: file.name, position: at ?? { x: rightEdge(), y: 0 }, ...CANVAS_NODE_SIZE[nodeType], metadata: { file: ref } }]);
+      return { revision: snapshot.revision, nodeId, file: ref };
+    },
+
+    fileUrl(id, file) {
+      return fileUrls.get(file.path) ?? `/api/team-projects/${encodeURIComponent(id)}/canvas/files?path=${encodeURIComponent(file.path)}`;
+    },
+
+    async readBotLooks(id) {
+      ensureProject(id);
+      return structuredClone(options.looks ?? {});
+    },
+
+    async sendTask(id, task) {
+      ensureProject(id);
+      ensureWritable();
+      const bot = snapshot.bots[task.botId];
+      if (!bot) throw new Error("That bot isn't in this project.");
+      const threadId = task.threadId ?? bot.output?.threadId ?? `thread-${task.botId}`;
+      const messageId = newId("message");
+      const references = connectedReferences(botNodeId(task.botId), snapshot.nodes, snapshot.connections).length;
+      exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: messageId, role: "person", text: task.text, at: Date.now() }]);
+      setBot(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined });
+      clearTimeout(botTimers.get(task.botId));
+      botTimers.set(task.botId, setTimeout(() => {
+        botTimers.delete(task.botId);
+        const current = snapshot.bots[task.botId];
+        if (!current) return;
+        const text = options.reply?.(task, current) ?? `Done: ${task.text}`;
+        const replyId = newId("message");
+        exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: replyId, role: "bot", text, at: Date.now() }]);
+        if (task.targetNodeId && nodeById(task.targetNodeId)) commit([{ type: "update_node", id: task.targetNodeId, metadata: { content: text } }]);
+        setBot(task.botId, { status: "idle", doing: undefined, output: { text, threadId, messageId: replyId, at: Date.now() } });
+      }, delay));
+      return { threadId, messageId, references };
+    },
+
+    async stopBot(id, botId) {
+      ensureProject(id);
+      clearTimeout(botTimers.get(botId));
+      botTimers.delete(botId);
+      setBot(botId, { status: "idle", doing: undefined });
+    },
+
+    async readExchange(id, botId) {
+      ensureProject(id);
+      const messages = exchanges.get(botId) ?? [];
+      const lastAsk = messages.findLastIndex((message) => message.role === "person");
+      return structuredClone(lastAsk < 0 ? messages.slice(-1) : messages.slice(lastAsk));
+    },
+
+    openChat(id, botId, threadId) {
+      ensureProject(id);
+      openedChats.push({ botId, ...(threadId ? { threadId } : {}) });
+      options.onOpenChat?.(botId, threadId);
+    },
+
+    async readGenerationSettings(id) {
+      ensureProject(id);
+      return { settings: structuredClone(generation), servers: [...options.generation.servers] };
+    },
+
+    async saveGenerationSettings(id, settings) {
+      ensureProject(id);
+      for (const kind of ["image", "video"] as const) {
+        const server = settings[kind].server;
+        const models = server ? options.generation.models[server] ?? [] : [];
+        if (!server || !settings[kind].defaults.model) continue;
+        const problems = settingProblems(kind, settings[kind].defaults, models);
+        if (problems.length) return failure(problems[0]!.key === "model" ? "model_unknown" : "setting_refused", "The model doesn't offer that setting.", { problems });
+      }
+      generation = structuredClone(settings);
+      return { settings: structuredClone(generation), servers: [...options.generation.servers] };
+    },
+
+    async listModels(id, kind, preview) {
+      ensureProject(id);
+      const server = preview?.server ?? generation[kind].server;
+      if (!server) return failure("no_server", "Choose an MCP server for this project first.");
+      const models = options.generation.models[server];
+      if (!models) return failure("server_unusable", `The MCP server ${server} can't be used.`, { errorParams: { server } });
+      return { models: models.filter((model) => model.kind === kind) };
+    },
+
+    async startGeneration(id, input) {
+      ensureProject(id);
+      if (snapshot.readOnly) return failure("project_unavailable", "This project is archived.");
+      const node = nodeById(input.nodeId);
+      if (!node) return failure("invalid", "That node isn't on the canvas.");
+      if (!input.prompt.trim()) return failure("invalid", "Write a prompt first.");
+      const kind: GenerationKind = input.kind;
+      const server = generation[kind].server;
+      if (!server) return failure("no_server", "Choose an MCP server for this project first.");
+      const settings = resolveSettings(kind, generation[kind].defaults, input.overrides);
+      if (!settings.model) return failure("no_model", "Choose a model first.");
+      const references = { images: input.references?.images ?? [], audio: input.references?.audio ?? [] };
+      const problems = settingProblems(kind, settings, options.generation.models[server] ?? [], { images: references.images.length, audio: references.audio.length });
+      if (problems.length) return failure(problems[0]!.key === "model" ? "model_unknown" : "setting_refused", "The model doesn't offer that setting.", { problems });
+      const now = Date.now();
+      const base = { id: newId("job"), projectId, status: "queued" as const, nodeId: node.id, requester: { kind: "person" as const }, prompt: input.prompt, references, server, tool: generation[kind].tools.generate, files: [], createdAt: now, updatedAt: now };
+      const job: GenerationJob = kind === "image"
+        ? { ...base, kind, settings: resolveSettings(kind, generation.image.defaults, input.overrides as ImageOverrides) }
+        : { ...base, kind, settings: resolveSettings(kind, generation.video.defaults, input.overrides as VideoOverrides) };
+      jobs.set(job.id, job);
+      commit([{ type: "update_node", id: node.id, metadata: { status: "loading", jobId: job.id, prompt: input.prompt, errorDetails: null } }]);
+      jobTimers.set(job.id, setTimeout(() => finishJob(job, input), delay * 2));
+      return { job };
+    },
+
+    async cancelGeneration(id, jobId) {
+      ensureProject(id);
+      clearTimeout(jobTimers.get(jobId));
+      jobTimers.delete(jobId);
+      const job = jobs.get(jobId);
+      if (!job) return;
+      jobs.set(jobId, { ...job, status: "cancelled", updatedAt: Date.now() });
+      const node = nodeById(job.nodeId);
+      if (node?.metadata?.jobId === jobId) commit([{ type: "update_node", id: node.id, metadata: { status: node.metadata.file ? "success" : "idle", jobId: null } }]);
+    },
+  };
+  return backend;
+}

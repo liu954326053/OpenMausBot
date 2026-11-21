@@ -1,6 +1,8 @@
 import type {
+  CanvasConflict,
   CanvasFileRef,
   CanvasOpsRequest,
+  CanvasReadOnly,
   CanvasOpsResponse,
   CanvasPoint,
   CanvasSnapshot,
@@ -18,6 +20,14 @@ import type {
   StartGenerationInput,
 } from "../../../shared/project-generation";
 import type { CanvasBotLook, CanvasBotTask, CanvasExchangeMessage } from "./types";
+
+/** A refusal the server explained: the 409 body of a conflict or of a canvas that takes no change. */
+export class CanvasBackendError extends Error {
+  constructor(message: string, readonly body?: CanvasConflict | CanvasReadOnly) {
+    super(message);
+    this.name = "CanvasBackendError";
+  }
+}
 
 /**
  * Everything the project canvas reads and changes. The canvas keeps nothing in the browser: each call names the

@@ -1,0 +1,130 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { botNodeId, type CanvasOpsRequest } from "../../../shared/project-canvas";
+import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
+import { CanvasController, VIEWPORT_SAVE_DELAY_MS } from "./controller";
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+async function started(options: Parameters<typeof sampleCanvasBackend>[0] = {}) {
+  const backend = sampleCanvasBackend(options);
+  const sent: CanvasOpsRequest[] = [];
+  const applyOps = backend.applyOps.bind(backend);
+  backend.applyOps = (projectId, request) => {
+    sent.push(request);
+    return applyOps(projectId, request);
+  };
+  const controller = new CanvasController(backend, SAMPLE_PROJECT_ID);
+  await controller.start();
+  await vi.advanceTimersByTimeAsync(0);
+  return { backend, controller, sent };
+}
+
+const node = (controller: CanvasController, id: string) => controller.getState().snapshot!.nodes.find((candidate) => candidate.id === id);
+
+describe("the canvas controller", () => {
+  it("loads the snapshot, the bots' looks, the settings and the models", async () => {
+    const { controller } = await started();
+    const state = controller.getState();
+    expect(state.phase).toBe("ready");
+    expect(state.looks.mira).toEqual({ color: "purple" });
+    expect(state.generation?.settings.video.server).toBe("studio-video");
+    expect(state.models.video?.map((model) => model.id)).toEqual(["kling-2", "veo-lite"]);
+  });
+
+  it("shows a change at once, sends changes in order without a base revision, and keeps them over a newer snapshot", async () => {
+    const { backend, controller, sent } = await started();
+    controller.apply([{ type: "update_node", id: "logline", patch: { title: "Logline v2" } }]);
+    controller.apply([{ type: "add_node", nodeType: "text", title: "Note", position: { x: 10, y: 10 } }]);
+    expect(node(controller, "logline")!.title).toBe("Logline v2");
+    expect(controller.getState().snapshot!.nodes.some((candidate) => candidate.title === "Note")).toBe(true);
+    await controller.settled();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.map((request) => request.ops[0]!.type)).toEqual(["update_node", "add_node"]);
+    expect(sent.every((request) => request.baseRevision === undefined)).toBe(true);
+    expect(sent[1]!.ops[0]).toMatchObject({ id: expect.any(String) });
+    expect(backend.current().nodes.find((candidate) => candidate.id === "logline")!.title).toBe("Logline v2");
+    expect(controller.getState().snapshot!.revision).toBe(backend.current().revision);
+  });
+
+  it("undoes and redoes a deletion with its connections, and drops redo after a new change", async () => {
+    const { backend, controller } = await started();
+    controller.apply([{ type: "delete_node", id: "city-night" }]);
+    expect(node(controller, "city-night")).toBeUndefined();
+    controller.undo();
+    expect(node(controller, "city-night")).toBeDefined();
+    expect(controller.getState().snapshot!.connections.some((connection) => connection.id === "c-city-shot")).toBe(true);
+    expect(controller.getState().canRedo).toBe(true);
+    controller.redo();
+    expect(node(controller, "city-night")).toBeUndefined();
+    controller.undo();
+    controller.apply([{ type: "update_node", id: "logline", patch: { title: "x" } }]);
+    expect(controller.getState().canRedo).toBe(false);
+    await controller.settled();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(backend.current().nodes.some((candidate) => candidate.id === "city-night")).toBe(true);
+  });
+
+  it("keeps a failed change off the canvas and says why", async () => {
+    const { backend, controller } = await started();
+    backend.applyOps = () => Promise.reject(new Error("Disk full"));
+    controller.apply([{ type: "update_node", id: "logline", patch: { title: "Lost" } }]);
+    await controller.settled();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(node(controller, "logline")!.title).toBe("Logline");
+    expect(controller.getState().writeError).toBe("Disk full");
+  });
+
+  it("stores the view once it rests, without moving it on a newer snapshot or adding it to undo", async () => {
+    const { backend, controller } = await started();
+    controller.setViewport({ x: 40, y: 50, k: 2 });
+    controller.setViewport({ x: 80, y: 90, k: 2 });
+    await vi.advanceTimersByTimeAsync(VIEWPORT_SAVE_DELAY_MS);
+    await controller.settled();
+    expect(backend.current().viewport).toEqual({ x: 80, y: 90, k: 2 });
+    backend.updateBots((snapshot) => {
+      snapshot.viewport = { x: 0, y: 0, k: 1 };
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await controller.refresh();
+    expect(controller.getState().viewport).toEqual({ x: 80, y: 90, k: 2 });
+    expect(controller.getState().canUndo).toBe(false);
+  });
+
+  it("tidies the bots into their tree as one undoable change", async () => {
+    const { controller } = await started();
+    controller.apply([{ type: "update_node", id: botNodeId("otto"), patch: { position: { x: 2000, y: 2000 } } }], { record: false });
+    controller.tidy();
+    expect(node(controller, botNodeId("otto"))!.position).not.toEqual({ x: 2000, y: 2000 });
+    controller.undo();
+    expect(node(controller, botNodeId("otto"))!.position).toEqual({ x: 2000, y: 2000 });
+  });
+
+  it("stores a changed prompt before generating, and hands back a refusal", async () => {
+    const { backend, controller } = await started({ delayMs: 50 });
+    const refusal = await controller.generate("shot-1", "Night rain, close-up");
+    expect(refusal).toBeNull();
+    expect(backend.current().nodes.find((candidate) => candidate.id === "shot-1")!.metadata).toMatchObject({ prompt: "Night rain, close-up", status: "loading" });
+    await controller.saveGeneration({ ...controller.getState().generation!.settings, video: { ...controller.getState().generation!.settings.video, server: null } });
+    expect(await controller.generate("shot-1", "Night rain, close-up")).toMatchObject({ code: "no_server" });
+  });
+
+  it("marks a text node a bot is writing until the bot answers", async () => {
+    const { controller } = await started({ delayMs: 100, reply: () => "Rain never stops in this city." });
+    await controller.sendTask({ botId: "otto", text: "a tagline", targetNodeId: "logline" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controller.getState().writing.logline).toMatchObject({ botId: "otto" });
+    await vi.advanceTimersByTimeAsync(100);
+    await controller.refresh();
+    expect(controller.getState().writing.logline).toBeUndefined();
+    expect(node(controller, "logline")!.metadata!.content).toBe("Rain never stops in this city.");
+  });
+
+  it("records an upload so undo removes the node", async () => {
+    const { controller } = await started();
+    const { nodeId } = await controller.upload(new File(["x"], "still.png", { type: "image/png" }), { x: 5, y: 6 });
+    expect(node(controller, nodeId)).toMatchObject({ type: "image", position: { x: 5, y: 6 } });
+    controller.undo();
+    expect(node(controller, nodeId)).toBeUndefined();
+  });
+});
