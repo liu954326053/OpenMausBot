@@ -43,35 +43,37 @@ function NavRow({
 }) {
   const unreadId = useId();
   return (
-    <button
-      type="button"
-      data-tour={tourId}
-      data-sidebar-nav={id}
-      onClick={onClick}
-      aria-label={iconsOnly ? label : undefined}
-      aria-describedby={unread ? unreadId : undefined}
-      title={iconsOnly ? label : undefined}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex items-center rounded-xl transition-colors",
-        rail ? "size-9 shrink-0 justify-center" : iconsOnly ? "mx-auto size-[46px] shrink-0 justify-center" : "w-full min-h-9 gap-3 px-3 py-1.5 text-left",
-        active ? "bg-raised text-ink" : "text-ink hover:bg-raised/50",
-      )}
-    >
-      {icon(active)}
-      {!iconsOnly && <span className="flex-1 truncate text-[14px] font-medium leading-5">{label}</span>}
-      {attention && (
-        <span
-          data-testid="routines-attention"
-          className={cn("size-2 shrink-0 rounded-full bg-danger", iconsOnly && (rail ? "absolute right-1 top-1" : "absolute right-2 top-2"))}
-        />
-      )}
-      {unread && !attention && (
-        <span data-sidebar-nav-unread="" aria-hidden="true"
-          className={cn("size-2 shrink-0 rounded-full bg-accent", iconsOnly && (rail ? "absolute end-1 top-1" : "absolute end-2 top-2"))} />
-      )}
-      {unread && <span id={unreadId} className="sr-only">{t("task.unread")}</span>}
-    </button>
+    <>
+      <button
+        type="button"
+        data-tour={tourId}
+        data-sidebar-nav={id}
+        onClick={onClick}
+        aria-label={iconsOnly ? label : undefined}
+        aria-describedby={unread ? unreadId : undefined}
+        title={iconsOnly ? label : undefined}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "relative flex items-center rounded-xl transition-colors",
+          rail ? "size-9 shrink-0 justify-center" : iconsOnly ? "mx-auto size-[46px] shrink-0 justify-center" : "w-full min-h-9 gap-3 px-3 py-1.5 text-left",
+          active ? "bg-raised text-ink" : "text-ink hover:bg-raised/50",
+        )}
+      >
+        {icon(active)}
+        {!iconsOnly && <span className="flex-1 truncate text-[14px] font-medium leading-5">{label}</span>}
+        {attention && (
+          <span
+            data-testid="routines-attention"
+            className={cn("size-2 shrink-0 rounded-full bg-danger", iconsOnly && (rail ? "absolute right-1 top-1" : "absolute right-2 top-2"))}
+          />
+        )}
+        {unread && !attention && (
+          <span data-sidebar-nav-unread="" aria-hidden="true"
+            className={cn("size-2 shrink-0 rounded-full bg-accent", iconsOnly && (rail ? "absolute end-1 top-1" : "absolute end-2 top-2"))} />
+        )}
+      </button>
+      {unread && <span id={unreadId} hidden>{t("task.unread")}</span>}
+    </>
   );
 }
 
