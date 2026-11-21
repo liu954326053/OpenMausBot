@@ -4,5 +4,3 @@ import { t } from "@/lib/i18n";
 const settingsPlace = (page: string): string => `${t("settings.title")} → ${page}`;
 
 export const dataSettingsPlace = (): string => settingsPlace(t("settings.page.data"));
-
-export const templatesSettingsPlace = (): string => settingsPlace(t("settings.page.templates"));

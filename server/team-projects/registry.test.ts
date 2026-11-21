@@ -14,7 +14,7 @@ const registry = () => new TeamProjectRegistry(file, (line) => logged.push(line)
 function project(patch: Partial<StoredTeamProject> = {}): StoredTeamProject {
   return {
     id: "p1", name: "Stand-in bride", folder: "/dramas/Stand-in bride", section: "Stand-in bride",
-    template: { id: "t1", name: "Short drama crew", version: 3 }, leadBotId: "bot-lead", createdAt: 1_700_000_000_000, ...patch,
+    team: { key: "team:writers", name: "Writers" }, leadBotId: "bot-lead", createdAt: 1_700_000_000_000, ...patch,
   };
 }
 
@@ -58,6 +58,16 @@ describe("the list of projects on disk", () => {
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
+  it("reads a project made from a team template instead of a team, and keeps it as it was", () => {
+    const { team: _team, ...older } = project({ template: { id: "t1", name: "Short drama crew", version: 3 } });
+    writeFileSync(file, JSON.stringify({ version: 1, root: "/dramas", projects: [older] }));
+    const saved = registry();
+    expect(saved.readable).toBe(true);
+    expect(saved.projects()).toEqual([older]);
+    saved.add(project({ id: "p2" }));
+    expect(registry().projects()).toEqual([older, project({ id: "p2" })]);
+  });
+
   it("replaces and removes a project by id", () => {
     const saved = registry();
     saved.add(project());
@@ -83,6 +93,7 @@ describe("the list of projects on disk", () => {
     const before = readFileSync(file, "utf8");
     const broken = [
       project({ id: "p2", template: { id: "t1", name: "Short drama crew", version: Number.NaN } }),
+      project({ id: "p2", team: { key: "", name: "Writers" } }),
       project({ id: "p2", createdAt: Number.POSITIVE_INFINITY }),
       project({ id: "p2", folder: "" }),
       { ...project({ id: "p2" }), leadBotId: undefined } as unknown as StoredTeamProject,

@@ -26,7 +26,7 @@ const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
   color: "green", unread: false, modelSelection: { instanceId: "fake", model: "m" }, messages: [], ...extra,
 });
 const bride = {
-  id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", template: { id: "urban", name: "Urban", version: 1 },
+  id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
   leadBotId: "lead", createdAt: 1, folderState: "ready" as const, botIds: ["lead", "writer"],
 };
 

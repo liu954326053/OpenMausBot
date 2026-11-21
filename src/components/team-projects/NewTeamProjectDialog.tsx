@@ -2,37 +2,47 @@ import { Check, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { isTeamProjectName, TEAM_PROJECT_NAME_MAX, type TeamProjectRefusal, type TeamProjectWire } from "../../../shared/team-projects";
-import type { TeamTemplateSummary } from "../../../shared/template-library";
+import { isTeamProjectName, TEAM_PROJECT_NAME_MAX, type ProjectTeamWire, type TeamProjectRefusal } from "../../../shared/team-projects";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing } from "@/lib/send-key";
-import { refusalKey, refusalPlace, teamProjectFolder, templateTeam, type RefusalPlace } from "@/lib/team-projects";
-import { listTemplates } from "@/lib/template-library";
+import { refusalKey, refusalPlace, teamProjectFolder, unusableKey, type RefusalPlace } from "@/lib/team-projects";
+import { listProjectTeams } from "@/lib/team-projects-api";
 import type { SettingsPageId } from "@/state/store";
 import { useStoreDispatch } from "@/state/store-select";
 import { createProject, refreshTeamProjects, useTeamProjectSide } from "@/state/team-projects";
 import { SETTINGS_INPUT } from "../SettingsPrimitives";
-import { dataSettingsPlace, templatesSettingsPlace } from "./where-in-settings";
+import { dataSettingsPlace } from "./where-in-settings";
 
 interface Refusal {
   place: RefusalPlace;
   text: string;
 }
 
-/** The words for a refusal: this app's own by its code. Only the server can say why a project could not be made, and whether anything was left behind. */
+/** The words for a refusal: this app's own by its code. Only the server can say why a project could not be made, whether anything was left behind, and what a team lacks. */
 function refusalOf(code: TeamProjectRefusal | null, sentence: string): Refusal {
   if (code === null || code === "failed") return { place: "form", text: sentence || t(refusalKey("failed")) };
+  if (code === "team_unusable") return { place: "team", text: sentence || t(refusalKey(code)) };
   return { place: refusalPlace(code), text: t(refusalKey(code), { place: dataSettingsPlace() }) };
 }
 
 const listed = (names: string[]) => new Intl.ListFormat(activeLocale(), { type: "conjunction", style: "narrow" }).format(names);
 
+/** Who leads a project made from the team and who else comes; a team without a Chief of Staff who can lead is only its members. */
+function teamLine(team: ProjectTeamWire): string {
+  const chief = team.unusable ? undefined : team.chief;
+  if (!chief) return team.members.length ? t("teamProjects.teamMembersOnly", { members: listed(team.members.map((member) => member.name)) }) : "";
+  const members = team.members.filter((member) => member.id !== chief.id).map((member) => member.name);
+  return members.length ? t("teamProjects.teamMembers", { chief: chief.name, members: listed(members) }) : t("teamProjects.teamChiefOnly", { chief: chief.name });
+}
+
 const LABEL = "text-[13px] font-medium leading-[18px] text-ink";
 const LINE = "text-[13px] leading-[18px] text-ink-secondary";
 
-type Stage = "form" | "made" | "root" | "templates";
+type Stage = "form" | "root" | "teams";
+
+const usableRows = (list: HTMLElement | null): HTMLButtonElement[] => [...list?.querySelectorAll<HTMLButtonElement>("[data-team]") ?? []].filter((row) => !row.disabled);
 
 function Frame({ stage, title, onClose, children, footer }: { stage: Stage; title: string; onClose: () => void; children: ReactNode; footer: ReactNode }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -58,23 +68,22 @@ function Frame({ stage, title, onClose, children, footer }: { stage: Stage; titl
 export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
   const side = useTeamProjectSide();
   const dispatch = useStoreDispatch();
-  const formId = useId(), nameId = useId(), templatesId = useId(), folderId = useId();
-  const [teams, setTeams] = useState<TeamTemplateSummary[] | "failed" | null>(null);
+  const formId = useId(), nameId = useId(), teamsId = useId(), folderId = useId();
+  const [teams, setTeams] = useState<ProjectTeamWire[] | "failed" | null>(null);
   const [name, setName] = useState("");
-  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [teamName, setTeamName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
-  const [made, setMade] = useState<{ project: TeamProjectWire; missingSkills: string[] } | null>(null);
-  const templates = useRef<HTMLDivElement>(null);
+  const teamRows = useRef<HTMLDivElement>(null);
   const live = useRef(true);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
 
   const loadTeams = () => {
-    listTemplates().then((library) => {
+    listProjectTeams().then((found) => {
       if (!live.current) return;
-      const found = Array.isArray(library.teams) ? library.teams : [];
+      const usable = found.filter((team) => !team.unusable);
       setTeams(found);
-      setTemplateId((chosen) => (found.some((team) => team.id === chosen) ? chosen : found.length === 1 ? found[0]!.id : null));
+      setTeamName((chosen) => (usable.some((team) => team.name === chosen) ? chosen : usable.length === 1 ? usable[0]!.name : null));
     }, () => { if (live.current) setTeams("failed"); });
   };
   useEffect(() => {
@@ -89,29 +98,24 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
   const close = () => { if (!busy) onClose(); };
   const cancel = <button type="button" className="ui-button ui-button-md" onClick={close} disabled={busy}>{t("common.cancel")}</button>;
 
-  if (made) {
+  if (side.root === null) {
     return (
-      <Frame stage="made" title={t("teamProjects.created", { name: made.project.name })} onClose={onClose}
-        footer={<button type="button" data-keyboard-start="" data-team-project-done="" className="ui-button ui-button-md ui-button-primary" onClick={onClose}>{t("common.done")}</button>}>
-        <p className={LINE}>{t("teamProjects.missingSkills")}</p>
-        <ul data-team-project-missing-skills="" className="mt-2 flex flex-col gap-1">
-          {made.missingSkills.map((skill) => <li key={skill} dir="auto" className="font-mono text-[13px] leading-[18px] break-words text-ink">{skill}</li>)}
-        </ul>
-        <p className={cn(LINE, "mt-3")}>{t("teamProjects.missingSkillsNext")}</p>
+      <Frame stage="root" title={t("teamProjects.new")} onClose={onClose} footer={<>
+        {cancel}
+        <button type="button" data-keyboard-start="" data-team-project-settings="root" className="ui-button ui-button-md ui-button-primary" onClick={() => openSettings("data")}>{t("teamProjects.openSettings")}</button>
+      </>}>
+        <p data-team-project-setup="root" className={LINE}>{t("teamProjects.noRoot", { place: dataSettingsPlace() })}</p>
       </Frame>
     );
   }
-
-  const setUp = (mark: "root" | "templates", text: string, page: SettingsPageId) => (
-    <Frame stage={mark} title={t("teamProjects.new")} onClose={onClose} footer={<>
-      {cancel}
-      <button type="button" data-keyboard-start="" data-team-project-settings={mark} className="ui-button ui-button-md ui-button-primary" onClick={() => openSettings(page)}>{t("teamProjects.openSettings")}</button>
-    </>}>
-      <p data-team-project-setup={mark} className={LINE}>{text}</p>
-    </Frame>
-  );
-  if (side.root === null) return setUp("root", t("teamProjects.noRoot", { place: dataSettingsPlace() }), "data");
-  if (Array.isArray(teams) && teams.length === 0) return setUp("templates", t("teamProjects.noTemplates", { place: templatesSettingsPlace() }), "templates");
+  if (Array.isArray(teams) && teams.length === 0) {
+    return (
+      <Frame stage="teams" title={t("teamProjects.new")} onClose={onClose}
+        footer={<button type="button" data-keyboard-start="" data-team-project-done="" className="ui-button ui-button-md ui-button-primary" onClick={onClose}>{t("common.ok")}</button>}>
+        <p data-team-project-setup="teams" className={LINE}>{t("teamProjects.noTeams")}</p>
+      </Frame>
+    );
+  }
 
   const root = side.root;
   const trimmed = name.trim();
@@ -126,23 +130,22 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
   const create = async () => {
     if (!ready) return;
     if (!isTeamProjectName(trimmed)) return setRefusal(refusalOf("bad_name", ""));
-    if (templateId === null) {
-      setRefusal({ place: "template", text: t("teamProjects.pickTemplate") });
-      templates.current?.querySelector<HTMLElement>('[role="radio"]')?.focus();
+    if (teamName === null) {
+      setRefusal({ place: "team", text: t("teamProjects.pickTeam") });
+      usableRows(teamRows.current)[0]?.focus();
       return;
     }
     setBusy(true);
     setRefusal(null);
     try {
-      const outcome = await createProject({ name: trimmed, templateId });
+      const outcome = await createProject({ name: trimmed, team: teamName });
       if (!live.current) return;
       if ("project" in outcome) {
         dispatch({ type: "select", id: outcome.project.leadBotId });
-        if (outcome.missingSkills.length > 0) setMade(outcome);
-        else onClose();
+        onClose();
         return;
       }
-      if (outcome.refused === "no_template") loadTeams();
+      if (outcome.refused === "no_team" || outcome.refused === "team_unusable") loadTeams();
       setRefusal(refusalOf(outcome.refused, outcome.error));
     } catch {
       if (live.current) setRefusal(refusalOf(null, ""));
@@ -151,20 +154,21 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const choose = (id: string) => {
-    setTemplateId(id);
-    if (refusal?.place === "template") setRefusal(null);
+  const choose = (team: string) => {
+    setTeamName(team);
+    if (refusal?.place === "team") setRefusal(null);
   };
   const step = (event: KeyboardEvent<HTMLDivElement>) => {
     const by = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
-    const rows = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-team-template]")];
-    const at = rows.indexOf(event.target as HTMLElement);
+    const rows = usableRows(event.currentTarget);
+    const at = rows.indexOf(event.target as HTMLButtonElement);
     if (!by || at < 0) return;
     event.preventDefault();
     const next = rows[(at + by + rows.length) % rows.length]!;
-    choose(next.dataset.teamTemplate!);
+    choose(next.dataset.team!);
     next.focus();
   };
+  const firstUsable = Array.isArray(teams) ? teams.find((team) => !team.unusable)?.name : undefined;
 
   return (
     <Frame stage="form" title={t("teamProjects.new")} onClose={close} footer={<>
@@ -185,29 +189,31 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
           {problem("name")}
         </div>
         <div>
-          <div id={templatesId} className={LABEL}>{t("teamProjects.template")}</div>
+          <div id={teamsId} className={LABEL}>{t("teamProjects.team")}</div>
           {teams === "failed" ? (
             <div role="alert" className="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] leading-[18px] text-danger">
-              <span>{t("teamProjects.templatesFailed")}</span>
-              <button type="button" data-team-templates-retry="" className="ui-button ui-button-sm" onClick={() => { setTeams(null); loadTeams(); }}>{t("common.tryAgain")}</button>
+              <span>{t("teamProjects.teamsFailed")}</span>
+              <button type="button" data-teams-retry="" className="ui-button ui-button-sm" onClick={() => { setTeams(null); loadTeams(); }}>{t("common.tryAgain")}</button>
             </div>
           ) : (
-            <div ref={templates} role="radiogroup" aria-labelledby={templatesId} data-team-templates="" onKeyDown={step}
+            <div ref={teamRows} role="radiogroup" aria-labelledby={teamsId} data-teams="" onKeyDown={step}
               className="mt-1.5 flex max-h-[min(264px,40vh)] min-h-[66px] flex-col gap-0.5 overflow-y-auto rounded-xl border border-hairline/40 p-1">
-              {(teams ?? []).map((team, index) => {
-                const chosen = team.id === templateId;
-                const { lead, members } = templateTeam(team);
-                const names = listed(members.map((role) => role.name));
-                const roles = !lead ? names : names ? t("teamProjects.templateTeam", { lead: lead.name, members: names }) : t("teamProjects.templateLeadOnly", { lead: lead.name });
+              {(teams ?? []).map((team) => {
+                const chosen = team.name === teamName;
+                const members = teamLine(team);
+                const context = team.context.trim();
+                const dim = team.unusable && "opacity-50";
                 return (
-                  <button key={team.id} type="button" role="radio" aria-checked={chosen} data-team-template={team.id} disabled={busy}
-                    tabIndex={chosen || (templateId === null && index === 0) ? 0 : -1}
-                    onClick={() => choose(team.id)}
-                    className="flex w-full shrink-0 items-start gap-3 rounded-lg px-2 py-2 text-start enabled:hover:bg-ink/[0.04] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-checked:bg-ink/[0.06] disabled:opacity-50">
+                  <button key={team.name} type="button" role="radio" aria-checked={chosen} data-team={team.name} data-team-unusable={team.unusable}
+                    disabled={busy || team.unusable !== undefined}
+                    tabIndex={chosen || (teamName === null && team.name === firstUsable) ? 0 : -1}
+                    onClick={() => choose(team.name)}
+                    className={cn("flex w-full shrink-0 items-start gap-3 rounded-lg px-2 py-2 text-start enabled:hover:bg-ink/[0.04] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus aria-checked:bg-ink/[0.06]", !team.unusable && "disabled:opacity-50")}>
                     <span className="min-w-0 flex-1">
-                      <span dir="auto" className="block truncate text-[13px] font-medium leading-[18px] text-ink" title={team.name}>{team.name}</span>
-                      {team.genre.trim() && <span dir="auto" className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-secondary" title={team.genre}>{team.genre}</span>}
-                      {roles && <span dir="auto" className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-tertiary" title={roles}>{roles}</span>}
+                      <span dir="auto" className={cn("block truncate text-[13px] font-medium leading-[18px] text-ink", dim)} title={team.name}>{team.name}</span>
+                      {context && <span dir="auto" className={cn("mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-secondary", dim)} title={context}>{context}</span>}
+                      {members && <span dir="auto" className={cn("mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-tertiary", dim)} title={members}>{members}</span>}
+                      {team.unusable && <span dir="auto" data-team-unusable-reason="" className="mt-0.5 block text-[12px] leading-4 text-ink-secondary">{t(unusableKey(team.unusable))}</span>}
                     </span>
                     <span className="flex h-[18px] w-4 shrink-0 items-center text-ink">{chosen && <Check size={16} aria-hidden="true" />}</span>
                   </button>
@@ -215,7 +221,7 @@ export function NewTeamProjectDialog({ onClose }: { onClose: () => void }) {
               })}
             </div>
           )}
-          {problem("template")}
+          {problem("team")}
         </div>
         <div>
           <div id={folderId} className={LABEL}>{t("teamProjects.folder")}</div>

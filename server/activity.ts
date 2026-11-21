@@ -105,7 +105,7 @@ const TEAM_ACTION_KEYS: Record<string, string> = {
   list_team_library: "activity.tool.team.listTeamLibrary",
   list_models: "activity.tool.team.listModels",
   list_team_setup: "activity.tool.team.listTeamSetup",
-  list_team_templates: "activity.tool.team.listTeamTemplates",
+  list_project_teams: "activity.tool.team.listProjectTeams",
   list_threads: "activity.tool.team.listThreads",
   list_trigger_events: "activity.tool.team.listTriggerEvents",
   list_triggers: "activity.tool.team.listTriggers",

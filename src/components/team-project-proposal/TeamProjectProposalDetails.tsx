@@ -8,6 +8,25 @@ import { BotAvatar } from "../Avatar";
 
 const LABEL = "text-[12px] font-medium leading-4 text-ink-tertiary";
 
+interface Member {
+  key: string;
+  name: string;
+  title: string;
+  lead: boolean;
+}
+
+/** The team a card names and its bots, the lead first; for a card that names a team template instead, the template's roles. */
+function teamOf(proposal: TeamProjectProposal): { name: string; members: Member[] } {
+  if (proposal.team) {
+    const { name, chief, members } = proposal.team;
+    return { name, members: members.map((member) => ({ key: member.id, name: member.name, title: member.title, lead: member.id === chief.id })) };
+  }
+  const template = proposal.template;
+  if (!template) return { name: "", members: [] };
+  const roles = [...template.roles.filter((role) => role.key === template.lead), ...template.roles.filter((role) => role.key !== template.lead)];
+  return { name: template.name, members: roles.map((role) => ({ key: role.key, name: role.name, title: role.title, lead: role.key === template.lead })) };
+}
+
 /** The lead's thread the main bot handed the person's request into: the first one it opened on the lead. */
 function handedOverThread(lead: Bot, mainBotId: string): string | undefined {
   return (lead.tasks ?? [])
@@ -41,8 +60,8 @@ function OpenProject({ leadBotId, mainBotId }: { leadBotId: string; mainBotId: s
 
 /** What a proposed project will be, and once it is made the way into it: its lead's chat, on the person's request. */
 export function TeamProjectProposalDetails({ proposal }: { proposal: TeamProjectProposal }) {
-  const { template, result } = proposal;
-  const roles = [...template.roles.filter((role) => role.key === template.lead), ...template.roles.filter((role) => role.key !== template.lead)];
+  const { result } = proposal;
+  const team = teamOf(proposal);
   return (
     <div data-team-project-proposal={proposal.requestId} className="mt-3 text-[13px] leading-[18px]">
       <dl className="grid gap-y-2.5">
@@ -51,28 +70,25 @@ export function TeamProjectProposalDetails({ proposal }: { proposal: TeamProject
           <dd className="mt-0.5 break-all font-mono text-ink"><bdi dir="ltr">{proposal.folder}</bdi></dd>
         </div>
         <div>
-          <dt className={LABEL}>{t("teamProjectProposal.template")}</dt>
-          <dd dir="auto" className="mt-0.5 break-words text-ink">{template.name}</dd>
+          <dt className={LABEL}>{t("teamProjectProposal.team")}</dt>
+          <dd dir="auto" className="mt-0.5 break-words text-ink">{team.name}</dd>
         </div>
         <div>
           <dt className={LABEL}>{t("teamProjectProposal.members")}</dt>
           <dd className="mt-0.5">
             <ul tabIndex={0} aria-label={t("teamProjectProposal.members")} className="grid max-h-44 gap-y-1 overflow-auto rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
-              {roles.map((role) => (
-                <li key={role.key} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+              {team.members.map((member) => (
+                <li key={member.key} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                   <span dir="auto" className="min-w-0 break-words font-medium text-ink">
-                    {role.key === template.lead ? t("teamProjectProposal.lead", { name: role.name }) : role.name}
+                    {member.lead ? t("teamProjectProposal.lead", { name: member.name }) : member.name}
                   </span>
-                  {role.title && <span dir="auto" className="min-w-0 break-words text-ink-secondary">{role.title}</span>}
+                  {member.title && <span dir="auto" className="min-w-0 break-words text-ink-secondary">{member.title}</span>}
                 </li>
               ))}
             </ul>
           </dd>
         </div>
       </dl>
-      {result?.state === "created" && result.missingSkills.length > 0 && (
-        <p dir="auto" className="mt-2.5 break-words text-ink-secondary">{t("teamProjectProposal.missingSkills", { names: result.missingSkills.join(", ") })}</p>
-      )}
       {result?.state === "created" && <OpenProject leadBotId={result.leadBotId} mainBotId={proposal.botId} />}
     </div>
   );

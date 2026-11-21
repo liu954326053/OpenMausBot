@@ -36,10 +36,12 @@ export interface TeamProjectRecord {
   /** The department that is this project's team. */
   section: string;
   /**
-   * The team template its team matches, at the version it last matched: the one it was made from, until the team is
-   * updated from a template or saved back to one.
+   * The team the project was made from: the memory key of its department, which a rename keeps and a deletion retires,
+   * and the department's name when it was last seen. Absent for a project made from a team template: its bots follow nobody.
    */
-  template: { id: string; name: string; version: number };
+  team?: { key: string; name: string };
+  /** On a project made from a team template instead of a team: that template. Nothing reads it. */
+  template?: { id: string; name: string; version: number };
   leadBotId: string;
   createdAt: number;
   archivedAt?: number;
@@ -47,16 +49,55 @@ export interface TeamProjectRecord {
 
 /**
  * A bot's place in a project. `role` is unique within the project and names the bot's folder under `.magic-team/bots/`.
- * For a bot made with the project it is the key of its role in the team template. For one that joined later it is
- * `member-` and eight hex digits: a key no team template gives a role, so the bot is never taken for one.
+ * For a copy of a team member it is the member's key in the team's share export. For a bot that joined the project's
+ * department on its own it is `member-` and eight hex digits.
  */
 export interface TeamProjectMembership {
   id: string;
   role: string;
+  /** The team member this bot is a copy of: it shows that bot's name, title, description, persona, look and model. */
+  source?: string;
+  /** Its source was deleted, archived or left the team, or the team was deleted: it follows nobody until the person decides. */
+  sourceLeft?: true;
+}
+
+const ROLE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+/** Names Windows keeps for devices: no folder can be called one, and a role names its bot's folder in a project. */
+const DEVICE_NAME = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
+
+/** A bot's role in a project: 1 to 40 lowercase letters, digits and dashes, starting and ending with a letter or digit. */
+export function isTeamProjectRole(value: string): boolean {
+  return ROLE.test(value) && !DEVICE_NAME.test(value);
+}
+
+/** A role for a new member: the letters and digits of `name` when it has any, else `role-1`, `role-2`, …; never one of `taken`. */
+export function teamProjectRole(name: string, taken: ReadonlySet<string>): string {
+  const slug = name.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 36).replace(/-+$/, "");
+  const base = isTeamProjectRole(slug) ? slug : "role";
+  if (base !== "role" && !taken.has(base)) return base;
+  for (let n = base === "role" ? 1 : 2; ; n += 1) {
+    const role = `${base}-${n}`;
+    if (!taken.has(role)) return role;
+  }
 }
 
 /** How the server finds a project for one of its bots. Undefined: there is no such project. */
 export type TeamProjectLookup = (projectId: string) => Pick<TeamProjectRecord, "folder" | "archivedAt"> | undefined;
+
+/** A bot of a team, as the app names it. */
+export interface TeamMemberWire {
+  id: string;
+  name: string;
+  title: string;
+}
+
+/** What changed in a project's team since its copies were made, waiting for the person to decide. */
+export interface TeamProjectChanges {
+  /** Members of the team the project has no copy of. */
+  joined: TeamMemberWire[];
+  /** Copies whose source left the team, as the copies are named. */
+  left: TeamMemberWire[];
+}
 
 /** A project as the app shows it. */
 export interface TeamProjectWire extends TeamProjectRecord {
@@ -64,6 +105,35 @@ export interface TeamProjectWire extends TeamProjectRecord {
   folderState: "ready" | "missing";
   /** The project's bots, in the order the app lists bots. A bot does not say on the wire which project it is in: this does. */
   botIds: string[];
+  /** The source of each copy that follows one, by the copy's id. */
+  follows: Record<string, string>;
+  /** Absent when nothing changed. */
+  teamChanges?: TeamProjectChanges;
+}
+
+/**
+ * Why a team cannot be made into a project:
+ * - `empty`: it has no bots.
+ * - `no_chief`: none of its bots is its Chief.
+ * - `main_bot_chief`: its Chief is the main bot, which belongs to no team.
+ */
+export type ProjectTeamUnusable = "empty" | "no_chief" | "main_bot_chief";
+
+/** A team a project can be made from: one department that is no project's. */
+export interface ProjectTeamWire {
+  name: string;
+  /** The department's context. */
+  context: string;
+  chief: TeamMemberWire | null;
+  /** Its bots, the Chief first. */
+  members: TeamMemberWire[];
+  /** Absent when a project can be made from it. */
+  unusable?: ProjectTeamUnusable;
+}
+
+/** `GET /api/team-projects/teams`. */
+export interface ProjectTeamsWire {
+  teams: ProjectTeamWire[];
 }
 
 /** `GET /api/team-projects`: every project, archived ones included. `root` is null until the person chooses the folder new projects go in. */
@@ -74,7 +144,8 @@ export interface TeamProjectsListWire {
 
 export interface CreateTeamProjectInput {
   name: string;
-  templateId: string;
+  /** The name of the team the project is made from. */
+  team: string;
 }
 
 /**
@@ -84,18 +155,15 @@ export interface CreateTeamProjectInput {
  * - `bad_name`: the name cannot be a folder's name.
  * - `name_taken`: a project or a department already has the name.
  * - `folder_exists`: the projects root already holds a folder of that name.
- * - `no_template`: no team template has that id.
+ * - `no_team`: no team has that name.
+ * - `team_unusable`: the team cannot be made into a project; `errorParams.reason` is its `ProjectTeamUnusable`.
  * - `failed`: it could not be made, and nothing was left behind. The one exception has the `errorKey`
  *   `serverError.teamProject.failedLeftovers`: part of what was made could not be removed again, and `error` says so.
  */
-export type TeamProjectRefusal = "no_root" | "root_missing" | "bad_name" | "name_taken" | "folder_exists" | "no_template" | "failed";
+export type TeamProjectRefusal = "no_root" | "root_missing" | "bad_name" | "name_taken" | "folder_exists" | "no_team" | "team_unusable" | "failed";
 
 export type CreateTeamProjectResult =
-  | {
-    project: TeamProjectWire;
-    /** Library skills the template names that the skills library does not hold. */
-    missingSkills: string[];
-  }
+  | { project: TeamProjectWire }
   | {
     /** The reason in English, for a caller that has no words of its own. */
     error: string;
@@ -109,6 +177,8 @@ export type CreateTeamProjectResult =
 export interface TeamProjectsApi {
   /** Every project, archived ones included, in the order they were made. */
   list(): TeamProjectWire[];
+  /** Every team, in the order the departments are listed: the ones a project can be made from and, with why, the rest. */
+  teams(): ProjectTeamWire[];
   create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult>;
   /**
    * Pauses the routines of the project's bots that are running and remembers which. The folder and everything in it

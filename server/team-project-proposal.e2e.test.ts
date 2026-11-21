@@ -1,6 +1,6 @@
 // The main bot makes a project when asked, on a real server: its two tools through each turn's own agents server on the
-// scripted fake engine, the card, Create and Cancel, the hand-over to the project's lead, the real template library and
-// the real projects. Nothing here reaches the user's data or port 8799.
+// scripted fake engine, the card, Create and Cancel, the hand-over to the project's lead, a real team and the real
+// projects. Nothing here reaches the user's data or port 8799.
 import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,43 +8,35 @@ import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { TeamProjectWire } from "../shared/team-projects.ts";
-import type { TeamTemplateInput, TemplateRole } from "../shared/template-library.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
 import { launchRestartableServer, type RestartableServer } from "./testing/restartable-server.ts";
 import { ownTurnText } from "./testing/room-handoff-agent.ts";
 
 const BRIEF = "A revenge romance in sixty episodes: a bride swapped at the altar takes back her name.";
-const TOOLS = ["list_team_templates", "propose_team_project"];
+const TOOLS = ["list_project_teams", "propose_team_project"];
+const TEAM = "Short drama crew";
 
-const role = (key: string, name: string, title: string): TemplateRole => ({
-  key, name, title, description: title, soul: `You are the ${name}.`, look: { color: "red" }, ownSkills: [], memory: "", librarySkills: [],
-});
-const TEMPLATE: TeamTemplateInput = {
-  name: "Short drama crew", genre: "Revenge and sweet romance", context: "Vertical short dramas.", lead: "director",
-  roles: [role("writer", "Writer", "Writes the episodes"), role("director", "Director", "Runs the production")], skills: [],
-};
-
-const propose = (name: string, templateId: string) => ({ tool: "propose_team_project", arguments: { name, template_id: templateId, request: BRIEF } });
+const propose = (name: string, team: string) => ({ tool: "propose_team_project", arguments: { name, team, request: BRIEF } });
 
 /** No catch-all entry: a turn of the main bot that nothing here expects, such as one after Create, fails loudly. */
-const mainScript = (templateId: string) => [
-  { key: "fresh", match: ["FRESH-INSTALL"], steps: [{ tool: "list_team_templates", arguments: {} }, { ...propose("Too early", "none"), expectError: true }], reply: "FRESH DONE" },
-  { key: "list", match: ["LIST-TEMPLATES"], steps: [{ tool: "list_team_templates", arguments: {} }, { ...propose("No such team", "0000000000000000"), expectError: true }], reply: "LISTED" },
-  { key: "first", match: ["PROPOSE-FIRST"], steps: [propose("Working title", templateId)], reply: "PROPOSED FIRST" },
-  { key: "renamed", match: ["PROPOSE-RENAMED"], steps: [propose("First drama", templateId)], reply: "PROPOSED RENAMED" },
+const mainScript = [
+  { key: "fresh", match: ["FRESH-INSTALL"], steps: [{ tool: "list_project_teams", arguments: {} }, { ...propose("Too early", TEAM), expectError: true }], reply: "FRESH DONE" },
+  { key: "list", match: ["LIST-TEAMS"], steps: [{ tool: "list_project_teams", arguments: {} }, { ...propose("No such team", "Western crew"), expectError: true }], reply: "LISTED" },
+  { key: "first", match: ["PROPOSE-FIRST"], steps: [propose("Working title", TEAM)], reply: "PROPOSED FIRST" },
+  { key: "renamed", match: ["PROPOSE-RENAMED"], steps: [propose("First drama", TEAM)], reply: "PROPOSED RENAMED" },
   { key: "cancelled", match: ["pressed Cancel"], reply: "HEARD CANCEL" },
-  { key: "again", match: ["PROPOSE-AGAIN"], steps: [propose("First drama", templateId)], reply: "PROPOSED AGAIN" },
-  { key: "taken", match: ["PROPOSE-TAKEN"], steps: [propose("First drama", templateId)], reply: "PROPOSED TAKEN" },
-  { key: "refused", match: ["was not made (name_taken"], steps: [propose("Second drama", templateId)], reply: "PROPOSED UNDER ANOTHER NAME" },
-  { key: "restart", match: ["PROPOSE-BEFORE-RESTART"], steps: [propose("Third drama", templateId)], reply: "PROPOSED BEFORE RESTART" },
-  { key: "paused", match: ["PROPOSE-BEFORE-PAUSE"], steps: [propose("Fourth drama", templateId)], reply: "PROPOSED BEFORE PAUSE" },
+  { key: "again", match: ["PROPOSE-AGAIN"], steps: [propose("First drama", TEAM)], reply: "PROPOSED AGAIN" },
+  { key: "taken", match: ["PROPOSE-TAKEN"], steps: [propose("First drama", TEAM)], reply: "PROPOSED TAKEN" },
+  { key: "refused", match: ["was not made (name_taken"], steps: [propose("Second drama", TEAM)], reply: "PROPOSED UNDER ANOTHER NAME" },
+  { key: "restart", match: ["PROPOSE-BEFORE-RESTART"], steps: [propose("Third drama", TEAM)], reply: "PROPOSED BEFORE RESTART" },
+  { key: "paused", match: ["PROPOSE-BEFORE-PAUSE"], steps: [propose("Fourth drama", TEAM)], reply: "PROPOSED BEFORE PAUSE" },
 ];
 
 /** A bot that is not the main bot tries both tools, then holds its turn open so its capability can be tried on the server. */
 const outsiderScript = (gate: string) => [
   { key: "hold", match: ["HOLD"], gateFile: gate, reply: "RELEASED", steps: [
-    { tool: "list_team_templates", arguments: {}, expectError: true }, { ...propose("Sneaked in", "0000000000000000"), expectError: true },
+    { tool: "list_project_teams", arguments: {}, expectError: true }, { ...propose("Sneaked in", TEAM), expectError: true },
   ] },
   { key: "any", match: [], repeat: true, reply: "OK" },
 ];
@@ -58,7 +50,8 @@ describe("the main bot makes a project when asked", () => {
   let root: string;
   let main: Bot;
   let outsider: Bot;
-  let templateId = "none";
+  let director: Bot;
+  let writer: Bot;
   let first: TeamProjectWire;
   const outsiders = new Map<string, string>();
 
@@ -115,7 +108,7 @@ describe("the main bot makes a project when asked", () => {
     } finally { db.close(); }
   };
   const writePlan = () => writeFileSync(server.planPath, JSON.stringify({
-    [main.id]: { script: mainScript(templateId) },
+    [main.id]: { script: mainScript },
     ...Object.fromEntries([...outsiders].map(([id, gate]) => [id, { script: outsiderScript(gate) }])),
   }));
   /** The capability of the turn `text` started and holds open, as the engine got it. */
@@ -138,9 +131,9 @@ describe("the main bot makes a project when asked", () => {
     writePlan();
     await say(who, "HOLD");
     const token = await heldCapability(who, "HOLD");
-    const listing = await api("GET", "/api/internal/team-templates", undefined, { token });
+    const listing = await api("GET", "/api/internal/project-teams", undefined, { token });
     expect(listing).toMatchObject({ status: 403, body: { error: expect.stringMatching(/Only the main bot proposes projects/) } });
-    const proposal = await api("POST", "/api/internal/team-project-proposals", { name: "Sneaked in", templateId, request: BRIEF }, { token });
+    const proposal = await api("POST", "/api/internal/team-project-proposals", { name: "Sneaked in", team: TEAM, request: BRIEF }, { token });
     expect(proposal).toMatchObject({ status: 403, body: { error: expect.stringMatching(/Only the main bot proposes projects/) } });
     writeFileSync(gate, "go");
     await said(who.threadId, "RELEASED");
@@ -167,34 +160,43 @@ describe("the main bot makes a project when asked", () => {
     if (root) await removeTempDir(root);
   });
 
-  it("is shown both tools, and is told plainly when there is no team template and no folder for projects yet", async () => {
+  it("is shown both tools, and is told plainly when there is no team and no folder for projects yet", async () => {
     await say(main, "FRESH-INSTALL");
     await said(main.threadId, "FRESH DONE");
     const turn = turnOf(main.id, "fresh");
     expect(toolNames(turn)).toEqual(expect.arrayContaining(TOOLS));
-    expect(answerText(turn, "list_team_templates")).toMatch(/There are no team templates yet.*You cannot make or change one/);
+    expect(answerText(turn, "list_project_teams")).toMatch(/There is no team a project can be made from yet\. Do not propose a project now: propose a new team with propose_team_setup first, with one of its bots appointed Chief of Staff/);
     expect(called(turn, "propose_team_project").result).toMatchObject({ isError: true });
     expect(answerText(turn, "propose_team_project")).toMatch(/No folder for projects is chosen yet/);
     expect(await cards()).toEqual([]);
   }, hostTimeout(60_000));
 
-  it("reads the team templates: each one's id, name, genre and roles, and is told the ones there are when it names one that is not there", async () => {
+  it("reads the teams: each one's name, context, Chief of Staff and members, and is told the ones there are when it names one that is not there", async () => {
     expect((await api("PUT", "/api/team-projects/root", { path: root })).status).toBe(200);
-    const saved = await api("POST", "/api/template-library/teams", TEMPLATE);
-    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
-    templateId = saved.body.template.id;
-    writePlan();
+    const member = async (name: string, title: string) => {
+      const made = await api("POST", "/api/bots", { name, section: TEAM });
+      expect(made.status, JSON.stringify(made.body)).toBeLessThan(300);
+      expect((await api("PATCH", `/api/bots/${made.body.bot.id}`, { title })).status).toBe(200);
+      return made.body.bot as Bot;
+    };
+    writer = await member("Writer", "Writes the episodes");
+    director = await member("Director", "Runs the production");
+    expect((await api("PATCH", `/api/bots/${director.id}`, { chiefOfStaff: true })).status).toBe(200);
+    expect((await api("PUT", `/api/section-context?section=${encodeURIComponent(TEAM)}`, { text: "Vertical short dramas: revenge and sweet romance." })).status).toBe(200);
     await idle();
-    await say(main, "LIST-TEMPLATES");
+    await say(main, "LIST-TEAMS");
     await said(main.threadId, "LISTED");
     const turn = turnOf(main.id, "list");
-    const list = answerText(turn, "list_team_templates");
-    expect(list).toContain(`- id ${templateId}: "Short drama crew"`);
-    expect(list).toContain("Suits: Revenge and sweet romance");
-    expect(list).toContain("Roles: Director (lead): Runs the production; Writer: Writes the episodes");
-    expect(list).toMatch(/When none fits, do not propose: tell the person so and name the templates there are\. You cannot make or change a template/);
+    const list = answerText(turn, "list_project_teams");
+    expect(list).toContain(`- "${TEAM}"`);
+    expect(list).toContain("Context: Vertical short dramas: revenge and sweet romance.");
+    expect(list).toContain("Chief of Staff: Director (Runs the production)");
+    expect(list).toContain("Members: Director: Runs the production; Writer: Writes the episodes");
+    expect(list).not.toContain("Otto");
+    expect(list).not.toContain("MagicBot");
+    expect(list).toMatch(/When no team fits, do not propose a project yet: propose a new team with propose_team_setup first/);
     expect(called(turn, "propose_team_project").result).toMatchObject({ isError: true });
-    expect(answerText(turn, "propose_team_project")).toContain(`No team template has the id "0000000000000000". The ones there are:\n- id ${templateId}: "Short drama crew"`);
+    expect(answerText(turn, "propose_team_project")).toContain(`No team is called "Western crew". The teams there are:\n- "${TEAM}"`);
     expect(await cards()).toEqual([]);
   }, hostTimeout(60_000));
 
@@ -211,7 +213,7 @@ describe("the main bot makes a project when asked", () => {
     expect(card).toMatchObject({ kind: "options", card: {
       title: "Create the project “Working title”?", subtitle: `${folder}\nShort drama crew: Director and Writer`, options: ["Create", "Cancel"], fixedOptions: true, tool: "propose_team_project",
       teamProjectProposal: { botId: main.id, threadId: main.threadId, name: "Working title", folder, brief: BRIEF,
-        template: { id: templateId, name: "Short drama crew", genre: "Revenge and sweet romance", lead: "director", roles: [{ key: "writer", name: "Writer" }, { key: "director", name: "Director" }] } },
+        team: { name: TEAM, chief: { id: director.id, name: "Director", title: "Runs the production" }, members: [{ id: director.id, name: "Director" }, { id: writer.id, name: "Writer" }], revision: expect.any(String) } },
     } });
     expect(answerText(turnOf(main.id, "first"), "propose_team_project")).toMatch(/A card with Create and Cancel is now in the chat\. Nothing is made until the person presses Create/);
     expect(await projects()).toEqual([]);
@@ -251,12 +253,13 @@ describe("the main bot makes a project when asked", () => {
 
     const mainBefore = mainTurns();
     const answer = await respond(open.card.requestId, "allow");
-    expect(answer).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", alreadySettled: false, result: { state: "created", leadName: "Director", missingSkills: [] } } });
+    expect(answer).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", alreadySettled: false, result: { state: "created", leadName: "Director" } } });
     const { projectId, leadBotId } = answer.body.result as { projectId: string; leadBotId: string };
     const folder = join(root, "First drama");
     first = (await projects()).find((project) => project.id === projectId)!;
-    expect(first).toMatchObject({ name: "First drama", folder, leadBotId, template: { id: templateId, name: "Short drama crew" } });
+    expect(first).toMatchObject({ name: "First drama", folder, leadBotId, team: { name: TEAM }, follows: { [leadBotId]: director.id } });
     expect(first.botIds).toHaveLength(2);
+    expect(Object.values(first.follows).sort()).toEqual([director.id, writer.id].sort());
     expect(existsSync(folder)).toBe(true);
 
     const work = await handedTo(leadBotId, "First drama");

@@ -5,17 +5,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { launchVerificationServer, type VerificationServer } from "../scripts/control-omb.ts";
 import type { TeamProjectWire } from "../shared/team-projects.ts";
-import type { TeamTemplateInput, TemplateRole } from "../shared/template-library.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 
-const role = (key: string, name: string, extra: Partial<TemplateRole> = {}): TemplateRole => ({
-  key, name, title: `${name} of the team`, description: `${name} of the team`, soul: `You are the ${name}.`,
-  look: { color: "red" }, ownSkills: [], memory: "", librarySkills: [], ...extra,
-});
-const TEMPLATE: TeamTemplateInput = {
-  name: "Drama team", genre: "Romance", context: "Vertical short dramas.", lead: "director",
-  roles: [role("director", "Director"), role("writer", "Writer", { memory: "Every episode ends on a hook." })], skills: [],
-};
+const TEAM = "Drama team";
 
 describe("team projects joined to the rest of the server", () => {
   let fixture: VerificationServer;
@@ -34,9 +26,11 @@ describe("team projects joined to the rest of the server", () => {
     fixture = await launchVerificationServer();
     root = realpathSync(mkdtempSync(join(tmpdir(), "omb-team-projects-glue-")));
     expect((await api("PUT", "/api/team-projects/root", { path: root })).status).toBe(200);
-    const template = await api("POST", "/api/template-library/teams", TEMPLATE);
-    expect(template.status).toBe(201);
-    const made = await api("POST", "/api/team-projects", { name: "First drama", templateId: template.body.template.id });
+    const director = await api("POST", "/api/bots", { name: "Director", section: TEAM });
+    expect(director.status).toBe(201);
+    expect((await api("POST", "/api/bots", { name: "Writer", section: TEAM })).status).toBe(201);
+    expect((await api("PATCH", `/api/bots/${director.body.bot.id}`, { chiefOfStaff: true })).status).toBe(200);
+    const made = await api("POST", "/api/team-projects", { name: "First drama", team: TEAM });
     expect(made.status).toBe(201);
     project = made.body.project;
   });

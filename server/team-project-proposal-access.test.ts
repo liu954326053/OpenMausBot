@@ -62,7 +62,7 @@ describe("the switch that lists the project tools", () => {
 });
 
 describe("the tools each bot is shown", () => {
-  const PAIR = ["list_team_templates", "propose_team_project"];
+  const PAIR = ["list_project_teams", "propose_team_project"];
   const shown = (bot: Bot, room = false) =>
     availableTools(catalogProfileFromEnv(envFor(bot, room))).map((tool) => tool.name).filter((tool) => PAIR.includes(tool));
 

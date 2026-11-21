@@ -15,8 +15,17 @@ vi.mock("@/lib/cloud-guest", async (original) => ({ ...await original<typeof imp
 
 const FOLDER = "/Users/ada/Dramas/The Swapped Bride";
 const TITLE = "Create the project “The Swapped Bride”?";
+const PRODUCER = { id: "src-pia", name: "Pia", title: "Runs the production" };
 const proposal: TeamProjectProposal = {
   requestId: "req-project", botId: "magicbot", threadId: "thread-main", name: "The Swapped Bride", folder: FOLDER,
+  team: {
+    name: "Urban romance crew", chief: PRODUCER, revision: "r1",
+    members: [PRODUCER, { id: "src-wen", name: "Wen", title: "Writes the episodes" }, { id: "src-sol", name: "Sol", title: "Draws the shots" }],
+  },
+  brief: "Make a 60-episode revenge drama.", createdAt: 1,
+};
+const BEFORE_TEAMS: TeamProjectProposal = {
+  ...proposal, team: undefined,
   template: {
     id: "tpl-urban", name: "Urban romance crew", version: 3, genre: "CEO romance, revenge", lead: "producer",
     roles: [
@@ -25,9 +34,8 @@ const proposal: TeamProjectProposal = {
       { key: "storyboard", name: "Sol", title: "Draws the shots" },
     ],
   },
-  brief: "Make a 60-episode revenge drama.", createdAt: 1,
 };
-const CREATED: TeamProjectProposalResult = { state: "created", projectId: "project-1", leadBotId: "bot-pia", leadName: "Pia", missingSkills: [] };
+const CREATED: TeamProjectProposalResult = { state: "created", projectId: "project-1", leadBotId: "bot-pia", leadName: "Pia" };
 
 function projectCard(patch: Partial<OptionCardData> = {}, result?: TeamProjectProposalResult): Message {
   return {
@@ -79,10 +87,10 @@ const openButton = () => host.querySelector<HTMLButtonElement>("[data-team-proje
 const dimmed = () => Boolean(host.querySelector("[data-team-project-proposal]")?.closest(".opacity-70"));
 
 describe("a project the main bot proposes", () => {
-  it("shows what will be made: the folder, the team template and its members, the lead first", async () => {
+  it("shows what will be made: the folder, the team and its members, the Chief of Staff first as the lead", async () => {
     await showCard(projectCard());
     expect(host.textContent).toContain(TITLE);
-    expect(texts("dt")).toEqual(["Project folder", "Team template", "Members"]);
+    expect(texts("dt")).toEqual(["Project folder", "Team", "Members"]);
     expect(texts("dd").slice(0, 2)).toEqual([FOLDER, "Urban romance crew"]);
     expect(host.querySelector("dd")?.className).toContain("font-mono");
     expect(texts("li")).toEqual(["Pia (lead)Runs the production", "WenWrites the episodes", "SolDraws the shots"]);
@@ -130,7 +138,7 @@ describe("a project the main bot proposes", () => {
   it("reads in Chinese", async () => {
     setLocale("zh");
     await showCard(projectCard());
-    expect(texts("dt")).toEqual(["项目文件夹", "团队模板", "成员"]);
+    expect(texts("dt")).toEqual(["项目文件夹", "团队", "成员"]);
     expect(texts("li")[0]).toBe("Pia（负责人）Runs the production");
     expect(host.textContent).toContain("正在等待你在下方确认。想改什么，直接在对话里说。");
     await showActions(projectCard());
@@ -201,9 +209,12 @@ describe("once the person has answered", () => {
     expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
   });
 
-  it("names the skills the team works without", async () => {
-    await showCard(projectCard({ answered: "allow" }, { ...CREATED, missingSkills: ["shot-list", "casting"] }));
-    expect(host.textContent).toContain("The team template names skills the skills library doesn't have: shot-list, casting");
+  it("shows a card that names a team template instead of a team, the template's lead first", async () => {
+    await showCard(projectCard({ teamProjectProposal: { ...BEFORE_TEAMS, result: { ...CREATED, missingSkills: ["shot-list"] } }, answered: "allow" }));
+    expect(texts("dd").slice(0, 2)).toEqual([FOLDER, "Urban romance crew"]);
+    expect(texts("li")).toEqual(["Pia (lead)Runs the production", "WenWrites the episodes", "SolDraws the shots"]);
+    expect(host.textContent).toContain("Project created");
+    expect(host.textContent).not.toContain("shot-list");
   });
 
   it("Cancel reads as cancelled", async () => {

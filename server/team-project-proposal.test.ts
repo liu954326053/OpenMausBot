@@ -3,8 +3,8 @@ import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { liveCardKind, liveDecisionRefusal } from "../shared/live-approval.ts";
-import type { CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectRefusal, TeamProjectWire } from "../shared/team-projects.ts";
-import type { TeamTemplateSummary } from "../shared/template-library.ts";
+import type { TeamProjectProposal } from "../shared/team-project-proposal.ts";
+import type { CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamProjectRefusal, TeamProjectWire } from "../shared/team-projects.ts";
 import type { OptionCardData } from "../shared/wire.ts";
 import { closedByStop, resumableCards } from "./host/resumable-cards.ts";
 import "./server-line-packs.ts";
@@ -16,18 +16,16 @@ const THREAD = "thread-main";
 const ROOT = resolve("/projects");
 const BRIEF = "Make a 60-episode revenge drama about a bride who was swapped at the altar. Keep each episode under two minutes.";
 
-const URBAN: TeamTemplateSummary = {
-  id: "tpl-urban", name: "Urban romance crew", genre: "CEO romance, revenge, sweet romance", version: 3, updatedAt: 1, lead: "producer",
-  roles: [
-    { key: "writer", name: "Wen", title: "Writes the episodes" },
-    { key: "producer", name: "Pia", title: "Runs the production" },
-    { key: "storyboard", name: "Sol", title: "Draws the shots" },
-  ],
+const PIA = { id: "src-pia", name: "Pia", title: "Runs the production" };
+const URBAN: ProjectTeamWire = {
+  name: "Urban romance crew", context: "CEO romance, revenge, sweet romance. Every episode ends on a hook.", chief: PIA,
+  members: [PIA, { id: "src-wen", name: "Wen", title: "Writes the episodes" }, { id: "src-sol", name: "Sol", title: "Draws the shots" }],
 };
-const PERIOD: TeamTemplateSummary = {
-  id: "tpl-period", name: "Period drama crew", genre: "Palace intrigue, time travel", version: 1, updatedAt: 2, lead: "director",
-  roles: [{ key: "director", name: "Dee", title: "Directs" }],
+const PERIOD: ProjectTeamWire = {
+  name: "Period drama crew", context: "Palace intrigue, time travel", chief: { id: "src-dee", name: "Dee", title: "Directs" },
+  members: [{ id: "src-dee", name: "Dee", title: "Directs" }],
 };
+const LEADERLESS: ProjectTeamWire = { name: "Loose ends", context: "", chief: null, members: [{ id: "src-lou", name: "Lou", title: "" }], unusable: "no_chief" };
 
 type Row = { id: string; at: number; role: "bot"; kind: "options"; card: OptionCardData };
 
@@ -51,13 +49,13 @@ function cardStore() {
 
 const madeProject = (input: CreateTeamProjectInput): TeamProjectWire => ({
   id: "project-1", name: input.name, folder: join(ROOT, input.name), section: input.name,
-  template: { id: input.templateId, name: URBAN.name, version: URBAN.version }, leadBotId: "bot-pia", createdAt: 5,
-  folderState: "ready", botIds: ["bot-pia", "bot-wen", "bot-sol"],
+  team: { key: "team:urban", name: input.team }, leadBotId: "bot-pia", createdAt: 5,
+  folderState: "ready", botIds: ["bot-pia", "bot-wen", "bot-sol"], follows: { "bot-pia": "src-pia", "bot-wen": "src-wen", "bot-sol": "src-sol" },
 });
 
 interface Setup {
   store?: ReturnType<typeof cardStore>;
-  teams?: TeamTemplateSummary[];
+  teams?: ProjectTeamWire[];
   root?: string | null;
   language?: string;
   create?: (input: CreateTeamProjectInput) => Promise<CreateTeamProjectResult>;
@@ -73,8 +71,8 @@ const refusedHandOff = (detail: string): TeamProjectProposalOptions["handOff"] =
 
 function service(setup: Setup = {}) {
   const store = setup.store ?? cardStore();
-  const world = { teams: setup.teams ?? [URBAN, PERIOD], root: setup.root === undefined ? ROOT : setup.root };
-  const create = vi.fn(setup.create ?? (async (input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> => ({ project: madeProject(input), missingSkills: [] })));
+  const world = { teams: setup.teams ?? [URBAN, PERIOD, LEADERLESS], root: setup.root === undefined ? ROOT : setup.root };
+  const create = vi.fn(setup.create ?? (async (input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> => ({ project: madeProject(input) })));
   const steps: string[] = [];
   const handOff = vi.fn<TeamProjectProposalOptions["handOff"]>(async (from, call) => { steps.push("hand off"); return (setup.handOff ?? delivered)(from, call); });
   const answers: string[] = [];
@@ -84,7 +82,7 @@ function service(setup: Setup = {}) {
   const proposals = new TeamProjectProposalService({
     store,
     language: () => setup.language,
-    backends: { templates: { list: () => ({ bots: [], teams: world.teams }) }, projects: { create }, projectsRoot: () => world.root },
+    backends: { projects: { create, teams: () => world.teams }, projectsRoot: () => world.root },
     botName: (botId) => (botId === "bot-pia" ? "Pia" : undefined),
     answer: (_threadId, _messageId, text) => { answers.push(text); return parked; },
     follow: (_threadId, from, to) => { followed.push({ from, to }); },
@@ -93,8 +91,8 @@ function service(setup: Setup = {}) {
     held: () => setup.held ?? null,
     decide: (row) => { decisions.push(row); },
   });
-  const propose = (over: Partial<{ name: string; templateId: string; brief: string; botId: string }> = {}) =>
-    proposals.propose({ botId: MAIN, threadId: THREAD, name: "The Swapped Bride", templateId: URBAN.id, brief: BRIEF, ...over });
+  const propose = (over: Partial<{ name: string; team: string; brief: string; botId: string }> = {}) =>
+    proposals.propose({ botId: MAIN, threadId: THREAD, name: "The Swapped Bride", team: URBAN.name, brief: BRIEF, ...over });
   const respond = (requestId: string, behavior: string, ownerReview = true) => proposals.respond({ threadId: THREAD, requestId, behavior }, ownerReview);
   const waiting = () => resumableCards(store as unknown as Pick<Store, "activePath">, THREAD, 0);
   return { store, proposals, create, handOff, steps, answers, followed, decisions, propose, respond, waiting, world, noTurnParked: () => { parked = false; }, turnParked: () => { parked = true; } };
@@ -110,23 +108,45 @@ const refusal = (work: () => unknown): TeamProjectProposalError => {
   throw new Error("the proposal was not refused");
 };
 
-describe("the team templates the main bot is shown", () => {
-  it("lists each one's id, name, genre and roles, the lead marked", () => {
-    const text = service().proposals.templatesText();
-    expect(text).toContain("tpl-urban");
-    expect(text).toContain("Urban romance crew");
-    expect(text).toContain("CEO romance, revenge, sweet romance");
-    expect(text).toContain("Pia (lead): Runs the production");
-    expect(text).toContain("Wen: Writes the episodes");
-    expect(text).toContain("tpl-period");
-    expect(text).toContain("Dee (lead): Directs");
-    expect(text.indexOf("Pia (lead)")).toBeLessThan(text.indexOf("Wen: Writes"));
+describe("the teams the main bot is shown", () => {
+  it("lists each one's name, context, Chief of Staff and members with their titles", () => {
+    const text = service().proposals.teamsText();
+    expect(text).toContain('"Urban romance crew"');
+    expect(text).toContain("Context: CEO romance, revenge, sweet romance. Every episode ends on a hook.");
+    expect(text).toContain("Chief of Staff: Pia (Runs the production)");
+    expect(text).toContain("Members: Pia: Runs the production; Wen: Writes the episodes; Sol: Draws the shots");
+    expect(text).toContain('"Period drama crew"');
+    expect(text).toContain("Chief of Staff: Dee (Directs)");
   });
 
-  it("says there are none, and that the bot cannot make one", () => {
-    const text = service({ teams: [] }).proposals.templatesText();
-    expect(text).toMatch(/no team templates/i);
-    expect(text).toMatch(/cannot make/i);
+  it("lists a team no project can be made from with the reason, and how to make it usable", () => {
+    const text = service().proposals.teamsText();
+    expect(text).toContain('"Loose ends": cannot be used.');
+    expect(text).toMatch(/Loose ends.*no Chief of Staff.*propose_team_setup/);
+  });
+
+  it("tells the main bot to propose a new team first when none fits, with a Chief of Staff, and never to make bots itself", () => {
+    const text = service().proposals.teamsText();
+    expect(text).toMatch(/When no team fits, do not propose a project yet: propose a new team with propose_team_setup first, with one of its bots appointed Chief of Staff/);
+    expect(text).toMatch(/once the person has confirmed that team/);
+    expect(text).toMatch(/Never make bots for it with create_bot/);
+  });
+
+  it("shortens a long context to a line", () => {
+    const text = service({ teams: [{ ...URBAN, context: `${"word ".repeat(200)}\n\nmore` }] }).proposals.teamsText();
+    const line = text.split("\n").find((each) => each.startsWith("  Context: "))!;
+    expect(line.length).toBeLessThan(420);
+    expect(line.endsWith("…")).toBe(true);
+  });
+
+  it("says there is no team to use, and to propose one, when there is none or none can be used", () => {
+    for (const teams of [[], [LEADERLESS]]) {
+      const text = service({ teams }).proposals.teamsText();
+      expect(text).toMatch(/no team a project can be made from yet/i);
+      expect(text).toMatch(/propose_team_setup/);
+      expect(text).toMatch(/Chief of Staff/);
+      expect(text).not.toMatch(/^Teams \(/);
+    }
   });
 });
 
@@ -143,7 +163,7 @@ describe("proposing a project", () => {
     expect(card.subtitle).toBe(`${join(ROOT, "The Swapped Bride")}\nUrban romance crew: Pia, Wen, and Sol`);
     expect(card.teamProjectProposal).toEqual({
       requestId: proposed.requestId, botId: MAIN, threadId: THREAD, name: "The Swapped Bride", folder: join(ROOT, "The Swapped Bride"),
-      template: { id: "tpl-urban", name: "Urban romance crew", version: 3, genre: URBAN.genre, lead: "producer", roles: URBAN.roles },
+      team: { name: "Urban romance crew", chief: PIA, members: URBAN.members, revision: expect.stringMatching(/^[0-9a-f]{16}$/) },
       brief: BRIEF, createdAt: expect.any(Number),
     });
     expect(card).not.toHaveProperty("answered");
@@ -176,12 +196,27 @@ describe("proposing a project", () => {
     expect(store.rows).toHaveLength(0);
   });
 
-  it("makes no card for a template that is not there, and names the ones there are", () => {
+  it("makes no card for a team that is not there, and names the ones there are", () => {
     const { store, propose } = service();
-    const refused = refusal(() => propose({ templateId: "tpl-gone" }));
+    const refused = refusal(() => propose({ team: "Western crew" }));
     expect(refused.status).toBe(404);
-    expect(refused.message).toContain("tpl-urban");
+    expect(refused.message).toContain('No team is called "Western crew"');
     expect(refused.message).toContain("Period drama crew");
+    expect(store.rows).toHaveLength(0);
+  });
+
+  it("finds the team whatever the case it is written in", () => {
+    const { store, propose } = service();
+    propose({ team: "urban ROMANCE crew" });
+    expect(store.rows[0]!.card.teamProjectProposal!.team!.name).toBe("Urban romance crew");
+  });
+
+  it("makes no card for a team no project can be made from, and says why", () => {
+    const { store, propose } = service();
+    const refused = refusal(() => propose({ team: "Loose ends" }));
+    expect(refused.status).toBe(409);
+    expect(refused.message).toMatch(/no Chief of Staff/);
+    expect(refused.message).toMatch(/propose_team_setup/);
     expect(store.rows).toHaveLength(0);
   });
 
@@ -222,11 +257,11 @@ describe("answering the card", () => {
     const { store, propose, respond, create, handOff, steps, answers, decisions, waiting } = service();
     const { requestId, messageId } = propose();
     const answered = await respond(requestId, "allow");
-    expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", templateId: "tpl-urban" });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", team: "Urban romance crew" });
     expect(handOff).toHaveBeenCalledExactlyOnceWith({ botId: MAIN, threadId: THREAD },
       { botIds: ["bot-pia"], message: BRIEF, thread: "new", title: "The Swapped Bride", reply: "none", rework: false, consult: false });
     expect(steps).toEqual([`release ${THREAD} ${messageId}`, "hand off"]);
-    const result = { state: "created", projectId: "project-1", leadBotId: "bot-pia", leadName: "Pia", missingSkills: [] };
+    const result = { state: "created", projectId: "project-1", leadBotId: "bot-pia", leadName: "Pia" };
     expect(answered).toEqual({ status: 200, body: { ok: true, outcome: "allowed-once", result, alreadySettled: false } });
     const card = store.rows[0]!.card;
     expect(card).toMatchObject({ answered: "allow", teamProjectProposal: { result } });
@@ -236,11 +271,12 @@ describe("answering the card", () => {
     expect(waiting()).toEqual([]);
   });
 
-  it("hands over under the name and in the folder projects made, and keeps the skills the library lacks on the card", async () => {
+  it("hands over under the name and in the folder projects made", async () => {
     const elsewhere = join(resolve("/moved"), "The Swapped Bride");
-    const { store, propose, respond, handOff } = service({ create: async (input) => ({ project: { ...madeProject(input), folder: elsewhere }, missingSkills: ["shot-list", "casting"] }) });
+    const { store, propose, respond, handOff } = service({ create: async (input) => ({ project: { ...madeProject(input), folder: elsewhere } }) });
     await respond(propose({ name: "  The Swapped Bride " }).requestId, "allow");
-    expect(store.rows[0]!.card.teamProjectProposal).toMatchObject({ name: "The Swapped Bride", folder: elsewhere, result: { state: "created", missingSkills: ["shot-list", "casting"] } });
+    expect(store.rows[0]!.card.teamProjectProposal).toMatchObject({ name: "The Swapped Bride", folder: elsewhere, result: { state: "created" } });
+    expect(store.rows[0]!.card.teamProjectProposal!.result).not.toHaveProperty("missingSkills");
     expect(handOff.mock.calls[0]![1]).toMatchObject({ title: "The Swapped Bride" });
   });
 
@@ -298,14 +334,14 @@ describe("answering the card", () => {
   it("a second proposal replaces the first, which can no longer be answered", async () => {
     const { store, propose, respond, create, waiting } = service();
     const older = propose();
-    const newer = propose({ name: "The Returned Heiress", templateId: PERIOD.id });
+    const newer = propose({ name: "The Returned Heiress", team: PERIOD.name });
     expect(store.rows[0]!.card).toMatchObject({ expired: true, options: [] });
     expect(store.rows[0]!.card.teamProjectProposal).not.toHaveProperty("result");
     expect(waiting().map((card) => card.id)).toEqual([newer.messageId]);
     expect(await respond(older.requestId, "allow")).toMatchObject({ status: 200, body: { alreadySettled: true, outcome: "rejected" } });
     expect(create).not.toHaveBeenCalled();
     expect(await respond(newer.requestId, "allow")).toMatchObject({ body: { alreadySettled: false, result: { state: "created" } } });
-    expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Returned Heiress", templateId: "tpl-period" });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Returned Heiress", team: "Period drama crew" });
   });
 
   it("the turn that waits on the replaced card waits on the newer one, so the main bot still hears the decision", () => {
@@ -328,7 +364,7 @@ describe("answering the card", () => {
 
   it("answers a card once: a second press while the project is being made is refused, a later one changes nothing", async () => {
     let finish = () => {};
-    const { propose, respond, create, handOff, answers } = service({ create: (input) => new Promise((done) => { finish = () => done({ project: madeProject(input), missingSkills: [] }); }) });
+    const { propose, respond, create, handOff, answers } = service({ create: (input) => new Promise((done) => { finish = () => done({ project: madeProject(input) }); }) });
     const { requestId } = propose();
     const first = respond(requestId, "allow");
     expect(await respond(requestId, "allow")).toMatchObject({ status: 409, body: { errorKey: "serverError.teamProjectProposal.beingCreated" } });
@@ -350,7 +386,8 @@ describe("a project that could not be made", () => {
     ["bad_name", /at most 60 characters.*Propose again under such a name/],
     ["name_taken", /another name/i],
     ["folder_exists", /another name/i],
-    ["no_template", /list_team_templates/],
+    ["no_team", /list_project_teams/],
+    ["team_unusable", /list_project_teams/],
     ["failed", /what went wrong/i],
   ];
 
@@ -394,22 +431,51 @@ describe("a project that could not be made", () => {
     expect(answers[0]).toContain("disk full");
   });
 
-  it("does not make a team the person did not see: a template saved again after the card was made is refused", async () => {
+  it.each<[string, ProjectTeamWire]>([
+    ["a member left", { ...URBAN, members: URBAN.members.slice(0, 2) }],
+    ["a member's title changed", { ...URBAN, members: [PIA, { ...URBAN.members[1]!, title: "Rewrites the episodes" }, URBAN.members[2]!] }],
+    ["another bot became its Chief", { ...URBAN, chief: URBAN.members[1]!, members: [URBAN.members[1]!, PIA, URBAN.members[2]!] }],
+  ])("does not make a team the person did not see: a team whose %s after the card was made is refused", async (_change, changed) => {
     const setup = service();
     const { requestId } = setup.propose();
-    setup.world.teams = [{ ...URBAN, version: 4, roles: URBAN.roles.slice(0, 2) }, PERIOD];
-    expect(await setup.respond(requestId, "allow")).toMatchObject({ body: { outcome: "rejected", result: { state: "refused", code: "template_changed" } } });
+    setup.world.teams = [changed, PERIOD];
+    expect(await setup.respond(requestId, "allow")).toMatchObject({ body: { outcome: "rejected", result: { state: "refused", code: "team_changed" } } });
     expect(setup.create).not.toHaveBeenCalled();
-    expect(setup.store.rows[0]!.card).toMatchObject({ expired: true, options: [] });
-    expect(setup.answers[0]).toMatch(/list_team_templates/);
+    expect(setup.store.rows[0]!.card).toMatchObject({
+      expired: true, options: [], held: "This team changed after this card was made. Ask again to see the team as it is now.",
+    });
+    expect(setup.answers[0]).toMatch(/list_project_teams/);
   });
 
-  it("a template deleted after the card was made is refused as no_template", async () => {
+  it("a team that changed only its context is the team the person saw", async () => {
     const setup = service();
     const { requestId } = setup.propose();
-    setup.world.teams = [PERIOD];
-    expect(await setup.respond(requestId, "allow")).toMatchObject({ body: { result: { state: "refused", code: "no_template" } } });
+    setup.world.teams = [{ ...URBAN, context: "Sweet romance only." }, PERIOD];
+    expect(await setup.respond(requestId, "allow")).toMatchObject({ body: { result: { state: "created" } } });
+  });
+
+  it("a team deleted or renamed after the card was made is refused as no_team", async () => {
+    for (const teams of [[PERIOD], [{ ...URBAN, name: "City romance crew" }, PERIOD]]) {
+      const setup = service();
+      const { requestId } = setup.propose();
+      setup.world.teams = teams;
+      expect(await setup.respond(requestId, "allow")).toMatchObject({ body: { result: { state: "refused", code: "no_team" } } });
+      expect(setup.create).not.toHaveBeenCalled();
+      expect(setup.store.rows[0]!.card.held).toBe("This team is no longer there. Ask again to pick another one.");
+    }
+  });
+
+  it("a card that names a team template instead of a team is refused, and makes nothing", async () => {
+    const setup = service();
+    const old: TeamProjectProposal = {
+      requestId: "old-card", botId: MAIN, threadId: THREAD, name: "The Swapped Bride", folder: join(ROOT, "The Swapped Bride"),
+      template: { id: "tpl-urban", name: "Urban romance crew", version: 3, genre: "CEO romance", lead: "producer", roles: [{ key: "producer", name: "Pia", title: "Runs the production" }] },
+      brief: BRIEF, createdAt: 1,
+    };
+    setup.store.rows.push({ id: "m1", at: 1, role: "bot", kind: "options", card: { title: "Create the project “The Swapped Bride”?", subtitle: "", options: ["Create", "Cancel"], requestId: "old-card", tool: "propose_team_project", fixedOptions: true, teamProjectProposal: old } });
+    expect(await setup.respond("old-card", "allow")).toMatchObject({ body: { outcome: "rejected", result: { state: "refused", code: "team_changed" } } });
     expect(setup.create).not.toHaveBeenCalled();
+    expect(setup.answers[0]).toMatch(/list_project_teams/);
   });
 
   it("does not make a folder the person did not see: another folder for projects chosen after the card was made is refused", async () => {
@@ -450,7 +516,7 @@ describe("a restart with a card pending", () => {
     const after = service({ store: before.store });
     expect(after.waiting()).toHaveLength(1);
     expect(await after.respond(requestId, "allow")).toMatchObject({ status: 200, body: { result: { state: "created", leadBotId: "bot-pia" } } });
-    expect(after.create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", templateId: "tpl-urban" });
+    expect(after.create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", team: "Urban romance crew" });
     expect(before.create).not.toHaveBeenCalled();
     expect(after.handOff.mock.calls[0]![1]).toMatchObject({ message: BRIEF });
   });

@@ -1,29 +1,31 @@
 import { basename, dirname, join, resolve } from "node:path";
 
 import type { TeamProjectProposal, TeamProjectProposalResult } from "../shared/team-project-proposal.ts";
-import { TEAM_PROJECT_NAME_MAX, isTeamProjectName, type CreateTeamProjectResult, type TeamProjectRefusal, type TeamProjectsApi } from "../shared/team-projects.ts";
-import type { TeamTemplateSummary, TemplateLibraryApi } from "../shared/template-library.ts";
+import {
+  TEAM_PROJECT_NAME_MAX, isTeamProjectName, type CreateTeamProjectResult, type ProjectTeamUnusable, type ProjectTeamWire, type TeamProjectRefusal,
+  type TeamProjectsApi,
+} from "../shared/team-projects.ts";
 import type { OptionCardData } from "../shared/wire.ts";
 import { newId } from "./contracts.ts";
 import type { CoordinateBotsCall } from "./coordinator.ts";
 import { intlLocale } from "./language.ts";
 import type { PeerDeliveryReceipt } from "./peer-delivery.ts";
 import { serverLine, type ServerLineKey } from "./server-lines.ts";
+import { findProjectTeam, teamRevision } from "./team-projects/teams.ts";
 import { coordinateMessageMax, tooLongRefusal } from "./too-long.ts";
 import { userError } from "./user-errors.ts";
 
-export const LIST_TEAM_TEMPLATES_TOOL = "list_team_templates";
+export const LIST_PROJECT_TEAMS_TOOL = "list_project_teams";
 export const PROPOSE_TEAM_PROJECT_TOOL = "propose_team_project";
 
-/** What the proposals ask of the template library and of projects. */
+/** What the proposals ask of projects. */
 export interface TeamProjectBackends {
-  templates: Pick<TemplateLibraryApi, "list">;
-  projects: Pick<TeamProjectsApi, "create">;
+  projects: Pick<TeamProjectsApi, "create" | "teams">;
   /** The folder new projects go in; null until the person chooses one. */
   projectsRoot(): string | null;
 }
 
-type Refusal = TeamProjectRefusal | "template_changed" | "root_changed";
+type Refusal = TeamProjectRefusal | "team_changed" | "root_changed";
 type Decision = "card-shown" | "user-approved" | "user-denied";
 type Created = Extract<TeamProjectProposalResult, { state: "created" }>;
 type MainBotDecision = Exclude<TeamProjectProposalResult, Created>;
@@ -36,7 +38,9 @@ const DECISION_WORDS_ROOM = 4000;
 export const TEAM_PROJECT_BRIEF_MAX = coordinateMessageMax - DECISION_WORDS_ROOM;
 
 const NO_ROOT = "No folder for projects is chosen yet, so no project can be made. Tell the person to choose one in Settings, under Data, and to ask you again afterwards.";
-const NO_TEMPLATES = "There are no team templates yet, so no project can be proposed. Tell the person so, and that team templates are made in Settings, under Templates. You cannot make or change one.";
+const PROPOSE_A_TEAM = "propose a new team with propose_team_setup first, with one of its bots appointed Chief of Staff, and propose the project once the person has confirmed that team. Never make bots for it with create_bot.";
+const NO_TEAMS = `There is no team a project can be made from yet. Do not propose a project now: ${PROPOSE_A_TEAM}`;
+const CONTEXT_SHOWN = 400;
 const BAD_NAME = `The project's name is also its folder's name: give one short name of at most ${TEAM_PROJECT_NAME_MAX} characters, without / \\ : * ? " < > | and without a dot at the start or the end.`;
 const PROPOSED = "A card with Create and Cancel is now in the chat. Nothing is made until the person presses Create: say so in one short line and end your turn. On Create the app makes the project and hands the request to its lead itself, so you never hand it over; you hear back only if they press Cancel or the project cannot be made. If they tell you what to change instead, call propose_team_project again; the earlier card then stops working.";
 
@@ -46,8 +50,9 @@ const REFUSED: Record<Refusal, { line: ServerLineKey; next: string }> = {
   bad_name: { line: "server.teamProjectProposal.refused.badName", next: `${BAD_NAME} Propose again under such a name.` },
   name_taken: { line: "server.teamProjectProposal.refused.nameTaken", next: "A project or a department already has that name. Propose again under another name; ask the person which if you cannot tell." },
   folder_exists: { line: "server.teamProjectProposal.refused.folderExists", next: "The folder for projects already holds a folder of that name. Propose again under another name; ask the person which if you cannot tell." },
-  no_template: { line: "server.teamProjectProposal.refused.noTemplate", next: "That team template is gone. Read list_team_templates again and propose with one that is there." },
-  template_changed: { line: "server.teamProjectProposal.refused.templateChanged", next: "The team template was saved again after the card was made, so the person had not seen the team as it is now. Read list_team_templates again and propose once more." },
+  no_team: { line: "server.teamProjectProposal.refused.noTeam", next: "No team has that name now. Read list_project_teams again and propose with a team that is there." },
+  team_unusable: { line: "server.teamProjectProposal.refused.teamUnusable", next: "No project can be made from that team now. Read list_project_teams again: it says why." },
+  team_changed: { line: "server.teamProjectProposal.refused.teamChanged", next: "The team changed after the card was made, so the person had not seen the team as it is now. Read list_project_teams again and propose once more." },
   root_changed: { line: "server.teamProjectProposal.refused.rootChanged", next: "The folder for projects was changed after the card was made, so the person had not seen where the project would go. Propose once more." },
   failed: { line: "server.teamProjectProposal.refused.failed", next: "Tell the person what went wrong in plain words, and offer to try again." },
 };
@@ -55,16 +60,28 @@ const CARD_SAYS_WHY = " The card already tells the person why, so keep your own 
 
 const isRefusal = (code: string): code is Refusal => Object.hasOwn(REFUSED, code);
 
-function rolesLeadFirst(template: Pick<TeamTemplateSummary, "lead" | "roles">): TeamTemplateSummary["roles"] {
-  return [...template.roles.filter((role) => role.key === template.lead), ...template.roles.filter((role) => role.key !== template.lead)];
+const UNUSABLE: Record<ProjectTeamUnusable, (team: string) => string> = {
+  empty: (team) => `"${team}" has no bots yet, so no project can be made from it. To use it, propose bots for it with propose_team_setup, one of them appointed Chief of Staff.`,
+  no_chief: (team) => `"${team}" has no Chief of Staff to lead a project, so none can be made from it. To use it, propose appointing one of its bots Chief of Staff with propose_team_setup.`,
+  main_bot_chief: (team) => `You are the Chief of Staff of "${team}", and you belong to no team, so no project can be made from it. To use it, propose appointing one of its own bots Chief of Staff with propose_team_setup.`,
+};
+
+function contextLine(context: string): string {
+  const text = context.replace(/\s+/g, " ").trim();
+  if (!text) return "(none)";
+  return text.length > CONTEXT_SHOWN ? `${text.slice(0, CONTEXT_SHOWN - 1)}…` : text;
 }
 
-function templateLines(templates: readonly TeamTemplateSummary[]): string {
-  return templates.map((template) => [
-    `- id ${template.id}: "${template.name}"`,
-    `  Suits: ${template.genre.trim() || "(not said)"}`,
-    `  Roles: ${rolesLeadFirst(template).map((role) => `${role.name}${role.key === template.lead ? " (lead)" : ""}: ${role.title}`).join("; ")}`,
-  ].join("\n")).join("\n");
+function teamLines(teams: readonly ProjectTeamWire[]): string {
+  return teams.map((team) => {
+    if (team.unusable) return `- "${team.name}": cannot be used. ${UNUSABLE[team.unusable](team.name)}`;
+    return [
+      `- "${team.name}"`,
+      `  Context: ${contextLine(team.context)}`,
+      `  Chief of Staff: ${team.chief!.name}${team.chief!.title ? ` (${team.chief!.title})` : ""}`,
+      `  Members: ${team.members.map((member) => `${member.name}: ${member.title || "(no title)"}`).join("; ")}`,
+    ].join("\n");
+  }).join("\n");
 }
 
 /** What the main bot's parked turn still has to hear about its card: Cancel or a refusal. A project that was made needs no
@@ -118,28 +135,25 @@ export class TeamProjectProposalService {
   private readonly options: TeamProjectProposalOptions;
   constructor(options: TeamProjectProposalOptions) { this.options = options; }
 
-  templatesText(): string {
-    const templates = this.options.backends.templates.list().teams;
-    if (!templates.length) return NO_TEMPLATES;
+  teamsText(): string {
+    const teams = this.options.backends.projects.teams();
+    if (!teams.some((team) => !team.unusable)) return teams.length ? `${NO_TEAMS}\n${teamLines(teams)}` : NO_TEAMS;
     return [
-      `Team templates (${templates.length}). Pick the one whose "Suits" line fits what the person wants; propose_team_project takes its id.`,
-      templateLines(templates),
-      "When none fits, do not propose: tell the person so and name the templates there are. You cannot make or change a template; the person does that in Settings, under Templates.",
+      `Teams (${teams.length}). A project gets copies of one team's bots, led by the copy of its Chief of Staff. Pick the team whose context and members fit what the person wants; propose_team_project takes its name.`,
+      teamLines(teams),
+      `When no team fits, do not propose a project yet: ${PROPOSE_A_TEAM}`,
     ].join("\n");
   }
 
   /** The bot's earlier open proposal in this conversation is superseded, so only its newest one can be answered. */
-  propose(input: { botId: string; threadId: string; name: string; templateId: string; brief: string }): { requestId: string; messageId: string; text: string } {
+  propose(input: { botId: string; threadId: string; name: string; team: string; brief: string }): { requestId: string; messageId: string; text: string } {
     const { store, backends } = this.options;
     const root = backends.projectsRoot();
     if (root === null) throw new TeamProjectProposalError(NO_ROOT, 409);
-    const templates = backends.templates.list().teams;
-    const template = templates.find((candidate) => candidate.id === input.templateId);
-    if (!template) {
-      throw new TeamProjectProposalError(templates.length
-        ? `No team template has the id "${input.templateId}". The ones there are:\n${templateLines(templates)}`
-        : NO_TEMPLATES, 404);
-    }
+    const teams = backends.projects.teams();
+    const team = findProjectTeam(teams, input.team);
+    if (!team) throw new TeamProjectProposalError(teams.length ? `No team is called "${input.team}". The teams there are:\n${teamLines(teams)}` : NO_TEAMS, 404);
+    if (team.unusable) throw new TeamProjectProposalError(UNUSABLE[team.unusable](team.name), 409);
     const name = input.name.normalize("NFC").trim();
     const base = resolve(root);
     const folder = join(base, name);
@@ -160,15 +174,15 @@ export class TeamProjectProposalService {
     }
     const requestId = newId();
     const language = this.language(input.threadId);
-    const members = new Intl.ListFormat(intlLocale(language), { type: "conjunction" }).format(rolesLeadFirst(template).map((role) => role.name));
+    const members = new Intl.ListFormat(intlLocale(language), { type: "conjunction" }).format(team.members.map((member) => member.name));
     const proposal: TeamProjectProposal = {
       requestId, botId: input.botId, threadId: input.threadId, name, folder,
-      template: { id: template.id, name: template.name, version: template.version, genre: template.genre, lead: template.lead, roles: template.roles },
+      team: { name: team.name, chief: team.chief!, members: team.members, revision: teamRevision(team) },
       brief, createdAt: Date.now(),
     };
     const card: OptionCardData = {
       title: serverLine(language, "server.teamProjectProposal.card.title", { name }),
-      subtitle: [folder, serverLine(language, "server.teamProjectProposal.card.team", { template: template.name, members })].join("\n"),
+      subtitle: [folder, serverLine(language, "server.teamProjectProposal.card.team", { team: team.name, members })].join("\n"),
       options: ["Create", "Cancel"], requestId, tool: PROPOSE_TEAM_PROJECT_TOOL, fixedOptions: true, teamProjectProposal: proposal,
     };
     const message = store.appendMessage(input.threadId, { role: "bot", kind: "options", card });
@@ -230,7 +244,7 @@ export class TeamProjectProposalService {
     const receipt = (sent?.body.receipts as PeerDeliveryReceipt[] | undefined)?.[0];
     if (sent?.status === 200 && receipt && receipt.outcome !== "failed") return undefined;
     const language = this.language(proposal.threadId);
-    const lead = made.leadName || proposal.template.roles.find((role) => role.key === proposal.template.lead)?.name || "";
+    const lead = made.leadName || proposal.team?.chief.name || "";
     const why = this.options.held(made.leadBotId, language);
     return why ? serverLine(language, "server.teamProjectProposal.handOver.held", { lead, why }) : serverLine(language, "server.teamProjectProposal.handOver.failed", { lead });
   }
@@ -245,23 +259,25 @@ export class TeamProjectProposalService {
     }
   }
 
-  /** Security: Create makes what the card showed or nothing. A template saved again, or another folder for projects, refuses it. */
+  /** Security: Create makes what the card showed or nothing. A team whose name, Chief or members changed, or another
+   * folder for projects, refuses it. */
   private async create(proposal: TeamProjectProposal): Promise<Outcome> {
     const { backends } = this.options;
     const refused = (code: Refusal, error: string): Outcome => ({ result: { state: "refused", code, error } });
-    const template = backends.templates.list().teams.find((candidate) => candidate.id === proposal.template.id);
-    if (!template) return refused("no_template", "the team template is gone");
-    if (template.version !== proposal.template.version) return refused("template_changed", "the team template was saved again after the card was made");
+    if (!proposal.team) return refused("team_changed", "the card names a team template, and projects are made from teams now");
+    const team = findProjectTeam(backends.projects.teams(), proposal.team.name);
+    if (!team) return refused("no_team", "no team has that name now");
+    if (teamRevision(team) !== proposal.team.revision) return refused("team_changed", "the team's name, Chief of Staff or members changed after the card was made");
     if (this.rootMoved(proposal)) return refused("root_changed", "the folder for projects was changed after the card was made");
     let made: CreateTeamProjectResult;
     try {
-      made = await backends.projects.create({ name: proposal.name, templateId: proposal.template.id });
+      made = await backends.projects.create({ name: proposal.name, team: team.name });
     } catch (error) {
       made = { error: error instanceof Error ? error.message : String(error), code: "failed" };
     }
     if ("code" in made) return refused(made.code, made.error);
     const { id, name, folder, leadBotId } = made.project;
-    return { name, folder, result: { state: "created", projectId: id, leadBotId, leadName: this.options.botName(leadBotId) ?? "", missingSkills: made.missingSkills } };
+    return { name, folder, result: { state: "created", projectId: id, leadBotId, leadName: this.options.botName(leadBotId) ?? "" } };
   }
 
   private record(threadId: string, messageId: string, settled: TeamProjectProposal & { result: TeamProjectProposalResult }, note?: string): TeamProjectProposal {

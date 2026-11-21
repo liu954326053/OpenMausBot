@@ -3,8 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { CreateTeamProjectResult } from "../shared/team-projects.ts";
-import type { TemplateLibraryWire } from "../shared/template-library.ts";
+import type { CreateTeamProjectResult, ProjectTeamWire } from "../shared/team-projects.ts";
 import { DATA_DIR } from "./config.ts";
 import type { ModelSelection } from "./contracts.ts";
 import { json, readBody } from "./harness/http.ts";
@@ -17,13 +16,10 @@ import { TeamProjectProposalService } from "./team-project-proposal.ts";
 const sonnet: ModelSelection = { instanceId: "claude", model: "claude-sonnet-5" };
 const servers: Server[] = [];
 
-const LIBRARY: TemplateLibraryWire = {
-  bots: [],
-  teams: [{
-    id: "drama", name: "Short drama team", version: 1, updatedAt: 1, genre: "Romance and revenge", lead: "writer",
-    roles: [{ key: "writer", name: "Head writer", title: "Writes the script" }, { key: "editor", name: "Editor", title: "Cuts the episodes" }],
-  }],
-};
+const TEAMS: ProjectTeamWire[] = [{
+  name: "Short drama team", context: "Romance and revenge", chief: { id: "src-writer", name: "Head writer", title: "Writes the script" },
+  members: [{ id: "src-writer", name: "Head writer", title: "Writes the script" }, { id: "src-editor", name: "Editor", title: "Cuts the episodes" }],
+}];
 
 beforeEach(() => rmSync(DATA_DIR, { recursive: true, force: true }));
 afterEach(async () => {
@@ -37,18 +33,17 @@ async function fixture() {
   const lead = store.createBot({ name: "Head writer" });
   const create = vi.fn(async (): Promise<CreateTeamProjectResult> => ({
     project: {
-      id: "p1", name: "Palace", folder: "/projects/Palace", section: "Palace", template: { id: "drama", name: "Short drama team", version: 1 },
-      leadBotId: lead.id, createdAt: 1, folderState: "ready", botIds: [lead.id],
+      id: "p1", name: "Palace", folder: "/projects/Palace", section: "Palace", team: { key: "team:drama", name: "Short drama team" },
+      leadBotId: lead.id, createdAt: 1, folderState: "ready", botIds: [lead.id], follows: { [lead.id]: "src-writer" },
     },
-    missingSkills: [],
   }));
   const answer = vi.fn(() => true);
   const handOff = vi.fn(async (_from: unknown, call: { botIds: string[] }) => ({ status: 200, body: { receipts: [{ botId: call.botIds[0], outcome: "queued", detail: "queued" }] } }));
   const cards = new TeamProjectProposalService({
-    store, backends: { templates: { list: () => LIBRARY }, projects: { create }, projectsRoot: () => "/projects" },
+    store, backends: { projects: { create, teams: () => TEAMS }, projectsRoot: () => "/projects" },
     botName: (id) => store.bot(id)?.name, answer, follow: () => {}, release: () => {}, held: () => null, decide: () => {}, handOff,
   });
-  const { requestId } = cards.propose({ botId: main.id, threadId: main.threadId, name: "Palace", templateId: "drama", brief: "A revenge drama in twelve episodes." });
+  const { requestId } = cards.propose({ botId: main.id, threadId: main.threadId, name: "Palace", team: "Short drama team", brief: "A revenge drama in twelve episodes." });
   const deps = {
     store, routines: () => null, desktopManaged: false, activeGroupTurnForBot: () => null,
     requestBehavior: (value: unknown) => (value === "allow" || value === "deny" || value === "answer" ? value : null),
@@ -98,7 +93,7 @@ it("refuses Create from a local browser while a bot is busy, and makes the proje
 
   store.setTaskActivity(other.id, other.threadId, "idle");
   expect(await press(path, "allow")).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", result: { state: "created", projectId: "p1", leadBotId: lead.id } } });
-  expect(create).toHaveBeenCalledExactlyOnceWith({ name: "Palace", templateId: "drama" });
+  expect(create).toHaveBeenCalledExactlyOnceWith({ name: "Palace", team: "Short drama team" });
   expect(card()).toMatchObject({ answered: "allow", teamProjectProposal: { result: { state: "created", leadName: "Head writer" } } });
   expect(handOff).toHaveBeenCalledOnce();
   expect(answer).not.toHaveBeenCalled();

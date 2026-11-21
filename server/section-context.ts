@@ -96,6 +96,13 @@ export function ensureSectionMemoryKey(section?: string | null): string {
   }
   return data.memoryKeys[name] ?? name;
 }
+
+/** The department whose memory key is `key` now; null when none is. Throws when the departments cannot be read. */
+export function sectionOfMemoryKey(key: string): string | null {
+  const data = loadFile(true);
+  return data.sections.find((name) => (data.memoryKeys[name] ?? name) === key) ?? null;
+}
+
 /** Registers any of `names` that are not departments yet; the ones it added. */
 export function ensureSections(names: (string | undefined)[]): string[] {
   const data = loadFile(true);

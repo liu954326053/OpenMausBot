@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { vi } from "vitest";
 
-import type { TeamTemplateContent } from "../../shared/template-library.ts";
-import type { PackageImportDeps } from "../package-import.ts";
+import type { PackageImportDeps, PackageImportResult } from "../package-import.ts";
+import type { CommunityPublisher } from "../share-publish.ts";
+import type { SkillListing } from "../skills.ts";
+import type { BotRecord } from "../store.ts";
 import type { TeamMemoryLine } from "./copies.ts";
 import type { TeamProjectsDeps } from "./service.ts";
 
@@ -12,9 +14,12 @@ const FIXTURE = join(import.meta.dirname, "..", "..", "shared", "package-fixture
 
 export type TeamProjectsTestApp = Awaited<ReturnType<typeof teamProjectsInstallation>>;
 
+/** What the skills library holds in these tests: a skill a bot is given from it never travels with a copy. */
+const LIBRARY_SKILL = "---\nname: beat-sheet\ndescription: Plans an episode's beats.\n---\nList the beats.\n";
+
 /**
- * A whole installation in a throwaway home: the real bot store, routines and package importer under the projects
- * service, with a template library, a skills library and a team memory the test fills by hand.
+ * A whole installation in a throwaway home: the real bot store, routines, package importer and share export under the
+ * projects service, with a skills library and a team memory the test fills by hand.
  */
 export async function teamProjectsInstallation(options: { maxBots?: number } = {}) {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "omb-team-projects-")));
@@ -27,9 +32,12 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
   const skills = await import("../skills.ts");
   const workspace = await import("../workspace.ts");
   const sections = await import("../section-context.ts");
-  const { saveImage } = await import("../attachments.ts");
+  const { readAttachment, saveImage } = await import("../attachments.ts");
   const { botAvatarUrlFromStoredPath } = await import("../../shared/bot-avatar.ts");
   const { parsePackageDocument } = await import("../../shared/package-format.ts");
+  const { importPackageDocument } = await import("../package-import.ts");
+  const { createShareHost } = await import("../share.ts");
+  const { skillExport } = await import("../skill-export.ts");
   const { TeamProjectRegistry } = await import("./registry.ts");
   const { TeamProjects } = await import("./service.ts");
 
@@ -54,24 +62,52 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
     ...(options.maxBots === undefined ? {} : { maxBots: options.maxBots }),
   };
 
-  const templates = new Map<string, TeamTemplateContent>();
-  const librarySkills = ["beat-sheet"];
+  const libraryListing = (name: string): SkillListing => ({
+    name, description: "Plans an episode's beats.", enabled: true, editable: false, source: "library", sha256: "", importedAt: "", warnings: [], skippedFiles: [],
+  });
+  const exporting = skillExport({
+    listBotSkills: (bot) => [...skills.listSkills(bot.id), ...(bot.assignedSkills ?? []).map(libraryListing)],
+    readBotSkillFile: (bot, name) => skills.readSkillFile(bot.id, name) ?? (bot.assignedSkills?.includes(name) ? LIBRARY_SKILL : null),
+  });
+  const share = createShareHost({
+    dataDir: DATA_DIR,
+    bots: () => store.bots,
+    groups: () => store.groups,
+    routines: () => routines.listRoutines(),
+    brief: (section) => sections.readSectionContext(section)?.text,
+    collectTeamSkills: exporting.collectTeamSkills,
+    picture: (bot) => {
+      const stored = bot.avatarUrl ? readAttachment(bot.avatarUrl.split("/").pop() ?? "") : null;
+      return stored ? `data:${stored.mime};base64,${stored.bytes.toString("base64")}` : undefined;
+    },
+    botFolder: (botId) => join(DATA_DIR, "bots", botId),
+    publisher: {} as CommunityPublisher,
+    patch: () => {},
+  });
+
   const memory = new Map<string, TeamMemoryLine[]>();
   const logged: string[] = [];
+  const exports: string[] = [];
   let clock = 1_800_000_000_000;
   let ids = 0;
   let scheduled = 0;
   const placed: string[] = [];
-  const hooks: { onPlace?: (botId: string) => void } = {};
+  const hooks: { onPlace?: (botId: string) => void; onExport?: () => void } = {};
   const registryFile = join(DATA_DIR, "projects.json");
   const registry = new TeamProjectRegistry(registryFile, (line) => logged.push(line));
   const deps: TeamProjectsDeps = {
     registry, store, dataDir: DATA_DIR,
     routines: () => routines,
     ensureWorkspace: (botId) => { placed.push(botId); hooks.onPlace?.(botId); },
-    templates: { readTeam: (id) => templates.get(id) ?? null },
     importDeps: async () => importDeps,
-    librarySkillNames: () => librarySkills,
+    exportDocument: (target, carries) => {
+      hooks.onExport?.();
+      exports.push(target.scope === "bot" ? target.bot.id : target.section);
+      return share.document(target, routines.listRoutines(), carries);
+    },
+    ownSkillNames: (botId) => skills.listSkills(botId).map((skill) => skill.name),
+    teamKey: sections.ensureSectionMemoryKey,
+    teamOfKey: sections.sectionOfMemoryKey,
     context: (section) => sections.readSectionContext(section)?.text ?? "",
     memory: (section) => memory.get(section) ?? [],
     schedule: () => { scheduled += 1; },
@@ -91,20 +127,16 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
   const root = join(home, "dramas");
   mkdirSync(root);
 
-  /** The team of the package fixture as a team template: a lead, two members, a room, two routines, skills and a connection. */
-  const salesTemplate = (patch: Partial<TeamTemplateContent> = {}): TeamTemplateContent => {
+  /**
+   * The team of the package fixture, added as a department of this installation: Morgan its Chief, Scout and Quill, a
+   * group chat, two routines, own skills, a context, Morgan's memory and picture, and a connection.
+   */
+  const salesTeam = (): { section: string; byKey: Map<string, BotRecord>; result: PackageImportResult } => {
     const document = parsePackageDocument(JSON.parse(readFileSync(FIXTURE, "utf8")), { trust: "file" });
-    return {
-      id: "sales", name: "Sales crew", genre: "Selling to companies", version: 3, updatedAt: 1, lead: "lead",
-      roles: document.package.agents.map((agent) => ({ key: agent.key, name: agent.name, title: agent.title ?? "" })),
-      document,
-      extras: {
-        lead: { model: { instanceId: "codex", model: "gpt-test", effort: "high" }, librarySkills: ["beat-sheet", "not-in-library"], mcpServers: ["drive"] },
-        scout: { librarySkills: ["beat-sheet", "also-missing"] },
-        writer: { librarySkills: [], look: { mascotFaceColor: "black", avatarZoom: 2, avatarFocusX: 0.25, avatarFocusY: 0.75 } },
-      },
-      ...patch,
-    };
+    const result = importPackageDocument(document, { trust: "file", mode: "add" }, importDeps);
+    if (result.alreadyAdded) throw new Error("the sales team is already here");
+    const byKey = new Map(result.bots.map((bot) => [bot.installedPackage?.agentKey ?? bot.id, store.bot(bot.id)!]));
+    return { section: result.section, byKey, result };
   };
 
   const snapshot = () => JSON.stringify({
@@ -116,12 +148,15 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
   const byRole = (projectId: string) => new Map(botsOf(projectId).map((bot) => [bot.teamProject!.role, bot]));
 
   return {
-    home, dataDir: DATA_DIR, root, store, routines, skills, workspace, sections, importDeps, mcp, templates, librarySkills, memory, logged,
-    registry, registryFile, projects, restarted, salesTemplate, snapshot, botsOf, byRole,
+    home, dataDir: DATA_DIR, root, store, routines, skills, workspace, sections, importDeps, mcp, memory, logged,
+    registry, registryFile, projects, restarted, salesTeam, snapshot, botsOf, byRole,
     scheduled: () => scheduled,
     /** The bots whose own files were put in place, in the order it happened. */
     placed,
+    /** What was exported, a department by its name and a bot by its id, in order. */
+    exports,
     set onPlace(hook: ((botId: string) => void) | undefined) { hooks.onPlace = hook; },
+    set onExport(hook: (() => void) | undefined) { hooks.onExport = hook; },
   };
 }
 

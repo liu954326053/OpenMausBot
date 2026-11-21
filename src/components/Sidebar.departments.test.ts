@@ -520,7 +520,7 @@ describe("projects in the sidebar", () => {
   type ProjectsProps = Parameters<typeof SidebarTeamProjects>[0];
   const projects = () => render().find((node) => node.type === SidebarTeamProjects)!.props as unknown as ProjectsProps;
   const work = {
-    id: "p1", name: "Work", folder: "/dramas/Work", section: "Work", template: { id: "urban", name: "Urban", version: 1 },
+    id: "p1", name: "Work", folder: "/dramas/Work", section: "Work", team: { key: "team:urban", name: "Urban" }, follows: {},
     leadBotId: "dodo", createdAt: 1, folderState: "ready" as const, botIds: ["dodo", "echo"],
   };
   const withProject = (extra: Partial<typeof work> & { archivedAt?: number } = {}) => setTeamProjects({ root: "/dramas", projects: [{ ...work, ...extra }] });

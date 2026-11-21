@@ -3,17 +3,17 @@ import { watchFile } from "node:fs";
 import { join } from "node:path";
 
 import type { TeamProjectLookup, TeamProjectsApi } from "../../shared/team-projects.ts";
-import type { TemplateLibraryApi } from "../../shared/template-library.ts";
 import { DATA_DIR } from "../config.ts";
 import type { PackageImportDeps } from "../package-import.ts";
 import { createTeamProjectRoutes } from "../routes/team-projects.ts";
 import type { RouteHandler } from "../routes/table.ts";
-import type { RoutineManager } from "../routines.ts";
-import { SECTION_CONTEXTS_FILE, readSectionContext } from "../section-context.ts";
-import { readSkillLibraryIndex } from "../skill-library.ts";
-import type { Store } from "../store.ts";
+import type { Routine, RoutineManager } from "../routines.ts";
+import { SECTION_CONTEXTS_FILE, ensureSectionMemoryKey, readSectionContext, sectionOfMemoryKey } from "../section-context.ts";
+import type { ShareTarget } from "../share.ts";
+import type { BotRecord, Store } from "../store.ts";
 import type { TeamMemory } from "../team-memory.ts";
 import { ensureWorkspace } from "../workspace.ts";
+import type { ExportedTeam } from "./create.ts";
 import { TeamProjectRegistry } from "./registry.ts";
 import { TeamProjects } from "./service.ts";
 
@@ -21,8 +21,11 @@ export interface TeamProjectsHostDeps {
   store: Store;
   routines(): RoutineManager | null;
   teamMemory: TeamMemory;
-  templates: Pick<TemplateLibraryApi, "readTeam">;
   importDeps(): Promise<PackageImportDeps>;
+  /** The share export of a department or of one bot, with these routines and carrying the skills `carries` picks. */
+  exportDocument(target: ShareTarget, routines: readonly Routine[], carries: (bot: BotRecord, skill: string) => boolean): ExportedTeam;
+  /** The names of the skills a bot learned itself. */
+  ownSkillNames(botId: string): readonly string[];
   /** The app's language, for the first lines of a new bot's memory. */
   language(): string | undefined;
 }
@@ -51,9 +54,11 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
     dataDir: DATA_DIR,
     routines: deps.routines,
     ensureWorkspace: (botId) => { ensureWorkspace(botId, deps.language()); },
-    templates: deps.templates,
     importDeps: deps.importDeps,
-    librarySkillNames: () => Object.values(readSkillLibraryIndex()).map((skill) => skill.name),
+    exportDocument: (target, carries) => deps.exportDocument(target, deps.routines()?.listRoutines() ?? [], carries),
+    ownSkillNames: deps.ownSkillNames,
+    teamKey: ensureSectionMemoryKey,
+    teamOfKey: sectionOfMemoryKey,
     context: (section) => readSectionContext(section)?.text ?? "",
     memory: (section) => deps.teamMemory.list(section),
     schedule: (flush) => {

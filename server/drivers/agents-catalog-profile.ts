@@ -24,7 +24,7 @@ export interface CatalogProfile {
   team?: boolean;
   /** The person's MagicBot with a Chief's powers: its notification tools are mounted. */
   mausbot?: boolean;
-  /** The global main bot (the person's MagicBot, in no project) in a chat of its own: list_team_templates and
+  /** The global main bot (the person's MagicBot, in no project) in a chat of its own: list_project_teams and
    * propose_team_project are mounted. */
   teamProjects?: boolean;
   /** A direct chat whose bot may pick where it works (Works on is not Off and no team computer is its own): select_computer

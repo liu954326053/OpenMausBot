@@ -4,7 +4,7 @@ import type { TeamProjectsListWire, TeamProjectWire } from "../../shared/team-pr
 import { archiveProject, createProject, currentTeamProjectSide, refreshTeamProjects, restoreProject, saveProjectsRoot, setTeamProjects } from "./team-projects";
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
-  id, name: id, folder: `/dramas/${id}`, section: id, template: { id: "urban", name: "Urban", version: 1 },
+  id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
   leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`], ...extra,
 });
 
@@ -190,17 +190,17 @@ describe("the person's own changes", () => {
   it("add a new project to the list at once, and keep its department out of the departments while it is made", async () => {
     const calls = server();
     setTeamProjects(list());
-    const creating = createProject({ name: " The bride ", templateId: "urban" });
+    const creating = createProject({ name: " The bride ", team: "Urban" });
     expect(currentTeamProjectSide().department("The bride")).toBe(false);
-    await calls[0]!.answer(201, { project: project("bride", { name: "The bride", section: "The bride" }), missingSkills: ["storyboard"] });
-    expect(await creating).toMatchObject({ missingSkills: ["storyboard"] });
+    await calls[0]!.answer(201, { project: project("bride", { name: "The bride", section: "The bride" }) });
+    expect(await creating).toMatchObject({ project: { id: "bride" } });
     expect([names(), currentTeamProjectSide().department("The bride")]).toEqual([["bride"], false]);
   });
 
   it("list nothing new when a project is refused", async () => {
     const calls = server();
     setTeamProjects(list());
-    const creating = createProject({ name: "The bride", templateId: "urban" });
+    const creating = createProject({ name: "The bride", team: "Urban" });
     await calls[0]!.answer(409, { error: "Taken.", code: "name_taken" });
     expect(await creating).toEqual({ refused: "name_taken", error: "Taken." });
     expect([names(), currentTeamProjectSide().department("The bride")]).toEqual([[], true]);

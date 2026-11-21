@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamProjectWire } from "../../shared/team-projects";
-import { archiveTeamProject, createTeamProject, listTeamProjects, restoreTeamProject, saveTeamProjectsRoot } from "./team-projects-api";
+import { archiveTeamProject, createTeamProject, listProjectTeams, listTeamProjects, restoreTeamProject, saveTeamProjectsRoot } from "./team-projects-api";
 
 const project: TeamProjectWire = {
-  id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", template: { id: "urban", name: "Urban", version: 1 },
+  id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
   leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead"],
 };
 
@@ -28,38 +28,47 @@ describe("the project routes", () => {
     expect(calls).toEqual([{ path: "/api/team-projects", method: "GET", body: undefined }]);
   });
 
-  it("makes a project and says which skills the library lacks", async () => {
-    const calls = answer(201, { project, missingSkills: ["storyboard"] });
-    expect(await createTeamProject({ name: "The bride", templateId: "urban" })).toEqual({ project, missingSkills: ["storyboard"] });
-    expect(calls).toEqual([{ path: "/api/team-projects", method: "POST", body: { name: "The bride", templateId: "urban" } }]);
+  it("reads the teams a project can be made from", async () => {
+    const teams = [{ name: "Urban", context: "", chief: { id: "head", name: "Head", title: "" }, members: [{ id: "head", name: "Head", title: "" }] }];
+    const calls = answer(200, { teams });
+    expect(await listProjectTeams()).toEqual(teams);
+    expect(calls).toEqual([{ path: "/api/team-projects/teams", method: "GET", body: undefined }]);
+    answer(200, {});
+    expect(await listProjectTeams()).toEqual([]);
+  });
+
+  it("makes a project from a team", async () => {
+    const calls = answer(201, { project });
+    expect(await createTeamProject({ name: "The bride", team: "Urban" })).toEqual({ project });
+    expect(calls).toEqual([{ path: "/api/team-projects", method: "POST", body: { name: "The bride", team: "Urban" } }]);
   });
 
   it("gives a refusal as its code and the server's sentence", async () => {
     answer(409, { error: "A project already has this name.", code: "name_taken" });
-    expect(await createTeamProject({ name: "The bride", templateId: "urban" })).toEqual({ refused: "name_taken", error: "A project already has this name." });
+    expect(await createTeamProject({ name: "The bride", team: "Urban" })).toEqual({ refused: "name_taken", error: "A project already has this name." });
     answer(422, { error: "No folder is set.", code: "no_root" });
-    expect(await createTeamProject({ name: "x", templateId: "urban" })).toEqual({ refused: "no_root", error: "No folder is set." });
+    expect(await createTeamProject({ name: "x", team: "Urban" })).toEqual({ refused: "no_root", error: "No folder is set." });
   });
 
   it("gives a refusal it does not know without a code", async () => {
     answer(422, { error: "Not today.", code: "something_new" });
-    expect(await createTeamProject({ name: "x", templateId: "urban" })).toEqual({ refused: null, error: "Not today." });
+    expect(await createTeamProject({ name: "x", team: "Urban" })).toEqual({ refused: null, error: "Not today." });
     answer(500, { error: "The list of projects cannot be read." });
-    expect(await createTeamProject({ name: "x", templateId: "urban" })).toEqual({ refused: null, error: "The list of projects cannot be read." });
+    expect(await createTeamProject({ name: "x", team: "Urban" })).toEqual({ refused: null, error: "The list of projects cannot be read." });
   });
 
   it("gives the server's sentence in the app's language when the server names it, and none when the server sent none", async () => {
     answer(500, { error: "English.", code: "failed", errorKey: "serverError.teamProject.failedLeftovers", errorParams: { detail: "disk full" } });
-    expect(await createTeamProject({ name: "x", templateId: "urban" })).toEqual({ refused: "failed", error: "The project couldn't be made, and part of it couldn't be removed again. (disk full)" });
+    expect(await createTeamProject({ name: "x", team: "Urban" })).toEqual({ refused: "failed", error: "The project couldn't be made, and part of it couldn't be removed again. (disk full)" });
     answer(502, "<html>Bad gateway</html>");
-    expect(await createTeamProject({ name: "x", templateId: "urban" })).toEqual({ refused: null, error: "" });
+    expect(await createTeamProject({ name: "x", team: "Urban" })).toEqual({ refused: null, error: "" });
     answer(422, {});
     expect(await saveTeamProjectsRoot("/dramas")).toEqual({ error: "" });
   });
 
   it("leaves a request that never arrived to its caller", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
-    await expect(createTeamProject({ name: "x", templateId: "urban" })).rejects.toThrow("Failed to fetch");
+    await expect(createTeamProject({ name: "x", team: "Urban" })).rejects.toThrow("Failed to fetch");
     await expect(saveTeamProjectsRoot("/dramas")).rejects.toThrow("Failed to fetch");
   });
 

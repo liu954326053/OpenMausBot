@@ -10,14 +10,14 @@ let app: TeamProjectsTestApp | undefined;
 async function installation() {
   app = await teamProjectsInstallation();
   app.projects.start();
-  app.templates.set("sales", app.salesTemplate());
+  app.salesTeam();
   return app;
 }
 
 async function withProject(name = "Stand-in bride") {
   const app = await installation();
   app.projects.setRoot(app.root);
-  const result = await app.projects.create({ name, templateId: "sales" });
+  const result = await app.projects.create({ name, team: "Sales desk" });
   if (!("project" in result)) throw new Error(result.error);
   return { app, project: result.project };
 }
@@ -98,7 +98,7 @@ describe("the folder for projects", () => {
     const other = join(app.home, "more dramas");
     mkdirSync(other);
     expect(app.projects.setRoot(other)).toEqual({ root: other });
-    const second = await app.projects.create({ name: "Second", templateId: "sales" });
+    const second = await app.projects.create({ name: "Second", team: "Sales desk" });
     expect(second).toMatchObject({ project: { folder: join(other, "Second") } });
     expect(app.projects.list()[0]).toMatchObject({ folder: project.folder, folderState: "ready" });
   });
@@ -107,12 +107,14 @@ describe("the folder for projects", () => {
 describe("archiving a project and restoring it", () => {
   async function withRoutines() {
     const { app, project } = await withProject();
-    const [daily, weekly] = ["Daily digest", "Weekly pipeline review"].map((name) => app.routines.listRoutines().find((routine) => routine.name === name)!);
+    const sources = new Set(app.routines.listRoutines().filter((routine) => !project.botIds.includes(routine.botId)).map((routine) => routine.id));
+    const listed = () => app.routines.listRoutines().filter((routine) => !sources.has(routine.id));
+    const [daily, weekly] = ["Daily digest", "Weekly pipeline review"].map((name) => listed().find((routine) => routine.name === name)!);
     app.routines.update(daily!.id, { enabled: true });
     const outsider = app.store.createBot({ name: "Outsider" }, { seedMessages: false });
     const other = app.routines.create({ name: "Other", prompt: "Check the news.", botId: outsider.id, runOn: "maus", enabled: true, schedule: DAILY, durationMinutes: 30 });
-    const enabled = () => Object.fromEntries(app.routines.listRoutines().map((routine) => [routine.name, routine.enabled]));
-    return { app, project, daily: daily!, weekly: weekly!, other, enabled };
+    const enabled = () => Object.fromEntries(listed().map((routine) => [routine.name, routine.enabled]));
+    return { app, project, daily: daily!, weekly: weekly!, other, enabled, listed };
   }
 
   it("pauses the project's routines that were running and no others, and remembers which", async () => {
@@ -151,11 +153,11 @@ describe("archiving a project and restoring it", () => {
   });
 
   it("changes nothing the second time, and answers null for a project that is not there", async () => {
-    const { app, project, enabled } = await withRoutines();
+    const { app, project, weekly, enabled } = await withRoutines();
     expect(app.projects.restore(project.id)).toMatchObject({ id: project.id });
     expect(enabled()["Daily digest"]).toBe(true);
     const first = app.projects.archive(project.id)!;
-    app.routines.update(app.routines.listRoutines().find((routine) => routine.name === "Weekly pipeline review")!.id, { enabled: true });
+    app.routines.update(weekly.id, { enabled: true });
     expect(app.projects.archive(project.id)).toEqual(first);
     expect(enabled()["Weekly pipeline review"]).toBe(true);
     expect(app.projects.archive("nope")).toBeNull();
@@ -163,14 +165,14 @@ describe("archiving a project and restoring it", () => {
   });
 
   it("leaves a routine alone on restore when it was deleted or switched on meanwhile", async () => {
-    const { app, project, daily, weekly } = await withRoutines();
+    const { app, project, daily, weekly, listed } = await withRoutines();
     app.routines.update(weekly.id, { enabled: true });
     app.projects.archive(project.id);
     expect(app.registry.find(project.id)!.pausedRoutineIds!.sort()).toEqual([daily.id, weekly.id].sort());
     app.routines.remove(daily.id);
     app.routines.update(weekly.id, { enabled: true });
     expect(app.projects.restore(project.id)).toMatchObject({ id: project.id });
-    expect(app.routines.listRoutines().map((routine) => [routine.name, routine.enabled]).sort()).toEqual([["Other", true], ["Weekly pipeline review", true]]);
+    expect(listed().map((routine) => [routine.name, routine.enabled]).sort()).toEqual([["Other", true], ["Weekly pipeline review", true]]);
   });
 
   it("is archived as it was when the archive cannot be saved: its routines run again", async () => {
@@ -273,7 +275,7 @@ describe("keeping a project's copies up to date", () => {
 
   it("writes only the project whose bot changed", async () => {
     const { app, project } = await withProject("Season one");
-    const second = await app.projects.create({ name: "Season two", templateId: "sales" });
+    const second = await app.projects.create({ name: "Season two", team: "Sales desk" });
     if (!("project" in second)) throw new Error(second.error);
     app.projects.flushCopies();
     rmSync(join(second.project.folder, ".magic-team", "team", "context.md"));
@@ -313,7 +315,7 @@ describe("keeping a project's copies up to date", () => {
 
   it("carries on when one project's copies cannot be written", async () => {
     const { app, project } = await withProject("Season one");
-    const second = await app.projects.create({ name: "Season two", templateId: "sales" });
+    const second = await app.projects.create({ name: "Season two", team: "Sales desk" });
     if (!("project" in second)) throw new Error(second.error);
     rmSync(join(project.folder, ".magic-team", "team"), { recursive: true });
     writeFileSync(join(project.folder, ".magic-team", "team"), "not a folder");

@@ -1,12 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { TeamProjectRefusal, TeamProjectWire } from "../../shared/team-projects";
-import type { TeamTemplateSummary } from "../../shared/template-library";
+import type { ProjectTeamUnusable, TeamProjectRefusal, TeamProjectWire } from "../../shared/team-projects";
 import { en } from "@/locales";
-import { refusalKey, refusalPlace, teamProjectFolder, teamProjectSectionId, teamProjectSide, teamProjectsVersion, templateTeam } from "./team-projects";
+import { refusalKey, refusalPlace, teamProjectFolder, teamProjectSectionId, teamProjectSide, teamProjectsVersion, unusableKey } from "./team-projects";
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
-  id, name: id, folder: `/dramas/${id}`, section: id, template: { id: "urban", name: "Urban drama team", version: 1 },
+  id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban drama team" }, follows: {},
   leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`, `${id}-writer`, `${id}-shots`], ...extra,
 });
 const bot = (id: string, section?: string, pinned?: boolean) => ({ id, section, pinned });
@@ -114,7 +113,7 @@ describe("the folder a new project gets", () => {
 });
 
 describe("why a project was not made", () => {
-  const codes: TeamProjectRefusal[] = ["no_root", "root_missing", "bad_name", "name_taken", "folder_exists", "no_template", "failed"];
+  const codes: TeamProjectRefusal[] = ["no_root", "root_missing", "bad_name", "name_taken", "folder_exists", "no_team", "team_unusable", "failed"];
 
   it("has a sentence in English for every code", () => {
     for (const code of codes) expect(en[refusalKey(code)], code).toBeTruthy();
@@ -122,25 +121,16 @@ describe("why a project was not made", () => {
   });
 
   it("is shown beside what caused it", () => {
-    expect(codes.map(refusalPlace)).toEqual(["folder", "folder", "name", "name", "name", "template", "form"]);
+    expect(codes.map(refusalPlace)).toEqual(["folder", "folder", "name", "name", "name", "team", "team", "form"]);
     expect(refusalPlace(null)).toBe("form");
   });
 });
 
-describe("a team template's roles", () => {
-  const team: TeamTemplateSummary = {
-    id: "urban", name: "Urban drama team", genre: "Urban romance", version: 2, updatedAt: 1, lead: "producer",
-    roles: [{ key: "picker", name: "Book picker", title: "" }, { key: "producer", name: "Producer", title: "" }, { key: "writer", name: "Writer", title: "" }],
-  };
-
-  it("are its lead and then its members", () => {
-    const { lead, members } = templateTeam(team);
-    expect([lead?.name, members.map((role) => role.name)]).toEqual(["Producer", ["Book picker", "Writer"]]);
-  });
-
-  it("are all members when the lead's role is not among them", () => {
-    const { lead, members } = templateTeam({ ...team, lead: "gone" });
-    expect([lead, members.length]).toEqual([undefined, 3]);
+describe("why no project can be made from a team", () => {
+  it("has its own sentence in English for every reason", () => {
+    const reasons: ProjectTeamUnusable[] = ["empty", "no_chief", "main_bot_chief"];
+    for (const reason of reasons) expect(en[unusableKey(reason)], reason).toBeTruthy();
+    expect(new Set(reasons.map(unusableKey)).size).toBe(reasons.length);
   });
 });
 

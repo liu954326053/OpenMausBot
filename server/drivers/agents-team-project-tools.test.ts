@@ -9,7 +9,7 @@ import { TEAM_PROJECT_TOOL_DEFINITIONS, TEAM_PROJECT_TOOL_NAMES } from "./agents
 
 const listed = (env: Record<string, string>) => availableTools(catalogProfileFromEnv({ OMB_BOT_ID: "main", OMB_CHIEF_OF_STAFF: "1", ...env }));
 const names = (env: Record<string, string>) => listed(env).map((tool) => tool.name);
-const PAIR = ["list_team_templates", "propose_team_project"];
+const PAIR = ["list_project_teams", "propose_team_project"];
 
 function harness(answer: { ok: boolean; status: number; body: Json }) {
   const sent: Array<{ path: string; method?: string; body?: unknown }> = [];
@@ -50,7 +50,7 @@ describe("the main bot's two project tools on the wire", () => {
   it("keep flat, closed schemas with the required fields", () => {
     expect(pair.map((tool) => [tool.inputSchema.type, tool.inputSchema.additionalProperties, Object.keys(tool.inputSchema.properties), tool.inputSchema.required ?? []])).toEqual([
       ["object", false, [], []],
-      ["object", false, ["name", "template_id", "request"], ["name", "template_id", "request"]],
+      ["object", false, ["name", "team", "request"], ["name", "team", "request"]],
     ]);
     expect(JSON.stringify(TEAM_PROJECT_TOOL_DEFINITIONS)).not.toMatch(/"(oneOf|anyOf|allOf|const|format|\$ref)"/);
   });
@@ -59,16 +59,17 @@ describe("the main bot's two project tools on the wire", () => {
     expect(fullInputSchema("propose_team_project")).toMatchObject({ properties: { name: { maxLength: 60 }, request: { maxLength: TEAM_PROJECT_BRIEF_MAX } } });
   });
 
-  it("say that the main bot never makes a template, and what to do when none fits", () => {
+  it("say that a project is made from a team, and to propose a team first when none fits", () => {
     const [list, propose] = pair;
-    expect(list!.description).toMatch(/cannot make or change a template/i);
-    expect(propose!.description).toMatch(/never makes a template/i);
-    expect(propose!.description).toMatch(/none fits/i);
+    expect(list!.description).toMatch(/teams a project can be made from/i);
+    expect(list!.description).toMatch(/Chief of Staff/);
+    expect(propose!.description).toMatch(/from a team/i);
+    expect(propose!.description).toMatch(/no team fits, propose a team with propose_team_setup first/i);
     expect(propose!.description).toMatch(/nothing is made before Create/i);
   });
 
   it("mark only the list as a read", () => {
-    expect(isReadOnlyAgentTool("list_team_templates")).toBe(true);
+    expect(isReadOnlyAgentTool("list_project_teams")).toBe(true);
     expect(isReadOnlyAgentTool("propose_team_project")).toBe(false);
     expect(pair[0]!.annotations).toMatchObject({ readOnlyHint: true });
     expect(pair[1]!.annotations).toBeUndefined();
@@ -76,32 +77,32 @@ describe("the main bot's two project tools on the wire", () => {
 });
 
 describe("calling the project tools", () => {
-  it("reads the team templates from the harness and hands back its words", async () => {
-    const { sent, context } = harness({ ok: true, status: 200, body: { text: "Team templates (1)." } });
-    expect(await callTool("list_team_templates", {}, context)).toEqual({ text: "Team templates (1)." });
-    expect(sent).toEqual([{ path: "/api/internal/team-templates" }]);
+  it("reads the teams from the harness and hands back its words", async () => {
+    const { sent, context } = harness({ ok: true, status: 200, body: { text: "Teams (1)." } });
+    expect(await callTool("list_project_teams", {}, context)).toEqual({ text: "Teams (1)." });
+    expect(sent).toEqual([{ path: "/api/internal/project-teams" }]);
   });
 
-  it("stages a proposal with the name, the template and the person's request", async () => {
+  it("stages a proposal with the name, the team and the person's request", async () => {
     const { sent, context } = harness({ ok: true, status: 201, body: { text: "A card with Create and Cancel is now in the chat.", requestId: "r1" } });
-    const result = await callTool("propose_team_project", { name: "The Swapped Bride", template_id: "short-drama", request: "Twelve episodes." }, context);
+    const result = await callTool("propose_team_project", { name: "The Swapped Bride", team: "Short drama crew", request: "Twelve episodes." }, context);
     expect(result).toEqual({ text: "A card with Create and Cancel is now in the chat." });
-    expect(sent).toEqual([{ path: "/api/internal/team-project-proposals", method: "POST", body: { name: "The Swapped Bride", templateId: "short-drama", request: "Twelve episodes." } }]);
+    expect(sent).toEqual([{ path: "/api/internal/team-project-proposals", method: "POST", body: { name: "The Swapped Bride", team: "Short drama crew", request: "Twelve episodes." } }]);
   });
 
   it("tells the bot a refusal in the harness's words, as an error", async () => {
-    const { context } = harness({ ok: false, status: 404, body: { error: 'No team template has the id "nope".' } });
-    expect(await callTool("propose_team_project", { name: "A", template_id: "nope", request: "x" }, context)).toEqual({ text: 'No team template has the id "nope".', isError: true });
+    const { context } = harness({ ok: false, status: 404, body: { error: 'No team is called "nope".' } });
+    expect(await callTool("propose_team_project", { name: "A", team: "nope", request: "x" }, context)).toEqual({ text: 'No team is called "nope".', isError: true });
     const down = harness({ ok: false, status: 500, body: {} });
-    expect(await callTool("list_team_templates", {}, down.context)).toEqual({ text: "That could not be done.", isError: true });
+    expect(await callTool("list_project_teams", {}, down.context)).toEqual({ text: "That could not be done.", isError: true });
   });
 
   it("refuses a name or a request past its limit before anything runs", async () => {
     const { sent, context } = harness({ ok: true, status: 201, body: {} });
-    const longName = await callTool("propose_team_project", { name: "n".repeat(61), template_id: "t", request: "x" }, context);
+    const longName = await callTool("propose_team_project", { name: "n".repeat(61), team: "t", request: "x" }, context);
     expect(longName).toMatchObject({ isError: true });
     expect(longName.text).toContain("propose_team_project was not run:");
-    const longRequest = await callTool("propose_team_project", { name: "n", template_id: "t", request: "x".repeat(TEAM_PROJECT_BRIEF_MAX + 1) }, context);
+    const longRequest = await callTool("propose_team_project", { name: "n", team: "t", request: "x".repeat(TEAM_PROJECT_BRIEF_MAX + 1) }, context);
     expect(longRequest.text).toContain("request takes at most");
     expect(sent).toEqual([]);
   });

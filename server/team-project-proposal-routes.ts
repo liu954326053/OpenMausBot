@@ -1,4 +1,4 @@
-// The main bot's project proposals on the server: the two internal calls behind list_team_templates and
+// The main bot's project proposals on the server: the two internal calls behind list_project_teams and
 // propose_team_project, and the answer to the card. The internal calls run inside index.ts's /api/internal/ block after
 // the capability bearer is checked; the bot is the capability's.
 import type { ServerResponse } from "node:http";
@@ -40,16 +40,16 @@ export interface TeamProjectInternalContext {
   requireActive(): void;
 }
 
-const LIST = "/api/internal/team-templates";
+const LIST = "/api/internal/project-teams";
 const PROPOSE = "/api/internal/team-project-proposals";
 
 const ONLY_MAIN_BOT = "Only the main bot proposes projects, and you are not it. Tell the person to ask their MagicBot.";
 const OWN_CHAT_ONLY = "A project is proposed in your own chat with the person, not in a room. Tell the person to ask you there.";
-const BAD_CALL = "propose_team_project needs name, template_id (an id from list_team_templates) and request, each as text.";
+const BAD_CALL = "propose_team_project needs name, team (a team's name from list_project_teams) and request, each as text.";
 
 const BODY = z.object({
   fromBotId: z.string().optional(), fromThreadId: z.string().optional(),
-  name: z.string(), templateId: z.string(), request: z.string(),
+  name: z.string(), team: z.string(), request: z.string(),
 }).strict();
 
 export function createTeamProjectProposals(deps: TeamProjectProposalsDeps) {
@@ -57,8 +57,7 @@ export function createTeamProjectProposals(deps: TeamProjectProposalsDeps) {
   const service = new TeamProjectProposalService({
     store,
     backends: {
-      templates: { list: () => deps.backends().templates.list() },
-      projects: { create: (input) => deps.backends().projects.create(input) },
+      projects: { create: (input) => deps.backends().projects.create(input), teams: () => deps.backends().projects.teams() },
       projectsRoot: () => deps.backends().projectsRoot(),
     },
     botName: (botId) => store.bot(botId)?.name,
@@ -82,12 +81,12 @@ export function createTeamProjectProposals(deps: TeamProjectProposalsDeps) {
     try {
       if (listing) {
         ctx.requireActive();
-        return void ctx.json(ctx.res, 200, { text: service.templatesText() });
+        return void ctx.json(ctx.res, 200, { text: service.teamsText() });
       }
       const parsed = BODY.safeParse(await ctx.readBody());
       if (!parsed.success) return void ctx.json(ctx.res, 400, { error: BAD_CALL });
-      const { name, templateId, request } = parsed.data;
-      const proposed = service.propose({ botId: ctx.bot.id, threadId: ctx.threadId, name, templateId, brief: request });
+      const { name, team, request } = parsed.data;
+      const proposed = service.propose({ botId: ctx.bot.id, threadId: ctx.threadId, name, team, brief: request });
       return void ctx.json(ctx.res, 201, { text: proposed.text, requestId: proposed.requestId });
     } catch (error) {
       if (error instanceof TeamProjectProposalError) return void ctx.json(ctx.res, error.status, { error: error.message });

@@ -3,8 +3,7 @@ import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TEAM_PROJECT_NAME_MAX, type TeamProjectsListWire, type TeamProjectWire } from "../../../shared/team-projects";
-import type { TeamTemplateSummary } from "../../../shared/template-library";
+import { TEAM_PROJECT_NAME_MAX, type ProjectTeamWire, type TeamProjectsListWire, type TeamProjectWire } from "../../../shared/team-projects";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn() }));
 vi.mock("@/state/store-select", () => ({ useStoreDispatch: () => fixture.dispatch }));
@@ -13,23 +12,30 @@ import { loadLocale, setLocale } from "@/lib/i18n";
 import { setTeamProjects } from "@/state/team-projects";
 import { NewTeamProjectDialog } from "./NewTeamProjectDialog";
 
-const urban: TeamTemplateSummary = {
-  id: "urban", name: "Urban romance", genre: "City love stories, sweet and fast", version: 3, updatedAt: 1, lead: "head",
-  roles: [{ key: "writer", name: "Episode writer", title: "" }, { key: "head", name: "Head writer", title: "" }, { key: "editor", name: "Editor", title: "" }],
+const HEAD = { id: "head", name: "Head writer", title: "" };
+const urban: ProjectTeamWire = {
+  name: "Urban romance", context: "City love stories, sweet and fast", chief: HEAD,
+  members: [HEAD, { id: "writer", name: "Episode writer", title: "" }, { id: "editor", name: "Editor", title: "" }],
 };
-const costume: TeamTemplateSummary = {
-  id: "costume", name: "Costume drama", genre: "", version: 1, updatedAt: 2, lead: "lead", roles: [{ key: "lead", name: "Showrunner", title: "" }],
+const SHOWRUNNER = { id: "lead", name: "Showrunner", title: "" };
+const costume: ProjectTeamWire = { name: "Costume drama", context: "", chief: SHOWRUNNER, members: [SHOWRUNNER] };
+const leaderless: ProjectTeamWire = {
+  name: "Night shift", context: "Thrillers", chief: null, members: [{ id: "nia", name: "Nia", title: "" }, { id: "ode", name: "Ode", title: "" }], unusable: "no_chief",
 };
+const mainLed: ProjectTeamWire = {
+  name: "General", context: "", chief: { id: "magicbot", name: "MagicBot", title: "" }, members: [{ id: "gus", name: "Gus", title: "" }], unusable: "main_bot_chief",
+};
+const empty: ProjectTeamWire = { name: "Empty room", context: "", chief: null, members: [], unusable: "empty" };
 const made: TeamProjectWire = {
-  id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", template: { id: "urban", name: "Urban romance", version: 3 },
-  leadBotId: "lead-1", createdAt: 1, folderState: "ready", botIds: ["lead-1", "writer-1"],
+  id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban romance" },
+  leadBotId: "lead-1", createdAt: 1, folderState: "ready", botIds: ["lead-1", "writer-1"], follows: { "lead-1": "head", "writer-1": "writer" },
 };
 
 interface Call { path: string; method: string; body: unknown }
 let calls: Call[] = [];
-let teams: TeamTemplateSummary[] | number = [];
+let teams: ProjectTeamWire[] | number = [];
 let list: TeamProjectsListWire = { root: "/dramas", projects: [] };
-let created: () => [number, unknown] | Promise<[number, unknown]> = () => [201, { project: made, missingSkills: [] }];
+let created: () => [number, unknown] | Promise<[number, unknown]> = () => [201, { project: made }];
 
 let container: HTMLDivElement, root: Root;
 let opener: HTMLButtonElement | null = null;
@@ -41,6 +47,10 @@ const click = async (element: HTMLElement | null) => { expect(element).toBeTruth
 const createButton = () => q("[data-team-project-create]") as HTMLButtonElement;
 const press = (key: string) => act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })); });
 const posts = () => calls.filter((call) => call.method === "POST");
+const teamReads = () => calls.filter((call) => call.path === "/api/team-projects/teams");
+const rows = () => all("[data-team]").map((row) => row.dataset.team);
+const row = (name: string) => q(`[data-team="${name}"]`) as HTMLButtonElement;
+const lines = (name: string) => [...row(name).querySelectorAll("span[dir]")].map((line) => line.textContent);
 
 async function open(): Promise<void> {
   setTeamProjects(list);
@@ -67,13 +77,13 @@ beforeEach(() => {
   calls = [];
   teams = [urban, costume];
   list = { root: "/dramas", projects: [] };
-  created = () => [201, { project: made, missingSkills: [] }];
+  created = () => [201, { project: made }];
   fixture.dispatch.mockClear();
   onClose.mockClear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const call = { path: String(input), method: init?.method ?? "GET", body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined };
     calls.push(call);
-    const [status, body] = call.path === "/api/template-library" ? (typeof teams === "number" ? [teams, { error: "Not now" }] : [200, { bots: [], teams }])
+    const [status, body] = call.path === "/api/team-projects/teams" ? (typeof teams === "number" ? [teams, { error: "Not now" }] : [200, { teams }])
       : call.method === "POST" ? await created() : [200, list];
     return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   }));
@@ -92,54 +102,65 @@ afterEach(async () => {
 });
 
 describe("what the dialog asks for", () => {
-  it("is a dialog named New project, with a name, the team templates and the folder that will be made", async () => {
+  it("is a dialog named New project, with a name, the teams and the folder that will be made", async () => {
     await open();
     const dialog = q('[role="dialog"]')!;
     expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)!.textContent).toBe("New project");
     expect(document.activeElement).toBe(q("[data-team-project-form] input"));
     expect(q('[role="radiogroup"]')!.getAttribute("aria-labelledby")).toBeTruthy();
-    expect(all("[data-team-template]").map((row) => row.dataset.teamTemplate)).toEqual(["urban", "costume"]);
+    expect(rows()).toEqual(["Urban romance", "Costume drama"]);
   });
 
-  it("lists the team templates and makes the project when React mounts it twice, as it does in development", async () => {
+  it("lists the teams and makes the project when React mounts it twice, as it does in development", async () => {
     setTeamProjects(list);
     await act(async () => root.render(createElement(StrictMode, null, createElement(NewTeamProjectDialog, { onClose }))));
     await settle();
-    expect(all("[data-team-template]").map((row) => row.dataset.teamTemplate)).toEqual(["urban", "costume"]);
+    expect(rows()).toEqual(["Urban romance", "Costume drama"]);
     await type("The bride");
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
     await submit();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("shows each team template's name, what it suits and its roles, the lead first", async () => {
+  it("shows each team's name, its context, and who would lead the project and who else comes", async () => {
     await open();
-    const lines = (id: string) => [...q(`[data-team-template="${id}"]`)!.querySelectorAll("span[dir]")].map((line) => line.textContent);
-    expect(lines("urban")).toEqual(["Urban romance", "City love stories, sweet and fast", "Lead: Head writer · Members: Episode writer, Editor"]);
-    expect(lines("costume")).toEqual(["Costume drama", "Lead: Showrunner"]);
+    expect(lines("Urban romance")).toEqual(["Urban romance", "City love stories, sweet and fast", "Chief of Staff: Head writer · Members: Episode writer, Editor"]);
+    expect(lines("Costume drama")).toEqual(["Costume drama", "Chief of Staff: Showrunner"]);
   });
 
-  it("lists the roles the way the language writes a list", async () => {
+  it("lists the members the way the language writes a list", async () => {
     await loadLocale("zh");
     setLocale("zh");
     await open();
-    expect(q('[data-team-template="urban"]')!.querySelectorAll("span[dir]")[2]!.textContent).toBe("负责人：Head writer · 成员：Episode writer、Editor");
+    expect(lines("Urban romance")[2]).toBe("参谋长：Head writer · 成员：Episode writer、Editor");
   });
 
-  it("lists the roles without a lead when the template names one it does not have", async () => {
-    teams = [{ ...urban, lead: "gone" }, costume];
+  it("shows a team no project can be made from, unavailable and with the reason, and never chooses it", async () => {
+    teams = [urban, leaderless, mainLed, empty];
     await open();
-    expect(q('[data-team-template="urban"]')!.querySelectorAll("span[dir]")[2]!.textContent).toBe("Episode writer, Head writer, Editor");
+    expect(rows()).toEqual(["Urban romance", "Night shift", "General", "Empty room"]);
+    expect([leaderless, mainLed, empty].map((team) => [row(team.name).disabled, row(team.name).dataset.teamUnusable])).toEqual([
+      [true, "no_chief"], [true, "main_bot_chief"], [true, "empty"],
+    ]);
+    expect(lines("Night shift")).toEqual(["Night shift", "Thrillers", "Members: Nia, Ode", "It has no Chief of Staff to lead a project yet."]);
+    expect(lines("General")).toEqual(["General", "Members: Gus", "MagicBot is its Chief of Staff, and MagicBot can't lead a project."]);
+    expect(lines("Empty room")).toEqual(["Empty room", "It has no bots yet."]);
+    expect(row("Urban romance").disabled).toBe(false);
+    await type("The bride");
+    await click(row("Night shift"));
+    expect(all('[aria-checked="true"]').map((chosen) => chosen.dataset.team)).toEqual(["Urban romance"]);
+    await submit();
+    expect(posts().map((call) => call.body)).toEqual([{ name: "The bride", team: "Urban romance" }]);
   });
 
-  it("chooses the only team template by itself, and none of several", async () => {
+  it("chooses the only team a project can be made from by itself, and none of several", async () => {
     await open();
-    expect(all('[data-team-template][aria-checked="true"]')).toEqual([]);
+    expect(all('[data-team][aria-checked="true"]')).toEqual([]);
     await act(async () => root.unmount());
     root = createRoot(container);
-    teams = [costume];
+    teams = [leaderless, costume];
     await open();
-    expect(all('[data-team-template][aria-checked="true"]').map((row) => row.dataset.teamTemplate)).toEqual(["costume"]);
+    expect(all('[data-team][aria-checked="true"]').map((chosen) => chosen.dataset.team)).toEqual(["Costume drama"]);
   });
 
   it("shows the folder the project gets as the name is typed", async () => {
@@ -158,44 +179,46 @@ describe("what the dialog asks for", () => {
     expect(createButton().disabled).toBe(true);
   });
 
-  it("asks for a team template beside the list when none is chosen, without asking the server", async () => {
+  it("asks for a team beside the list when none is chosen, without asking the server", async () => {
+    teams = [leaderless, urban, costume];
     await open();
     await type("The bride");
     await click(createButton());
     expect(posts()).toEqual([]);
-    const problem = q('[data-team-project-problem="template"]')!;
+    const problem = q('[data-team-project-problem="team"]')!;
     expect(problem.getAttribute("role")).toBe("alert");
-    expect(problem.textContent).toBe("Choose a team template for this project.");
-    expect((document.activeElement as HTMLElement).dataset.teamTemplate).toBe("urban");
-    await click(q('[data-team-template="costume"]'));
+    expect(problem.textContent).toBe("Choose a team for this project.");
+    expect((document.activeElement as HTMLElement).dataset.team).toBe("Urban romance");
+    await click(row("Costume drama"));
     expect(q("[data-team-project-problem]")).toBeNull();
     await click(createButton());
-    expect(posts().map((call) => call.body)).toEqual([{ name: "The bride", templateId: "costume" }]);
+    expect(posts().map((call) => call.body)).toEqual([{ name: "The bride", team: "Costume drama" }]);
   });
 
-  it("stops asking for a team template once one is chosen with the arrow keys", async () => {
+  it("stops asking for a team once one is chosen with the arrow keys", async () => {
     await open();
     await type("The bride");
     await click(createButton());
-    expect(q('[data-team-project-problem="template"]')).toBeTruthy();
+    expect(q('[data-team-project-problem="team"]')).toBeTruthy();
     await press("ArrowDown");
-    expect(q('[aria-checked="true"]')!.dataset.teamTemplate).toBe("costume");
+    expect(q('[aria-checked="true"]')!.dataset.team).toBe("Costume drama");
     expect(q("[data-team-project-problem]")).toBeNull();
   });
 
-  it("moves through the team templates with the arrow keys, from the one that has the keyboard", async () => {
+  it("moves through the teams with the arrow keys, from the one that has the keyboard, past the ones no project can be made from", async () => {
+    teams = [urban, leaderless, costume];
     await open();
-    const state = () => [q('[aria-checked="true"]')?.dataset.teamTemplate, (document.activeElement as HTMLElement).dataset.teamTemplate];
-    q('[data-team-template="urban"]')!.focus();
+    const state = () => [q('[aria-checked="true"]')?.dataset.team, (document.activeElement as HTMLElement).dataset.team];
+    row("Urban romance").focus();
     await press("ArrowDown");
-    expect(state()).toEqual(["costume", "costume"]);
+    expect(state()).toEqual(["Costume drama", "Costume drama"]);
     await press("ArrowDown");
-    expect(state()).toEqual(["urban", "urban"]);
+    expect(state()).toEqual(["Urban romance", "Urban romance"]);
     await press("ArrowUp");
-    expect(state()).toEqual(["costume", "costume"]);
+    expect(state()).toEqual(["Costume drama", "Costume drama"]);
   });
 
-  it("leaves the team template alone when an arrow key is pressed in the name", async () => {
+  it("leaves the team alone when an arrow key is pressed in the name", async () => {
     await open();
     await press("ArrowDown");
     expect(all('[aria-checked="true"]')).toEqual([]);
@@ -206,13 +229,13 @@ describe("making the project", () => {
   const fill = async () => {
     await open();
     await type(" The bride ");
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
   };
 
-  it("sends the trimmed name and the chosen template, then opens the lead's chat and closes", async () => {
+  it("sends the trimmed name and the chosen team, then opens the lead's chat and closes", async () => {
     await fill();
     await submit();
-    expect(posts()).toEqual([{ path: "/api/team-projects", method: "POST", body: { name: "The bride", templateId: "urban" } }]);
+    expect(posts()).toEqual([{ path: "/api/team-projects", method: "POST", body: { name: "The bride", team: "Urban romance" } }]);
     expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead-1" }]]);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -226,22 +249,8 @@ describe("making the project", () => {
     await submit();
     await act(async () => { q('[role="dialog"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
     expect([posts().length, onClose.mock.calls.length]).toEqual([1, 0]);
-    await act(async () => finish([201, { project: made, missingSkills: [] }]));
+    await act(async () => finish([201, { project: made }]));
     await settle();
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("names the library skills the template asks for and the library lacks, with the lead's chat already open", async () => {
-    created = () => [201, { project: made, missingSkills: ["storyboard", "shot-list"] }];
-    await fill();
-    await submit();
-    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead-1" }]]);
-    expect(onClose).not.toHaveBeenCalled();
-    const dialog = q('[role="dialog"]')!;
-    expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)!.textContent).toBe("The bride is ready");
-    expect(all("[data-team-project-missing-skills] li").map((item) => item.textContent)).toEqual(["storyboard", "shot-list"]);
-    expect(dialog.textContent).toContain("Its team template names these skills, and the skills library doesn't have them:");
-    await click(q("[data-team-project-done]"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
@@ -251,7 +260,7 @@ describe("a refusal", () => {
     created = () => [status, { error, ...(code ? { code } : {}) }];
     await open();
     await type("The bride");
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
     await submit();
     expect(onClose).not.toHaveBeenCalled();
     expect(fixture.dispatch).not.toHaveBeenCalled();
@@ -285,17 +294,23 @@ describe("a refusal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("of a team template that is gone is told beside the templates, and the list is read again", async () => {
-    await refuse(422, "no_template");
-    expect(problems().map(([place]) => place)).toEqual(["template"]);
-    expect(calls.filter((call) => call.path === "/api/template-library")).toHaveLength(2);
+  it("of a team that is gone is told beside the teams, and the list is read again", async () => {
+    await refuse(422, "no_team");
+    expect(problems()).toEqual([["team", "This team is no longer there. Choose another one."]]);
+    expect(teamReads()).toHaveLength(2);
+  });
+
+  it("of a team no project can be made from now says why the way the server says it, beside the teams, and the list is read again", async () => {
+    await refuse(422, "team_unusable", "Urban romance has no Chief of Staff to lead the project. Make one of its bots the Chief of Staff first.");
+    expect(problems()).toEqual([["team", "Urban romance has no Chief of Staff to lead the project. Make one of its bots the Chief of Staff first."]]);
+    expect(teamReads()).toHaveLength(2);
   });
 
   it("when the project could not be made says what the server says, above the buttons: only the server knows whether anything was left behind", async () => {
     created = () => [500, { error: "English.", code: "failed", errorKey: "serverError.teamProject.failedLeftovers", errorParams: { detail: "the disk is full" } }];
     await open();
     await type("The bride");
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
     await submit();
     expect(problems()).toEqual([["form", "The project couldn't be made, and part of it couldn't be removed again. (the disk is full)"]]);
     expect(createButton().disabled).toBe(false);
@@ -310,7 +325,7 @@ describe("a refusal", () => {
     created = () => [502, "<html>Bad gateway</html>"];
     await open();
     await type("The bride");
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
     await submit();
     expect(problems()).toEqual([["form", "The project couldn't be made. Try again."]]);
   });
@@ -319,7 +334,7 @@ describe("a refusal", () => {
     created = () => { throw new TypeError("Failed to fetch"); };
     await open();
     await type("The bride");
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
     await submit();
     expect(problems()).toEqual([["form", "The project couldn't be made. Try again."]]);
     expect(createButton().disabled).toBe(false);
@@ -327,7 +342,7 @@ describe("a refusal", () => {
 
   it("of a name that cannot be a folder's is told at once, without asking the server", async () => {
     await open();
-    await click(q('[data-team-template="urban"]'));
+    await click(row("Urban romance"));
     for (const name of ["a/b", "notes.", ".hidden", "CON", "what?"]) {
       await type(name);
       await submit();
@@ -356,24 +371,26 @@ describe("what is missing before a project can be made", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("with no team template says so and leads to the Templates page of Settings", async () => {
+  it("with no team says how a team comes to be, and closes on OK", async () => {
     teams = [];
     await open();
     expect(q("[data-team-project-form]")).toBeNull();
-    expect(q('[data-team-project-setup="templates"]')!.textContent).toBe("A project gets its team from a team template, and there isn't one yet. Make one in Settings → Templates, then come back here.");
-    await click(q('[data-team-project-settings="templates"]'));
-    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "toggleAppSettings", open: true, section: "templates" }]]);
+    expect(q('[data-team-project-setup="teams"]')!.textContent).toBe(
+      "A project gets copies of one team's bots, and there's no team yet. Make a department in the sidebar and give it a Chief of Staff, or ask MagicBot to propose a team.",
+    );
+    await click(q("[data-team-project-done]"));
+    expect(fixture.dispatch).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("when the team templates cannot be read says so, and reads them again on Try again", async () => {
+  it("when the teams cannot be read says so, and reads them again on Try again", async () => {
     teams = 500;
     await open();
-    expect(q("[data-team-templates]")).toBeNull();
-    expect(q("[data-team-project-form] [role='alert']")!.textContent).toContain("Couldn't load the team templates.");
+    expect(q("[data-teams]")).toBeNull();
+    expect(q("[data-team-project-form] [role='alert']")!.textContent).toContain("Couldn't load the teams.");
     teams = [urban];
-    await click(q("[data-team-templates-retry]"));
-    expect(all("[data-team-template]").map((row) => row.dataset.teamTemplate)).toEqual(["urban"]);
+    await click(q("[data-teams-retry]"));
+    expect(rows()).toEqual(["Urban romance"]);
   });
 });
 
@@ -403,17 +420,6 @@ describe("the keyboard", () => {
     expect(document.activeElement).toBe(opener);
   });
 
-  it("goes to Done when the project is made with skills missing, and back to what opened the dialog after", async () => {
-    created = () => [201, { project: made, missingSkills: ["storyboard"] }];
-    await openFromAButton();
-    await type("The bride");
-    await click(q('[data-team-template="urban"]'));
-    await submit();
-    expect(document.activeElement).toBe(q("[data-team-project-done]"));
-    await closeIt();
-    expect(document.activeElement).toBe(opener);
-  });
-
   it("starts on the way to Settings when something is missing, and goes back to what opened the dialog", async () => {
     list = { root: null, projects: [] };
     await openFromAButton();
@@ -422,9 +428,11 @@ describe("the keyboard", () => {
     expect(document.activeElement).toBe(opener);
   });
 
-  it("moves to the way to Settings when the team templates turn out to be none", async () => {
+  it("moves to OK when the teams turn out to be none, and goes back to what opened the dialog", async () => {
     teams = [];
     await openFromAButton();
-    expect(document.activeElement).toBe(q('[data-team-project-settings="templates"]'));
+    expect(document.activeElement).toBe(q("[data-team-project-done]"));
+    await closeIt();
+    expect(document.activeElement).toBe(opener);
   });
 });

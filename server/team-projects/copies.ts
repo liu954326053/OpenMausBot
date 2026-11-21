@@ -1,8 +1,7 @@
 import { lstatSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { TEAM_PROJECT_FOLDER, type TeamProjectRecord } from "../../shared/team-projects.ts";
-import { isTemplateRoleKey } from "../../shared/template-library.ts";
+import { TEAM_PROJECT_FOLDER, isTeamProjectRole, type TeamProjectRecord } from "../../shared/team-projects.ts";
 import { writeFileAtomicIfChanged } from "../atomic.ts";
 import type { BotRecord } from "../store.ts";
 import { teamProjectFolderReady } from "../workspace.ts";
@@ -26,8 +25,11 @@ const PERSONAS = "team/personas";
 const PERSONA_FILE = /^[a-z0-9-]+\.md$/;
 
 function publicRecord(project: TeamProjectRecord): TeamProjectRecord {
-  const { id, name, folder, section, template, leadBotId, createdAt, archivedAt } = project;
-  return { id, name, folder, section, template: { ...template }, leadBotId, createdAt, ...(archivedAt === undefined ? {} : { archivedAt }) };
+  const { id, name, folder, section, team, template, leadBotId, createdAt, archivedAt } = project;
+  return {
+    id, name, folder, section, ...(team ? { team: { ...team } } : {}), ...(template ? { template: { ...template } } : {}), leadBotId, createdAt,
+    ...(archivedAt === undefined ? {} : { archivedAt }),
+  };
 }
 
 const paragraphs = (parts: Array<string | undefined>) => parts.map((part) => part?.trim() ?? "").filter(Boolean).join("\n\n");
@@ -38,7 +40,7 @@ const withNewline = (text: string) => (text.trim() ? `${text.trimEnd()}\n` : "")
  * memory. Of a model, a library skill and an MCP server they carry the name and nothing else.
  */
 export function renderTeamProjectCopies(project: TeamProjectRecord, sources: TeamProjectCopySources): Record<string, string> {
-  const members = sources.bots(project.id).filter((bot) => bot.teamProject?.id === project.id && isTemplateRoleKey(bot.teamProject.role));
+  const members = sources.bots(project.id).filter((bot) => bot.teamProject?.id === project.id && isTeamProjectRole(bot.teamProject.role));
   const lead = members.find((bot) => bot.id === project.leadBotId);
   const ordered = lead ? [lead, ...members.filter((bot) => bot !== lead)] : members;
   const team = {

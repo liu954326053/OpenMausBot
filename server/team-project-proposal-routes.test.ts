@@ -3,8 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectWire } from "../shared/team-projects.ts";
-import type { TeamTemplateSummary } from "../shared/template-library.ts";
+import type { CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamProjectWire } from "../shared/team-projects.ts";
 import type { OptionCardData } from "../shared/wire.ts";
 import { flushDecisionLog } from "./decision-log.ts";
 import { PASS } from "./routes/table.ts";
@@ -23,14 +22,14 @@ const ORDINARY: Bot = { id: "bot-plain", name: "Plain" };
 const CHIEF: Bot = { id: "bot-chief", name: "Chief", chiefOfStaff: true };
 const BOTS = [MAIN, LEAD, MEMBER, ORDINARY, CHIEF];
 
-const TEMPLATE: TeamTemplateSummary = {
-  id: "short-drama", name: "Short drama crew", genre: "Revenge and romance in sixty episodes.", version: 3, updatedAt: 1,
-  lead: "producer", roles: [{ key: "writer", name: "Wen", title: "Writes the episodes" }, { key: "producer", name: "Pia", title: "Runs the production" }],
+const TEAM: ProjectTeamWire = {
+  name: "Short drama crew", context: "Revenge and romance in sixty episodes.", chief: { id: "src-pia", name: "Pia", title: "Runs the production" },
+  members: [{ id: "src-pia", name: "Pia", title: "Runs the production" }, { id: "src-wen", name: "Wen", title: "Writes the episodes" }],
 };
 
 const made = (input: CreateTeamProjectInput): TeamProjectWire => ({
-  id: "project-1", name: input.name, folder: `/projects/${input.name}`, section: input.name,
-  template: { id: input.templateId, name: TEMPLATE.name, version: TEMPLATE.version }, leadBotId: LEAD.id, createdAt: 1, folderState: "ready", botIds: [LEAD.id, MEMBER.id],
+  id: "project-1", name: input.name, folder: `/projects/${input.name}`, section: input.name, team: { key: "team:drama", name: input.team },
+  leadBotId: LEAD.id, createdAt: 1, folderState: "ready", botIds: [LEAD.id, MEMBER.id], follows: { [LEAD.id]: "src-pia", [MEMBER.id]: "src-wen" },
 });
 
 const dirs: string[] = [];
@@ -46,10 +45,8 @@ function setup(options: { backends?: Partial<TeamProjectBackends>; rooms?: strin
   const released: Array<[string, string]> = [];
   const handOff = vi.fn(async (_from: { botId: string; threadId: string }, call: { botIds: string[] }) =>
     ({ status: 200, body: { receipts: [{ botId: call.botIds[0], botName: "Pia", outcome: "queued", detail: "queued", threadId: "pia-drama" }] } }));
-  const create = vi.fn(async (input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> => ({ project: made(input), missingSkills: [] }));
-  const backends: TeamProjectBackends = {
-    templates: { list: () => ({ bots: [], teams: [TEMPLATE] }) }, projects: { create }, projectsRoot: () => "/projects", ...options.backends,
-  };
+  const create = vi.fn(async (input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> => ({ project: made(input) }));
+  const backends: TeamProjectBackends = { projects: { create, teams: () => [TEAM] }, projectsRoot: () => "/projects", ...options.backends };
   const proposals = createTeamProjectProposals({
     store: {
       messagesFor: () => rows,
@@ -88,17 +85,17 @@ function setup(options: { backends?: Partial<TeamProjectBackends>; rooms?: strin
   return { proposals, rows, answers, released, handOff, create, call, decisions };
 }
 
-const LIST = "/api/internal/team-templates";
+const LIST = "/api/internal/project-teams";
 const PROPOSE = "/api/internal/team-project-proposals";
-const ASK = { name: "The Swapped Bride", templateId: "short-drama", request: "Twelve episodes about a bride swapped at the altar." };
+const ASK = { name: "The Swapped Bride", team: "Short drama crew", request: "Twelve episodes about a bride swapped at the altar." };
 
 describe("the main bot's project routes", () => {
-  it("give the main bot the team templates", async () => {
+  it("give the main bot the teams", async () => {
     const { call } = setup();
     const listed = await call(MAIN, "GET", LIST);
     expect(listed.status).toBe(200);
-    expect(listed.payload?.text).toContain("short-drama");
-    expect(listed.payload?.text).toContain("Pia (lead): Runs the production");
+    expect(listed.payload?.text).toContain('"Short drama crew"');
+    expect(listed.payload?.text).toContain("Chief of Staff: Pia (Runs the production)");
   });
 
   it("stage a proposal as a card in the main bot's chat, and say what happens next", async () => {
@@ -135,10 +132,10 @@ describe("the main bot's project routes", () => {
 
   it("name what is wrong with a call's arguments", async () => {
     const { call, rows } = setup();
-    for (const body of [null, {}, { name: "A" }, { ...ASK, templateId: 7 }, { ...ASK, request: undefined }, { ...ASK, extra: true }]) {
+    for (const body of [null, {}, { name: "A" }, { ...ASK, team: 7 }, { ...ASK, request: undefined }, { ...ASK, extra: true }, { name: "A", templateId: "short-drama", request: "x" }]) {
       const refused = await call(MAIN, "POST", PROPOSE, body);
       expect(refused.status, JSON.stringify(body)).toBe(400);
-      expect(refused.payload?.error).toMatch(/name.*template_id.*request/);
+      expect(refused.payload?.error).toMatch(/name.*team.*request/);
     }
     expect(rows).toEqual([]);
   });
@@ -148,11 +145,11 @@ describe("the main bot's project routes", () => {
     expect((await call(MAIN, "POST", PROPOSE, { ...ASK, fromBotId: MAIN.id, fromThreadId: "thread-main" })).status).toBe(201);
   });
 
-  it("pass on why a proposal was refused, with the templates there are", async () => {
+  it("pass on why a proposal was refused, with the teams there are", async () => {
     const { call, rows } = setup();
-    const unknown = await call(MAIN, "POST", PROPOSE, { ...ASK, templateId: "nope" });
+    const unknown = await call(MAIN, "POST", PROPOSE, { ...ASK, team: "nope" });
     expect(unknown.status).toBe(404);
-    expect(unknown.payload?.error).toContain("short-drama");
+    expect(unknown.payload?.error).toContain('"Short drama crew"');
     expect((await call(MAIN, "POST", PROPOSE, { ...ASK, name: "a/b" })).status).toBe(400);
     const { call: noRoot } = setup({ backends: { projectsRoot: () => null } });
     const refused = await noRoot(MAIN, "POST", PROPOSE, ASK);
@@ -161,15 +158,15 @@ describe("the main bot's project routes", () => {
     expect(rows).toEqual([]);
   });
 
-  it("say so when there are no team templates, and that the main bot cannot make one", async () => {
-    const { call } = setup({ backends: { templates: { list: () => ({ bots: [], teams: [] }) } } });
+  it("say so when there is no team, and that the main bot proposes one first", async () => {
+    const { call } = setup({ backends: { projects: { create: vi.fn(), teams: () => [] } } });
     const listed = await call(MAIN, "GET", LIST);
     expect(listed.status).toBe(200);
-    expect(listed.payload?.text).toMatch(/no team templates/i);
-    expect(listed.payload?.text).toMatch(/cannot make/i);
+    expect(listed.payload?.text).toMatch(/no team a project can be made from/i);
+    expect(listed.payload?.text).toMatch(/propose_team_setup/);
     const refused = await call(MAIN, "POST", PROPOSE, ASK);
     expect(refused.status).toBe(404);
-    expect(refused.payload?.error).toMatch(/no team templates/i);
+    expect(refused.payload?.error).toMatch(/propose_team_setup/);
   });
 
   it("answer nothing once the turn has ended", async () => {
@@ -183,7 +180,7 @@ describe("the main bot's project routes", () => {
     const { call } = setup();
     expect((await call(MAIN, "POST", LIST)).outcome).toBe(PASS);
     expect((await call(MAIN, "GET", PROPOSE)).outcome).toBe(PASS);
-    expect((await call(MAIN, "GET", "/api/internal/team-templates/short-drama")).outcome).toBe(PASS);
+    expect((await call(MAIN, "GET", "/api/internal/project-teams/short-drama")).outcome).toBe(PASS);
     expect((await call(LEAD, "GET", "/api/internal/agents")).outcome).toBe(PASS);
   });
 });
@@ -194,7 +191,7 @@ describe("answering the card through the host", () => {
     const { payload } = await call(MAIN, "POST", PROPOSE, ASK);
     const answered = await proposals.respond({ threadId: "thread-main", requestId: payload!.requestId!, behavior: "allow" }, true);
     expect(answered).toMatchObject({ status: 200, body: { ok: true, outcome: "allowed-once", result: { state: "created", leadBotId: LEAD.id, leadName: "Pia" } } });
-    expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", templateId: "short-drama" });
+    expect(create).toHaveBeenCalledExactlyOnceWith({ name: "The Swapped Bride", team: "Short drama crew" });
     expect(handOff).toHaveBeenCalledExactlyOnceWith({ botId: MAIN.id, threadId: "thread-main" }, expect.objectContaining({ botIds: [LEAD.id], message: ASK.request, thread: "new", title: "The Swapped Bride", reply: "none" }));
     expect(released).toEqual([["thread-main", rows[0]!.id]]);
     expect(answers).toEqual([]);
@@ -221,7 +218,7 @@ describe("while the list of projects cannot be read", () => {
   it("lets Create's own refusal say why, for a card made before", async () => {
     let broken = false;
     const create = vi.fn(async (): Promise<CreateTeamProjectResult> => ({ error: "The list of projects couldn't be read, so nothing was changed.", code: "failed" }));
-    const { proposals, call, rows } = setup({ backends: { projectsRoot: () => (broken ? unreadable() : "/projects"), projects: { create } } });
+    const { proposals, call, rows } = setup({ backends: { projectsRoot: () => (broken ? unreadable() : "/projects"), projects: { create, teams: () => [TEAM] } } });
     const { payload } = await call(MAIN, "POST", PROPOSE, ASK);
     broken = true;
     const answered = await proposals.respond({ threadId: "thread-main", requestId: payload!.requestId!, behavior: "allow" }, true);

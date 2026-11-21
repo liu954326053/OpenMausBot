@@ -3,8 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TeamSetupRequest } from "../../shared/team-setup.ts";
-import type { TeamProjectWire } from "../../shared/team-projects.ts";
-import { isTemplateRoleKey, templateRoleKey } from "../../shared/template-library.ts";
+import { isTeamProjectRole, teamProjectRole, type TeamProjectWire } from "../../shared/team-projects.ts";
 import { closeTeamProjectsInstallation, teamProjectsInstallation, type TeamProjectsTestApp } from "./testing.ts";
 
 let app: TeamProjectsTestApp | undefined;
@@ -12,9 +11,9 @@ let app: TeamProjectsTestApp | undefined;
 async function withProject(name = "Stand-in bride") {
   app = await teamProjectsInstallation();
   const stop = app.projects.start();
-  app.templates.set("sales", app.salesTemplate());
+  app.salesTeam();
   app.projects.setRoot(app.root);
-  const result = await app.projects.create({ name, templateId: "sales" });
+  const result = await app.projects.create({ name, team: "Sales desk" });
   if (!("project" in result)) throw new Error(result.error);
   return { app, project: result.project, stop };
 }
@@ -76,15 +75,15 @@ describe("a bot added to a project's department later", () => {
     expect(app.logged.filter((line) => line.includes("Film Editor") && line.includes("the drive is read-only"))).toHaveLength(1);
   });
 
-  it("gets a role no other bot of the project has and no team template gives a role, whatever its name", async () => {
+  it("gets a role no other bot of the project has and no copy of a team's bot could get, whatever its name", async () => {
     const { app } = await withProject();
     const names = ["Scout", "剪辑", "配音", "Scout", "Role 3", "member"];
     const roles = names.map((name) => roleOf(app, app.store.createBot({ name, section: "Stand-in bride" }, { seedMessages: false }).id));
-    expect(roles.filter((role) => !JOINED_LATER.test(role) || !isTemplateRoleKey(role))).toEqual([]);
+    expect(roles.filter((role) => !JOINED_LATER.test(role) || !isTeamProjectRole(role))).toEqual([]);
     expect(new Set(roles).size).toBe(names.length);
-    const givenByATemplate = new Set<string>();
-    for (const name of [...names, ...names, ...names]) givenByATemplate.add(templateRoleKey(name, givenByATemplate));
-    expect(roles.filter((role) => givenByATemplate.has(role))).toEqual([]);
+    const givenToCopies = new Set<string>();
+    for (const name of [...names, ...names, ...names]) givenToCopies.add(teamProjectRole(name, givenToCopies));
+    expect(roles.filter((role) => givenToCopies.has(role))).toEqual([]);
   });
 
   it("takes another role when the one its id gives is taken in the project", async () => {
@@ -179,7 +178,7 @@ describe("a bot that was already there", () => {
 
   it("may not move between two projects either", async () => {
     const { app, project } = await withProject("Season one");
-    const second = await app.projects.create({ name: "Season two", templateId: "sales" });
+    const second = await app.projects.create({ name: "Season two", team: "Sales desk" });
     if (!("project" in second)) throw new Error(second.error);
     expect(app.projects.moveRefusalFor(app.byRole(project.id).get("writer")!.id, "Season two")).toMatchObject({ errorKey: "serverError.teamProject.botStays" });
   });
@@ -304,7 +303,7 @@ describe("a group chat of a project's bots", () => {
 
   it("of two projects' bots is left alone", async () => {
     const { app, lead, folderOf } = await withRooms();
-    const second = await app.projects.create({ name: "Season two", templateId: "sales" });
+    const second = await app.projects.create({ name: "Season two", team: "Sales desk" });
     if (!("project" in second)) throw new Error(second.error);
     const across = app.store.createGroup("Across", [lead, app.byRole(second.project.id).get("lead")!.id]);
     expect(folderOf(across.id)).toBeUndefined();

@@ -1,27 +1,37 @@
 import { lstatSync, mkdirSync, rmSync, rmdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { takeImportName } from "../../shared/import-name.ts";
+import type { PackageDocument } from "../../shared/package-format.ts";
 import {
-  TEAM_PROJECT_FOLDER, TEAM_PROJECT_NAME_MAX, isTeamProjectName, type CreateTeamProjectInput, type TeamProjectRefusal,
+  TEAM_PROJECT_FOLDER, TEAM_PROJECT_NAME_MAX, isTeamProjectName, isTeamProjectRole, teamProjectRole,
+  type CreateTeamProjectInput, type ProjectTeamUnusable, type ProjectTeamWire, type TeamProjectRefusal,
 } from "../../shared/team-projects.ts";
-import { isTemplateRoleKey, templateRoleKey, type TeamTemplateContent, type TemplateLibraryApi } from "../../shared/template-library.ts";
 import { importPackageDocument, type PackageImportDeps, type PackageImportResult } from "../package-import.ts";
 import { sectionKey, type BotRecord } from "../store.ts";
 import { userError, type UserError, type UserErrorKey } from "../user-errors.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 import { isInAppData } from "./root.ts";
-import { applyTemplateRole } from "./template-role.ts";
 
 export type TeamProjectCreateRefusal = UserError & { code: TeamProjectRefusal };
-export type TeamProjectCreated = { project: StoredTeamProject; missingSkills: string[] };
+
+/** A share export, and the key in it of each bot it holds, by the bot's id. */
+export interface ExportedTeam {
+  document: PackageDocument;
+  keys: Readonly<Record<string, string>>;
+}
 
 export interface TeamProjectCreateContext {
   registry: TeamProjectRegistry;
   dataDir: string;
-  templates: Pick<TemplateLibraryApi, "readTeam">;
   importDeps(): Promise<PackageImportDeps>;
-  librarySkillNames(): readonly string[];
+  /** The team of that name; undefined when there is none. */
+  team(name: unknown): ProjectTeamWire | undefined;
+  /** The team's share export with each bot's own skills only. Throws when it cannot be exported. */
+  exportTeam(section: string): ExportedTeam;
+  /** The memory key of a department, made fast so a rename keeps it. */
+  teamKey(section: string): string;
+  /** Brings a copy in line with its source. */
+  syncCopy(botId: string): void;
   /** Puts a project bot's own files where its project keeps them. Throws when the project folder cannot take them. */
   ensureWorkspace(botId: string): void;
   /** Answers for the project while it is being made, so its bots' own files land in its folder from the first one. */
@@ -33,18 +43,29 @@ export interface TeamProjectCreateContext {
   log(line: string): void;
 }
 
-const REFUSAL_KEYS: Record<TeamProjectRefusal, UserErrorKey> = {
+const REFUSAL_KEYS: Record<Exclude<TeamProjectRefusal, "team_unusable">, UserErrorKey> = {
   no_root: "serverError.teamProject.noRoot",
   root_missing: "serverError.teamProject.rootMissing",
   bad_name: "serverError.teamProject.badName",
   name_taken: "serverError.teamProject.nameTaken",
   folder_exists: "serverError.teamProject.folderExists",
-  no_template: "serverError.teamProject.noTemplate",
+  no_team: "serverError.teamProject.noTeam",
   failed: "serverError.teamProject.failed",
 };
 
-const refusal = (code: TeamProjectRefusal, params?: Record<string, string | number>): TeamProjectCreateRefusal =>
+const UNUSABLE_KEYS: Record<ProjectTeamUnusable, UserErrorKey> = {
+  empty: "serverError.teamProject.teamEmpty",
+  no_chief: "serverError.teamProject.teamNoChief",
+  main_bot_chief: "serverError.teamProject.teamMainBotChief",
+};
+
+const refusal = (code: Exclude<TeamProjectRefusal, "team_unusable">, params?: Record<string, string | number>): TeamProjectCreateRefusal =>
   ({ ...userError(REFUSAL_KEYS[code], params), code });
+
+/** Why no project can be made from `team`; null when one can. */
+export function unusableTeamRefusal(team: ProjectTeamWire): TeamProjectCreateRefusal | null {
+  return team.unusable ? { ...userError(UNUSABLE_KEYS[team.unusable], { team: team.name, reason: team.unusable }), code: "team_unusable" } : null;
+}
 
 const detailOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -72,11 +93,12 @@ function nameTaken(name: string, context: TeamProjectCreateContext, store: Packa
     store.sections.some(same) || store.bots.some((bot) => same(bot.section)) || store.groups.some((group) => same(group.section));
 }
 
-function rolesFor(template: TeamTemplateContent): Map<string, string> {
+/** Each bot's role in the project, by its key in the export: the key itself when it can name a folder. */
+function rolesFor(document: PackageDocument): Map<string, string> {
   const roles = new Map<string, string>();
   const taken = new Set<string>();
-  for (const agent of template.document.package.agents) {
-    const role = isTemplateRoleKey(agent.key) && !taken.has(agent.key) ? agent.key : templateRoleKey(agent.key, taken);
+  for (const agent of document.package.agents) {
+    const role = isTeamProjectRole(agent.key) && !taken.has(agent.key) ? agent.key : teamProjectRole(agent.key, taken);
     taken.add(role);
     roles.set(agent.key, role);
   }
@@ -113,10 +135,10 @@ function removeTeam(result: PackageImportResult, deps: PackageImportDeps): void 
 }
 
 /**
- * Makes a project from a team template: its folder, its team and its department, its record and its copies. Whatever
- * stops it part-way, everything made so far is taken back.
+ * Makes a project from a team: its folder, a copy of the team in its own department, its record and its copies. Each
+ * copy remembers the team member it was made from. Whatever stops it part-way, everything made so far is taken back.
  */
-export async function createTeamProject(input: CreateTeamProjectInput, context: TeamProjectCreateContext): Promise<TeamProjectCreated | TeamProjectCreateRefusal> {
+export async function createTeamProject(input: CreateTeamProjectInput, context: TeamProjectCreateContext): Promise<{ project: StoredTeamProject } | TeamProjectCreateRefusal> {
   let deps: PackageImportDeps;
   try {
     deps = { ...(await context.importDeps()), presets: undefined };
@@ -135,8 +157,16 @@ export async function createTeamProject(input: CreateTeamProjectInput, context: 
   if (nameTaken(name, context, store)) return refusal("name_taken", { name });
   const folder = join(root, name);
   if (somethingAt(folder)) return refusal("folder_exists", { name });
-  const template = typeof input.templateId === "string" ? context.templates.readTeam(input.templateId) : null;
-  if (!template) return refusal("no_template");
+  const team = context.team(input.team);
+  if (!team) return refusal("no_team", { team: typeof input.team === "string" ? input.team.trim().slice(0, 60) : "" });
+  const unusable = unusableTeamRefusal(team);
+  if (unusable) return unusable;
+  let exported: ExportedTeam;
+  try {
+    exported = context.exportTeam(team.name);
+  } catch (error) {
+    return refusal("failed", { detail: detailOf(error) });
+  }
 
   const id = context.newId();
   const undo: Array<() => void> = [];
@@ -151,19 +181,23 @@ export async function createTeamProject(input: CreateTeamProjectInput, context: 
     undo.push(() => removeProjectFolder(folder));
     mkdirSync(join(folder, TEAM_PROJECT_FOLDER));
 
-    const document = structuredClone(template.document);
-    if (!document.package.team || !document.package.agents.length) throw new Error("the template holds no team");
+    const document = structuredClone(exported.document);
+    const leader = document.package.team?.leader;
+    if (!document.package.team || !leader) throw new Error(`${team.name} has no Chief in its export`);
     document.package.name = name;
     document.package.team = { ...document.package.team, name };
-    const roles = rolesFor(template);
+    const roles = rolesFor(document);
+    const sources = new Map(Object.entries(exported.keys).map(([botId, key]) => [key, botId]));
 
     const misplaced: unknown[] = [];
     const stopAdopting = store.onChange((change) => {
       if (change.type !== "bot") return;
       const bot = store.bots.find((candidate) => candidate.id === change.botId);
-      const role = bot?.installedPackage?.agentKey && roles.get(bot.installedPackage.agentKey);
-      if (!bot || !role || bot.teamProject || sectionKey(bot.section) !== name) return;
-      store.patchBot(bot.id, { teamProject: { id, role }, cwd: folder });
+      const key = bot?.installedPackage?.agentKey;
+      const role = key && roles.get(key);
+      const source = key && sources.get(key);
+      if (!bot || !role || !source || bot.teamProject || sectionKey(bot.section) !== name) return;
+      store.patchBot(bot.id, { teamProject: { id, role, source }, cwd: folder });
       try {
         context.ensureWorkspace(bot.id);
       } catch (error) {
@@ -173,7 +207,7 @@ export async function createTeamProject(input: CreateTeamProjectInput, context: 
     let result: PackageImportResult;
     try {
       const imported = importPackageDocument(document, { trust: "file", mode: "add" }, deps);
-      if (imported.alreadyAdded) throw new Error("the template's team is already here");
+      if (imported.alreadyAdded) throw new Error(`${team.name} is already here`);
       result = imported;
     } finally {
       stopAdopting();
@@ -188,32 +222,20 @@ export async function createTeamProject(input: CreateTeamProjectInput, context: 
       if (current?.installedPackage?.agentKey) made.set(current.installedPackage.agentKey, current);
     }
     for (const agent of document.package.agents) {
-      if (made.get(agent.key)?.teamProject?.id !== id) throw new Error(`the bot for ${agent.key} did not join the project`);
+      if (made.get(agent.key)?.teamProject?.id !== id) throw new Error(`the copy of ${agent.name} did not join the project`);
     }
-    const lead = made.get(template.lead) ?? made.get(document.package.team.leader ?? "");
-    if (!lead) throw new Error("the template names no lead");
+    const lead = made.get(leader);
+    if (!lead) throw new Error(`${team.name} has no Chief in its export`);
     if (!lead.chiefOfStaff) store.setChiefOfStaff(lead.id);
-
-    const roleHost = { store, skills: deps.skills, librarySkillNames: context.librarySkillNames };
-    const missingSkills: string[] = [];
-    const namesInProject = new Set<string>();
-    for (const agent of document.package.agents) {
-      const bot = made.get(agent.key)!;
-      const templateName = takeImportName(agent.name, namesInProject);
-      if (bot.name !== templateName) store.patchBot(bot.id, { name: templateName });
-      const applied = applyTemplateRole(bot.id, { agent, extras: template.extras[agent.key], keepServers: bot.mcpServers }, roleHost);
-      for (const skill of applied.missingSkills) if (!missingSkills.includes(skill)) missingSkills.push(skill);
-    }
+    for (const agent of document.package.agents) context.syncCopy(made.get(agent.key)!.id);
 
     const project: StoredTeamProject = {
-      id, name, folder, section: name,
-      template: { id: template.id, name: template.name, version: template.version },
-      leadBotId: lead.id, createdAt: context.now(),
+      id, name, folder, section: name, team: { key: context.teamKey(team.name), name: team.name }, leadBotId: lead.id, createdAt: context.now(),
     };
     context.registry.add(project);
     undo.push(() => context.registry.remove(id));
     context.writeCopies(project);
-    return { project, missingSkills };
+    return { project };
   } catch (error) {
     const leftovers: string[] = [];
     for (const step of undo.reverse()) {

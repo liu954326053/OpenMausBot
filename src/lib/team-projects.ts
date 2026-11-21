@@ -1,5 +1,4 @@
-import type { TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
-import type { TeamTemplateSummary, TemplateRoleSummary } from "../../shared/template-library";
+import type { ProjectTeamUnusable, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
 import type { LocaleKey } from "@/locales";
 
 export interface SideBot {
@@ -75,7 +74,7 @@ export function teamProjectFolder(root: string, name: string): string {
   return `${root.endsWith(separator) ? root : root + separator}${name.trim()}`;
 }
 
-export type RefusalPlace = "name" | "template" | "folder" | "form";
+export type RefusalPlace = "name" | "team" | "folder" | "form";
 
 const REFUSAL_PLACES: Record<TeamProjectRefusal, RefusalPlace> = {
   no_root: "folder",
@@ -83,7 +82,8 @@ const REFUSAL_PLACES: Record<TeamProjectRefusal, RefusalPlace> = {
   bad_name: "name",
   name_taken: "name",
   folder_exists: "name",
-  no_template: "template",
+  no_team: "team",
+  team_unusable: "team",
   failed: "form",
 };
 
@@ -93,9 +93,16 @@ const REFUSAL_KEYS = {
   bad_name: "teamProjects.refused.badName",
   name_taken: "teamProjects.refused.nameTaken",
   folder_exists: "teamProjects.refused.folderExists",
-  no_template: "teamProjects.refused.noTemplate",
+  no_team: "teamProjects.refused.noTeam",
+  team_unusable: "teamProjects.refused.teamUnusable",
   failed: "teamProjects.refused.failed",
 } as const satisfies Record<TeamProjectRefusal, LocaleKey>;
+
+const UNUSABLE_KEYS = {
+  empty: "teamProjects.unusable.empty",
+  no_chief: "teamProjects.unusable.noChief",
+  main_bot_chief: "teamProjects.unusable.mainBotChief",
+} as const satisfies Record<ProjectTeamUnusable, LocaleKey>;
 
 export const isTeamProjectRefusal = (code: unknown): code is TeamProjectRefusal => typeof code === "string" && Object.hasOwn(REFUSAL_PLACES, code);
 
@@ -104,9 +111,8 @@ export const refusalPlace = (code: TeamProjectRefusal | null): RefusalPlace => (
 
 export const refusalKey = (code: TeamProjectRefusal): LocaleKey => REFUSAL_KEYS[code];
 
-export function templateTeam(team: Pick<TeamTemplateSummary, "lead" | "roles">): { lead: TemplateRoleSummary | undefined; members: TemplateRoleSummary[] } {
-  return { lead: team.roles.find((role) => role.key === team.lead), members: team.roles.filter((role) => role.key !== team.lead) };
-}
+/** Why no project can be made from a team, as the New project dialog says it beside the team. */
+export const unusableKey = (reason: ProjectTeamUnusable): LocaleKey => UNUSABLE_KEYS[reason];
 
 /** Changes when a bot comes, goes or is archived, and when the departments change: each is a reason to read the projects again. */
 export function teamProjectsVersion(bots: ReadonlyArray<{ id: string; hidden?: boolean }>, sections: readonly string[] | undefined): string {

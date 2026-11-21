@@ -1,7 +1,7 @@
 import type { IncomingMessage } from "node:http";
 
 import type {
-  CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectRefusal, TeamProjectWire, TeamProjectsListWire,
+  CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, ProjectTeamsWire, TeamProjectRefusal, TeamProjectWire, TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
 import { onParsedBody } from "../harness/http.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
@@ -10,6 +10,7 @@ import { PASS, type RouteHandler } from "./table.ts";
 
 export interface TeamProjectRouteHost {
   listWire(): TeamProjectsListWire;
+  teams(): ProjectTeamWire[];
   create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult>;
   archive(id: string): TeamProjectWire | null;
   restore(id: string): TeamProjectWire | null;
@@ -19,7 +20,7 @@ export interface TeamProjectRouteHost {
 }
 
 const REFUSAL_STATUS: Record<TeamProjectRefusal, number> = {
-  no_root: 422, root_missing: 422, bad_name: 422, no_template: 422, name_taken: 409, folder_exists: 409, failed: 500,
+  no_root: 422, root_missing: 422, bad_name: 422, no_team: 422, team_unusable: 422, name_taken: 409, folder_exists: 409, failed: 500,
 };
 
 type Move = { botId: unknown; to: unknown };
@@ -64,9 +65,10 @@ export function createTeamProjectRoutes(projects: TeamProjectRouteHost): RouteHa
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     if (path.startsWith("/api/team-projects") && !ownerOrAdmin(auth)) return json(res, 403, userError("serverError.chat.ownerOrAdmin"));
     if (path === "/api/team-projects" && method === "GET") return json(res, 200, projects.listWire());
+    if (path === "/api/team-projects/teams" && method === "GET") return json(res, 200, { teams: projects.teams() } satisfies ProjectTeamsWire);
     if (path === "/api/team-projects" && method === "POST") {
       const body = record(await readBody(req));
-      const outcome = await projects.create({ name: body.name as string, templateId: body.templateId as string });
+      const outcome = await projects.create({ name: body.name as string, team: body.team as string });
       return json(res, "project" in outcome ? 201 : REFUSAL_STATUS[outcome.code], outcome);
     }
     if (path === "/api/team-projects/root" && method === "PUT") {

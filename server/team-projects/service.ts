@@ -1,19 +1,21 @@
 import { createHash } from "node:crypto";
 
 import type {
-  CreateTeamProjectInput, CreateTeamProjectResult, TeamProjectLookup, TeamProjectRecord, TeamProjectWire, TeamProjectsApi,
+  CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamProjectLookup, TeamProjectRecord, TeamProjectWire, TeamProjectsApi,
   TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
-import type { TemplateLibraryApi } from "../../shared/template-library.ts";
 import type { PackageImportDeps } from "../package-import.ts";
 import type { RoutineManager } from "../routines.ts";
+import type { ShareTarget } from "../share.ts";
 import { sectionKey, type BotRecord, type Store, type StoreChange } from "../store.ts";
 import { userError, userErrorThrown, type UserError } from "../user-errors.ts";
 import { teamProjectFolderReady } from "../workspace.ts";
 import { renderTeamProjectCopies, writeTeamProjectCopies, type TeamMemoryLine } from "./copies.ts";
-import { createTeamProject } from "./create.ts";
+import { createTeamProject, type ExportedTeam } from "./create.ts";
+import { copyUpdate } from "./follow.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 import { checkTeamProjectsRoot } from "./root.ts";
+import { findProjectTeam, projectTeams, teamBots, type TeamSources } from "./teams.ts";
 
 export interface TeamProjectsDeps {
   registry: TeamProjectRegistry;
@@ -23,9 +25,15 @@ export interface TeamProjectsDeps {
   routines(): Pick<RoutineManager, "listRoutines" | "update"> | null;
   /** Puts a project bot's own files where its project keeps them. Throws when the project folder cannot take them. */
   ensureWorkspace(botId: string): void;
-  templates: Pick<TemplateLibraryApi, "readTeam">;
   importDeps(): Promise<PackageImportDeps>;
-  librarySkillNames(): readonly string[];
+  /** The share export of a department or of one bot, carrying the skills `carries` picks and no others. Throws when it cannot be made. */
+  exportDocument(target: ShareTarget, carries: (bot: BotRecord, skill: string) => boolean): ExportedTeam;
+  /** The names of the skills a bot learned itself: the ones its copies take. */
+  ownSkillNames(botId: string): readonly string[];
+  /** The memory key of a department, made fast so a rename keeps it. */
+  teamKey(section: string): string;
+  /** The department that holds a memory key now; null when none does. */
+  teamOfKey(key: string): string | null;
   context(section: string): string;
   memory(section: string): readonly TeamMemoryLine[];
   /** Calls `flush` a moment after the first call since the last flush. */
@@ -46,7 +54,7 @@ const detailOf = (error: unknown) => (error instanceof Error ? error.message : S
 
 const routinesCannotBeChanged = (error: unknown) => (error as { status?: unknown } | null)?.status === 503;
 
-function roleNoTemplateGives(botId: string, taken: ReadonlySet<string>): string {
+function roleOfJoiner(botId: string, taken: ReadonlySet<string>): string {
   for (let attempt = 0; ; attempt += 1) {
     const role = `member-${createHash("sha256").update(`${botId} ${attempt}`).digest("hex").slice(0, 8)}`;
     if (!taken.has(role)) return role;
@@ -98,7 +106,9 @@ export class TeamProjects implements TeamProjectsApi {
   private wire(project: StoredTeamProject): TeamProjectWire {
     const ready = teamProjectFolderReady(project.folder);
     if (ready && !this.writtenCopies.has(project.id)) this.touch(project.id);
-    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: this.botsOf(project.id).map((bot) => bot.id) };
+    const bots = this.botsOf(project.id);
+    const follows = Object.fromEntries(bots.flatMap((bot) => (bot.teamProject?.source && !bot.teamProject.sourceLeft ? [[bot.id, bot.teamProject.source]] : [])));
+    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: bots.map((bot) => bot.id), follows };
   }
 
   list(): TeamProjectWire[] {
@@ -116,13 +126,50 @@ export class TeamProjects implements TeamProjectsApi {
     return { root: checked.root };
   }
 
+  private teamSources(): TeamSources {
+    const projectSections = this.deps.registry.readable
+      ? this.deps.registry.projects().map((project) => project.section)
+      : this.deps.store.bots.filter((bot) => bot.teamProject).map((bot) => sectionKey(bot.section));
+    return { bots: this.deps.store.bots, sections: this.deps.store.sections, projectSections: new Set(projectSections), context: this.deps.context };
+  }
+
+  teams(): ProjectTeamWire[] {
+    return projectTeams(this.teamSources());
+  }
+
+  /** A department's share export, or one bot's, with each bot's own skills and no skill from the library. */
+  private exportOf(target: ShareTarget): ExportedTeam {
+    const own = new Map<string, ReadonlySet<string>>();
+    return this.deps.exportDocument(target, (bot, skill) => {
+      if (!own.has(bot.id)) own.set(bot.id, new Set(this.deps.ownSkillNames(bot.id)));
+      return own.get(bot.id)!.has(skill);
+    });
+  }
+
+  /** Brings a copy that follows its source in line with it: only what differs is written. */
+  syncCopy(botId: string): void {
+    const { store } = this.deps;
+    const copy = store.bot(botId);
+    const membership = copy?.teamProject;
+    const source = membership?.source && !membership.sourceLeft ? store.bot(membership.source) : undefined;
+    if (!copy || !membership || !source) return;
+    const others = this.botsOf(membership.id).filter((bot) => bot.id !== copy.id).map((bot) => bot.name);
+    const update = copyUpdate(source, copy, others);
+    if (!update) return;
+    if (Object.keys(update.fields).length) store.patchBot(copy.id, update.fields);
+    if (update.soul !== undefined) store.patchBotProfile(copy.id, { soul: update.soul });
+    if (update.model) store.applyModelDefault(copy.id, update.model);
+  }
+
   async create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult> {
     const outcome = await createTeamProject(input, {
       registry: this.deps.registry,
       dataDir: this.deps.dataDir,
-      templates: this.deps.templates,
       importDeps: this.deps.importDeps,
-      librarySkillNames: this.deps.librarySkillNames,
+      team: (name) => findProjectTeam(this.teams(), name),
+      exportTeam: (section) => this.exportOf({ scope: "department", section, bots: teamBots(this.deps.store.bots, section) }),
+      teamKey: this.deps.teamKey,
+      syncCopy: (botId) => this.syncCopy(botId),
       ensureWorkspace: this.deps.ensureWorkspace,
       pending: this.pending,
       writeCopies: (project) => {
@@ -133,7 +180,7 @@ export class TeamProjects implements TeamProjectsApi {
       now: () => this.now(),
       log: (line) => this.log(line),
     });
-    return "project" in outcome ? { project: this.wire(outcome.project), missingSkills: outcome.missingSkills } : outcome;
+    return "project" in outcome ? { project: this.wire(outcome.project) } : outcome;
   }
 
   private stored(id: string): StoredTeamProject | undefined {
@@ -274,7 +321,7 @@ export class TeamProjects implements TeamProjectsApi {
     if (readable && !project) return;
     const taken = new Set(this.botsOf(projectId).filter((other) => other.id !== bot.id).map((other) => other.teamProject!.role));
     if (membership && !taken.has(membership.role)) return;
-    this.deps.store.patchBot(bot.id, { teamProject: { id: projectId, role: roleNoTemplateGives(bot.id, taken) }, ...(bot.cwd || !project ? {} : { cwd: project.folder }) });
+    this.deps.store.patchBot(bot.id, { teamProject: { id: projectId, role: roleOfJoiner(bot.id, taken) }, ...(bot.cwd || !project ? {} : { cwd: project.folder }) });
     try {
       this.deps.ensureWorkspace(bot.id);
     } catch (error) {

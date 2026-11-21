@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { CreateTeamProjectResult, TeamProjectRefusal, TeamProjectWire } from "../../shared/team-projects.ts";
+import type { CreateTeamProjectResult, ProjectTeamWire, TeamProjectRefusal, TeamProjectWire } from "../../shared/team-projects.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { BotRecord } from "../store.ts";
 import type { TeamComputers } from "../team-computers.ts";
@@ -49,15 +49,21 @@ async function serve(host: TeamProjectRouteHost, behind: RouteHandler[] = [], au
 
 const PROJECT: TeamProjectWire = {
   id: "project-1", name: "Stand-in bride", folder: "/dramas/Stand-in bride", section: "Stand-in bride",
-  template: { id: "sales", name: "Sales crew", version: 3 }, leadBotId: "bot-1", createdAt: 1, folderState: "ready", botIds: ["bot-1", "bot-2"],
+  team: { key: "team:sales", name: "Sales desk" }, leadBotId: "bot-1", createdAt: 1, folderState: "ready", botIds: ["bot-1", "bot-2"], follows: { "bot-1": "src-1" },
 };
+
+const TEAMS: ProjectTeamWire[] = [
+  { name: "Sales desk", context: "We sell seats.", chief: { id: "src-1", name: "Morgan", title: "Sales lead" }, members: [{ id: "src-1", name: "Morgan", title: "Sales lead" }] },
+  { name: "Marketing", context: "", chief: null, members: [{ id: "src-2", name: "Helper", title: "" }], unusable: "no_chief" },
+];
 
 function fakeHost(overrides: Partial<TeamProjectRouteHost> = {}): TeamProjectRouteHost & { asked: unknown[] } {
   const asked: unknown[] = [];
   return {
     asked,
     listWire: () => ({ root: "/dramas", projects: [PROJECT] }),
-    create: async (input) => { asked.push(input); return { project: PROJECT, missingSkills: ["beat-sheet"] }; },
+    teams: () => TEAMS,
+    create: async (input) => { asked.push(input); return { project: PROJECT }; },
     archive: (id) => (id === PROJECT.id ? { ...PROJECT, archivedAt: 5 } : null),
     restore: (id) => (id === PROJECT.id ? PROJECT : null),
     setRoot: (path) => (path === "/dramas" ? { root: "/dramas" } : { error: "Give the folder's full path.", errorKey: "serverError.teamProject.rootNotAbsolute" }),
@@ -71,7 +77,7 @@ describe("the project routes", () => {
   it("stay behind the admin gate", async () => {
     const { requiredScope } = await import("../request-auth.ts");
     for (const [method, path] of [
-      ["GET", "/api/team-projects"], ["POST", "/api/team-projects"], ["PUT", "/api/team-projects/root"],
+      ["GET", "/api/team-projects"], ["GET", "/api/team-projects/teams"], ["POST", "/api/team-projects"], ["PUT", "/api/team-projects/root"],
       ["POST", "/api/team-projects/project-1/archive"], ["POST", "/api/team-projects/project-1/restore"],
     ] as const) expect(requiredScope(method, path), `${method} ${path}`).toBe("admin");
   });
@@ -81,28 +87,33 @@ describe("the project routes", () => {
     expect(await call("GET", "/api/team-projects")).toEqual({ status: 200, body: { root: "/dramas", projects: [PROJECT] } });
   });
 
-  it("make a project and answer 201 with it and the library skills that were not there", async () => {
+  it("list the teams a project can be made from, the ones it cannot be made from with the reason", async () => {
+    const call = await serve(fakeHost());
+    expect(await call("GET", "/api/team-projects/teams")).toEqual({ status: 200, body: { teams: TEAMS } });
+  });
+
+  it("make a project from a team and answer 201 with it", async () => {
     const host = fakeHost();
     const call = await serve(host);
-    expect(await call("POST", "/api/team-projects", { name: "Stand-in bride", templateId: "sales", extra: "ignored" })).toEqual({
-      status: 201, body: { project: PROJECT, missingSkills: ["beat-sheet"] },
+    expect(await call("POST", "/api/team-projects", { name: "Stand-in bride", team: "Sales desk", extra: "ignored" })).toEqual({
+      status: 201, body: { project: PROJECT },
     });
-    expect(host.asked).toEqual([{ name: "Stand-in bride", templateId: "sales" }]);
+    expect(host.asked).toEqual([{ name: "Stand-in bride", team: "Sales desk" }]);
   });
 
   it.each<[TeamProjectRefusal, number]>([
-    ["no_root", 422], ["root_missing", 422], ["bad_name", 422], ["no_template", 422], ["name_taken", 409], ["folder_exists", 409], ["failed", 500],
+    ["no_root", 422], ["root_missing", 422], ["bad_name", 422], ["no_team", 422], ["team_unusable", 422], ["name_taken", 409], ["folder_exists", 409], ["failed", 500],
   ])("answer a project refused for %s with %i, the code and words the app can translate", async (code, status) => {
     const refusal: CreateTeamProjectResult = { error: "Refused.", code, errorKey: "serverError.teamProject.failed", errorParams: { detail: "why" } };
     const call = await serve(fakeHost({ create: async () => refusal }));
-    expect(await call("POST", "/api/team-projects", { name: "X", templateId: "sales" })).toEqual({ status, body: refusal });
+    expect(await call("POST", "/api/team-projects", { name: "X", team: "Sales desk" })).toEqual({ status, body: refusal });
   });
 
   it("hand a body that is no object on as a project with no name", async () => {
     const host = fakeHost();
     const call = await serve(host);
     await call("POST", "/api/team-projects", ["not", "an", "object"]);
-    expect(host.asked).toEqual([{ name: undefined, templateId: undefined }]);
+    expect(host.asked).toEqual([{ name: undefined, team: undefined }]);
   });
 
   it("archive and restore a project, and answer 404 for one that is not there", async () => {
@@ -145,7 +156,8 @@ describe("the project routes", () => {
     const call = await serve(host, [], auth);
     const refused = { status: 403, body: { error: "Only the owner or an admin can do that.", errorKey: "serverError.chat.ownerOrAdmin" } };
     expect(await call("GET", "/api/team-projects")).toEqual(refused);
-    expect(await call("POST", "/api/team-projects", { name: "X", templateId: "sales" })).toEqual(refused);
+    expect(await call("GET", "/api/team-projects/teams")).toEqual(refused);
+    expect(await call("POST", "/api/team-projects", { name: "X", team: "Sales desk" })).toEqual(refused);
     expect(await call("PUT", "/api/team-projects/root", { path: "/dramas" })).toEqual(refused);
     expect(await call("POST", "/api/team-projects/project-1/archive")).toEqual(refused);
     expect(await call("POST", "/api/team-projects/project-1/restore")).toEqual(refused);
@@ -161,9 +173,9 @@ describe("the guard on a project's department", () => {
     const table = await import("./table.ts");
     const installation = app;
     installation.projects.start();
-    installation.templates.set("sales", installation.salesTemplate());
+    installation.salesTeam();
     installation.projects.setRoot(installation.root);
-    const made = await installation.projects.create({ name: "Stand-in bride", templateId: "sales" });
+    const made = await installation.projects.create({ name: "Stand-in bride", team: "Sales desk" });
     if (!("project" in made)) throw new Error(made.error);
     const outsider = installation.store.createBot({ name: "Outsider", section: "Marketing" }, { seedMessages: false });
     const writer = installation.byRole(made.project.id).get("writer")!;

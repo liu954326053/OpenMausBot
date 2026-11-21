@@ -12,7 +12,7 @@ let folder: string;
 
 const project = (patch: Partial<TeamProjectRecord> = {}): TeamProjectRecord => ({
   id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride",
-  template: { id: "t1", name: "Short drama crew", version: 3 }, leadBotId: "b-lead", createdAt: 1_700_000_000_000, ...patch,
+  team: { key: "team:crew", name: "Short drama crew" }, leadBotId: "b-lead", createdAt: 1_700_000_000_000, ...patch,
 });
 
 function bot(id: string, role: string, patch: Partial<BotRecord> = {}): BotRecord {
@@ -59,6 +59,11 @@ describe("what a project's copies say", () => {
   it("copies the project's record, and nothing the server keeps to itself", () => {
     const files = renderTeamProjectCopies({ ...project({ archivedAt: 9 }), pausedRoutineIds: ["r1"] } as TeamProjectRecord, sources());
     expect(JSON.parse(files["project.json"]!)).toEqual(project({ archivedAt: 9 }));
+  });
+
+  it("copies a project made from a team template as its record holds it", () => {
+    const { team: _team, ...older } = project({ template: { id: "t1", name: "Short drama crew", version: 3 } });
+    expect(JSON.parse(renderTeamProjectCopies(older, sources())["project.json"]!)).toEqual(older);
   });
 
   it("lists the team with the lead first, and names only for model, library skills and MCP servers", () => {

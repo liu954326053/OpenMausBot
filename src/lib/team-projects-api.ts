@@ -1,4 +1,4 @@
-import type { CreateTeamProjectInput, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
+import type { CreateTeamProjectInput, ProjectTeamsWire, ProjectTeamWire, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
 import { api, ApiError } from "@/state/api";
 import { isTeamProjectRefusal } from "./team-projects";
 
@@ -6,18 +6,24 @@ const ROUTE = "/api/team-projects";
 
 export const listTeamProjects = (init?: { background?: boolean; signal?: AbortSignal }): Promise<TeamProjectsListWire> => api<TeamProjectsListWire>(ROUTE, init);
 
+/** Every team, the ones no project can be made from with the reason. */
+export const listProjectTeams = async (): Promise<ProjectTeamWire[]> => {
+  const { teams } = await api<ProjectTeamsWire>(`${ROUTE}/teams`);
+  return Array.isArray(teams) ? teams : [];
+};
+
 /** The server's own sentence, in the app's language when the server names one of the app's; "" when it sent none. */
 const sentence = (error: ApiError): string => (typeof error.body?.error === "string" || typeof error.body?.errorKey === "string" ? error.message : "");
 
 /** `refused` is null when the server said no without a code this app knows; `error` is the server's own sentence, "" without one. */
 export type CreateTeamProjectOutcome =
-  | { project: TeamProjectWire; missingSkills: string[] }
+  | { project: TeamProjectWire }
   | { refused: TeamProjectRefusal | null; error: string };
 
 export async function createTeamProject(input: CreateTeamProjectInput): Promise<CreateTeamProjectOutcome> {
   try {
-    const made = await api<{ project: TeamProjectWire; missingSkills?: string[] }>(ROUTE, { method: "POST", body: JSON.stringify(input) });
-    return { project: made.project, missingSkills: made.missingSkills ?? [] };
+    const made = await api<{ project: TeamProjectWire }>(ROUTE, { method: "POST", body: JSON.stringify(input) });
+    return { project: made.project };
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     const code = error.body?.code;

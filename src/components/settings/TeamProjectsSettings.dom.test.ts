@@ -10,7 +10,7 @@ import { SettingsLook } from "../SettingsPrimitives";
 import { TeamProjectsSettings } from "./TeamProjectsSettings";
 
 const project = (id: string, name: string, over: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
-  id, name, folder: `/dramas/${name}`, section: name, template: { id: "urban", name: "Urban romance", version: 1 },
+  id, name, folder: `/dramas/${name}`, section: name, team: { key: "team:urban", name: "Urban romance" }, follows: {},
   leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`], ...over,
 });
 const bride = project("p1", "The bride");

@@ -29,7 +29,7 @@ const room = (id: string, section: string): Group => ({
   id, threadId: `${id}-thread`, name: id, memberIds: [], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1, section,
 });
 const project = (id: string, botIds: string[], extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
-  id, name: id, folder: `/dramas/${id}`, section: id, template: { id: "urban", name: "Urban", version: 1 },
+  id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
   leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds, ...extra,
 });
 
@@ -106,7 +106,7 @@ beforeEach(() => {
     calls.push(call);
     await gate;
     const changed = /\/api\/team-projects\/(.+)\/(archive|restore)$/.exec(call.path);
-    const [status, body] = call.path === "/api/template-library" ? [200, { bots: [], teams: [] }]
+    const [status, body] = call.path === "/api/team-projects/teams" ? [200, { teams: [] }]
       : !changed ? [200, list]
       : refuse ? [500, { error: "The disk is full." }]
       : [200, { project: { ...list.projects.find((one) => one.id === decodeURIComponent(changed[1]!))!, archivedAt: changed[2] === "archive" ? 5 : undefined } }];
