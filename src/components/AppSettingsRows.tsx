@@ -17,7 +17,6 @@ import { setColorUserBubbles, useColorUserBubbles } from "@/lib/user-bubble-pref
 import { setShowThreads, useShowThreadsChoice } from "@/lib/thread-preferences";
 import { setAdvancedMode, useAdvancedMode } from "@/lib/interface-mode";
 import { SIMPLE_ONLY } from "@/lib/simple-only";
-import { setPinnedCircles, setUniversalPins, usePinnedCircles, useUniversalPins } from "@/lib/sidebar-preferences";
 import { setShowRunCard, useShowRunCard } from "@/lib/run-card-preferences";
 import { parseSendKey, SEND_KEYS, sendKeyLabel, setSendKey, useSendKey } from "@/lib/send-key";
 import { alternateSendLabel, parseFollowUpDefault, setFollowUpDefault, useFollowUpDefault } from "@/lib/follow-up";
@@ -305,19 +304,6 @@ export function ShowThreadsRow() {
   );
 }
 
-export function PinnedCirclesRow() {
-  const enabled = usePinnedCircles();
-  return (
-    <SettingRow title={t("settings.pinnedCircles.title")} subtitle={t("settings.pinnedCircles.short")}>
-      <Switch
-        checked={enabled}
-        aria-label={t("settings.pinnedCircles.title")}
-        onClick={() => setPinnedCircles(!enabled)}
-      />
-    </SettingRow>
-  );
-}
-
 export function RunCardRow() {
   const enabled = useShowRunCard();
   return (
@@ -326,19 +312,6 @@ export function RunCardRow() {
         checked={enabled}
         aria-label={t("settings.runCard.show")}
         onClick={() => setShowRunCard(!enabled)}
-      />
-    </SettingRow>
-  );
-}
-
-export function UniversalPinsRow() {
-  const enabled = useUniversalPins();
-  return (
-    <SettingRow title={t("settings.universalPins.title")} subtitle={t("settings.universalPins.subtitle")}>
-      <Switch
-        checked={enabled}
-        aria-label={t("settings.universalPins.title")}
-        onClick={() => setUniversalPins(!enabled)}
       />
     </SettingRow>
   );

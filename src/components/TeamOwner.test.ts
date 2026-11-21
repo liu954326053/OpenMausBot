@@ -8,7 +8,8 @@ import { setTeamPeople, type TeamPeople } from "@/state/team-people";
 
 vi.mock("./DesktopCapabilities", () => ({ useDesktopCapabilities: () => ({}) }));
 
-import { BotListItem, botRowProps, TeamMenuItems } from "./Sidebar";
+import { BotListItem, botRowProps } from "./Sidebar";
+import { TeamMenuItems } from "./SidebarTeamMenu";
 import { SidebarSectionHeader } from "./SidebarSectionHeader";
 import { MentionMenu, teammateChoices } from "./MentionMenu";
 import { AskingLine, NeedsYouButton, NeedsYouTitle, PersonFace } from "./TeamOwner";

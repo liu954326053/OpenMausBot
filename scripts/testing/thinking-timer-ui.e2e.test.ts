@@ -13,7 +13,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { OPEN_TEAM_MAP, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -215,11 +215,14 @@ describe("the thinking timer stays anchored across a thread switch", () => {
     const botsState = () => api("GET", "/api/bots");
     const groupState = async () => (await botsState()).groups.find((row: any) => row.id === groupId);
 
-    // With a single thread there is no thread list: the bot row is that
-    // conversation, and the same holds for a one-thread room.
-    const selectRow = (selector: string) => evaluate(`document.querySelector('${selector}')?.click(); true`);
-    const isCurrentRow = (selector: string) => evaluate(`Boolean(document.querySelector('${selector}[aria-current="page"]'))`);
-    const soloRow = `[data-sidebar-bot-row="${info.botId}"]`;
+    // Pepper is in no project and the room is outside projects: both open from the team map.
+    const current = (name: string) => evaluate(`Boolean(document.querySelector('textarea[aria-label="Message ${name}"]'))`);
+    const openFromMap = async (selector: string, name: string) => {
+      await waitUntil(() => evaluate(OPEN_TEAM_MAP), 10_000, "the team map to open");
+      await waitUntil(() => evaluate(`(() => { const open = document.querySelector('${selector}'); open?.click(); return Boolean(open); })()`), 10_000, `${name} on the team map`);
+      await waitUntil(() => current(name), 10_000, `${name} to become current`);
+    };
+    const soloOpen = `button[aria-label="Open chat with Pepper"]`;
     // Setup completed at creation, so the composer is live at once and plain
     // messages route to Pepper on the same hang-mode fake.
     const group = (await api("POST", "/api/groups", {
@@ -229,10 +232,8 @@ describe("the thinking timer stays anchored across a thread switch", () => {
     })).group;
     const groupId = group.id;
 
-    const groupRow = `[data-sidebar-group-row="${groupId}"]`;
-    await waitUntil(() => evaluate(`Boolean(document.querySelector('${groupRow}'))`), 10_000, "the group's sidebar row to appear");
-    await selectRow(groupRow);
-    await waitUntil(() => isCurrentRow(groupRow), 10_000, "the group to become current");
+    const groupOpen = `[data-team-map-room="${groupId}"]`;
+    await openFromMap(groupOpen, "Timer group");
 
     await ui("type", info.ui, "--name", "Message Timer group", "--text", "hello group");
     await ui("press", info.ui, "--keys", "Enter");
@@ -252,11 +253,9 @@ describe("the thinking timer stays anchored across a thread switch", () => {
     const beforeSwitch = await timerText();
     expect(elapsedSeconds(beforeSwitch)).toBeGreaterThanOrEqual(Math.floor((Date.now() - stamp) / 1000) - 2);
 
-    await selectRow(soloRow);
-    await waitUntil(() => isCurrentRow(soloRow), 10_000, "the 1:1 thread to become current");
+    await openFromMap(soloOpen, "Pepper");
     await new Promise((done) => setTimeout(done, 3_000));
-    await selectRow(groupRow);
-    await waitUntil(() => isCurrentRow(groupRow), 10_000, "the group to become current again");
+    await openFromMap(groupOpen, "Timer group");
 
     // A restart would show single digits after a 13+ second turn.
     const resumed = await waitUntil(timerText, 10_000, "the group's thinking readout to appear again");

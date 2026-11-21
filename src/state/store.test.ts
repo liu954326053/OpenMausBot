@@ -2579,6 +2579,16 @@ describe("activity panel", () => {
     expect(reducer(panel, { type: "showTeamMap" })).toMatchObject({ activeView: "team-map", webPanelId: "panel-1" });
     expect(reducer(panel, { type: "showChat" }).activeView).toBe("chat");
   });
+
+  it("opens a project's view with a member chosen or none, and leaves it for a chat or another page", () => {
+    const open = { ...initialState, selectedId: "bot-1", activityOpen: true, computerOpen: true, settingsOpen: true };
+    const project = reducer(open, { type: "showProject", projectId: "p-1", botId: "copy-2" });
+    expect(project).toMatchObject({ activeView: "project", project: { id: "p-1", botId: "copy-2" }, selectedId: "bot-1", activityOpen: false, computerOpen: false, settingsOpen: false });
+    expect(reducer(project, { type: "showProject", projectId: "p-2" }).project).toEqual({ id: "p-2" });
+    expect(reducer(project, { type: "showChat" }).activeView).toBe("chat");
+    expect(reducer(project, { type: "showTeamMap" }).activeView).toBe("team-map");
+    expect(reducer(project, { type: "select", id: "bot-1" }).activeView).toBe("chat");
+  });
 });
 
 describe("live config frames", () => {
@@ -2862,6 +2872,23 @@ describe("restoring the open conversation", () => {
   it("hydrate without a resume id behaves as today", () => {
     expect(hydrating(initialState).selectedId).toBe("bot-1");
     expect(hydrating({ ...initialState, selectedId: "deleted" }).selectedId).toBe("bot-1");
+  });
+
+  it("hydrate with nothing to resume opens MagicBot, unless it is hidden from the sidebar", () => {
+    const maus = bot("maus", { defaultBot: {} });
+    expect(hydrating(initialState, undefined, [first, maus, second]).selectedId).toBe("maus");
+    expect(hydrating(initialState, "deleted-bot", [first, maus]).selectedId).toBe("maus");
+    expect(hydrating(initialState, undefined, [first, { ...maus, sidebarHidden: true }]).selectedId).toBe("bot-1");
+  });
+
+  it("a deleted open bot or room hands the window to MagicBot", () => {
+    const maus = bot("maus", { defaultBot: {} });
+    const open = hydrating(initialState, "bot-2", [first, second, maus]);
+    expect(reducer(open, { type: "deleteBot", botId: "bot-2" }).selectedId).toBe("maus");
+    expect(reducer(open, { type: "deleteBot", botId: "bot-1" }).selectedId).toBe("bot-2");
+    const inRoom = hydrating(initialState, "room-1", [first, maus]);
+    expect(reducer(inRoom, { type: "groupDeleted", groupId: "room-1" }).selectedId).toBe("maus");
+    expect(reducer(hydrating(initialState, "bot-2"), { type: "deleteBot", botId: "bot-2" }).selectedId).toBe("bot-1");
   });
 
   describe("the provider's own effect", () => {

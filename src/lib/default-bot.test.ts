@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { chiefChoices, chiefFor, chiefStepFits, createChiefPatch, hiddenFromSidebar, INTRO_CHIPS, introChips, myDefaultBot, setupSteps, someoneElsesDefaultBot } from "./default-bot";
-import { partitionSidebarBots } from "./sidebar-layout";
+import { sidebarMainBot } from "./sidebar-projects";
 import type { DefaultBotFields } from "../../shared/default-bot";
 
 const bot = (id: string, fields: DefaultBotFields = {}): DefaultBotFields & { id: string } => ({ id, ...fields });
@@ -14,7 +14,7 @@ describe("MagicBot in the sidebar", () => {
       bot("bea-maus", { defaultBot: { person: "bea@example.com" } }),
       bot("writer"),
     ];
-    const shown = (viewerEmail: string | null) => partitionSidebarBots(bots, { viewerEmail }).unsectionedBots.map((entry) => entry.id);
+    const shown = (viewerEmail: string | null) => bots.filter((entry) => !hiddenFromSidebar(entry, viewerEmail)).map((entry) => entry.id);
     expect(shown("ada@example.com")).toEqual(["maus", "ada-maus", "writer"]);
     expect(shown(null)).toEqual(["maus", "writer"]);
     bots[0] = bot("maus", { defaultBot: {}, sidebarHidden: true });
@@ -38,8 +38,8 @@ describe("MagicBot's identity is its mark, never its name", () => {
   it("keeps finding a renamed MagicBot for the Settings switch and the sidebar, and keeps it out of the list while its welcome is open", () => {
     const bots = [bot("writer"), { ...bot("maus", { defaultBot: {} }), name: "Jarvis" }];
     expect(myDefaultBot(bots, null)?.id).toBe("maus");
-    expect(partitionSidebarBots(bots, { viewerEmail: null }).unsectionedBots.map((entry) => entry.id)).toEqual(["writer", "maus"]);
-    expect(partitionSidebarBots(bots, { viewerEmail: null, welcoming: "maus" }).unsectionedBots.map((entry) => entry.id)).toEqual(["writer"]);
+    expect(sidebarMainBot(bots, null)?.id).toBe("maus");
+    expect(sidebarMainBot(bots, null, { welcoming: "maus" })).toBeUndefined();
   });
 });
 

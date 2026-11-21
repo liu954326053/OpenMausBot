@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { ENABLE_ADVANCED_UI, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { ENABLE_ADVANCED_UI, OPEN_TEMPLATES, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -85,11 +85,8 @@ describe("full backup Settings in the real renderer", () => {
       return true;
     })()`);
     await expect.poll(snapshot, { timeout: 10_000 }).toContain('button "You"');
-    await click("New or share");
-    const menu = await snapshot();
-    expect(menu).toContain('menuitem "Templates"');
-    expect(menu).not.toContain('"Export backup"');
-    await click("Templates");
+    await expect.poll(() => evaluate(OPEN_TEMPLATES), { timeout: 20_000 }).toBe(true);
+    expect(await evaluate(`document.querySelector('summary[aria-label="Add to team map"]').parentElement.textContent`)).not.toContain("Export backup");
     await expect.poll(snapshot).toContain('button "Close templates"');
     await click("Close templates");
     await click("You");

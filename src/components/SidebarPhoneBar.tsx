@@ -13,7 +13,8 @@ import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
 import { UpdateIndicator } from "./UpdateIndicator";
 
 /** The phone's bottom bar: a round button for the tools that are rows in the desktop sidebar, and a search pill. */
-export function SidebarPhoneBar({ query, onQuery }: { query: string; onQuery: (query: string) => void }) {
+/** `teamMapUnread`: a bot in no project or a group chat outside the projects has something unread. */
+export function SidebarPhoneBar({ query, onQuery, teamMapUnread = false }: { query: string; onQuery: (query: string) => void; teamMapUnread?: boolean }) {
   const { state, dispatch } = useStore();
   const automationsNeedYou = useAutomationsNeedYou();
   const filesReady = useCloudFilesReady();
@@ -31,6 +32,8 @@ export function SidebarPhoneBar({ query, onQuery }: { query: string; onQuery: (q
       label: t("sidebar.nav.teamMap"),
       icon: <UsersRound size={18} />,
       active: state.activeView === "team-map",
+      attention: teamMapUnread,
+      attentionTone: "accent",
       onSelect: () => dispatch({ type: "showTeamMap" }),
     },
     ...(filesReady ? [{
@@ -82,7 +85,8 @@ export function SidebarPhoneBar({ query, onQuery }: { query: string; onQuery: (q
           renderTrigger={({ open }) => (
             <span className={`relative flex size-11 items-center justify-center rounded-full border border-hairline text-ink ${open ? "bg-raised" : "bg-card"}`}>
               <LayoutGrid size={19} aria-hidden="true" />
-              {automationsNeedYou && <span aria-hidden className="absolute right-1 top-1 size-2.5 rounded-full bg-danger ring-2 ring-app" />}
+              {(automationsNeedYou || teamMapUnread) && <span aria-hidden data-phone-tools-dot={automationsNeedYou ? "danger" : "accent"}
+                className={`absolute right-1 top-1 size-2.5 rounded-full ring-2 ring-app ${automationsNeedYou ? "bg-danger" : "bg-accent"}`} />}
             </span>
           )}
         />

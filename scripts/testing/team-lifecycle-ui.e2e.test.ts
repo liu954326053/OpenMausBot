@@ -8,7 +8,7 @@ import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { request } from "../mcp-server.ts";
 import { mountPreview, type MountedPreview } from "./preview-fixture.ts";
-import { ENABLE_ADVANCED_UI, OPEN_SIDEBAR_TOOLS, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { ENABLE_ADVANCED_UI, findInSidebar, OPEN_SIDEBAR_TOOLS, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -76,43 +76,13 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     const a = (await control("new-bot", "--name", "Researcher", "--section", "Research") as any).bot;
     const b = (await control("new-bot", "--name", "Engineer", "--section", "Engineering") as any).bot;
 
-    await click("New or share");
+    await click("New");
     await click("Add department");
     await type("Department name", "Delivery");
     await click("Create department");
-    await expect.poll(snapshot, { timeout: 10_000 }).toContain('button "Delivery"');
+    // Departments are managed on the team map: a new one is shown there.
+    await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-team-key="Delivery"]'))`), { timeout: 10_000 }).toBe(true);
     expect((await api("/api/bots?messages=0")).sections).toContain("Delivery");
-    const teamMenu = async (name: string) => ui("eval", "--js", `(() => {
-      const header = [...document.querySelectorAll('[data-section]')].find(node => node.dataset.section === ${JSON.stringify(name)});
-      if (!header) throw new Error('Missing team header');
-      header.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 250 })); return true;
-    })()`);
-    await ui("eval", "--js", `localStorage.setItem('openmausbot.sidebarCollapsedSections.v1', JSON.stringify(['section:Delivery'])); localStorage.setItem('openmausbot.sidebarSectionOrder.v1', JSON.stringify(['section:Research','section:Delivery','section:Engineering'])); location.reload(); true`);
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain('button "Delivery"');
-    await teamMenu("Delivery");
-    await ui("press", "--keys", "Escape");
-    expect((await ui("eval", "--js", "document.activeElement.closest('[data-section]')?.dataset.section")).result).toBe("Delivery");
-    await teamMenu("Delivery");
-    await click("Rename department");
-    await click("Cancel");
-    expect((await ui("eval", "--js", "document.activeElement.closest('[data-section]')?.dataset.section")).result).toBe("Delivery");
-    await teamMenu("Delivery");
-    await click("Rename department");
-    await type("Department name", "Dispatch");
-    await click("Save name");
-    await expect.poll(snapshot).toContain('button "Dispatch"');
-    expect((await ui("eval", "--js", "document.querySelector('[data-section=Dispatch] button')?.getAttribute('aria-expanded')")).result).toBe("false");
-    expect((await ui("eval", "--js", "JSON.parse(localStorage.getItem('openmausbot.sidebarCollapsedSections.v1'))")).result).toContain("section:Dispatch");
-    expect((await ui("eval", "--js", "JSON.parse(localStorage.getItem('openmausbot.sidebarSectionOrder.v1'))")).result).toEqual(["section:Research", "section:Dispatch", "section:Engineering"]);
-    await ui("eval", "--js", "location.reload(); true");
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain('button "Dispatch"');
-    await teamMenu("Dispatch");
-    await click("Rename department");
-    await type("Department name", "Delivery");
-    await click("Save name");
-    await expect.poll(snapshot).toContain('button "Delivery"');
-    await ui("eval", "--js", OPEN_SIDEBAR_TOOLS);
-    await click("Team map");
     await manage("Delivery");
     await click("Move bots to Delivery");
     await click("Researcher");
@@ -157,7 +127,7 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     expect((await api("/api/section-context?section=Delivery")).text).toBe("Research first, then build and review.");
 
     await ui("eval", "--js", "location.reload(); true");
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain('button "Delivery"');
+    await expect.poll(() => evaluate("Boolean(document.querySelector('[data-tour=tools]'))"), { timeout: 15_000 }).toBe(true);
     await ui("eval", "--js", OPEN_SIDEBAR_TOOLS);
     await click("Team map");
     await manage("Delivery");
@@ -174,8 +144,8 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     expect((await api("/api/section-context?section=Launch")).text).toBe("Research first, then build and review.");
     const screenshot = join(ROOT, ".omb-scratch", "verify-evidence", "team-lifecycle.png");
     await ui("screenshot", "--out", screenshot);
-    await teamMenu("Launch");
-    await click("Delete department");
+    await manage("Launch");
+    await click("Delete Launch department");
     await expect.poll(snapshot, { timeout: 10_000 }).toContain('alertdialog "Delete Launch department?"');
     await ui("eval", "--js", `(() => {
       const original = window.fetch.bind(window); window.teamDeleteRequests = 0;
@@ -210,80 +180,75 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     // otherwise its SSE update can race the previous response's section list.
     await expect.poll(snapshot).not.toContain('alertdialog "Delete Launch department?"');
 
-    // Section management is available where the section lives, without
-    // requiring the team map. Cancel and Escape must leave its brief intact.
-    await api("/api/sidebar-sections", "POST", { name: "Sidebar empty" });
-    await api("/api/section-context?section=Sidebar%20empty", "PUT", { text: "Keep this until deletion is confirmed." });
-    await click("Delete Sidebar empty department");
-    await expect.poll(snapshot).toContain('alertdialog "Delete Sidebar empty department?"');
-    expect(await focused()).toBe("Cancel");
+    // Cancel and Escape leave a department and its brief intact, and give focus back to its menu.
+    await api("/api/sidebar-sections", "POST", { name: "Empty desk" });
+    await api("/api/section-context?section=Empty%20desk", "PUT", { text: "Keep this until deletion is confirmed." });
+    const askToDelete = async (name: string) => {
+      await manage(name);
+      await click(`Delete ${name} department`);
+      await expect.poll(snapshot).toContain(`alertdialog "Delete ${name} department?"`);
+      expect(await focused()).toBe("Cancel");
+    };
+    await askToDelete("Empty desk");
     await ui("press", "--keys", "Shift+Tab");
     expect(await focused()).toBe("Delete department");
     await ui("press", "--keys", "Tab");
     expect(await focused()).toBe("Cancel");
     await ui("press", "--keys", "Escape");
-    await expect.poll(focused).toBe("Delete Sidebar empty department");
-    expect((await api("/api/sidebar-sections")).sections).toContain("Sidebar empty");
-    expect((await api("/api/section-context?section=Sidebar%20empty")).text).toBe("Keep this until deletion is confirmed.");
-    await click("Delete Sidebar empty department");
+    await expect.poll(focused).toBe("Manage Empty desk department");
+    expect((await api("/api/sidebar-sections")).sections).toContain("Empty desk");
+    expect((await api("/api/section-context?section=Empty%20desk")).text).toBe("Keep this until deletion is confirmed.");
+    await askToDelete("Empty desk");
     await click("Cancel");
-    await expect.poll(focused).toBe("Delete Sidebar empty department");
-    expect((await api("/api/sidebar-sections")).sections).toContain("Sidebar empty");
-    await click("Delete Sidebar empty department");
+    await expect.poll(focused).toBe("Manage Empty desk department");
+    expect((await api("/api/sidebar-sections")).sections).toContain("Empty desk");
+    await askToDelete("Empty desk");
     await click("Delete department");
-    await expect.poll(async () => (await api("/api/sidebar-sections")).sections.includes("Sidebar empty")).toBe(false);
-    await expect.poll(() => evaluate('Boolean(document.querySelector("[data-sidebar-section-id=\\"section:Sidebar empty\\"]"))')).toBe(false);
-    expect((await fetch(`${info.url}/api/section-context?section=Sidebar%20empty`)).status).toBe(404);
+    await expect.poll(async () => (await api("/api/sidebar-sections")).sections.includes("Empty desk")).toBe(false);
+    await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-team-key="Empty desk"]'))`)).toBe(false);
+    expect((await fetch(`${info.url}/api/section-context?section=Empty%20desk`)).status).toBe(404);
 
-    // The visible delete button shares the established keep-members behavior:
-    // active, pinned and archived bots move to General with their chats intact.
-    await control("send", "--bot", a.id, "--text", "Keep this conversation when its sidebar section is deleted.");
+    // Deleting a department keeps its members: active, pinned and archived
+    // bots move to General with their chats intact.
+    await control("send", "--bot", a.id, "--text", "Keep this conversation when its department is deleted.");
     expect(await control("wait", "--bot", a.id, "--timeout", "30")).toMatchObject({ status: "settled" });
     const transcript = (await control("messages", "--bot", a.id, "--limit", "10") as any).messages;
     expect(transcript.length).toBeGreaterThan(0);
-    const deleteSectionByIcon = async (name: string) => {
-      await click(`Delete ${name} department`);
-      await expect.poll(snapshot).toContain(`alertdialog "Delete ${name} department?"`);
-      expect(await focused()).toBe("Cancel");
+    const deleteDepartment = async (name: string) => {
+      await askToDelete(name);
       expect(await evaluate("document.querySelector('[role=alertdialog]')?.textContent")).toContain(
         "Bots and group chats move to General with their conversations intact.",
       );
       await click("Delete department");
       await expect.poll(async () => (await api("/api/sidebar-sections")).sections.includes(name)).toBe(false);
-      await expect.poll(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(`[data-sidebar-section-id="section:${name}"]`)}))`)).toBe(false);
+      await expect.poll(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(`[data-team-key="${name}"]`)}))`)).toBe(false);
     };
     for (const member of [
-      { name: "Sidebar populated", pinned: false, hidden: false },
-      { name: "Sidebar pinned", pinned: true, hidden: false },
-      { name: "Sidebar archived", pinned: false, hidden: true },
+      { name: "Populated desk", pinned: false, hidden: false },
+      { name: "Pinned desk", pinned: true, hidden: false },
+      { name: "Archived desk", pinned: false, hidden: true },
     ]) {
       await api(`/api/bots/${a.id}`, "PATCH", { hidden: false, pinned: false });
       await api("/api/sidebar-sections", "POST", { name: member.name, botIds: [a.id] });
       await api(`/api/bots/${a.id}`, "PATCH", { pinned: member.pinned, hidden: member.hidden });
-      const sectionRow = `[data-sidebar-section-id="section:${member.name}"] [data-sidebar-bot-row="${a.id}"]`;
-      await expect.poll(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(sectionRow)}))`)).toBe(!member.pinned && !member.hidden);
-      if (member.pinned) {
-        await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-sidebar-section-id="builtin:pinned"] [data-sidebar-bot-row="${a.id}"]'))`)).toBe(true);
-      }
-      if (member.hidden) {
-        await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-sidebar-bot-row="${a.id}"]'))`)).toBe(false);
-      }
-      await deleteSectionByIcon(member.name);
+      const card = `[data-team-key="${member.name}"] [data-bot-id="${a.id}"]`;
+      await expect.poll(() => evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), { message: "an archived bot is not on the team map" }).toBe(!member.hidden);
+      await deleteDepartment(member.name);
       const survivor = (await api("/api/bots?messages=0")).bots.find((bot: any) => bot.id === a.id);
       expect(survivor).toMatchObject({ id: a.id, name: a.name, pinned: member.pinned, hidden: member.hidden });
       expect(survivor.section).toBeUndefined();
       expect((await control("messages", "--bot", a.id, "--limit", "10") as any).messages).toEqual(transcript);
     }
     await api(`/api/bots/${a.id}`, "PATCH", { hidden: false });
-    const group = (await api("/api/groups", "POST", { name: "Sidebar room", memberIds: [a.id, b.id], section: "Sidebar group" })).group;
+    const group = (await api("/api/groups", "POST", { name: "Desk room", memberIds: [a.id, b.id], section: "Room desk" })).group;
     await api(`/api/groups/${group.id}/setup`, "PATCH", { action: "complete", bulletin: "", defaultResponder: { kind: "member", botId: a.id } });
     await control("send-channel", "--channel", group.id, "--text", "Keep this group conversation when its section is deleted.");
     expect(await control("wait", "--channel", group.id, "--timeout", "30")).toMatchObject({ status: "settled" });
     const roomTranscript = (await control("messages", "--channel", group.id, "--limit", "10") as any).messages;
     expect(roomTranscript.length).toBeGreaterThan(0);
-    await expect.poll(snapshot).toContain("Sidebar room");
-    expect((await api("/api/bots?messages=0")).bots.some((bot: any) => bot.section === "Sidebar group")).toBe(false);
-    await deleteSectionByIcon("Sidebar group");
+    await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-team-key="Room desk"]'))`), { message: "a department holding only a room" }).toBe(true);
+    expect((await api("/api/bots?messages=0")).bots.some((bot: any) => bot.section === "Room desk")).toBe(false);
+    await deleteDepartment("Room desk");
     const survivingState = await api("/api/bots?messages=0");
     expect(survivingState.bots.map((bot: any) => bot.id)).toEqual(expect.arrayContaining([a.id, b.id]));
     const survivingRoom = survivingState.groups.find((room: any) => room.id === group.id);
@@ -293,7 +258,7 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     const consoleResult = await ui("console");
     expect(JSON.stringify(consoleResult)).not.toMatch(/Uncaught|ReferenceError/);
     console.info(JSON.stringify({ fixture: info!, screenshot, emptyTeam: true, multiBotMove: true, delayedMemberCreation: true, reload: true, renameAndDelete: true,
-      sidebarDelete: true, sidebarCancelAndFocus: true, preservedSectionMembers: ["active", "pinned", "archived", "group"],
+      mapDelete: true, mapCancelAndFocus: true, preservedSectionMembers: ["active", "pinned", "archived", "group"],
       preservedBotMessages: transcript.length, preservedGroupMessages: roomTranscript.length }));
     // Room confirmations also sit over the mobile drawer. Escape must cancel
     // just that confirmation, leaving the drawer and its room intact.
@@ -311,18 +276,20 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     const roomMenu = async () => {
       // The new preview must load its module and initial server state first.
       await expect.poll(snapshot, { timeout: 15_000 }).toContain("Drawer: open");
+      // A room outside projects is listed when the sidebar is searched for it.
+      await expect.poll(() => evaluate(findInSidebar("Desk room")), { timeout: 10_000 }).toBe(true);
       await expect.poll(() => evaluate(`Boolean(document.querySelector('[data-sidebar-group-row="${group.id}"]'))`),
         { timeout: 10_000 }).toBe(true);
       await ui("eval", "--js", `document.querySelector('[data-sidebar-group-row="${group.id}"]').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 250 })); true`);
       await click("Delete group chat");
-      await expect.poll(snapshot).toContain('alertdialog "Delete Sidebar room?"');
+      await expect.poll(snapshot).toContain('alertdialog "Delete Desk room?"');
       expect(await focused()).toBe("Cancel");
     };
     for (const action of ["Escape", "Cancel"]) {
       await roomMenu();
       if (action === "Escape") await ui("press", "--keys", "Escape");
       else await click(action);
-      await expect.poll(snapshot).not.toContain('alertdialog "Delete Sidebar room?"');
+      await expect.poll(snapshot).not.toContain('alertdialog "Delete Desk room?"');
       expect(await snapshot()).toContain("Drawer: open");
       expect((await api("/api/bots?messages=0")).groups.some((room: any) => room.id === group.id)).toBe(true);
       await expect.poll(() => evaluate("Boolean(document.activeElement.closest('aside'))")).toBe(true);

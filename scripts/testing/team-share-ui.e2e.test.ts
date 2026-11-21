@@ -6,7 +6,7 @@ import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { request } from "../mcp-server.ts";
-import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { OPEN_TEAM_MAP, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -51,7 +51,12 @@ describe("Share a department in the real renderer", () => {
       return true;
     })()`);
 
-    await click("Actions for Sales desk department");
+    await expect.poll(() => evaluate(OPEN_TEAM_MAP), { timeout: 20_000, interval: 400 }).toBe(true);
+    await expect.poll(() => evaluate(`(() => {
+      const summary = document.querySelector('[data-team-key="Sales desk"] summary');
+      if (summary && !summary.parentElement.open) summary.click();
+      return Boolean(summary?.parentElement.open);
+    })()`), { timeout: 20_000 }).toBe(true);
     await click("Share");
     await expect.poll(snapshot, { timeout: 20_000 }).toContain("Chats, memory and keys are never shared");
     const dialog = await snapshot();
