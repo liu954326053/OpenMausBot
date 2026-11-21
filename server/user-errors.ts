@@ -1,6 +1,7 @@
 import { PAIRING_INPUT_PROBLEM_TEXT } from "../shared/pairing-code.ts";
 import { redactParams } from "../shared/redact.ts";
 import { formatServerText, type ServerErrorBody, type ServerTextParams } from "../shared/server-text.ts";
+import { PROJECT_GENERATION_ERRORS } from "./project-generation/error-text.ts";
 
 /** The client translates by key and falls back to this English, which the server keeps sending for older clients. */
 export const USER_ERROR = {
@@ -260,6 +261,7 @@ export const USER_ERROR = {
   "serverError.teamProject.contextFollows": "{department} takes its shared instructions from {team}. Change them in {team} instead.",
   "serverError.mainBot.noDepartment": "{bot} belongs to no department, so it can't be moved into one.",
   "serverError.teamProject.teamChangesInvalid": "Choose which of the team's changes to make, then try again.",
+  ...PROJECT_GENERATION_ERRORS,
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;
