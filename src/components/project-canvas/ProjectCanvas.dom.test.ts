@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 
-import { botNodeId, type CanvasBotState } from "../../../shared/project-canvas";
+import { botNodeId, CANVAS_NODE_SIZE, type CanvasBotState } from "../../../shared/project-canvas";
 import { loadLocale, setLocale } from "@/lib/i18n";
 import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
+import { fitNodeSize } from "@/lib/project-canvas/geometry";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
 import { PLACEMENT_GAP } from "@/lib/project-canvas/placement";
 import { initialState, StoreContext, type AppState, type Bot } from "@/state/store";
@@ -685,6 +686,34 @@ describe("the project canvas", () => {
     }
     expect(bots()).toEqual(botsBefore);
     expect(Object.values(backend.current().bots).every((bot) => bot.placed)).toBe(true);
+  });
+
+  it("moves a picture that grows as it loads off the node below it into free space, and never moves a bot", async () => {
+    await mount();
+    const bots = () => backend.current().nodes.filter((node) => node.type === "bot").map((node) => ({ id: node.id, position: node.position }));
+    const botsBefore = bots();
+    const below = { x: 2400, y: 600 + CANVAS_NODE_SIZE.image.height + PLACEMENT_GAP };
+    await act(async () => {
+      await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [
+        { type: "add_node", id: "tall", nodeType: "image", position: { x: 2400, y: 600 }, metadata: { file: { path: "outputs/tall.png", mime: "image/png", bytes: 900, name: "tall.png" } } },
+        { type: "add_node", id: "under", nodeType: "text", position: below, metadata: { content: "Scene two" } },
+      ] });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await settle(20);
+    const picture = nodeElement("tall")!.querySelector("img")!;
+    Object.defineProperty(picture, "naturalWidth", { value: 27 });
+    Object.defineProperty(picture, "naturalHeight", { value: 48 });
+    await act(async () => { picture.dispatchEvent(new Event("load")); });
+    await settle(20);
+    const tall = shown("tall")!;
+    expect(tall).toMatchObject({ ...fitNodeSize(27, 48), metadata: { naturalWidth: 27, naturalHeight: 48 } });
+    expect(shown("under")!.position).toEqual(below);
+    const crowding = backend.current().nodes.filter((other) => other.id !== tall.id && !(
+      tall.position.x >= other.position.x + other.width + PLACEMENT_GAP || other.position.x >= tall.position.x + tall.width + PLACEMENT_GAP
+      || tall.position.y >= other.position.y + other.height + PLACEMENT_GAP || other.position.y >= tall.position.y + tall.height + PLACEMENT_GAP));
+    expect(crowding.map((other) => other.id)).toEqual([]);
+    expect(bots()).toEqual(botsBefore);
   });
 
   it("says a project's folder is missing in the sidebar's words", async () => {

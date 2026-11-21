@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { setLocale } from "@/lib/i18n";
+import { loadLocale, setLocale } from "@/lib/i18n";
 import ptBr from "@/locales/pt-br.json";
 import { api, ApiError } from "@/state/api";
 import { saveLoginFromCard } from "./logins";
@@ -24,6 +24,12 @@ describe("a refusal the server names by key", () => {
     expect(refused).toBeInstanceOf(ApiError);
     expect((refused as ApiError).message).toBe(ptBr["serverError.chat.busyInRoom"].replace("{room}", "Launch"));
     expect((refused as ApiError).body?.error).toBe("this bot is working in channel Launch");
+  });
+
+  it("says a generation server it could not connect to in Chinese, with none of the connection's English", async () => {
+    await loadLocale("zh");
+    expect(serverErrorText({ errorKey: "serverError.projectGeneration.unreachableNetwork", errorParams: { server: "gen" } }, "fallback"))
+      .toBe("连不上 MCP 服务器 gen（无法连接生成服务）。请在“应用 → MCP 服务器”里检查它，然后再试一次。");
   });
 
   it("words a lockout's end on this device's clock, not the server's", () => {

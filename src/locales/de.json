@@ -1299,6 +1299,7 @@
   "task.chip": "Thread",
   "task.newShort": "Neuer Thread",
   "task.sharedChat": "Gemeinsamer Chat",
+  "task.chooseChief": "Einen Stabschef wählen",
   "task.matching": "{count} passende Threads",
   "task.list": "Threads",
   "task.waitingOnTeammate": "Wartet auf Kollegen",

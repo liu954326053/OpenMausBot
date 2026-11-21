@@ -282,7 +282,7 @@ export const USER_ERROR = {
   "serverError.teamFlow.general": "{bot} isn't in a team, so it has no place in a flow. Move it into a team first.",
   "serverError.teamFlow.noChief": "{team} has no Chief of Staff yet, so it has no flow. Make one of its bots the Chief of Staff first.",
   "serverError.teamFlow.project": "{bot} is in a project, and a project's flow comes from the team it was made from. Change the lines in {team} instead.",
-  "serverError.teamFlow.projectNoTeam": "{bot} is in a project with no team to follow, so every bot in it answers to the project's lead.",
+  "serverError.teamFlow.projectNoTeam": "{bot} is in a project with no team to follow, so every bot in it answers to the project's Chief of Staff.",
   "serverError.teamFlow.otherTeam": "{superior} isn't in {team}. A bot's superior has to be in its own team.",
   "serverError.teamFlow.self": "A bot can't be its own superior.",
   "serverError.teamFlow.chief": "{bot} is the Chief of Staff of {team}, at the top of its flow, so it can't be anyone's subordinate.",

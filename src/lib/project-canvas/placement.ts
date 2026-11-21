@@ -51,6 +51,17 @@ export function freeSpot(center: CanvasPoint, size: Size, taken: readonly Frame[
   return { x: Math.max(...taken.map((frame) => frame.position.x + frame.width)) + PLACEMENT_GAP, y: origin.y };
 }
 
+const covers = (a: Frame, b: Frame) => a.position.x < b.position.x + b.width && b.position.x < a.position.x + a.width
+  && a.position.y < b.position.y + b.height && b.position.y < a.position.y + a.height;
+
+/** The top left of `node` once it is `size`: where it is while it covers no frame in `taken` there, else the free spot
+ * nearest that. */
+export function grownSpot(node: Frame, size: Size, taken: readonly Frame[]): CanvasPoint {
+  const grown = { position: node.position, ...size };
+  if (!taken.some((frame) => covers(grown, frame))) return node.position;
+  return freeSpot({ x: node.position.x + size.width / 2, y: node.position.y + size.height / 2 }, size, taken);
+}
+
 /** The size a file's node grows to once it shows the file: a picture's own shape as `fitNodeSize` gives it, any other
  * file its type's size. */
 export async function uploadedNodeSize(file: File): Promise<Size> {

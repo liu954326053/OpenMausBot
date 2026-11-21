@@ -10,8 +10,10 @@ import type { TeamProjectProposal, TeamProjectProposalResult } from "../../../sh
 import { ApprovalCard } from "../ApprovalCard";
 import { approvalBlocksComposer, PendingApprovalActions, PendingApprovalPanel, pendingApprovals, spokenApprovalPrompt } from "../PendingApproval";
 
+const listed = vi.hoisted(() => ({ side: { shown: false, projects: [] as Array<{ id: string }> } }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 vi.mock("@/lib/cloud-guest", async (original) => ({ ...await original<typeof import("@/lib/cloud-guest")>(), useCloudGuest: () => false }));
+vi.mock("@/state/team-projects", async (original) => ({ ...await original<typeof import("@/state/team-projects")>(), useTeamProjectSide: () => listed.side }));
 
 const FOLDER = "/Users/ada/Dramas/The Swapped Bride";
 const TITLE = "Create the project “The Swapped Bride”?";
@@ -63,6 +65,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   setLocale("en");
   dispatch.mockReset();
+  listed.side = { shown: false, projects: [] };
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -150,7 +153,7 @@ describe("a project the main bot proposes", () => {
 });
 
 describe("once the person has answered", () => {
-  it("a project that was made says so and that its lead has the request, and opens on its lead's chat", async () => {
+  it("a project that was made says so and that its lead has the request, and opens on its canvas", async () => {
     const made = projectCard({ answered: "allow" }, CREATED);
     expect(pendingApprovals([made])).toEqual([]);
     await showCard(made);
@@ -159,46 +162,27 @@ describe("once the person has answered", () => {
     expect(openButton()?.textContent).toBe("Open project");
     expect(dimmed()).toBe(false);
     await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }]);
   });
 
-  it("opens the lead's thread the main bot handed the request into, where the lead answers it", async () => {
+  it("opens the canvas, not the lead's thread the main bot handed the request into", async () => {
     const handed = { threadId: "pia-drama", title: "The Swapped Bride", createdAt: 2, openedBy: { botId: "magicbot", name: "MagicBot", at: 2 } };
-    const later = { threadId: "pia-more", title: "One more thing", createdAt: 3, openedBy: { botId: "magicbot", name: "MagicBot", at: 3 }, unread: true };
-    const other = { threadId: "pia-side", title: "From a colleague", createdAt: 1, openedBy: { botId: "bot-wen", name: "Wen", at: 1 } };
-    await showCard(projectCard({ answered: "allow" }, CREATED), [{ ...pia, tasks: [...pia.tasks!, other, later, handed] }]);
+    await showCard(projectCard({ answered: "allow" }, CREATED), [{ ...pia, tasks: [...pia.tasks!, handed] }]);
     await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
-      { type: "select", id: "bot-pia" },
-      { type: "switchTask", botId: "bot-pia", threadId: "pia-drama" },
-      { type: "revealThread", threadId: "pia-drama" },
-    ]);
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }]);
   });
 
-  it("opens the lead's chat once that thread was archived", async () => {
-    const archived = { threadId: "pia-drama", title: "The Swapped Bride", createdAt: 2, archivedAt: 9, openedBy: { botId: "magicbot", name: "MagicBot", at: 2 } };
-    await showCard(projectCard({ answered: "allow" }, CREATED), [{ ...pia, tasks: [...pia.tasks!, archived] }]);
-    await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
-  });
-
-  it("opens the lead's thread that waits for the person, as the lead's row in the sidebar does", async () => {
-    const working: Bot = { ...pia, tasks: [...pia.tasks!, { threadId: "pia-drama", title: "The Swapped Bride", createdAt: 2, unread: true }] };
-    await showCard(projectCard({ answered: "allow" }, CREATED), [working]);
-    await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
-      { type: "select", id: "bot-pia" },
-      { type: "switchTask", botId: "bot-pia", threadId: "pia-drama" },
-    ]);
-  });
-
-  it("offers no way in once the lead is gone", async () => {
+  it("still opens a project whose lead is gone, and offers no way in once the project is gone", async () => {
+    listed.side = { shown: true, projects: [{ id: "project-1" }] };
     await showCard(projectCard({ answered: "allow" }, CREATED), []);
+    expect(openButton()?.getAttribute("data-team-project-open")).toBe("project-1");
+    listed.side = { shown: true, projects: [] };
+    await showCard(projectCard({ answered: "allow" }, CREATED));
     expect(host.textContent).toContain("Project created");
     expect(openButton()).toBeNull();
   });
 
-  it("a project whose request did not reach its lead says why, and opens on the lead's chat to tell it there", async () => {
+  it("a project whose request did not reach its lead says why, and opens on its canvas to tell the lead there", async () => {
     const why = "The request did not reach Pia. Every bot is paused, so Pia takes no new work. Resume every bot from any bot’s menu in the sidebar. Then open the project and tell Pia what you want.";
     await showCard(projectCard({ answered: "allow", held: why }, CREATED));
     expect(host.textContent).toContain("Project created");
@@ -206,7 +190,7 @@ describe("once the person has answered", () => {
     expect(host.textContent).toContain(why);
     expect(dimmed()).toBe(false);
     await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }]);
   });
 
   it("shows a card that names a team template instead of a team, the template's lead first", async () => {

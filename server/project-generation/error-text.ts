@@ -13,6 +13,7 @@ export const PROJECT_GENERATION_ERRORS = {
   "serverError.projectGeneration.keyKept": "The key {server} uses is kept from this bot in the Vault. Let the bot use it in Settings → Vault.",
   "serverError.projectGeneration.keyUnread": "The key {server} uses couldn't be read from the linked password manager. Unlock it, then try again.",
   "serverError.projectGeneration.unreachable": "The MCP server {server} couldn't be reached ({detail}). Check it in Apps → MCP servers, then try again.",
+  "serverError.projectGeneration.unreachableNetwork": "The MCP server {server} couldn't be reached (couldn't reach the generation service). Check it in Apps → MCP servers, then try again.",
   "serverError.projectGeneration.toolMissing": "The MCP server {server} has no tool called {tool}. Check the tool names in this project's settings.",
   "serverError.projectGeneration.noImageModel": "Choose a model for pictures in this project's settings first.",
   "serverError.projectGeneration.noVideoModel": "Choose a model for videos in this project's settings first.",

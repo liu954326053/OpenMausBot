@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CANVAS_NODE_SIZE } from "../../../shared/project-canvas";
-import { freeSpot, PLACEMENT_GAP, uploadedNodeSize } from "./placement";
+import { freeSpot, grownSpot, PLACEMENT_GAP, uploadedNodeSize } from "./placement";
 
 type Frame = { position: { x: number; y: number }; width: number; height: number };
 
@@ -51,6 +51,29 @@ describe("where a node placed for the person goes", () => {
   it("goes to the right of everything when nothing near is free", () => {
     const wall = at(-50_000, -50_000, { width: 100_000, height: 100_000 });
     expect(freeSpot({ x: 0, y: 0 }, TEXT, [wall])).toEqual({ x: 50_000 + PLACEMENT_GAP, y: -TEXT.height / 2 });
+  });
+});
+
+describe("where a node goes when it grows", () => {
+  const IMAGE = CANVAS_NODE_SIZE.image;
+  const TALL = { width: 220, height: 391 };
+  const covering = (a: Frame, b: Frame) => a.position.x < b.position.x + b.width && b.position.x < a.position.x + a.width
+    && a.position.y < b.position.y + b.height && b.position.y < a.position.y + a.height;
+
+  it("stays where it is while its new frame covers nothing, near nodes or not", () => {
+    const below = at(0, IMAGE.height + 10);
+    expect(grownSpot(at(0, 0, IMAGE), { width: 640, height: IMAGE.height }, [below, at(700, 0)])).toEqual({ x: 0, y: 0 });
+  });
+
+  it("moves to the nearest spot a gap from everything when it would cover the node below it", () => {
+    const image = at(0, 0, IMAGE);
+    const below = at(0, IMAGE.height + PLACEMENT_GAP);
+    const beside = at(IMAGE.width + PLACEMENT_GAP, 0);
+    const taken = [below, beside];
+    const grown = { position: grownSpot(image, TALL, taken), ...TALL };
+    expect(covering({ position: image.position, ...TALL }, below)).toBe(true);
+    expect(taken.filter((frame) => !clearOf(frame, grown))).toEqual([]);
+    expect(Math.hypot(grown.position.x, grown.position.y)).toBeLessThan(TALL.height - IMAGE.height + PLACEMENT_GAP * 2);
   });
 });
 

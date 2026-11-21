@@ -9,7 +9,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-import type { InboxItem, InboxRow, InboxView } from "../../shared/inbox.ts";
+import { CHOOSE_CHIEF_TITLE, type InboxItem, type InboxRow, type InboxView } from "../../shared/inbox.ts";
 import type { Notification } from "../../shared/notification.ts";
 import { overtakenQuestions, personWait, type PersonWait } from "../../shared/person-wait.ts";
 import type { OptionCardData } from "../../shared/wire.ts";
@@ -65,7 +65,7 @@ export function placeInboxViewer(auth: RequestAuth, cloud: { personal: boolean; 
 
 export interface PlaceInboxDeps {
   dataDir: string;
-  store: Pick<Store, "bot" | "bots" | "botByThread" | "taskByThread" | "groupByThread" | "appendMessage" | "patchTask" | "patchGroup" | "messagesFor" | "activePath" | "onChange">;
+  store: Pick<Store, "bot" | "bots" | "botByThread" | "taskByThread" | "groupByThread" | "appendMessage" | "patchTask" | "patchGroup" | "messagesFor" | "activePath" | "onChange" | "createTask">;
   /** Departments an upgrade just left without a Chief of Staff: each gets one line from the main bot asking for one. */
   needsChief?: readonly string[];
   openCards(): OpenCardRow[];
@@ -279,12 +279,18 @@ export function createPlaceInbox(deps: PlaceInboxDeps) {
     if (lines.length !== before) save();
   });
 
-  const mainBot = store.bots.find((bot) => isMainBot(bot) && !bot.hidden && !bot.defaultBot?.person);
-  for (const department of deps.needsChief ?? []) {
-    if (!mainBot || lines.some((line) => line.needsChief === department && lineTab(line) !== "done")) continue;
-    addLine({ id: crypto.randomUUID(), botId: mainBot.id, threadId: mainBot.threadId, kind: "notice", from: mainBot.name.slice(0, 200), needsChief: department,
-      text: clip(serverLine(conversationLanguage(mainBot.threadId), "server.inbox.needsChief", { bot: mainBot.name, department }), NOTICE_TEXT_MAX), at: now() });
+  function askForChiefs(departments: readonly string[]): void {
+    const mainBot = store.bots.find((bot) => isMainBot(bot) && !bot.hidden && !bot.defaultBot?.person);
+    const chiefless = departments.filter((department) => !lines.some((line) => line.needsChief === department && lineTab(line) !== "done"));
+    const thread = mainBot && chiefless.length ? store.createTask(mainBot.id, CHOOSE_CHIEF_TITLE, false) : null;
+    if (!mainBot || !thread) return;
+    for (const department of chiefless) {
+      const text = clip(serverLine(conversationLanguage(mainBot.threadId), "server.inbox.needsChief", { bot: mainBot.name, department }), NOTICE_TEXT_MAX);
+      const posted = store.appendMessage(thread.threadId, { role: "bot", kind: "text", text });
+      addLine({ id: posted.id, botId: mainBot.id, threadId: thread.threadId, kind: "notice", from: mainBot.name.slice(0, 200), needsChief: department, text, at: now() });
+    }
   }
+  askForChiefs(deps.needsChief ?? []);
 
   return {
     view,

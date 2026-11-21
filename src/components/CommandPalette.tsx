@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { MessageSquare, Search, Users } from "lucide-react";
 import { BotAvatar } from "./Avatar";
 import { api, openBot, useStore, type Bot, type Group } from "@/state/store";
+import { useTeamProjectSide } from "@/state/team-projects";
+import type { TeamProjectSide } from "@/lib/team-projects";
 import { rankByName } from "@/lib/palette-rank";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { cn } from "@/lib/cn";
@@ -22,8 +24,12 @@ export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
 
+const homeOf = (bot: Bot, projects: TeamProjectSide): string | null =>
+  bot.defaultBot ? null : projects.of(bot)?.name ?? (bot.section?.trim() || t("teamSettings.general"));
+
 export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean) => void }) {
   const { state, dispatch } = useStore();
+  const projects = useTeamProjectSide();
   const showThreads = useShowThreads();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -188,8 +194,9 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
               {t("palette.bots")}
             </div>
           )}
-          {bots.map((bot, i) =>
-            row(
+          {bots.map((bot, i) => {
+            const home = homeOf(bot, projects);
+            return row(
               `bot:${bot.id}`,
               i,
               () => void activate({ kind: "bot", bot }),
@@ -199,9 +206,14 @@ export function CommandPalette({ onOpenChange }: { onOpenChange?: (open: boolean
                 {bot.title && (
                   <span className="min-w-0 truncate text-[13px] text-ink-secondary">{bot.title}</span>
                 )}
+                {home && (
+                  <span data-palette-home="" title={home} className="ms-auto max-w-[40%] shrink-0 truncate text-[12px] text-ink-tertiary">
+                    {home}
+                  </span>
+                )}
               </>,
-            ),
-          )}
+            );
+          })}
           {rooms.length > 0 && (
             <div className="px-3 pb-1 pt-2 text-[12px] font-medium text-ink-tertiary">
               {t("palette.groups")}

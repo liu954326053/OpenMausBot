@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { CHOOSE_CHIEF_TITLE } from "../../../shared/inbox";
 import { loadLocale, setLocale, t } from "@/lib/i18n";
 import { approvalRow, inboxView, messageRow, questionRow, reportRow, settledRow } from "@/testing/inbox-fixture";
 import { matchesSearch } from "./inbox-answer";
@@ -55,6 +56,19 @@ describe("a row's actions", () => {
       expect(placeOf({ ...questionRow, origin })).toBe(t("inbox.in", { title: "未命名对话" }));
       expect(matchesSearch({ ...messageRow, origin }, "未命名")).toBe(true);
       expect(matchesSearch({ ...messageRow, origin }, "new thread")).toBe(true);
+    } finally {
+      setLocale("en");
+    }
+  });
+
+  it("names the conversation the main bot asks for a Chief of Staff in, in the person's language", async () => {
+    const chiefless = { ...reportRow, kind: "notice" as const, tab: "needs-you" as const, needsChief: { department: "猫漫剧" },
+      origin: { botId: "maus", threadId: "maus-chief", title: CHOOSE_CHIEF_TITLE } };
+    expect(placeOf(chiefless)).toBe("in Choose a Chief of Staff");
+    await loadLocale("zh");
+    try {
+      expect(placeOf(chiefless)).toBe("在 选择参谋长");
+      expect(matchesSearch(chiefless, "选择参谋长")).toBe(true);
     } finally {
       setLocale("en");
     }
