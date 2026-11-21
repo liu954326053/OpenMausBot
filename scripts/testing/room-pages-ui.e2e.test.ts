@@ -14,7 +14,7 @@ import { ROOM_VIEW_ONLY } from "../../shared/app.ts";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { agentBrowser, sessionEnv, UI_TOOLS_DIR, type UiHandle } from "./control-omb-ui.ts";
+import { agentBrowser, OPEN_TEAM_MAP, sessionEnv, UI_TOOLS_DIR, type UiHandle } from "./control-omb-ui.ts";
 import { fixtureApi } from "./preview-fixture.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
@@ -116,10 +116,11 @@ async function until<T>(probe: () => Promise<T> | T, what: string, timeoutMs = 3
       rmSync(gate, { force: true });
     };
 
-    const row = `[data-sidebar-group-row="${room.id}"]`;
-    await until(() => evaluate(`Boolean(document.querySelector('${row}'))`), "the room's sidebar row");
-    await evaluate(`document.querySelector('${row}').click(); true`);
-    await until(() => evaluate(`Boolean(document.querySelector('${row}[aria-current="page"]'))`), "the room to open");
+    // A room outside projects opens from the team map's group chats.
+    const row = `[data-team-map-room="${room.id}"]`;
+    await until(() => evaluate(OPEN_TEAM_MAP), "the team map");
+    await until(() => evaluate(`(() => { const open = document.querySelector('${row}'); open?.click(); return Boolean(open); })()`), "the room on the team map");
+    await until(() => evaluate(`Boolean(document.querySelector('textarea[aria-label="Message Launch room"]'))`), "the room to open");
 
     // Pepper answers the room and shows a page there through the same internal route show_html uses.
     await ui("type", "--name", "Message Launch room", "--text", "Pepper, show us the coffee counter");

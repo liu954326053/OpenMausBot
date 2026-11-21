@@ -10,7 +10,7 @@ import { useOwnerOrAdmin } from "@/lib/use-owner-or-admin";
 import type { Message } from "@/state/store";
 import { useStoreDispatch, useStoreSelector } from "@/state/store-select";
 import { settingFix } from "../../shared/setting-fixes";
-import { ModelPicker } from "./ModelPicker";
+import { ConversationModelPicker } from "./team-projects/ConversationModelPicker";
 
 export type FailedTurnAction = { label: string; onClick: () => void };
 
@@ -30,7 +30,7 @@ export function useFailedTurnFix(tool: NonNullable<Message["tool"]>, botId: stri
     return { action: { label: t("chat.error.openSpending"), onClick: () => dispatch({ type: "toggleAppSettings", open: true, section: "usage" }) } };
   }
   if (fix === "model" && bot && threadId && !phone) {
-    return { control: <div data-failed-turn-fix="model" className="mt-1.5"><ModelPicker bot={bot} threadId={threadId} contained size="sm" label={<span className="text-[13px] text-ink-secondary">{t("chat.error.switchModel")}</span>} /></div> };
+    return { control: <div data-failed-turn-fix="model" className="mt-1.5"><ConversationModelPicker bot={bot} threadId={threadId} contained size="sm" label={<span className="text-[13px] text-ink-secondary">{t("chat.error.switchModel")}</span>} /></div> };
   }
   return {};
 }

@@ -15,7 +15,7 @@ const enabled = process.env.OMB_UI_E2E === "1" || Boolean(binary);
 if (!enabled) console.info("skipping team canvas UI e2e: set OMB_UI_E2E=1 to install the pinned browser");
 
 type BotRecord = {
-  id: string; name: string; title?: string; section?: string; threadId: string;
+  id: string; name: string; title?: string; section?: string; threadId: string; defaultBot?: object;
   modelSelection: { instanceId: string; model: string; effort?: string };
   tasks: Array<{ threadId: string; title: string; modelSelection?: unknown }>;
 };
@@ -145,10 +145,11 @@ type BotRecord = {
     expect(await control("wait", "--bot", ben.id, "--timeout", "30")).toMatchObject({ status: "settled" });
     const transcript = await messages(ben.id);
     const beforeBots = await bots();
+    const mainBot = beforeBots.find(bot => bot.defaultBot)!;
     receipts.beforeBots = beforeBots.map(identity);
     receipts.transcript = transcript;
     await evaluate("location.reload(); true");
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Actions for Ada");
+    await expect.poll(snapshot, { timeout: 15_000 }).toContain(`Actions for ${mainBot.name}`);
     await openMap();
     await expect.poll(() => evaluate("[...document.querySelectorAll('[data-team-key]')].map(team => team.dataset.teamKey)"))
       .toEqual(expect.arrayContaining(["Engineering", "Research", "Delivery"]));
@@ -276,6 +277,19 @@ type BotRecord = {
     expect(await messages(ben.id)).toEqual(transcript);
     await click("Fit departments to view");
 
+    receipts.mainBotDrop = await drag(`[data-bot-id=${JSON.stringify(mainBot.id)}]`, { x: 0, y: 0 }, teamSelector("Delivery"));
+    await expect.poll(() => evaluate("document.querySelector('[data-canvas-status]')?.textContent"))
+      .toBe(`${mainBot.name} belongs to no department, so it can't be moved into one.`);
+    receipts.mainBotRefusal = await evaluate(`(() => {
+      const box = (selector) => { const { left, top, right, bottom } = document.querySelector(selector).getBoundingClientRect(); return { left, top, right, bottom }; };
+      return { status: box('[data-canvas-status]'), messageBox: box('[data-map-composer]'), map: box('[data-team-canvas]') };
+    })()`);
+    const { status, messageBox, map } = receipts.mainBotRefusal as Record<"status" | "messageBox" | "map", { left: number; top: number; right: number; bottom: number }>;
+    expect(status.left < messageBox.right && messageBox.left < status.right && status.top < messageBox.bottom && messageBox.top < status.bottom).toBe(false);
+    expect(status.top).toBeGreaterThanOrEqual(map.top);
+    expect(await snapshot()).not.toContain('alertdialog "Move');
+    expect((await savedBot(mainBot.id)).section ?? "").toBe("");
+
     // Same-team ordering is personal presentation, not a membership write.
     // Verify both pointer placement and the keyboard alternative, then retain
     // a non-default order through the later full page reload.
@@ -337,7 +351,7 @@ type BotRecord = {
     expect(Object.keys(layout).filter(key => key.endsWith(":bot-order"))).toHaveLength(1);
     receipts.layout = layout;
     await evaluate("location.reload(); true");
-    await expect.poll(snapshot, { timeout: 15_000 }).toContain("Actions for Ada");
+    await expect.poll(snapshot, { timeout: 15_000 }).toContain(`Actions for ${mainBot.name}`);
     await openMap();
     await expect.poll(() => teamPosition("Delivery"), { timeout: 10_000 }).toEqual(arranged);
     await expect.poll(() => cardOrder("Delivery"), { timeout: 10_000 }).toEqual(reordered);

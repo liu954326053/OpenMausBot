@@ -1,4 +1,5 @@
 import { notificationTrayPinned } from "@/lib/notification-preferences";
+import { viewersDefaultBot, type DefaultBotFields } from "../../shared/default-bot";
 import type { Action, AppState } from "./store";
 import { openOwnTeamChat, teamChats } from "./team-chats";
 import { teamThreadToOpen } from "./team-side";
@@ -28,6 +29,14 @@ export function visibleNotificationThread(
     state.groups.find((candidate) => candidate.id === state.selectedId)?.threadId ??
     null
   );
+}
+
+/** Where the app goes when nothing is open or what was open went away: the viewer's MagicBot while the sidebar lists it,
+ * else the first bot that isn't archived. `viewer` is the signed-in email; without it, the place's own MagicBot. */
+export function landingBot<T extends DefaultBotFields & { id: string; hidden?: boolean }>(bots: readonly T[], viewer?: string | null): T | undefined {
+  const active = bots.filter((bot) => !bot.hidden);
+  const main = viewersDefaultBot(active, viewer);
+  return (main && !main.sidebarHidden ? main : undefined) ?? active[0] ?? bots[0];
 }
 
 export function botOpensTo(bot: Pick<NotificationThreadOwner, "threadId" | "mainThreadId" | "tasks">, threadsShown: boolean): string {

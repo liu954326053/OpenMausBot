@@ -9,7 +9,7 @@ import { waitForExit } from "../../server/testing/cleanup.ts";
 import { canonicalJson, parsePackageDocument } from "../../shared/package-format.ts";
 import { runControlOmb } from "../control-omb.ts";
 import { request } from "../mcp-server.ts";
-import { UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { OPEN_TEAM_MAP, OPEN_TEMPLATES, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const FIXTURES = join(ROOT, "shared", "package-fixtures");
@@ -71,9 +71,9 @@ describe("the organization library in the real renderer", () => {
     const snapshot = async () => (await ui("snapshot")).snapshot as string;
     const api = (path: string, method = "GET", body?: unknown) => request(path, { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, info.url);
     const evidence = (name: string) => ui("screenshot", "--out", join(ROOT, ".omb-scratch", "verify-evidence", name));
+    const openTemplates = () => expect.poll(async () => (await ui("eval", "--js", OPEN_TEMPLATES)).result, { timeout: 20_000 }).toBe(true);
 
-    await click("New or share");
-    await click("Templates");
+    await openTemplates();
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Community templates");
     expect(await snapshot()).not.toContain("From Customer Co");
     await press("Escape");
@@ -92,8 +92,7 @@ describe("the organization library in the real renderer", () => {
     });
     expect(relayed.status).toBe(200);
 
-    await click("New or share");
-    await click("Templates");
+    await openTemplates();
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Packages Customer Co shares with you");
     let shelf = await snapshot();
     for (const line of ["From Customer Co", "Sales desk", "Recommended by Acme Partners", "Sales skills", "From Acme Partners"]) expect(shelf).toContain(line);
@@ -106,7 +105,9 @@ describe("the organization library in the real renderer", () => {
     await click("Back to templates");
 
     await click("Add Sales desk");
-    await expect.poll(snapshot, { timeout: 20_000 }).toContain('button "Sales desk"');
+    await expect.poll(snapshot, { timeout: 20_000 }).toContain('textbox "Message Morgan"');
+    await expect.poll(async () => (await ui("eval", "--js", OPEN_TEAM_MAP)).result, { timeout: 20_000 }).toBe(true);
+    await expect.poll(snapshot, { timeout: 20_000 }).toContain('button "Arrange Sales desk department"');
     const bots = (await api("/api/bots")).bots.filter((bot: { section?: string }) => bot.section === "Sales desk");
     expect(bots).toHaveLength(3);
     for (const bot of bots) {
@@ -115,8 +116,7 @@ describe("the organization library in the real renderer", () => {
     }
     expect((await api("/api/routines")).routines.every((routine: { enabled: boolean }) => !routine.enabled)).toBe(true);
 
-    await click("New or share");
-    await click("Templates");
+    await openTemplates();
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Packages Customer Co shares with you");
     shelf = await snapshot();
     expect(shelf).toContain("Added");
@@ -125,6 +125,7 @@ describe("the organization library in the real renderer", () => {
     await expect.poll(snapshot, { timeout: 10_000 }).toContain("Sales skills is added. Its skills are offered under each bot's Skills.");
     await evidence("org-library-added.png");
     await press("Escape");
+    await click(`Open chat with ${bots[0].name}`);
 
     const state = await ui("snapshot", "--interactive");
     const profile = Object.entries(state.refs as Record<string, { role: string; name: string }>)

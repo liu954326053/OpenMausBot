@@ -8,7 +8,6 @@ import { t } from "@/lib/i18n";
 import { api, useStore } from "@/state/store";
 import { MENU_ITEM } from "./menu-recipe";
 
-/** A department's menu, from its line's ⋯ or a right-click on its name. */
 /** Reads every conversation of the department's bots and its group chats; shown only while something there is unread. */
 function MarkDepartmentRead({ name, className, onDone }: { name: string; className: string; onDone: () => void }) {
   const { state, dispatch } = useStore();
@@ -53,26 +52,29 @@ function PauseDepartment({ name, className, onDone }: { name: string; className:
   </button>;
 }
 
-export function TeamMenuItems({ onAddBots, onRename, onShare, onDelete, onSetForAll, department, onRead }: {
+/** A department's menu. A menu that has its own Add bots, Rename and Delete leaves those handlers out. */
+export function TeamMenuItems({ onAddBots, onRename, onShare, onDelete, onSetForAll, department, onRead, itemClass }: {
   /** The department this menu is for: with it, the menu offers Mark all as read. */
   department?: string;
   onRead?: () => void;
-  onAddBots: () => void;
-  onRename: () => void;
+  onAddBots?: () => void;
+  onRename?: () => void;
   onShare: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onSetForAll?: () => void;
+  /** The look of the menu the items are put in. */
+  itemClass?: string;
 }) {
-  const item = cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary");
+  const item = itemClass ?? cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary");
   return (
     <>
-      <button type="button" role="menuitem" autoFocus className={item} onClick={onAddBots}><Users size={16} />{t("team.addBots")}</button>
+      {onAddBots && <button type="button" role="menuitem" autoFocus className={item} onClick={onAddBots}><Users size={16} />{t("team.addBots")}</button>}
       {department !== undefined && <MarkDepartmentRead name={department} className={cn(item, "disabled:opacity-60")} onDone={onRead ?? (() => {})} />}
       {department !== undefined && <PauseDepartment name={department} className={cn(item, "disabled:opacity-60")} onDone={onRead ?? (() => {})} />}
       {onSetForAll && <button type="button" role="menuitem" className={item} onClick={onSetForAll}><SlidersHorizontal size={16} />{t("teamSettings.menu")}</button>}
-      <button type="button" role="menuitem" className={item} onClick={onRename}><SquarePen size={16} />{t("team.rename")}</button>
+      {onRename && <button type="button" role="menuitem" className={item} onClick={onRename}><SquarePen size={16} />{t("team.rename")}</button>}
       <button type="button" role="menuitem" className={item} onClick={onShare}><Share2 size={16} />{t("team.shareDepartment")}</button>
-      <button type="button" role="menuitem" className={cn(item, "text-danger [&>svg]:text-danger")} onClick={onDelete}><Trash2 size={16} />{t("team.delete")}</button>
+      {onDelete && <button type="button" role="menuitem" className={cn(item, "text-danger [&>svg]:text-danger")} onClick={onDelete}><Trash2 size={16} />{t("team.delete")}</button>}
     </>
   );
 }
