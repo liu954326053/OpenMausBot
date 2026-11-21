@@ -1,6 +1,6 @@
 // A shareable template of a bot or a department: its card (in the chat and in the department's Share), what it brings
 // (the Details sheet, also Import's preview), and the card's actions.
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, Check, ChevronDown, Copy, FolderDown, Github, Library, Loader2, MoreHorizontal, RefreshCw, Trash2, Upload } from "lucide-react";
 
@@ -296,14 +296,24 @@ export function TemplateDetailsBody({ details }: { details: TemplateDetails }) {
   );
 }
 
-/** A modal frame: title, a scrolling body and a footer. Escape and a click outside close it. */
+/** A modal frame: title, a scrolling body and a footer. Escape and a click outside close it. Its scrim is a native modal
+ * `<dialog>`, so the browser keeps the page behind it inert and out of the accessibility tree, and closing it before
+ * unmount lets the browser give focus back to the opener. */
 export function TemplateModal({ title, onClose, children, footer, labelledBy }: {
   title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; labelledBy: string;
 }) {
+  const scrimRef = useRef<HTMLDialogElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useModalDialog(dialogRef, onClose);
+  useLayoutEffect(() => {
+    const scrim = scrimRef.current!;
+    scrim.showModal();
+    return () => scrim.close();
+  }, []);
   return createPortal(
-    <div className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <dialog ref={scrimRef} className="ui-scrim fixed inset-0 m-0 size-full max-h-none max-w-none items-center justify-center border-0 p-4 open:flex backdrop:bg-transparent"
+      onCancel={(event) => { event.preventDefault(); if (event.target === event.currentTarget) onClose(); }}
+      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy} tabIndex={-1}
         className="ui-modal flex max-h-full w-full max-w-[480px] flex-col text-ink shadow-2xl outline-none animate-pop-in motion-reduce:animate-none">
         <header className="px-5 pb-2 pt-4">
@@ -312,7 +322,7 @@ export function TemplateModal({ title, onClose, children, footer, labelledBy }: 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">{children}</div>
         {footer && <footer className="flex flex-wrap items-center justify-end gap-2 px-5 pb-4">{footer}</footer>}
       </div>
-    </div>,
+    </dialog>,
     document.body,
   );
 }

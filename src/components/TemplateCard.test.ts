@@ -17,7 +17,7 @@ vi.mock("@/state/store", async () => {
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => place.admin }));
 const openExternalLink = vi.fn(async (_url: string) => {});
 vi.mock("@/lib/app-links", () => ({ openExternalLink: (url: string) => openExternalLink(url) }));
-const { TemplateChatCard, TemplateDetailsBody } = await import("./TemplateCard");
+const { TemplateChatCard, TemplateDetailsBody, TemplateModal } = await import("./TemplateCard");
 
 const draft: TemplateCard = {
   id: "tpl1", scope: "bot", name: "Quill", tagline: "Writes outreach that sounds like you.",
@@ -194,5 +194,59 @@ describe("a template's details", () => {
     expect(words).not.toContain("Routines (paused)");
     expect(words).not.toContain("Apps to connect");
     expect(words).toContain("Routines arrive paused");
+  });
+});
+
+describe("a template dialog", () => {
+  it("is modal while open, so the page behind it is out of reach, and gives the page and focus back when it closes", async () => {
+    const opener = document.body.appendChild(document.createElement("button"));
+    opener.focus();
+    const showModal = vi.spyOn(HTMLDialogElement.prototype, "showModal");
+    const close = HTMLDialogElement.prototype.close;
+    const closedInPage: boolean[] = [];
+    const closing = vi.spyOn(HTMLDialogElement.prototype, "close").mockImplementation(function (this: HTMLDialogElement, returnValue?: string) {
+      closedInPage.push(this.isConnected);
+      close.call(this, returnValue);
+    });
+    const onClose = vi.fn();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    try {
+      flushSync(() => root.render(createElement(TemplateModal, { title: "Sales crew", labelledBy: "sales-crew", onClose, footer: createElement("button", { type: "button" }, "Add"), children: "Two bots" })));
+      const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+      const layer = dialog.closest("dialog")!;
+      expect(dialog.getAttribute("aria-modal")).toBe("true");
+      expect(showModal.mock.contexts).toEqual([layer]);
+      expect(layer.open).toBe(true);
+      expect(layer.contains(opener)).toBe(false);
+      await vi.waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+      layer.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      const cancel = new Event("cancel", { cancelable: true });
+      layer.dispatchEvent(cancel);
+      expect(cancel.defaultPrevented).toBe(true);
+      expect(onClose).toHaveBeenCalledTimes(2);
+
+      root.unmount();
+      expect(closedInPage).toEqual([true]);
+      expect(document.querySelector("dialog")).toBeNull();
+      await vi.waitFor(() => expect(document.activeElement).toBe(opener));
+    } finally {
+      showModal.mockRestore();
+      closing.mockRestore();
+    }
+  });
+
+  it("stays open when a dialog opened inside it is cancelled", () => {
+    const closeShare = vi.fn();
+    const closePublish = vi.fn();
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    flushSync(() => root.render(createElement(TemplateModal, { title: "Share Sales crew", labelledBy: "share", onClose: closeShare,
+      children: createElement(TemplateModal, { title: "Publish to GitHub", labelledBy: "publish", onClose: closePublish, children: "Repository" }) })));
+
+    document.getElementById("publish")!.closest("dialog")!.dispatchEvent(new Event("cancel", { cancelable: true }));
+
+    expect(closePublish).toHaveBeenCalledTimes(1);
+    expect(closeShare).not.toHaveBeenCalled();
+    root.unmount();
   });
 });
