@@ -105,6 +105,23 @@ describe("a generation job", () => {
     expect(h.api.cancel("film", "gen-none")).toBeNull();
   });
 
+  it("cancelled while it is being handed over, cancels the task the server then names and keeps nothing it makes", async () => {
+    const { h, folder } = await withProject();
+    const person = { requester: { kind: "person" } as const };
+    const video = started(await h.api.start("film", { kind: "video", nodeId: "v", prompt: "late [slow]" }, person));
+    const picture = started(await h.api.start("film", { kind: "image", nodeId: "p", prompt: "late [slow]" }, person));
+    await h.until(() => h.fake.calls.filter((entry) => entry.tool.startsWith("generate_")).length === 2);
+    expect(h.api.cancel("film", video.id)?.status).toBe("cancelled");
+    expect(h.api.cancel("film", picture.id)?.status).toBe("cancelled");
+    await h.until(() => h.fake.calls.some((entry) => entry.tool === "cancel_task"));
+    const [task] = [...h.fake.tasks.values()];
+    expect(h.fake.calls.find((entry) => entry.tool === "cancel_task")!.arguments).toEqual({ taskId: task!.id });
+    expect(task!.cancelled).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(h.api.job("film", picture.id)).toMatchObject({ status: "cancelled", files: [] });
+    expect(existsSync(join(folder, "产出"))).toBe(false);
+  });
+
   it("is followed again from its task id after a restart, and finishes", async () => {
     const { h, folder } = await withProject();
     const job = started(await h.api.start("film", { kind: "video", nodeId: "n", prompt: "held [hold]" }, { requester: { kind: "person" } }));

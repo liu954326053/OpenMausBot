@@ -6,6 +6,7 @@
 //   [hold]             the task stays running until POST /control/release
 //   [fail:<reason>]    the task fails on the server with that reason
 //   [refuse:<reason>]  the generate call answers isError with that reason
+//   [slow]             the generate call answers only after half the task's time
 //   [task]             an image generation answers a task id instead of its files
 //   [inline]           results come as base64 data instead of a URL
 //   [image-block]      an image generation answers MCP image content blocks only
@@ -207,6 +208,7 @@ export async function startFakeGenerationMcp(options: FakeGenerationMcpOptions =
     for (const [key, value] of kind === "image" ? [["aspects", args.aspect], ["qualities", args.quality]] as const : [["resolutions", args.resolution], ["aspects", args.aspect], ["durations", args.seconds]] as const) {
       if (!offered(model, key, value)) return refuse(`${model.id} does not offer ${String(value)}`);
     }
+    if (marker(prompt, "slow") !== undefined) await new Promise((resolve) => setTimeout(resolve, taskMs / 2));
     const aspect = typeof args.aspect === "string" ? args.aspect : "1:1";
     const count = kind === "image" ? Math.max(1, Number(args.count) || 1) : 1;
     const results = Array.from({ length: count }, () => makeFile(kind, aspect));

@@ -125,6 +125,7 @@ export class GenerationJobs {
     this.list(input.projectId).unshift(stored);
     if (onChange) this.callbacks.set(job.id, onChange);
     this.save(input.projectId);
+    this.logStatus(job);
     this.emit(stored);
     this.pump();
     return structuredClone(job);
@@ -151,8 +152,8 @@ export class GenerationJobs {
     if (!stored) return null;
     if (ended(stored.job)) return structuredClone(stored.job);
     this.finish(stored, "cancelled");
-    this.running.get(jobId)?.control.abort();
-    if (stored.job.taskId) void this.cancelAtServer(stored);
+    if (stored.phase !== "submitting") this.running.get(jobId)?.control.abort();
+    if (stored.job.taskId) void this.cancelAtServer(stored, stored.job.taskId);
     return structuredClone(stored.job);
   }
 
@@ -194,14 +195,15 @@ export class GenerationJobs {
     }
   }
 
+  private logStatus(job: GenerationJob): void {
+    this.deps.log(`project generation: job ${job.id} of ${job.projectId} (${job.kind}, ${job.server}/${job.tool}) is ${job.status}${job.failure ? ` (${job.failure.code})` : ""}`);
+  }
+
   private changed(stored: StoredJob, patch: Partial<GenerationJob>): void {
     const before = stored.job.status;
     Object.assign(stored.job, patch, { updatedAt: this.now() });
     this.save(stored.job.projectId);
-    if (stored.job.status !== before) {
-      const { job } = stored;
-      this.deps.log(`project generation: job ${job.id} of ${job.projectId} (${job.kind}, ${job.server}/${job.tool}) is ${job.status}${job.failure ? ` (${job.failure.code})` : ""}`);
-    }
+    if (stored.job.status !== before) this.logStatus(stored.job);
     this.emit(stored);
   }
 
@@ -244,7 +246,10 @@ export class GenerationJobs {
         this.changed(stored, { status: "running", submittedAt: this.now() });
         const references = readReferences(this.deps.folderOf(job.projectId), job.references);
         const submitted = await this.within(control, LONGEST_CALL_MS, job.server, (signal) => server.generate(job.kind, job.settings, { prompt: job.prompt, references }, signal));
-        if (ended(job)) return;
+        if (ended(job)) {
+          if ("taskId" in submitted) void this.cancelAtServer(stored, submitted.taskId);
+          return;
+        }
         if ("files" in submitted) return await this.collect(stored, submitted.files);
         stored.phase = "submitted";
         this.changed(stored, { taskId: submitted.taskId });
@@ -253,7 +258,7 @@ export class GenerationJobs {
     } catch (error) {
       if (this.closed || ended(job)) return;
       if (!(error instanceof GenerationRefused)) this.deps.log(`project generation: job ${job.id} stopped: ${error instanceof Error ? error.name : "error"}`);
-      if (error instanceof GenerationRefused && error.failure.code === "timed_out" && job.taskId) void this.cancelAtServer(stored);
+      if (error instanceof GenerationRefused && error.failure.code === "timed_out" && job.taskId) void this.cancelAtServer(stored, job.taskId);
       this.finish(stored, "failed", {
         failure: error instanceof GenerationRefused ? error.failure : failure("unreachable", "unreachable", { server: job.server, detail: "MagicBot lost track of it" }),
       });
@@ -311,10 +316,10 @@ export class GenerationJobs {
     this.finish(stored, "done", { files: saved, progress: 1 });
   }
 
-  private async cancelAtServer(stored: StoredJob): Promise<void> {
+  private async cancelAtServer(stored: StoredJob, taskId: string): Promise<void> {
     const { job } = stored;
     try {
-      await conventionServer(this.deps.mcp, job.server, stored.tools, callerOf(job.requester)).cancel(job.taskId!, AbortSignal.timeout(CANCEL_CALL_MS));
+      await conventionServer(this.deps.mcp, job.server, stored.tools, callerOf(job.requester)).cancel(taskId, AbortSignal.timeout(CANCEL_CALL_MS));
     } catch {
       this.deps.log(`project generation: job ${job.id}'s task could not be cancelled on ${job.server}`);
     }
