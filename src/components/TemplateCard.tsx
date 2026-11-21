@@ -311,10 +311,10 @@ export function TemplateModal({ title, onClose, children, footer, labelledBy }: 
     return () => scrim.close();
   }, []);
   return createPortal(
-    <dialog ref={scrimRef} className="ui-scrim fixed inset-0 m-0 size-full max-h-none max-w-none items-center justify-center border-0 p-4 open:flex backdrop:bg-transparent"
+    <dialog ref={scrimRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy} className="ui-scrim fixed inset-0 m-0 size-full max-h-none max-w-none items-center justify-center border-0 p-4 open:flex backdrop:bg-transparent"
       onCancel={(event) => { event.preventDefault(); if (event.target === event.currentTarget) onClose(); }}
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelledBy} tabIndex={-1}
+      <div ref={dialogRef} tabIndex={-1}
         className="ui-modal flex max-h-full w-full max-w-[480px] flex-col text-ink shadow-2xl outline-none animate-pop-in motion-reduce:animate-none">
         <header className="px-5 pb-2 pt-4">
           <h2 id={labelledBy} className="min-w-0 truncate text-[17px] font-semibold">{title}</h2>

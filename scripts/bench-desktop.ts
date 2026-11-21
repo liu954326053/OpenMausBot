@@ -26,9 +26,10 @@ import { gzipSync } from "node:zlib";
 
 import { runControlOmb, verificationServerArgs, verificationServerEnvironment } from "./control-omb.ts";
 import { installedChrome } from "./testing/control-omb-ui.ts";
-import { FRAMES_START, FRAMES_STOP, launchChrome, switchExpression, TRANSCRIPT_BOX, type Chrome, type Page } from "./testing/bench-desktop-page.ts";
+import { FRAMES_START, FRAMES_STOP, launchChrome, revealRowExpression, switchExpression, TRANSCRIPT_BOX, type BenchBot, type Chrome, type Page } from "./testing/bench-desktop-page.ts";
 import { removeTempDir, waitForExit } from "../server/testing/cleanup.ts";
 import { freePortBlock } from "../server/testing/ports.ts";
+import { LAST_CONVERSATION_KEY } from "../src/lib/last-conversation.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PHASES = ["bundle", "server", "start", "screens", "idle", "stream", "big", "routines"] as const;
@@ -647,6 +648,7 @@ async function main() {
       const preview = await serveDist(profileDist, fixture.url);
       const profiled = await chrome.newPage({ storage: STORAGE });
       await pageLoad(profiled, preview.url);
+      await profiled.evaluate(revealRowExpression({ id: botId, name: "Pepper" }));
       await profiled.evaluate(`document.querySelector('[data-sidebar-bot-row="${botId}"]')?.click()`);
       await sleep(1_500);
       log("streaming a reply, small workspace");
@@ -663,7 +665,10 @@ async function main() {
     const seedOut = execFileSync(process.execPath, ["--experimental-strip-types", join(ROOT, "scripts", "testing", "bench-desktop-seed.ts"), values.bots!, values.threads!, values.messages!], {
       cwd: ROOT, encoding: "utf8", env: { ...platformEnv(), PATH: dirname(process.execPath), HOME: dataDir, OMB_DATA_DIR: dataDir, TMPDIR: join(dataDir, "tmp") }, maxBuffer: 16 * 1024 * 1024,
     });
-    const seeded = JSON.parse(seedOut.trim().split("\n").at(-1)!) as { bigBotId: string; bigThreadId: string; bigLastMessageId: string; otherBotId: string; otherThreadId: string; otherSideThreadId: string; bots: number; threads: number; bigMessages: number };
+    const seeded = JSON.parse(seedOut.trim().split("\n").at(-1)!) as { bigBotId: string; bigBotName: string; bigThreadId: string; bigLastMessageId: string; otherBotId: string; otherBotName: string; otherThreadId: string; otherSideThreadId: string; bots: number; threads: number; bigMessages: number };
+    const bigBot = { id: seeded.bigBotId, name: seeded.bigBotName };
+    const otherBot = { id: seeded.otherBotId, name: seeded.otherBotName };
+    const bigStorage = { ...STORAGE, [LAST_CONVERSATION_KEY]: seeded.bigBotId };
     const fixture = await startFixture({ dataDir, staticDir: dist, fake: STREAM_ENV });
     const booted = await fixture.tally();
     const big: Record<string, unknown> = { seeded: { bots: seeded.bots, threads: seeded.threads, messages: seeded.bigMessages, botsJsonKb: kb(statSync(join(dataDir, "bots.json")).size), messagesDbKb: kb(statSync(join(dataDir, "messages.db")).size) }, serverReadyMs: Math.round(fixture.readyMs) };
@@ -691,19 +696,19 @@ async function main() {
       afterStartupRoutes: { rss: round(after.memory.rss / 1048576), heap: round(after.memory.heapUsed / 1048576) } };
 
     log("big workspace: page");
-    const page = await chrome.newPage({ storage: STORAGE });
+    const page = await chrome.newPage({ storage: bigStorage });
     const load = await pageLoad(page, fixture.url);
     const lastDrawn = await page.waitFor(`document.querySelector('[data-mid="${seeded.bigLastMessageId}"]')`, 30_000);
     big.load = { ...load, bigConversationShown: lastDrawn, rendererRssMb: Math.max(...await chrome.rendererRssMb()) };
-    const switchTo = (botId: string, lastId: string | null) => page.evaluate<{ clicked: boolean; ms?: number; timedOut?: boolean }>(
-      switchExpression(botId, lastId ? `document.querySelector('[data-mid="${lastId}"]')` : "document.querySelector('[data-mid]') && !document.querySelector('[data-mid=\"" + seeded.bigLastMessageId + "\"]')"));
-    const away = await switchTo(seeded.otherBotId, null);
+    const switchTo = (bot: BenchBot, lastId: string | null) => page.evaluate<{ clicked: boolean; ms?: number; timedOut?: boolean }>(
+      switchExpression(bot, lastId ? `document.querySelector('[data-mid="${lastId}"]')` : "document.querySelector('[data-mid]') && !document.querySelector('[data-mid=\"" + seeded.bigLastMessageId + "\"]')"));
+    const away = await switchTo(otherBot, null);
     await sleep(1_000);
-    const back = await switchTo(seeded.bigBotId, seeded.bigLastMessageId);
+    const back = await switchTo(bigBot, seeded.bigLastMessageId);
     await sleep(1_000);
-    const awayAgain = await switchTo(seeded.otherBotId, null);
+    const awayAgain = await switchTo(otherBot, null);
     await sleep(1_000);
-    const backAgain = await switchTo(seeded.bigBotId, seeded.bigLastMessageId);
+    const backAgain = await switchTo(bigBot, seeded.bigLastMessageId);
     await sleep(1_000);
     // The first visit draws the conversation for the first time; the second is what a return to it costs.
     big.switchConversation = { toSmall: away, backToBig: back, toSmallAgain: awayAgain, backToBigAgain: backAgain };
@@ -752,14 +757,15 @@ async function main() {
     await page.close();
     log("big workspace: profiling build");
     const preview = await serveDist(profileDist, fixture.url);
-    const profiled = await chrome.newPage({ storage: STORAGE });
+    const profiled = await chrome.newPage({ storage: bigStorage });
     await pageLoad(profiled, preview.url);
     await profiled.waitFor(`document.querySelector('[data-mid="${seeded.bigLastMessageId}"]')`, 30_000);
     await sleep(1_500);
-    const profiledSwitch = async (botId: string, lastId: string | null) => {
+    const profiledSwitch = async (bot: BenchBot, lastId: string | null) => {
+      await profiled.evaluate(revealRowExpression(bot));
       await profiled.evaluate("window.__bench.reset()");
       const at = performance.now();
-      await profiled.evaluate(`document.querySelector('[data-sidebar-bot-row="${botId}"]')?.click()`);
+      await profiled.evaluate(`document.querySelector('[data-sidebar-bot-row="${bot.id}"]')?.click()`);
       await profiled.waitFor(lastId ? `document.querySelector('[data-mid="${lastId}"]')` : "document.querySelector('[data-mid]')", 30_000);
       const ms = performance.now() - at;
       await sleep(1_000);
@@ -770,10 +776,10 @@ async function main() {
         topSelfMs: Object.fromEntries(topSelf.map(([name, ms]) => [name, Math.round(ms)])), longestTaskMs: Math.max(0, ...snapshot.longTasks.map((task) => task[1])) };
     };
     log("big workspace: switching conversations");
-    const awayProfiled = await profiledSwitch(seeded.otherBotId, null);
-    const backProfiled = await profiledSwitch(seeded.bigBotId, seeded.bigLastMessageId);
-    const awayAgainProfiled = await profiledSwitch(seeded.otherBotId, null);
-    const backAgainProfiled = await profiledSwitch(seeded.bigBotId, seeded.bigLastMessageId);
+    const awayProfiled = await profiledSwitch(otherBot, null);
+    const backProfiled = await profiledSwitch(bigBot, seeded.bigLastMessageId);
+    const awayAgainProfiled = await profiledSwitch(otherBot, null);
+    const backAgainProfiled = await profiledSwitch(bigBot, seeded.bigLastMessageId);
     big.switchProfiled = { toSmall: awayProfiled, backToBig: backProfiled, toSmallAgain: awayAgainProfiled, backToBigAgain: backAgainProfiled };
     log("streaming a reply, big workspace");
     big.stream = await streamTurn(chrome, profiled, fixture, seeded.bigBotId);
