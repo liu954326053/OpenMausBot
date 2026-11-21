@@ -23,6 +23,7 @@ import {
 } from "../../server/browser-engine.ts";
 import { fixtureApi, mountPreview, type MountedPreview } from "./preview-fixture.ts";
 import { credentialStoreFlags } from "../../server/browser/egress/gate.ts";
+import { LAST_CONVERSATION_KEY } from "../../src/lib/last-conversation.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 /** Gitignored, persistent: the binary and its Chrome download once per checkout. */
@@ -516,6 +517,8 @@ export async function launchUi(
     const session: SessionEnv = { home: fixture.info.dataDir, session: `omb-ui-${new URL(fixture.info.url).port}`, chrome };
     const env = sessionEnv(session, parentEnv);
     opened = { binary, env };
+    await agentBrowser(binary, env, ["open", new URL("/package.json", preview.previewUrl).href], 120_000);
+    await agentBrowser(binary, env, ["eval", `localStorage.setItem(${JSON.stringify(LAST_CONVERSATION_KEY)}, ${JSON.stringify(created.bot.id)}); true`]);
     await agentBrowser(binary, env, ["open", preview.previewUrl], 120_000);
     checkpoint();
     const handle: UiHandle = {
