@@ -30,6 +30,8 @@ export interface CanvasUi {
   startPicking(nodeId: string | null): void;
   focusNode(nodeId: string): void;
   previewImage(url: string, title: string): void;
+  /** Gives a picture's node its picture's shape once the picture loads, in free space if that shape would cover a node. */
+  fitPicture(nodeId: string, naturalWidth: number, naturalHeight: number): void;
   uploadFiles(files: readonly File[], at?: CanvasPoint): void;
   showNotice(text: string): void;
   openSettings(): void;
