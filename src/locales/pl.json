@@ -4970,8 +4970,6 @@
   "skills.library.imported": "Zaimportowano umiejętność {name} — wyłączona do przeglądu. Przeczytaj ją, a następnie włącz.",
   "skills.library.loading": "Wczytywanie…",
   "skills.library.close": "Zamknij",
-  "settings.page.templates": "Szablony",
-  "settings.templates.intro": "Role i zespoły, które przygotowujesz z wyprzedzeniem. Nowy projekt dostaje zespół z szablonu zespołu.",
   "settings.import.appsTitle": "Z aplikacji AI",
   "settings.import.appsSubtitle": "Umiejętności i narzędzia MCP z Claude Code, Codex, Cursor, Claude Desktop i Gemini na tym komputerze. Narzędzia są dodawane wyłączone; dane logowania i historia nigdy nie są odczytywane.",
   "settings.import.appsLooking": "Szukanie na tym komputerze…",

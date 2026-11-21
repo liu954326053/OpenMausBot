@@ -2062,8 +2062,6 @@
   "remote.signInAccess.error": "Enregistrement impossible : {error}",
   "botAccess.mcpDisabled": "Désactivé dans Apps → MCP servers — testez-le et activez-le d’abord là-bas.",
   "skills.library.everyBot": "Tous les bots",
-  "settings.page.templates": "Modèles",
-  "settings.templates.intro": "Les rôles et les équipes que vous préparez à l'avance. Un nouveau projet reçoit son équipe d'un modèle d'équipe.",
   "canvas.botComputer": "Bureau de {name}",
   "canvas.teamComputer": "Bureau du département {team} : {name}",
   "canvas.assignComputer": "Attribuer un bureau à {team}",

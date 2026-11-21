@@ -38,7 +38,7 @@ const roomTargets = (turn: Turn): string => said(turn.evidence[1]);
 const answers = (turn: Turn): string[] => turn.evidence.filter((entry) => entry.step).map((entry) => said(entry.response));
 const told = (turn: Turn): string => `${turn.system}\n${JSON.stringify(turn.prompt)}`;
 
-describe("two team projects made from one team template, on the real server", () => {
+describe("two team projects made from one team, on the real server", () => {
   let session: VerificationServer;
   let second: ChildProcess | undefined;
   let url = "";

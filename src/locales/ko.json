@@ -5388,8 +5388,6 @@
   "skills.library.loadError": "스킬 라이브러리를 불러오지 못했어요.",
   "skills.library.loading": "불러오는 중…",
   "skills.library.close": "닫기",
-  "settings.page.templates": "템플릿",
-  "settings.templates.intro": "미리 준비해 두는 역할과 팀입니다. 새 프로젝트의 팀은 팀 템플릿으로 만들어집니다.",
   "settings.import.appsTitle": "내 AI 앱에서",
   "settings.import.appsSubtitle": "이 컴퓨터의 Claude Code, Codex, Cursor, Claude Desktop, Gemini에서 스킬과 MCP 도구를 가져와요. 도구는 꺼진 상태로 들어오고, 로그인 정보와 기록은 절대 읽지 않아요.",
   "settings.import.appsLooking": "이 컴퓨터에서 찾는 중…",

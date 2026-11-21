@@ -2062,8 +2062,6 @@
   "remote.signInAccess.error": "सहेज नहीं सका: {error}",
   "botAccess.mcpDisabled": "Apps → MCP servers में बंद है — पहले वहाँ इसे जाँचें और चालू करें।",
   "skills.library.everyBot": "हर बॉट",
-  "settings.page.templates": "टेम्पलेट",
-  "settings.templates.intro": "भूमिकाएँ और टीमें जो आप पहले से तैयार करते हैं। नए प्रोजेक्ट को उसकी टीम किसी टीम टेम्पलेट से मिलती है।",
   "canvas.botComputer": "{name} के लिए डेस्कटॉप",
   "canvas.teamComputer": "{team} विभाग के लिए डेस्कटॉप: {name}",
   "canvas.assignComputer": "{team} को एक डेस्कटॉप दें",

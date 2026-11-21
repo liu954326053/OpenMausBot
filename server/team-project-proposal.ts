@@ -264,7 +264,7 @@ export class TeamProjectProposalService {
   private async create(proposal: TeamProjectProposal): Promise<Outcome> {
     const { backends } = this.options;
     const refused = (code: Refusal, error: string): Outcome => ({ result: { state: "refused", code, error } });
-    if (!proposal.team) return refused("team_changed", "the card names a team template, and projects are made from teams now");
+    if (!proposal.team) return refused("team_changed", "the card names a team template, and a project is made from a team");
     const team = findProjectTeam(backends.projects.teams(), proposal.team.name);
     if (!team) return refused("no_team", "no team has that name now");
     if (teamRevision(team) !== proposal.team.revision) return refused("team_changed", "the team's name, Chief of Staff or members changed after the card was made");

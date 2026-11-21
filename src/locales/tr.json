@@ -4003,8 +4003,6 @@
   "skills.library.imported": "İnceleme için {name} devre dışı olarak içe aktarıldı. İnceleyin, ardından açın.",
   "skills.library.loading": "Yükleniyor…",
   "skills.library.close": "Kapat",
-  "settings.page.templates": "Şablonlar",
-  "settings.templates.intro": "Önceden hazırladığınız roller ve ekipler. Yeni bir proje ekibini bir ekip şablonundan alır.",
   "backup.scope": "Bu kurulumun parola korumalı bir yedeği: botlar, konuşmalar, talimatlar, yerel dosyalar ve gizli olmayan ayarlar. Bu tarayıcıdaki taslaklar ve tercihler dahildir.",
   "backup.privacy": "Sohbetler, taslaklar ve kullanıcı dosyaları otomatik olarak sansürlenmez ve yapıştırılmış gizli anahtarlar içerebilir. Bu yedeği gizli tutun ve parolasını güvenli bir şekilde saklayın; kurtarılamaz.",
   "backup.export": "Tam yedeği dışa aktar",

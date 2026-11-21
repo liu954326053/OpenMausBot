@@ -184,7 +184,7 @@ export function teamProjectRoomConflict(store: RoomBots, memberIds: readonly str
   return stray ? roomRefusal("serverError.room.projectDepartment", { department: sectionKey(section), bot: namedWithProject(stray) }) : null;
 }
 
-/** Projects made from one team template give their bots the same names: a project's department tells whose is meant. */
+/** Projects made from one team give their bots the same names: a project's department tells whose is meant. */
 const namedWithProject = (bot: RosterMember): string =>
   teamProjectOf(bot) && sectionKey(bot.section) ? `${bot.name} (${sectionKey(bot.section)})` : bot.name;
 
@@ -361,7 +361,7 @@ const CHOICES_MAX = 12;
 /** What a roster calls a department's Chief: a team project's is its lead. */
 const chiefLabel = (bot: InTeamProject): string => (teamProjectOf(bot) ? "Project lead" : "Chief of Staff");
 
-/** Projects made from one team template give their leads one name: the project's department tells them apart. */
+/** Projects made from one team give their leads one name: the project's department tells them apart. */
 const chiefAmongNamesakes = (bot: RosterMember): string =>
   teamProjectOf(bot) ? `${chiefLabel(bot)} of ${departmentLabel(bot)}` : chiefLabel(bot);
 

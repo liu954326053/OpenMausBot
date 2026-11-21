@@ -2194,8 +2194,6 @@
   "remote.signInAccess.error": "Konnte nicht speichern: {error}",
   "botAccess.mcpDisabled": "Unter Apps → MCP servers ausgeschaltet – teste es zuerst dort und schalte es ein.",
   "skills.library.everyBot": "Jeder Bot",
-  "settings.page.templates": "Vorlagen",
-  "settings.templates.intro": "Rollen und Teams, die du im Voraus vorbereitest. Ein neues Projekt bekommt sein Team aus einer Team-Vorlage.",
   "canvas.botComputer": "Desktop für {name}",
   "canvas.teamComputer": "Desktop für Abteilung {team}: {name}",
   "canvas.assignComputer": "Einen Desktop {team} zuweisen",

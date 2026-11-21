@@ -20,7 +20,7 @@ const said = (response: unknown): string =>
 const answers = (turn: Turn): string[] => turn.evidence.filter((entry) => entry.step).map((entry) => said(entry.response));
 const told = (turn: Turn): string => `${turn.system}\n${JSON.stringify(turn.prompt)}`;
 
-describe("the wall between two projects that the project code itself made from one team template", () => {
+describe("the wall between two projects that the project code itself made from one team", () => {
   let session: VerificationServer;
   let url = "";
   const projectsRoot = mkdtempSync(join(tmpdir(), "omb-two-real-projects-"));
@@ -85,13 +85,10 @@ describe("the wall between two projects that the project code itself made from o
     };
     expect((await call("PATCH", `/api/bots/${made.crewLead.id}`, { chiefOfStaff: true })).status).toBe(200);
 
-    const saved = await call("POST", "/api/template-library/teams/from-department", { department: CREW });
-    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
-    const templateId = saved.body.template.id as string;
     const root = await call("PUT", "/api/team-projects/root", { path: projectsRoot });
     expect(root.status, JSON.stringify(root.body)).toBe(200);
     for (const name of [MIDNIGHT, PAPER]) {
-      const project = await call("POST", "/api/team-projects", { name, templateId });
+      const project = await call("POST", "/api/team-projects", { name, team: CREW });
       expect(project.status, JSON.stringify(project.body)).toBe(201);
     }
 
@@ -151,11 +148,11 @@ describe("the wall between two projects that the project code itself made from o
     expect(heard).toContain(`[id: ${directorA.id}]`);
     expect(heard).toContain(`[id: ${main.id}]`);
     for (const beyond of [directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id, PAPER, CREW, "Oswald", "Studio"]) expect(heard, beyond).not.toContain(beyond);
-    const [listed, nobody, otherWriter, otherLead, templateWriter, outside, ownLead] = answers(turn);
+    const [listed, nobody, otherWriter, otherLead, sourceWriter, outside, ownLead] = answers(turn);
     for (const reached of [directorA.id, main.id]) expect(listed, reached).toContain(reached);
     for (const beyond of [directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id]) expect(listed, beyond).not.toContain(beyond);
     expect(nobody).toContain(`No bot with id or name "${NOBODY}"`);
-    for (const [answer, asked] of [[otherWriter, writerB.id], [otherLead, directorB.id], [templateWriter, crewWriter.id], [outside, oswald.id]] as const) {
+    for (const [answer, asked] of [[otherWriter, writerB.id], [otherLead, directorB.id], [sourceWriter, crewWriter.id], [outside, oswald.id]] as const) {
       expect(answer!.replaceAll(asked, NOBODY), asked).toBe(nobody);
     }
     expect(JSON.parse(ownLead!).receipts).toMatchObject([{ botId: directorA.id, botName: "Director" }]);
@@ -245,8 +242,8 @@ describe("the wall between two projects that the project code itself made from o
     expect(composerByName!.replaceAll('"Composer"', `"${NOBODY}"`)).toBe(nobody);
   }, 180_000);
 
-  it("tells the team the template was saved from, and a bot outside every project, of no project's bot", async () => {
-    for (const [what, bot] of [["the template's own Director", crewLead], ["a bot outside every project", oswald]] as const) {
+  it("tells the team the projects were made from, and a bot outside every project, of no project's bot", async () => {
+    for (const [what, bot] of [["the team's own Director", crewLead], ["a bot outside every project", oswald]] as const) {
       const seen = await personAsks(what, bot, "What are the shows about?", {
         [bot.id]: {
           steps: [

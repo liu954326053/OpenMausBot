@@ -5018,8 +5018,6 @@
   "skills.library.imported": "Навык {name} импортирован и отключён до проверки. Прочитайте его, затем включите.",
   "skills.library.loading": "Загрузка…",
   "skills.library.close": "Закрыть",
-  "settings.page.templates": "Шаблоны",
-  "settings.templates.intro": "Роли и команды, которые вы готовите заранее. Новый проект получает команду из шаблона команды.",
   "settings.import.appsTitle": "Из ваших AI-приложений",
   "settings.import.appsSubtitle": "Навыки и инструменты MCP из Claude Code, Codex, Cursor, Claude Desktop и Gemini на этом компьютере. Инструменты импортируются выключенными; учётные данные и история никогда не считываются.",
   "settings.import.appsLooking": "Поиск на этом компьютере…",

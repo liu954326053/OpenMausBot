@@ -26,7 +26,6 @@ import type { MenuState } from "./Sidebar";
 import { moveBotsToSection, useMayMoveBot, useOpenDepartments } from "./bot-sections";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { isArchived } from "./SidebarThreadRow";
-import { SaveBotAsTemplate } from "./template-library/SaveAsTemplate";
 
 type Flyout = "more" | "move";
 
@@ -279,7 +278,6 @@ export function BotContextMenu({
       pauseAll,
       team ? null : chiefItem(),
       member && !ownEdit ? null : item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), () => dispatch({ type: "duplicateBot", botId: bot.id })),
-      <SaveBotAsTemplate key="save-as-template" bot={bot} className={MENU_ITEM} onDone={onClose} />,
       owner,
       ...moveToTeam.items(bot, item),
       ...moveToCloud.items(bot, item),
@@ -439,7 +437,6 @@ export function BotContextMenu({
         (!member || ownEdit) && item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), () =>
           dispatch({ type: "duplicateBot", botId: bot.id }),
         ),
-        <SaveBotAsTemplate key="save-as-template" bot={bot} className={MENU_ITEM} onDone={onClose} />,
         pause,
         pauseAll,
         divider("d2"),

@@ -4616,8 +4616,6 @@
   "skills.library.imported": "Se importó {name} desactivada para que la revises. Léela y luego actívala.",
   "skills.library.loading": "Cargando…",
   "skills.library.close": "Cerrar",
-  "settings.page.templates": "Plantillas",
-  "settings.templates.intro": "Roles y equipos que preparas de antemano. Un proyecto nuevo recibe su equipo de una plantilla de equipo.",
   "backup.scope": "Una copia de seguridad protegida con contraseña de esta instalación: bots, conversaciones, instrucciones, archivos locales y ajustes no secretos. Se incluyen los borradores y las preferencias de este navegador.",
   "backup.privacy": "Los chats, borradores y archivos de usuario no se depuran automáticamente y pueden contener secretos pegados. Mantén esta copia en privado y guarda su contraseña en un lugar seguro; no se puede recuperar.",
   "backup.export": "Exportar copia de seguridad completa",

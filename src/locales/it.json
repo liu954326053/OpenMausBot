@@ -4836,8 +4836,6 @@
   "skills.library.imported": "{name} importata e disattivata per la revisione. Leggila, poi attivala.",
   "skills.library.loading": "Caricamento…",
   "skills.library.close": "Chiudi",
-  "settings.page.templates": "Modelli",
-  "settings.templates.intro": "Ruoli e team che prepari in anticipo. Un nuovo progetto riceve il suo team da un modello di team.",
   "settings.import.appsTitle": "Dalle tue app AI",
   "settings.import.appsSubtitle": "Abilità e strumenti MCP da Claude Code, Codex, Cursor, Claude Desktop e Gemini su questo computer. Gli strumenti arrivano disattivati; accessi e cronologia non vengono mai letti.",
   "settings.import.appsLooking": "Ricerca su questo computer…",

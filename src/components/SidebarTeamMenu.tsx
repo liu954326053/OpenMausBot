@@ -7,7 +7,6 @@ import { departmentUnread, markDepartmentRead } from "@/lib/folder-read";
 import { t } from "@/lib/i18n";
 import { api, useStore } from "@/state/store";
 import { MENU_ITEM } from "./menu-recipe";
-import { SaveDepartmentAsTemplate } from "./template-library/SaveAsTemplate";
 
 /** A department's menu, from its line's ⋯ or a right-click on its name. */
 /** Reads every conversation of the department's bots and its group chats; shown only while something there is unread. */
@@ -73,7 +72,6 @@ export function TeamMenuItems({ onAddBots, onRename, onShare, onDelete, onSetFor
       {onSetForAll && <button type="button" role="menuitem" className={item} onClick={onSetForAll}><SlidersHorizontal size={16} />{t("teamSettings.menu")}</button>}
       <button type="button" role="menuitem" className={item} onClick={onRename}><SquarePen size={16} />{t("team.rename")}</button>
       <button type="button" role="menuitem" className={item} onClick={onShare}><Share2 size={16} />{t("team.shareDepartment")}</button>
-      {department !== undefined && <SaveDepartmentAsTemplate department={department} className={item} onDone={onRead ?? (() => {})} />}
       <button type="button" role="menuitem" className={cn(item, "text-danger [&>svg]:text-danger")} onClick={onDelete}><Trash2 size={16} />{t("team.delete")}</button>
     </>
   );

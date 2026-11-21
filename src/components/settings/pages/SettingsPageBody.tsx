@@ -1,4 +1,3 @@
-import { TemplatesPage } from "../../template-library/TemplatesPage";
 import type { SettingsPageId } from "../settings-index";
 import { AccountPage, PlanPage } from "./AccountPages";
 import { AppPage, AppearancePage, GeneralPage } from "./AppPages";
@@ -11,7 +10,6 @@ const PAGES: Record<SettingsPageId, () => React.ReactNode> = {
   phone: PhonePage,
   ai: AiPage,
   bots: BotsPage,
-  templates: TemplatesPage,
   desktops: DesktopsPage,
   vault: VaultPage,
   usage: SpendingPage,

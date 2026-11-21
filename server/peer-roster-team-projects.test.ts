@@ -163,7 +163,7 @@ describe("a bot behind the wall does not exist for the caller", () => {
     expect(resolveTeammate(everyone, leadA, "arlo")).toEqual({ id: memberA.id, byName: true });
   });
 
-  describe("two projects made from one team template, whose bots share their names", () => {
+  describe("two projects made from one team, whose bots share their names", () => {
     const directorA: RosterMember = { ...leadA, name: "Director" };
     const writerA: RosterMember = { ...memberA, name: "Writer" };
     const directorB: RosterMember = { ...leadB, name: "Director" };

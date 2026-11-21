@@ -5613,8 +5613,6 @@
   "skills.library.loadError": "スキルライブラリーを読み込めませんでした。もう一度お試しください。",
   "skills.library.loading": "読み込み中…",
   "skills.library.close": "閉じる",
-  "settings.page.templates": "テンプレート",
-  "settings.templates.intro": "あらかじめ用意しておく役割とチームです。新しいプロジェクトのチームは、チームテンプレートから作られます。",
   "settings.import.appsTitle": "お使いの AI アプリから",
   "settings.import.appsSubtitle": "このコンピューター上の Claude Code、Codex、Cursor、Claude Desktop、Gemini からスキルと MCP ツールを取り込みます。ツールはオフの状態で取り込まれ、ログイン情報や履歴は読み取りません。",
   "settings.import.appsLooking": "このコンピューターを検索しています…",

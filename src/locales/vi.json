@@ -4003,8 +4003,6 @@
   "skills.library.imported": "Đã nhập {name} ở trạng thái tắt để xem lại. Hãy đọc kỹ, sau đó bật lên.",
   "skills.library.loading": "Đang tải…",
   "skills.library.close": "Đóng",
-  "settings.page.templates": "Mẫu",
-  "settings.templates.intro": "Các vai trò và nhóm bạn chuẩn bị trước. Dự án mới lấy nhóm của mình từ một mẫu nhóm.",
   "backup.scope": "Bản sao lưu có mật khẩu bảo vệ của bản cài đặt này: bot, cuộc trò chuyện, chỉ dẫn, tệp cục bộ và các cài đặt không nhạy cảm. Bao gồm cả bản nháp và tùy chọn từ trình duyệt này.",
   "backup.privacy": "Đoạn chat, bản nháp và tệp người dùng không được tự động ẩn thông tin nhạy cảm và có thể chứa dữ liệu bí mật do bạn dán vào. Hãy giữ kín bản sao lưu này và cất giữ mật khẩu cẩn thận; mật khẩu không thể khôi phục.",
   "backup.export": "Xuất bản sao lưu đầy đủ",
