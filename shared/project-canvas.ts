@@ -273,8 +273,9 @@ export interface ProjectCanvasEvent {
  * `CANVAS_CONTENT_MAX_CHARS`, becomes the text of that node when it had none as the task was sent and still has none,
  * and otherwise a new text node to its right, connected from it and titled by `replyTitle`. For a node that had text,
  * that new node is the one the bot's `writingBeside` shows from the moment the task is sent, which the reply takes
- * exactly. A stopped or failed turn, a turn the task joined while it ran, or a server restart before the reply adds
- * nothing and ends what `writingInto` or `writingBeside` showed for it. */
+ * exactly. A stopped or failed turn, a turn the task joined while it ran, a turn for a message queued after the task
+ * that it was merged into, or a server restart before the reply adds nothing and ends what `writingInto` or
+ * `writingBeside` showed for it. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;

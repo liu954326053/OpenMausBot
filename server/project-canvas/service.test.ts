@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel.ts";
+import { failedTurnTool } from "../../shared/failed-turn.ts";
 import { botNodeId, CANVAS_NODE_SIZE, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
@@ -346,7 +348,7 @@ describe("a task written in a text node", () => {
     ]);
   });
 
-  it("shows a queued task while its message waits, and takes no reply for a task merged into a later message's turn, taken out of the queue, or steered into a running turn", async () => {
+  it("shows a queued task while its message waits, and neither shows nor takes a reply for a task from the moment it is merged into a later message's turn, taken out of the queue, or steered into a running turn", async () => {
     let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
     const queue = new Set(["q1"]);
     const { service, project } = setup({ send: async () => receipt, stillQueued: (_botId, _threadId, queueId) => queue.has(queueId), threadBusy: () => true });
@@ -370,6 +372,7 @@ describe("a task written in a text node", () => {
     queue.clear();
     service.taskLine("writer-main", { id: "m10", at: 10, role: "user", kind: "text", text: "Revise q2", queueId: "q2" });
     service.taskLine("writer-main", { id: "m11", at: 11, role: "user", kind: "text", text: "Revise q3", queueId: "q3" });
+    expect(writingBeside(service)).toEqual([kept]);
     service.taskLine("writer-main", turnEnd("m11", "Both at once.", { at: 12 }));
     expect(beside(service, draft)).toEqual([expect.objectContaining({ id: kept!.id, position: kept!.position, metadata: { content: "Both at once." } })]);
     expect(writingBeside(service)).toBeUndefined();
@@ -392,7 +395,7 @@ describe("a task written in a text node", () => {
     expect(beside(service, draft)).toHaveLength(1);
   });
 
-  it("adds nothing and shows nothing after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
+  it("adds nothing and shows nothing after a turn that fails or is stopped, with or without a line of its own, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
     const { service, project, events } = setup({ threadBusy: () => true });
     const [logline, empty] = [...textNodes(service, project, "Draft", "Logline"), ...textNodes(service, project, undefined, "Empty")];
     const ask = (targetNodeId = logline) => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId });
@@ -405,6 +408,15 @@ describe("a task written in a text node", () => {
     expect(writingBeside(service)).toEqual([expect.objectContaining({ nodeId: logline })]);
     service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
     expect(writingBeside(service)).toBeUndefined();
+    await ask();
+    service.taskLine("writer-main", { id: "stopped", at: 2, role: "bot", kind: "activity", tool: { name: PERSON_STOPPED_TURN_NAME, ok: true }, turnId: "t1" });
+    expect(writingBeside(service)).toBeUndefined();
+    await ask(empty);
+    service.taskLine("writer-main", { id: "failed", at: 2, role: "bot", kind: "activity", tool: failedTurnTool("The engine stopped answering.") });
+    expect(writingInto(service)).toBeUndefined();
+    service.taskLine("writer-main", turnEnd("sent-1", "After it failed"));
+    expect(contentOf(service, empty)).toBeUndefined();
+    expect(beside(service, logline)).toEqual([]);
     await ask();
     service.taskLine("writer-main", turnEnd("later", "A reply to a later message"));
     expect(writingBeside(service)).toBeUndefined();
