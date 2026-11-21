@@ -28,7 +28,7 @@
 ## 约束
 
 - 新代码都在 `src/lib/project-canvas/` 和 `src/components/project-canvas/`，不碰 `ProjectView.tsx`（`sidebar` 轨道的）和章程列出的其他热点文件，`server/index.ts` 加 0 行。
-- 页面组件 `ProjectCanvasPage` 的属性是 `{ projectId: string; selectedBotId?: string; backend: CanvasBackend }`。
+- 页面组件 `ProjectCanvas`（`src/components/project-canvas/ProjectCanvas.tsx`）的属性是 `{ projectId: string; selectedBotId?: string; backend: CanvasBackend; topBarSlot?: ReactNode }`；`topBarSlot` 是顶栏里“团队有变化”的位置，任务说明里没有，报告里列出。
 - 每个新文件不超过 1,000 行（`file-size-ratchet`）。
 - 新文字都在 `projectCanvas.` 前缀下，四个语言文件（英文、简体、繁体、巴西葡萄牙语）各加在一处，不动原有的键。
 - `shared/project-canvas.ts` 和 `shared/project-generation.ts` 按负责人提交的原样单独提交一次，之后不改。
@@ -44,8 +44,7 @@
 | `src/lib/project-canvas/ops.ts` | 把操作应用到文档、算反向操作 |
 | `src/lib/project-canvas/history.ts` | 撤销和重做 |
 | `src/lib/project-canvas/geometry.ts` | 节点范围、分组、连线规则、曲线、视口换算、聚焦（搬自 infinite-canvas） |
-| `src/lib/project-canvas/nodes.ts` | 默认尺寸、新建节点、复制粘贴 |
-| `src/lib/project-canvas/selection.ts` | 框选、多选、相关高亮 |
+| `src/lib/project-canvas/selection.ts` | 框选、多选、相关高亮、复制粘贴 |
 | `src/lib/project-canvas/references.ts` | 连进来的参考内容和它们的标签 |
 | `src/lib/project-canvas/settings.ts` | 面板里每一项是继承还是改过、恢复默认（在 `resolveSettings` 之上） |
 | `src/lib/project-canvas/tree-layout.ts` | 机器人树的排列和“整理” |
