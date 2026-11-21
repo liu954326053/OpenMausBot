@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
 import { runControlOmb } from "../control-omb.ts";
-import { ENABLE_ADVANCED_UI, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { ENABLE_ADVANCED_UI, openFromPalette, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 
 const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const binary = resolveAgentBrowserBinary({ dataDir: UI_TOOLS_DIR, env: process.env });
@@ -115,13 +115,7 @@ describe("Slack management in agent settings", () => {
     const saved = await fetch(`${fixture.url}/api/bots?messages=0`).then((response) => response.json()) as { bots: Array<{ id: string; name: string }> };
     const second = saved.bots.find((bot) => bot.name === "Slack Juniper")!;
     expect(second).toBeDefined();
-    // Select the known fixture bot through the actual sidebar's accessible row.
-    await expect.poll(snapshot, { timeout: 10_000 }).toContain("Slack Juniper");
-    const sidebar = await ui("snapshot", "--interactive");
-    const sidebarRow = Object.entries(sidebar.refs as Record<string, { role: string; name: string }>)
-      .find(([, entry]) => entry.role === "button" && entry.name.includes("Slack Juniper") && !entry.name.startsWith("Open "));
-    expect(sidebarRow).toBeDefined();
-    await ui("click", "--ref", `@${sidebarRow![0]}`);
+    await expect.poll(() => evaluate(openFromPalette("Slack Juniper", `bot:${second.id}`)), { timeout: 10_000 }).toBe(true);
     await evaluate("window.slackFixture.mode = 'ready'; true");
     await openProfile();
     await expect.poll(row, { timeout: 10_000 }).toBe(true);

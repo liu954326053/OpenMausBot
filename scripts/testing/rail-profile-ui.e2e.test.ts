@@ -16,7 +16,7 @@ import { parseCloudList } from "../../electron/cloud-list.mjs";
 import { resolveAgentBrowserBinary } from "../../server/browser-engine.ts";
 import { hostTimeout } from "../../server/testing/host-timeout.ts";
 import { launchCloudSendFixture, type CloudSendFixture } from "./cloud-send-fixture.ts";
-import { ensureUiBrowser, UI_TOOLS_DIR } from "./control-omb-ui.ts";
+import { CLOSE_PALETTE, ensureUiBrowser, searchPalette, UI_TOOLS_DIR } from "./control-omb-ui.ts";
 import { launchHomeWorld, shotsDir, welcomed, type HomeWorld } from "./one-workspace-fixture.ts";
 import { decodePng, encodePng } from "./png.ts";
 
@@ -95,14 +95,24 @@ function harness(get: () => { world: HomeWorld; shots: string }) {
   let watching = false, watcher: Promise<void> = Promise.resolve();
   const myCloud = () => world.environments().environments.find((entry: { origin?: string }) => entry.origin === world.cloudOrigin);
   const lent = () => Boolean(world.lending!.cloudState(myCloud()).connected);
-  const onCloud = () => until(() => page<string>("document.body.innerText"), (text) => new URL(world.window.url).origin === world.cloudOrigin && text.includes("Atlas"), 60_000, "My Cloud's page with its bots");
+  /** Whether the page's ⌘K lists a bot named `name`, a step a call: poll it, then close the palette. */
+  const listsBot = (name: string) => page<boolean>(`${searchPalette(name)} !== null
+    && [...document.querySelectorAll('[data-command-palette] [data-palette-entry^="bot:"]')].some((row) => row.textContent.includes(${JSON.stringify(name)}))`);
+  const closePalette = () => until(() => page<boolean>(CLOSE_PALETTE), Boolean, 10_000, "the palette closed");
+  const onCloud = async () => {
+    await until(async () => new URL(world.window.url).origin === world.cloudOrigin && await listsBot("Atlas"), Boolean, 60_000, "My Cloud's page with its bots");
+    await closePalette();
+  };
   const lentCount = async () => ((await fx.onCloud("GET", "/api/shared-computers")).body?.computers ?? []).filter((computer: { online?: boolean }) => computer.online !== false).length;
   const current = async () => (await tiles()).find((tile) => tile.current)?.id ?? null;
-  const shown = (id: string, text?: string) => until(async () => ({
-    current: await current(), local: onLocal(), running: world.running(), body: await page<string>("document.body.innerText"),
-  }), (seen) => seen.current === id
-    && (id === cloudEntry ? !seen.local : seen.local && seen.running === profileDir(fx.desktopDataDir, id.slice("profile:".length)))
-    && (!text || seen.body.includes(text)), 90_000, `${id} on screen${text ? ` with ${text}` : ""}`);
+  const shown = async (id: string, bot?: string) => {
+    await until(async () => ({
+      current: await current(), local: onLocal(), running: world.running(), listed: !bot || await listsBot(bot),
+    }), (seen) => seen.current === id
+      && (id === cloudEntry ? !seen.local : seen.local && seen.running === profileDir(fx.desktopDataDir, id.slice("profile:".length)))
+      && seen.listed, 90_000, `${id} on screen${bot ? ` with ${bot}` : ""}`);
+    if (bot) await closePalette();
+  };
   const lineOf = () => page<string | null>("document.querySelector('[data-home-line]')?.textContent ?? null");
   const workId = () => world.registry!.list().find((entry) => entry.name === "Work")?.id ?? "work";
 
@@ -349,7 +359,8 @@ function harness(get: () => { world: HomeWorld; shots: string }) {
     await until(() => page<boolean>("(() => { const close = document.querySelector('[data-home-line-close]'); close?.click(); return Boolean(close); })()"), Boolean, 15_000, "the line's ✕");
     await until(lineOf, (text) => text === null, 10_000, "the line closed");
     await world.window.loadURL(`${world.localOrigin}/`);
-    await until(() => page<string>("document.body.innerText"), (text) => text.includes("Scout"), 60_000, "This Mac reloaded");
+    await until(() => listsBot("Scout"), Boolean, 60_000, "This Mac reloaded");
+    await closePalette();
     await new Promise((resolve) => setTimeout(resolve, 2_000));
     expect(await lineOf(), "closed for good").toBeNull();
     await click(`[data-rail-place="profile:${work}"]`);
