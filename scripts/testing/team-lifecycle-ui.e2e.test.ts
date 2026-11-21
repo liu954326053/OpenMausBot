@@ -255,6 +255,43 @@ if (!enabled) console.log("skipping team lifecycle UI e2e: set OMB_UI_E2E=1 to i
     expect(survivingRoom).toMatchObject({ id: group.id, name: group.name, memberIds: [a.id, b.id], threadId: group.threadId });
     expect(survivingRoom.section).toBeUndefined();
     expect((await control("messages", "--channel", group.id, "--limit", "10") as any).messages).toEqual(roomTranscript);
+    const roomRow = `[data-team-map-room="${group.id}"]`;
+    const roomListOpen = () => evaluate("document.querySelector('[data-team-map-rooms]').parentElement.open");
+    const roomKept = async () => (await api("/api/bots?messages=0")).groups.some((room: any) => room.id === group.id);
+    const askToDeleteRoom = async (open: () => Promise<unknown>) => {
+      await ui("eval", "--js", "(() => { const list = document.querySelector('[data-team-map-rooms]').parentElement; if (!list.open) list.querySelector('summary').click(); return list.open; })()");
+      await expect.poll(() => evaluate(`Boolean(document.querySelector('${roomRow}'))`), { timeout: 10_000 }).toBe(true);
+      await open();
+      await click("Delete group chat");
+      await expect.poll(snapshot).toContain('alertdialog "Delete Desk room?"');
+      expect(await focused()).toBe("Cancel");
+      expect(await roomListOpen()).toBe(true);
+    };
+    await askToDeleteRoom(async () => {
+      await evaluate(`document.querySelector('${roomRow}').focus()`);
+      await ui("press", "--keys", "Shift+F10");
+      await expect.poll(focused).toBe("Rename group chat");
+    });
+    await ui("press", "--keys", "Escape");
+    await expect.poll(snapshot).not.toContain('alertdialog "Delete Desk room?"');
+    expect(await roomKept()).toBe(true);
+    await expect.poll(() => evaluate("document.activeElement?.getAttribute('data-team-map-room')")).toBe(group.id);
+    expect(await roomListOpen()).toBe(true);
+    await askToDeleteRoom(() => click("Actions for Desk room"));
+    await click("Cancel");
+    await expect.poll(snapshot).not.toContain('alertdialog "Delete Desk room?"');
+    expect(await roomKept()).toBe(true);
+    await expect.poll(() => evaluate("document.activeElement?.getAttribute('data-team-map-room-actions')")).toBe(group.id);
+    expect(await roomListOpen()).toBe(true);
+    await askToDeleteRoom(() => evaluate(`(() => {
+      const row = document.querySelector('${roomRow}'), box = row.getBoundingClientRect();
+      row.focus();
+      return row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: box.left + 20, clientY: box.top + 10 }));
+    })()`));
+    await click("Delete group chat");
+    await expect.poll(roomKept).toBe(false);
+    expect((await api("/api/bots?messages=0")).bots.map((bot: any) => bot.id)).toEqual(expect.arrayContaining([a.id, b.id]));
+    await expect.poll(() => evaluate(`Boolean(document.querySelector('${roomRow}'))`)).toBe(false);
     const consoleResult = await ui("console");
     expect(JSON.stringify(consoleResult)).not.toMatch(/Uncaught|ReferenceError/);
     console.info(JSON.stringify({ fixture: info!, screenshot, emptyTeam: true, multiBotMove: true, delayedMemberCreation: true, reload: true, renameAndDelete: true,

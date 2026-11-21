@@ -69,7 +69,11 @@ a Chief through `/api/team-projects`, then check:
    renaming it back takes both away.
 10. In Simple mode, Settings shows Data with the projects folder and the
     archived projects, and restoring one there leaves the app in Simple mode.
+11. ⌘1 opens the main bot's chat, and ⌘2 to ⌘9 open the first eight projects'
+    canvases in the sidebar's order; while a search is on, in the order of the
+    projects it leaves.
 
+`src/lib/sidebar-shortcut-order.test.ts`,
 `src/components/Sidebar.projects.test.ts`, `src/lib/sidebar-projects.test.ts`,
 `src/components/Sidebar.search.dom.test.ts`,
 `src/components/team-projects/SidebarTeamProjects.dom.test.ts`,
@@ -142,6 +146,31 @@ The fixture reports its log path and keeps a snapshot and screenshot on failure.
 on its own. Server safeguards still reject deletion during active work, with an
 assigned team computer, or when moving the Chief would conflict with General's
 Chief; see [Teams](teams.md) for those lifecycle checks.
+
+## Group chats on the team map
+
+The group chats and bot chats outside projects are listed under the team map's
+Group chats button. Each has a menu, opened from its ⋯ button (shown on hover
+and keyboard focus, always on touch), a right-click, or the ContextMenu key or
+Shift+F10 on the row: Rename, Set description (group chats only), Copy
+conversation ID and Delete. Rename and the description are edited in the menu;
+Enter saves, Escape leaves the name as it was. A remote client only copies the
+ID. In a narrow window the list moves sideways to stay on screen, also when
+the window narrows while it is open. The same `team-lifecycle-ui` run deletes a
+group chat from that list:
+
+- Shift+F10 on the row, its ⋯ button and a right-click open the same menu, with
+  focus on its first item.
+- Delete asks first, naming the group chat, with Cancel focused. Escape and
+  Cancel keep the group chat, leave the list open and give focus back to the row
+  or button that opened the menu.
+- The delete button deletes the group chat and keeps its bots.
+
+`src/components/TeamMapRooms.dom.test.ts` covers the button, right-click,
+keyboard, arrow keys, rename, description, copy, the confirmation and the list
+in a narrow window;
+`src/components/room-delete-copy.test.ts` the confirmation's words and
+`src/state/delete-group.test.ts` the request and a refusal from the server.
 
 ## Activity, quieter rows, and notification preference
 
