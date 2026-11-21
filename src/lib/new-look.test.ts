@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { PINNED_CIRCLES_KEY, SIDEBAR_TOOLS_LAYOUT_KEY, UNIVERSAL_PINS_KEY } from "./sidebar-preferences";
+import { SIDEBAR_TOOLS_LAYOUT_KEY } from "./sidebar-preferences";
 
 const values = new Map<string, string>();
 const local = {
@@ -20,9 +20,9 @@ async function boot(simpleOnly = true) {
 
 const ADVANCED_PREFS = {
   "omb-font": "serif", "omb-chat-width": "full", "omb-show-threads": "1", "openmausbot.sidebarToolsLayout": "toolbar",
-  "openmausbot.pinnedCircles": "1", "openmausbot.universalPins": "1", "omb-show-run-card": "0", "omb-web-panels": "[]",
+  "omb-show-run-card": "0", "omb-web-panels": "[]",
 };
-const KEPT = { "omb-skin": "lagoon", "openmausbot.sidebarDensity": "avatars", "omb-drafts": "{}" };
+const KEPT = { "omb-skin": "lagoon", "openmausbot.sidebarDensity": "avatars", "omb-drafts": "{}", "openmausbot.pinnedCircles": "1", "openmausbot.universalPins": "1" };
 
 beforeEach(() => {
   values.clear();
@@ -99,7 +99,7 @@ describe("the move to Simple as the only mode", () => {
 
   it("spells out the sidebar's keys as sidebar-preferences.ts names them", async () => {
     const { ADVANCED_ONLY_PREFS } = await import("./new-look");
-    expect(ADVANCED_ONLY_PREFS).toEqual(expect.arrayContaining([SIDEBAR_TOOLS_LAYOUT_KEY, PINNED_CIRCLES_KEY, UNIVERSAL_PINS_KEY]));
+    expect(ADVANCED_ONLY_PREFS).toEqual(expect.arrayContaining([SIDEBAR_TOOLS_LAYOUT_KEY]));
     expect(ADVANCED_ONLY_PREFS).toEqual(expect.arrayContaining(Object.keys(ADVANCED_PREFS)));
   });
 });
@@ -159,11 +159,11 @@ describe("Advanced mode back, as shipped", () => {
 
   it("restores nothing it cannot know: the reset settings stay at their defaults, which Advanced reads as threads shown, and a choice made since stays", async () => {
     values.set("omb-new-look", "seen");
-    values.set("openmausbot.universalPins", "true");
+    values.set("openmausbot.sidebarToolsLayout", "toolbar");
     const back = await boot(false);
     expect(back.mode.readAdvancedMode()).toBe(true);
-    for (const key of Object.keys(ADVANCED_PREFS).filter((key) => key !== "openmausbot.universalPins")) expect(values.has(key), key).toBe(false);
-    expect(values.get("openmausbot.universalPins")).toBe("true");
+    for (const key of Object.keys(ADVANCED_PREFS).filter((key) => key !== "openmausbot.sidebarToolsLayout")) expect(values.has(key), key).toBe(false);
+    expect(values.get("openmausbot.sidebarToolsLayout")).toBe("toolbar");
     expect([back.font, back.width]).toEqual(["skin", "standard"]);
   });
 

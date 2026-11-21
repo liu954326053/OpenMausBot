@@ -111,20 +111,21 @@ describe("bot actions menu viewport placement", () => {
     expect(negative.style).toEqual({ top: "8px", left: "8px" });
   });
 
-  it("lets Simple pin or unpin a bot first, and offers no folders", () => {
+  it("offers Simple no pin, since the sidebar has no pinned bots, and no folders", () => {
     const html = render();
-    expect(html.indexOf(t("sidebar.bot.pin"))).toBeGreaterThan(-1);
-    expect(html.indexOf(t("sidebar.bot.pin"))).toBeLessThan(html.indexOf(t("sidebar.copyConversationId")));
+    expect(html).toContain(t("sidebar.copyConversationId"));
+    expect(html).not.toContain(t("sidebar.bot.pin"));
     for (const key of ["folder.new", "task.folder.new"] as const) expect(html, key).not.toContain(`>${t(key)}<`);
   });
 
   it("keeps Advanced's flat list of bot actions, drawn on the shared menu sheet", () => {
     fixture.advanced = true;
     const html = render();
-    for (const key of ["task.newShort", "folder.new", "task.deleteAll", "sidebar.bot.pin", "sidebar.bot.makeChief", "sidebar.bot.moveToSection", "sidebar.bot.markUnread", "sidebar.bot.editProfile", "sidebar.bot.duplicate", "sidebar.copyConversationId", "sidebar.bot.archive", "common.delete"] as const) {
+    for (const key of ["task.newShort", "folder.new", "task.deleteAll", "sidebar.bot.makeChief", "sidebar.bot.moveToSection", "sidebar.bot.markUnread", "sidebar.bot.editProfile", "sidebar.bot.duplicate", "sidebar.copyConversationId", "sidebar.bot.archive", "common.delete"] as const) {
       expect(html, key).toContain(t(key));
     }
     expect(html).not.toContain(t("sidebar.bot.more"));
+    expect(html).not.toContain(t("sidebar.bot.pin"));
     expect(html).toContain("rounded-[var(--radius-menu)]");
     expect(html).not.toContain("shadow-2xl");
   });
@@ -134,7 +135,7 @@ describe("bot actions menu viewport placement", () => {
     setTeamPeople({ people: [{ email: "ada@acme.test", name: "Ada", role: "admin", you: true }], me: { email: "ada@acme.test", name: "Ada", role: "admin", you: true }, admin: true, needsYou: [] });
     const html = render();
     expect(html).not.toContain(t("sidebar.bot.makeChief"));
-    expect(html).toContain(t("sidebar.bot.pin"));
+    expect(html).toContain(t("sidebar.copyConversationId"));
     setTeamPeople(null);
     fixture.effects = [];
     expect(render()).toContain(t("sidebar.bot.makeChief"));

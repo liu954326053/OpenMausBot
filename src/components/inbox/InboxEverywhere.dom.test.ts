@@ -20,7 +20,6 @@ import type { InboxRow, InboxView } from "../../../shared/inbox";
 import { SidebarActiveThreads } from "../SidebarActiveThreads";
 import { NeedsYouButton } from "../TeamOwner";
 import { SidebarInboxRow } from "../SidebarInboxRow";
-import { setAttentionPinned } from "./attention-pinned";
 import { InboxPanel } from "./InboxPanel";
 import { senderLabel, waitingCount } from "./inbox-view";
 
@@ -64,7 +63,6 @@ beforeEach(() => {
   server.answer = placeView([]);
   dispatch.mockClear();
   setTeamPeople(null);
-  setAttentionPinned(false);
 });
 afterEach(() => {
   act(() => root.unmount());
@@ -246,7 +244,6 @@ describe("a place's inbox in the panel", () => {
     expect(section.textContent, "work still going stays reachable").toContain("Told and still working");
     await act(async () => { [...section.querySelectorAll<HTMLElement>("button")].find((one) => one.textContent?.includes("Writing the page"))!.click(); });
     expect(dispatch).toHaveBeenCalledWith({ type: "switchTask", botId: "eli", threadId: "eli-work" });
-    await click("[data-inbox-pin]");
-    expect(document.querySelector("[data-inbox-pin]")!.getAttribute("aria-label")).toBe("Unpin");
+    expect(section.querySelector("[data-inbox-pin]"), "Active Threads has no sidebar place to pin to").toBeNull();
   });
 });

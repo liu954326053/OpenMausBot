@@ -25,7 +25,6 @@ export function useBotActions(bot: Bot) {
       ? t("sidebar.bot.archiveBlockedLast")
       : undefined;
 
-  const togglePin = () => dispatch({ type: "updateBot", botId: bot.id, patch: { pinned: !bot.pinned } });
   const duplicate = () => dispatch({ type: "duplicateBot", botId: bot.id });
 
   const markAllRead = async () => {
@@ -78,7 +77,6 @@ export function useBotActions(bot: Bot) {
   };
 
   return {
-    togglePin,
     duplicate,
     copyId: copy.copy,
     copyState: copy.state,
