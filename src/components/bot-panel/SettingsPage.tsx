@@ -25,6 +25,7 @@ import { useChoosesVisibility, visibilityLabel } from "../bot-settings/Visibilit
 import { useBotApps } from "../bot-settings/useBotApps";
 import { useSlackManagementUrl } from "../bot-settings/useSlackManagement";
 import type { useBotSettingsDerived } from "../bot-settings/useBotSettingsDerived";
+import { CopyFollowsNotice } from "../team-projects/CopyFollows";
 import { useThreadApproval } from "../thread-approval";
 import { AdvancedSettingsRow } from "./AdvancedSettingsRow";
 import { BackupAis } from "./BackupAis";
@@ -106,6 +107,7 @@ export function SettingsPage({ bot, derived, onOpen, editingInstructions = false
   return (
     <div data-panel-settings>
       <PackageProvenance bot={bot} />
+      <CopyFollowsNotice bot={bot} className="mb-3" />
       <Card anchor="instructions">
         {soulOpen ? (
           <ColRow data-panel-row="soul">

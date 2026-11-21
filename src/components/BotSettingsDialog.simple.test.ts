@@ -151,6 +151,7 @@ const { Switch } = await import("./SettingsPrimitives");
 const { OrgSkillsCard } = await import("./bot-settings/OrgSkillsCard");
 const { PackageProvenance } = await import("./bot-settings/PackageProvenance");
 const { AdvancedSettingsRow } = await import("./bot-panel/AdvancedSettingsRow");
+const { setTeamProjects } = await import("@/state/team-projects");
 
 afterAll(() => vi.unstubAllGlobals());
 
@@ -689,6 +690,25 @@ describe("the Bot settings page", () => {
     expect(rendered.html).toContain('aria-label="Let apps talk to this bot"');
     expect(rendered.html.match(/pl-\[38px\]/g)).toHaveLength(5);
     for (const gone of ['data-panel-row="always-allow"', 'data-panel-row="slack"', 'data-panel-page="visibility"']) expect(rendered.html, gone).not.toContain(gone);
+  });
+
+  it("says on a copy's settings which bot it follows, above the instructions and job it cannot change", () => {
+    const source = makeBot({ id: "quill", name: "Quill", section: "Drama team" });
+    const copy = makeBot({ id: "quill-copy", name: "Quill", section: "Bride" });
+    fixture.storeState = { ...fixture.storeState, bots: [source, copy] };
+    setTeamProjects({ root: "/dramas", projects: [{
+      id: "bride", name: "Bride", folder: "/dramas/Bride", section: "Bride", team: { key: "team:drama", name: "Drama team" },
+      follows: { "quill-copy": "quill" }, leadBotId: "quill-copy", createdAt: 1, folderState: "ready", botIds: ["quill-copy"],
+    }] });
+    fixture.derived = { ...fixture.derived, followedSource: { id: "quill", name: "Quill", team: "Drama team", openable: true } };
+    try {
+      const html = settingsPage(copy).html;
+      expect(html).toContain("Follows Quill in Drama team");
+      expect(html.indexOf("data-copy-follows")).toBeLessThan(html.indexOf('data-panel-edit="soul"'));
+      expect(settingsPage(makeBot()).html).not.toContain("data-copy-follows");
+    } finally {
+      setTeamProjects(null);
+    }
   });
 
   it("lists what the bot may do without asking under Before it acts, each with a button that takes it off", () => {
