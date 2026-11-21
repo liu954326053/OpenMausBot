@@ -22,6 +22,12 @@ export const SIMPLE_USER_BUBBLE = `${SIMPLE_BUBBLE_SHAPE} bg-bubble-user font-no
 /** At most 560 wide, 80% of the column, and always 82px short of it, so a reply never meets the far edge. */
 export const SIMPLE_BUBBLE_MAX = "max-w-[min(var(--chat-bubble-max),var(--chat-bubble-pct),calc(100%-82px))]";
 
+/** A person's own message folds past 600 characters or 8 lines, until they show it in full. */
+export const foldsSentText = (text: string) => text.length > 600 || text.split("\n").length > 8;
+
+/** A folded message shows its first 160px, fading out. */
+export const FOLDED_SENT_TEXT = "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]";
+
 /** A plain-text bot bubble drawn outside the transcript's own Bubble: a widget's text fallback or a row that failed. */
 export function plainBotBubble(simple: boolean): string {
   return simple
