@@ -1,6 +1,8 @@
-// How this app's Electron sessions and listeners meet the local MagicBot server. The server treats the app window
-// as its owner only by a header the default session adds; no other session (desktop viewers, VM panes) may reach the
-// server at all; and the server learns every port this app listens on, so its bots' browsers never reach them.
+// How this app's Electron sessions and listeners meet the local MagicBot server, and PostHog. The server treats the
+// app window as its owner only by a header the default session adds; no other session (desktop viewers, VM panes)
+// may reach the server at all; no session at all may reach PostHog, so a page that a not-yet-updated server serves
+// into a window cannot send its usage analytics; and the server learns every port this app listens on, so its bots'
+// browsers never reach them.
 import { subscribe } from "node:diagnostics_channel";
 import { isIP } from "node:net";
 
@@ -27,6 +29,16 @@ export function targetsServer(url, serverPort) {
   }
 }
 
+/** Whether `url` is addressed to posthog.com or any host under it. A fully qualified name's trailing dot reaches the same host. */
+export function targetsPostHog(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+    return host === "posthog.com" || host.endsWith(".posthog.com");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * `ownerToken()` is the desktop capability, or null while there is none to send. Chromium adds the header below
  * JavaScript, on http: and ws: alike, so a shell using curl cannot impersonate the person at the desktop.
@@ -42,9 +54,12 @@ export function installServerSessions({ app, defaultSession, serverPort, ownerTo
     } catch {}
     callback({ requestHeaders: owns ? { ...details.requestHeaders, [DESKTOP_MUTATION_HEADER]: token } : details.requestHeaders });
   });
+  // Electron 43 keeps one onBeforeRequest listener per session, so each session's rules share one.
+  defaultSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: targetsPostHog(details.url) }));
   app.on("session-created", (created) => {
     if (created === defaultSession) return;
-    created.webRequest.onBeforeRequest((details, callback) => callback({ cancel: targetsServer(details.url, serverPort()) }));
+    created.webRequest.onBeforeRequest((details, callback) =>
+      callback({ cancel: targetsPostHog(details.url) || targetsServer(details.url, serverPort()) }));
   });
 }
 

@@ -15,5 +15,6 @@ to anyone else.
 
 The random id PostHog kept in the app's storage for an earlier version is never read or sent.
 
-A MagicBot Cloud or self-hosted server serves the page of the version it runs. Until a server is updated, its page can
-still send that earlier version's analytics.
+A MagicBot Cloud or self-hosted server serves the page of the version it runs. The desktop app cancels every request to
+posthog.com and its subdomains, in every window, so a not-yet-updated server's page cannot send that earlier version's
+analytics from the app; opened in a web browser, it still can until the server is updated.

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import test from "node:test";
 
-import { installServerSessions, reportOwnListeners, targetsServer } from "./server-session.mjs";
+import { installServerSessions, reportOwnListeners, targetsPostHog, targetsServer } from "./server-session.mjs";
 
 const SERVER_PORT = 48799;
 
@@ -58,7 +58,30 @@ test("no session but the app window's may reach the server, in any spelling of t
     assert.equal(await request(viewer, url), false, url);
   }
   created(defaultSession);
-  assert.equal(defaultSession.hooks.request, undefined, "the app window's own session is never cancelled");
+  assert.equal(await request(defaultSession, `http://127.0.0.1:${SERVER_PORT}/api/bots`), false, "the app window's own session reaches its server");
+});
+
+test("PostHog is posthog.com and every host under it, and nothing that only looks like it", () => {
+  for (const url of ["https://posthog.com/", "https://us.i.posthog.com/e/", "https://us-assets.i.posthog.com/static/array.js",
+    "https://eu.i.posthog.com/flags/?v=2", "https://app.posthog.com/decide/", "wss://us.i.posthog.com/", "http://PostHog.COM:8080/",
+    "https://us.i.posthog.com./e/", "https://us.i.posthog%2Ecom/e/"]) {
+    assert.equal(targetsPostHog(url), true, url);
+  }
+  for (const url of ["https://notposthog.com/", "https://posthog.com.evil.test/", "https://posthog.co/", "https://posthog-com.example/",
+    "https://posthog.com@evil.test/", "https://example.com/?next=https://us.i.posthog.com/", "https://example.com/posthog.com",
+    "data:text/html,posthog.com", "not a url"]) {
+    assert.equal(targetsPostHog(url), false, url);
+  }
+});
+
+test("every session, the app window's included, cancels requests to PostHog", async () => {
+  const { defaultSession, created } = install();
+  for (const session of [defaultSession, created(fakeSession()), created(fakeSession())]) {
+    for (const url of ["https://us.i.posthog.com/e/", "https://us-assets.i.posthog.com/static/array.js", "https://eu.i.posthog.com/flags/"]) {
+      assert.equal(await request(session, url), true, url);
+    }
+    assert.equal(await request(session, "https://example.com/"), false);
+  }
 });
 
 test("every session main creates gets the guard before it loads anything", () => {
@@ -69,6 +92,10 @@ test("every session main creates gets the guard before it loads anything", () =>
   assert.ok(main.indexOf("await showStartPlace();", install) > install, "installed before the first window");
   assert.doesNotMatch(main, /onBeforeSendHeaders/, "the owner header is added in one place");
   assert.equal(targetsServer(`http://2130706433:${SERVER_PORT}/`, SERVER_PORT), true);
+  const replacing = readdirSync(new URL(".", import.meta.url), { recursive: true })
+    .filter((file) => /\.(mjs|cjs|js)$/.test(file) && !/\.(test|node-test)\./.test(file) && file !== "server-session.mjs")
+    .filter((file) => /\bonBeforeRequest\b/.test(readFileSync(new URL(file, import.meta.url), "utf8")));
+  assert.deepEqual(replacing, [], "a second onBeforeRequest on a session replaces these rules");
 });
 
 test("the server hears about every port this app listens on, and about new ones as they open", async () => {
