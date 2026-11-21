@@ -4,8 +4,9 @@ import type { CanvasSnapshot } from "../../../shared/project-canvas";
 import type { ServerFrame } from "../../../shared/wire";
 import { ApiError } from "../../state/api";
 import type { AppState, Bot } from "../../state/store";
+import { t } from "../i18n";
 import { publishLiveFrame, publishMissedFrames } from "../live-events";
-import { CanvasBackendError } from "./backend";
+import { CanvasBackendError, canvasErrorText } from "./backend";
 import { createServerCanvasBackend } from "./server-backend";
 
 type Answer = { status?: number; body?: unknown };
@@ -85,12 +86,13 @@ describe("the project canvas on the app's server", () => {
     expect(backend.fileUrl("p1", { path: "素材/a b.png", mime: "image/png", bytes: 1, name: "a b.png" })).toBe("/api/team-projects/p1/canvas/files?path=%E7%B4%A0%E6%9D%90%2Fa+b.png");
   });
 
-  it("sends a task with the text node its reply goes into", async () => {
+  it("sends a task with the text node its reply goes into and the language that names its references", async () => {
     const { backend } = backendWith();
     answers.push({ status: 202, body: { threadId: "t1", messageId: "m1", references: 2 } });
-    expect(await backend.sendTask("p1", { botId: "writer", text: "Write the opening", threadId: "t1", targetNodeId: "n1" })).toEqual({ threadId: "t1", messageId: "m1", references: 2 });
+    const task = { botId: "writer", text: "Write the opening", threadId: "t1", targetNodeId: "n1", language: "pt-br" };
+    expect(await backend.sendTask("p1", task)).toEqual({ threadId: "t1", messageId: "m1", references: 2 });
     expect(sent[0]).toMatchObject({ method: "POST", path: "/api/team-projects/p1/canvas/tasks" });
-    expect(JSON.parse(String(sent[0]!.body))).toEqual({ botId: "writer", text: "Write the opening", threadId: "t1", targetNodeId: "n1" });
+    expect(JSON.parse(String(sent[0]!.body))).toEqual(task);
   });
 
   it("hears its project's canvas events on the app's live stream, and the events the app missed", () => {
@@ -142,10 +144,11 @@ describe("the project canvas on the app's server", () => {
       { body: { job: { id: "job 1", status: "cancelled" } } },
       { status: 404, body: { error: "That job is gone.", code: "job_gone" } },
     );
-    expect(await backend.startGeneration("p1", "shot-1")).toEqual({ jobId: "job-1" });
-    expect(await backend.startGeneration("p1", "shot-1")).toEqual({ refused: unusable });
-    await expect(backend.startGeneration("p1", "shot-1")).rejects.toMatchObject({ name: "CanvasBackendError", body: { reason: "archived" } });
-    await expect(backend.startGeneration("p1", "shot-1")).rejects.toMatchObject({ status: 409, message: "shot-1 is being generated already" });
+    const request = { nodeId: "shot-1", language: "zh" };
+    expect(await backend.startGeneration("p1", request)).toEqual({ jobId: "job-1" });
+    expect(await backend.startGeneration("p1", request)).toEqual({ refused: unusable });
+    await expect(backend.startGeneration("p1", request)).rejects.toMatchObject({ name: "CanvasBackendError", body: { reason: "archived" } });
+    await expect(backend.startGeneration("p1", request)).rejects.toMatchObject({ status: 409, message: "shot-1 is being generated already" });
     await backend.cancelGeneration("p1", "job 1");
     await expect(backend.cancelGeneration("p1", "job 1")).rejects.toMatchObject({ status: 404 });
     expect(sent.map(({ path, method }) => `${method} ${path}`)).toEqual([
@@ -153,7 +156,17 @@ describe("the project canvas on the app's server", () => {
       "POST /api/team-projects/p1/generation/jobs/job%201/cancel",
       "POST /api/team-projects/p1/generation/jobs/job%201/cancel",
     ]);
-    expect(JSON.parse(String(sent[0]!.body))).toEqual({ nodeId: "shot-1" });
+    expect(JSON.parse(String(sent[0]!.body))).toEqual({ nodeId: "shot-1", language: "zh" });
+  });
+
+  it("names why a call failed in the person's words when its body gives a serverError key, else by its message", () => {
+    const named = new ApiError("That bot is gone.", 404, { error: "That bot is gone.", errorKey: "serverError.projectCanvas.notMember" });
+    const folder = new ApiError("No folder.", 409, { errorKey: "serverError.projectCanvas.folderMissing", errorParams: { folder: "/tmp/drama" } });
+    expect(canvasErrorText(named)).toBe(t("serverError.projectCanvas.notMember"));
+    expect(canvasErrorText(folder)).toBe(t("serverError.projectCanvas.folderMissing", { folder: "/tmp/drama" }));
+    expect(canvasErrorText(new ApiError("Held.", 409, { errorKey: "approval.held.outbound" }))).toBe("Held.");
+    expect(canvasErrorText(new ApiError("No folder.", 409, { errorKey: "serverError.projectCanvas.folderMissing" }))).toBe("No folder.");
+    expect(canvasErrorText(new Error("Disk full"))).toBe("Disk full");
   });
 
   it("draws each bot as the app's store has it", async () => {

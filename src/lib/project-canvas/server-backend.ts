@@ -167,9 +167,9 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
       return generationCall<GenerationModelsWire>(`${generationPath(projectId)}/models?${query}`);
     },
 
-    startGeneration: (projectId, nodeId) => generationCall<CanvasGenerateResponse>(`${canvasPath(projectId)}/generate`, {
+    startGeneration: (projectId, request) => generationCall<CanvasGenerateResponse>(`${canvasPath(projectId)}/generate`, {
       method: "POST",
-      body: JSON.stringify({ nodeId }),
+      body: JSON.stringify(request),
     }),
 
     async cancelGeneration(projectId, jobId) {

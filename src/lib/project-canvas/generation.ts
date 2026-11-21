@@ -1,6 +1,6 @@
 import { CANVAS_NODE_SIZE, type CanvasConnection, type CanvasNode, type CanvasPoint } from "../../../shared/project-canvas";
+import { generationReferences } from "../../../shared/project-canvas-references";
 import type { GenerationKind, StartGenerationInput } from "../../../shared/project-generation";
-import { generationReferences } from "./references";
 import { generationKindOf, nodeOverrides } from "./settings";
 
 /** How far right of its source the server puts a result. */

@@ -1,6 +1,7 @@
 import type {
   CanvasConflict,
   CanvasFileRef,
+  CanvasGenerateRequest,
   CanvasGenerateResponse,
   CanvasOpsRequest,
   CanvasReadOnly,
@@ -18,6 +19,7 @@ import type {
   ProjectGenerationSettings,
   Refused,
 } from "../../../shared/project-generation";
+import { serverErrorText } from "../server-error";
 import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 /** A refusal the server explained: the 409 body of a conflict or of a canvas that takes no change. */
@@ -28,10 +30,16 @@ export class CanvasBackendError extends Error {
   }
 }
 
+/** Why a call failed, in the person's language when the error's `body` names its reason by key. */
+export function canvasErrorText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return serverErrorText((error as { body?: unknown } | null)?.body, message);
+}
+
 /**
  * Everything the project canvas reads and changes. The canvas keeps nothing in the browser: each call names the
- * project. A promise rejects with an `Error` whose message the canvas may show the person; a generation the server
- * refuses resolves to `Refused` instead.
+ * project. A promise rejects with an `Error` the canvas may show the person (`canvasErrorText`); a generation the
+ * server refuses resolves to `Refused` instead.
  */
 export interface CanvasBackend {
   /** `GET /api/team-projects/:id/canvas`. */
@@ -65,7 +73,7 @@ export interface CanvasBackend {
   listModels(projectId: string, kind: GenerationKind, preview?: { server: string }): Promise<GenerationModelsWire | Refused>;
   /** `POST /api/team-projects/:id/canvas/generate`: generation starts from the node's saved prompt and settings and the
    * files connected into it, and the node shows the job as it goes. */
-  startGeneration(projectId: string, nodeId: string): Promise<CanvasGenerateResponse | Refused>;
+  startGeneration(projectId: string, request: CanvasGenerateRequest): Promise<CanvasGenerateResponse | Refused>;
   /** `POST /api/team-projects/:id/generation/jobs/:jobId/cancel`. */
   cancelGeneration(projectId: string, jobId: string): Promise<void>;
 }

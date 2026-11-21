@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId } from "../../../shared/project-canvas";
+import { loadLocale, setLocale } from "@/lib/i18n";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
 import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "@/testing/project-canvas-sample";
 import { ProjectCanvas } from "./ProjectCanvas";
@@ -306,6 +307,23 @@ describe("the project canvas", () => {
     await settle();
     expect(shown("city-night")!.title).toBe("Night street");
     expect(nodeElement(botNodeId("mira"))!.querySelector('[title="Double-click to rename"]')).toBeNull();
+  });
+
+  it("says why a generation failed in the person's language from its key, and in the server's words for any other key", async () => {
+    await loadLocale("zh");
+    try {
+      await mount();
+      const fail = (metadata: Record<string, unknown>) => act(async () => {
+        await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "update_node", id: "city-night", metadata: { status: "error", errorDetails: "gen couldn't make it: no faces", ...metadata } }] });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      await fail({ errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "没有人脸" } });
+      expect(nodeElement("city-night")!.querySelector('[role="alert"]')!.textContent).toContain("gen 没能生成：没有人脸");
+      await fail({ errorKey: "approval.held.outbound", errorParams: null });
+      expect(nodeElement("city-night")!.querySelector('[role="alert"]')!.textContent).toContain("gen couldn't make it: no faces");
+    } finally {
+      setLocale("en");
+    }
   });
 
   it("disables editing on an archived project", async () => {

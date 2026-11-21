@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoaderCircle } from "lucide-react";
 import type { CanvasNode, CanvasPoint, CanvasViewport } from "../../../shared/project-canvas";
+import { isReferenceNode } from "../../../shared/project-canvas-references";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { nextOutputFrame } from "@/lib/project-canvas/generation";
@@ -22,7 +23,6 @@ import {
   type ResizeStart,
 } from "@/lib/project-canvas/geometry";
 import { diffCanvasOps } from "@/lib/project-canvas/ops";
-import { isReferenceNode } from "@/lib/project-canvas/references";
 import { clickSelection, dragNodeIds, nodesInRect, rectFromPoints } from "@/lib/project-canvas/selection";
 import { generationKindOf } from "@/lib/project-canvas/settings";
 import { relatedNodeIds, useCanvasUi, type CanvasTool } from "./canvas-ui";

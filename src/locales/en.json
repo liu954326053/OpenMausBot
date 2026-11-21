@@ -11590,7 +11590,6 @@
   "projectCanvas.config.inputs": "Inputs: {count}",
   "projectCanvas.config.mode": "Makes",
   "projectCanvas.reference.title": "References",
-  "projectCanvas.reference.label": "{kind} {index}",
   "projectCanvas.reference.add": "Add references from the canvas",
   "projectCanvas.reference.stopPicking": "Stop adding references",
   "projectCanvas.reference.remove": "Remove {label}",

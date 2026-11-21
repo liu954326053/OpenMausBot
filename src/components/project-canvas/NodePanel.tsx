@@ -2,19 +2,19 @@
 import { useEffect, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
 import { botIdOfNode, type CanvasNode } from "../../../shared/project-canvas";
+import { connectedReferences, generationReferences, mentionReferences, referenceCounts } from "../../../shared/project-canvas-references";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
 import { approvalDetailText } from "@/lib/approval-summary";
 import { cn } from "@/lib/cn";
-import { t, tFromServer } from "@/lib/i18n";
-import { connectedReferences, generationReferences, mentionReferences, referenceCounts } from "@/lib/project-canvas/references";
+import { t } from "@/lib/i18n";
+import { canvasErrorText } from "@/lib/project-canvas/backend";
 import { generationKindOf, referenceProblems } from "@/lib/project-canvas/settings";
 import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
+import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
 import { ModelPicker, PANEL_SURFACE, PanelLabel, problemText, PromptInput, ReferenceBar, SettingsPopover } from "./panel-parts";
-
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export function NodePanel({ node }: { node: CanvasNode }) {
   switch (node.type) {
@@ -61,10 +61,10 @@ function PromptPanel({ node }: { node: CanvasNode }) {
     setRefusal(null);
     try {
       const refused = await ui.controller.generate(node.id, prompt.trim());
-      if (refused) setRefusal(tFromServer(refused.errorKey, refused.error, refused.errorParams));
+      if (refused) setRefusal(serverErrorText(refused, refused.error));
       else ui.drafts.delete(node.id);
     } catch (error) {
-      setRefusal(messageOf(error));
+      setRefusal(canvasErrorText(error));
     } finally {
       setBusy(false);
     }
@@ -74,7 +74,7 @@ function PromptPanel({ node }: { node: CanvasNode }) {
     try {
       await ui.controller.cancelGeneration(node.id);
     } catch (error) {
-      setRefusal(messageOf(error));
+      setRefusal(canvasErrorText(error));
     }
   };
   const isShot = node.type === "shot";
@@ -148,7 +148,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   useEffect(() => {
     if (!exchangeOpen) return;
     let live = true;
-    ui.controller.readExchange(botId).then((messages) => live && setExchange(messages), (cause: unknown) => live && setError(messageOf(cause)));
+    ui.controller.readExchange(botId).then((messages) => live && setExchange(messages), (cause: unknown) => live && setError(canvasErrorText(cause)));
     return () => {
       live = false;
     };
@@ -165,7 +165,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
       setText("");
       if (response.queued) ui.showNotice(t("projectCanvas.bot.queued", { name: bot.name }));
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(canvasErrorText(cause));
     } finally {
       setSending(false);
     }
@@ -250,7 +250,7 @@ function TextPanel({ node }: { node: CanvasNode }) {
       await ui.controller.sendTask({ botId, text: request.trim(), targetNodeId: node.id });
       setRequest("");
     } catch (cause) {
-      setError(messageOf(cause));
+      setError(canvasErrorText(cause));
     } finally {
       setSending(false);
     }

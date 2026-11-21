@@ -12,6 +12,7 @@ import {
   type CanvasSnapshot,
   type CanvasTaskRequest,
 } from "../../../shared/project-canvas";
+import { connectedReferences } from "../../../shared/project-canvas-references";
 import {
   resolveSettings,
   settingProblems,
@@ -29,7 +30,6 @@ import {
 import { CanvasBackendError, type CanvasBackend } from "./backend";
 import { generationInput, nextOutputFrame } from "./generation";
 import { applyCanvasOps } from "./ops";
-import { connectedReferences } from "./references";
 import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 export interface MemoryGenerationOutput {
@@ -122,7 +122,8 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     const reason = options.fail?.(input);
     if (!node || reason) {
       jobs.set(job.id, { ...job, status: "failed", updatedAt: Date.now() });
-      if (node) commit([{ type: "update_node", id: node.id, metadata: { status: "error", errorDetails: reason ?? null, jobId: null } }]);
+      const said = reason ? { errorDetails: `${job.server} couldn't make it: ${reason}`, errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: job.server, reason } } : {};
+      if (node) commit([{ type: "update_node", id: node.id, metadata: { status: "error", ...said, jobId: null } }]);
       return;
     }
     const count = job.kind === "image" ? job.settings.count : 1;
@@ -144,7 +145,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ops.push(...steps);
       document = applyCanvasOps(document, steps);
     });
-    ops.push({ type: "update_node", id: node.id, metadata: { status: "success", errorDetails: null, jobId: null } });
+    ops.push({ type: "update_node", id: node.id, metadata: { status: "success", errorDetails: null, errorKey: null, errorParams: null, jobId: null } });
     jobs.set(job.id, { ...job, status: "done", updatedAt: Date.now(), files: outputs.map((output) => output.file) });
     commit(ops);
   };
@@ -289,13 +290,13 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       return { models: models.filter((model) => model.kind === kind) };
     },
 
-    async startGeneration(id, nodeId) {
+    async startGeneration(id, { nodeId }) {
       ensureProject(id);
       ensureWritable();
       const node = nodeById(nodeId);
       if (!node) throw new Error(`No node ${nodeId} on this canvas.`);
       const input = generationInput(node, snapshot.nodes, snapshot.connections, node.metadata?.prompt?.trim() ?? "");
-      if (!input) throw new Error("Only shot, image and video nodes are generated.");
+      if (!input) throw new Error("Only shot, image, video and config nodes are generated.");
       if (node.metadata?.status === "loading") throw new Error(`${nodeId} is being generated already.`);
       if (!input.prompt) throw new Error(`${nodeId} has no prompt; give it one first.`);
       const kind: GenerationKind = input.kind;
@@ -312,7 +313,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         ? { ...base, kind, settings: resolveSettings(kind, generation.image.defaults, input.overrides as ImageOverrides) }
         : { ...base, kind, settings: resolveSettings(kind, generation.video.defaults, input.overrides as VideoOverrides) };
       jobs.set(job.id, job);
-      commit([{ type: "update_node", id: node.id, metadata: { status: "loading", jobId: job.id, errorDetails: null } }]);
+      commit([{ type: "update_node", id: node.id, metadata: { status: "loading", jobId: job.id, errorDetails: null, errorKey: null, errorParams: null } }]);
       jobTimers.set(job.id, setTimeout(() => finishJob(job, input), delay * 2));
       return { jobId: job.id };
     },

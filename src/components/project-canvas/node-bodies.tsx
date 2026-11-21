@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, Clock, Crown, LoaderCircle, RotateCcw } from "lucide-react";
 import { botIdOfNode, type CanvasBotStatus, type CanvasNode } from "../../../shared/project-canvas";
+import { connectedReferences } from "../../../shared/project-canvas-references";
 import { BotAvatar } from "@/components/Avatar";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { cn } from "@/lib/cn";
-import { t, tFromServer } from "@/lib/i18n";
+import { t } from "@/lib/i18n";
 import { fitNodeSize } from "@/lib/project-canvas/geometry";
-import { connectedReferences } from "@/lib/project-canvas/references";
 import { generationKindOf, nodeSettings } from "@/lib/project-canvas/settings";
+import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
 import { formatBytes, NODE_ICONS, nodeLabel, nodeTypeLabel } from "./node-kinds";
 
@@ -53,12 +54,12 @@ function GenerationState({ node, children }: { node: CanvasNode; children: React
   if (status === "error") {
     const retry = async () => {
       const refused = await ui.controller.generate(node.id, node.metadata?.prompt ?? "");
-      if (refused) ui.showNotice(tFromServer(refused.errorKey, refused.error, refused.errorParams));
+      if (refused) ui.showNotice(serverErrorText(refused, refused.error));
     };
     return (
       <div role="alert" className="flex size-full flex-col items-center justify-center gap-2 p-4 text-center">
         <AlertCircle size={16} aria-hidden="true" className="text-danger" />
-        <span className="line-clamp-3 text-[12px] leading-4 text-ink-secondary">{node.metadata?.errorDetails || t("projectCanvas.node.failed")}</span>
+        <span className="line-clamp-3 text-[12px] leading-4 text-ink-secondary">{serverErrorText(node.metadata, node.metadata?.errorDetails || t("projectCanvas.node.failed"))}</span>
         {!ui.readOnly && node.metadata?.prompt ? (
           <button type="button" className="ui-button ui-button-sm" onClick={() => void retry()}>
             <RotateCcw size={14} aria-hidden="true" />

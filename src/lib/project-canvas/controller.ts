@@ -1,7 +1,8 @@
 import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasSnapshot, CanvasTaskRequest, CanvasUploadResponse, CanvasViewport } from "../../../shared/project-canvas";
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
+import { activeLocale } from "../i18n";
 import { randomUuid } from "../random-uuid";
-import type { CanvasBackend } from "./backend";
+import { canvasErrorText, type CanvasBackend } from "./backend";
 import { emptyHistory, recordHistory, redoHistory, undoHistory } from "./history";
 import { addNodeOp, applyCanvasOps, invertCanvasOps } from "./ops";
 import { layoutBotTree } from "./tree-layout";
@@ -36,8 +37,6 @@ interface Batch {
   seen: number;
   revision?: number;
 }
-
-const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 const ARRANGING = new Set(["position", "width", "height"]);
 
@@ -90,7 +89,7 @@ export class CanvasController {
       this.set({ phase: "ready", snapshot, viewport: snapshot.viewport, looks, generation });
       void this.loadModels();
     } catch (error) {
-      this.set({ phase: "failed", loadError: messageOf(error) });
+      this.set({ phase: "failed", loadError: canvasErrorText(error) });
     }
   }
 
@@ -168,14 +167,14 @@ export class CanvasController {
     return response;
   }
 
-  /** Stores the prompt when it changed, then asks the server to generate the node as it has it; resolves to its refusal,
-   * if any. */
+  /** Stores the prompt when it changed, then asks the server to generate the node as it has it, its references named in
+   * the page's language; resolves to its refusal, if any. */
   async generate(nodeId: string, prompt: string): Promise<GenerationFailure | null> {
     const node = this.state.snapshot?.nodes.find((candidate) => candidate.id === nodeId);
     if (!node) return null;
     if ((node.metadata?.prompt ?? "") !== prompt) this.apply([{ type: "update_node", id: nodeId, metadata: { prompt } }]);
     await this.settled();
-    const result = await this.backend.startGeneration(this.projectId, nodeId);
+    const result = await this.backend.startGeneration(this.projectId, { nodeId, language: activeLocale() });
     return "refused" in result ? result.refused : null;
   }
 
@@ -184,9 +183,10 @@ export class CanvasController {
     if (jobId) await this.backend.cancelGeneration(this.projectId, jobId);
   }
 
-  async sendTask(task: CanvasTaskRequest) {
+  /** Sends the person's task, the references it mentions named in the page's language. */
+  async sendTask(task: Omit<CanvasTaskRequest, "language">) {
     await this.settled();
-    const response = await this.backend.sendTask(this.projectId, task);
+    const response = await this.backend.sendTask(this.projectId, { ...task, language: activeLocale() });
     await this.refresh();
     return response;
   }
@@ -225,7 +225,7 @@ export class CanvasController {
     const kinds: GenerationKind[] = ["image", "video"];
     const results = await Promise.all(kinds.map(async (kind) => {
       if (!settings?.[kind].server) return null;
-      return this.backend.listModels(this.projectId, kind).catch((error: unknown) => ({ refused: { code: "unreachable" as const, error: messageOf(error), errorKey: "" } }));
+      return this.backend.listModels(this.projectId, kind).catch((error: unknown) => ({ refused: { code: "unreachable" as const, error: canvasErrorText(error), errorKey: "" } }));
     }));
     const models = { ...this.state.models };
     const modelsRefused: CanvasState["modelsRefused"] = {};
@@ -258,7 +258,7 @@ export class CanvasController {
           if (!this.server || snapshot.revision >= this.server.revision) this.server = snapshot;
           this.recompute({ looks });
         } catch (error) {
-          this.set({ writeError: messageOf(error) });
+          this.set({ writeError: canvasErrorText(error) });
         }
       } while (this.refreshAgain && !this.disposed);
     })().finally(() => {
@@ -274,7 +274,7 @@ export class CanvasController {
       this.ownRevision = Math.max(this.ownRevision, batch.revision);
     } catch (error) {
       this.pending = this.pending.filter((candidate) => candidate !== batch);
-      this.set({ writeError: messageOf(error) });
+      this.set({ writeError: canvasErrorText(error) });
       this.recompute();
       void this.refresh();
     }

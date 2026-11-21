@@ -3,6 +3,7 @@
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { FileText, Music, Plus, RotateCcw, SlidersHorizontal, Video, X } from "lucide-react";
 import type { CanvasNode } from "../../../shared/project-canvas";
+import { connectedReferences, referenceLabel, type CanvasReference } from "../../../shared/project-canvas-references";
 import type { GenerationKind, GenerationModel, ProjectGenerationSettings, SettingProblem } from "../../../shared/project-generation";
 import { MENU_ITEM, MENU_SHEET } from "@/components/menu-recipe";
 import { MentionTextarea } from "@/components/MentionTextarea";
@@ -11,15 +12,10 @@ import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { mentionChoicesForQuery, mentionQueryAt } from "@/lib/mentions";
-import { connectedReferences, type CanvasReference } from "@/lib/project-canvas/references";
 import { overrideSetting, restoreSetting, settingRows, type SettingKey, type SettingRow, type SettingValue } from "@/lib/project-canvas/settings";
 import { useCanvasUi } from "./canvas-ui";
-import { nodeTypeLabel } from "./node-kinds";
 
 export const PANEL_SURFACE = "popover-surface flex flex-col gap-3 rounded-xl border border-hairline/50 bg-menu p-3";
-
-/** "Image 1": how a prompt names a reference. */
-export const referenceLabel = (reference: Pick<CanvasReference, "kind" | "index">) => t("projectCanvas.reference.label", { kind: nodeTypeLabel(reference.kind), index: reference.index });
 
 export function PanelLabel({ children }: { children: ReactNode }) {
   return <div className="text-[12px] font-medium leading-4 text-ink-tertiary">{children}</div>;
@@ -27,7 +23,7 @@ export function PanelLabel({ children }: { children: ReactNode }) {
 
 function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; onRemove?: () => void }) {
   const ui = useCanvasUi();
-  const label = referenceLabel(reference);
+  const label = referenceLabel(reference, t);
   const Icon = reference.kind === "video" ? Video : reference.kind === "audio" ? Music : FileText;
   return (
     <div className="relative flex w-12 flex-col items-center gap-1" title={reference.title || label}>
@@ -97,7 +93,7 @@ export function PromptInput({ value, onChange, references, placeholder, label, o
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<{ start: number; query: string } | null>(null);
   const [highlight, setHighlight] = useState(0);
-  const pool = references.map((reference) => ({ name: referenceLabel(reference), reference }));
+  const pool = references.map((reference) => ({ name: referenceLabel(reference, t), reference }));
   const choices = query ? mentionChoicesForQuery(pool, query.query) : [];
   const readQuery = () => {
     const input = inputRef.current;

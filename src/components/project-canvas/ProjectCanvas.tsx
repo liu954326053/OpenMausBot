@@ -15,7 +15,7 @@ import {
 import { useCaptionChrome, WindowDragStrip } from "@/components/DesktopCapabilities";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { t } from "@/lib/i18n";
-import type { CanvasBackend } from "@/lib/project-canvas/backend";
+import { canvasErrorText, type CanvasBackend } from "@/lib/project-canvas/backend";
 import { CanvasController, type CanvasState } from "@/lib/project-canvas/controller";
 import {
   applyGroupSelection,
@@ -197,7 +197,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
           const { nodeId } = await controller.upload(file, spot);
           setSelection(new Set([nodeId]));
         } catch (error) {
-          setNotice(t("projectCanvas.uploadFailed", { name: file.name, reason: error instanceof Error ? error.message : String(error) }));
+          setNotice(t("projectCanvas.uploadFailed", { name: file.name, reason: canvasErrorText(error) }));
         }
       }
     })();

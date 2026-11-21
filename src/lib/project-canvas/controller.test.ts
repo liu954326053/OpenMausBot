@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botNodeId, type CanvasOpsRequest } from "../../../shared/project-canvas";
+import { botNodeId, type CanvasGenerateRequest, type CanvasOpsRequest, type CanvasTaskRequest } from "../../../shared/project-canvas";
 import { SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
+import { loadLocale, setLocale, t } from "../i18n";
+import { CanvasBackendError } from "./backend";
 import { CanvasController, VIEWPORT_SAVE_DELAY_MS } from "./controller";
 
 beforeEach(() => vi.useFakeTimers());
@@ -95,6 +97,10 @@ describe("the canvas controller", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(node(controller, "logline")!.title).toBe("Logline");
     expect(controller.getState().writeError).toBe("Disk full");
+    backend.applyOps = () => Promise.reject(new CanvasBackendError("Archived.", { code: "canvas_read_only", error: "Archived.", errorKey: "serverError.projectCanvas.archived", reason: "archived" }));
+    controller.apply([{ type: "update_node", id: "logline", patch: { title: "Lost again" } }]);
+    await controller.settled();
+    expect(controller.getState().writeError).toBe(t("serverError.projectCanvas.archived"));
   });
 
   it("stores the view once it rests, without moving it on a newer snapshot or adding it to undo", async () => {
@@ -130,6 +136,31 @@ describe("the canvas controller", () => {
     await vi.advanceTimersByTimeAsync(100);
     await controller.saveGeneration({ ...controller.getState().generation!.settings, video: { ...controller.getState().generation!.settings.video, server: null } });
     expect(await controller.generate("shot-1", "Night rain, close-up")).toMatchObject({ code: "no_server" });
+  });
+
+  it("sends a task and a generation with the page's language, which names the references they mention", async () => {
+    const { backend, controller } = await started({ delayMs: 50 });
+    const tasks: CanvasTaskRequest[] = [];
+    const generations: CanvasGenerateRequest[] = [];
+    const sendTask = backend.sendTask.bind(backend);
+    const startGeneration = backend.startGeneration.bind(backend);
+    backend.sendTask = (projectId, task) => {
+      tasks.push(task);
+      return sendTask(projectId, task);
+    };
+    backend.startGeneration = (projectId, request) => {
+      generations.push(request);
+      return startGeneration(projectId, request);
+    };
+    await loadLocale("zh");
+    try {
+      await controller.sendTask({ botId: "otto", text: "a tagline" });
+      await controller.generate("shot-1", "Night rain");
+    } finally {
+      setLocale("en");
+    }
+    expect(tasks).toEqual([{ botId: "otto", text: "a tagline", language: "zh" }]);
+    expect(generations).toEqual([{ nodeId: "shot-1", language: "zh" }]);
   });
 
   it("marks a text node a bot's reply goes into, as the backend has it, until the reply is in", async () => {

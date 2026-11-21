@@ -11590,7 +11590,6 @@
   "projectCanvas.config.inputs": "输入：{count}",
   "projectCanvas.config.mode": "生成",
   "projectCanvas.reference.title": "参考",
-  "projectCanvas.reference.label": "{kind} {index}",
   "projectCanvas.reference.add": "从画布添加参考",
   "projectCanvas.reference.stopPicking": "停止添加参考",
   "projectCanvas.reference.remove": "移除 {label}",
