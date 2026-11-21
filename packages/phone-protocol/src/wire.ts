@@ -26,7 +26,7 @@ import type { QuestionRequestCardData } from "./ask-question.ts";
 import type { AutomationLine, RoutineRunCardData } from "./routine-run.ts";
 import type { WidgetPayload } from "./widget.ts";
 import type { AppFromRef, AppPayload, AppPointedRef } from "./app.ts";
-import type { GroupGoalRunCardData } from "./group-goal-run.ts"; import type { BurstCardData } from "./burst.ts"; import type { TeamProjectProposalCardField } from "./team-project-proposal.ts";
+import type { GroupGoalRunCardData } from "./group-goal-run.ts"; import type { BurstCardData } from "./burst.ts"; import type { TeamProjectProposalCardField } from "./team-project-proposal.ts"; import type { CanvasGenerationCardField } from "./canvas-generation-card.ts";
 import type { RuntimeEvent } from "./runtime-events.ts";
 import type { NotificationLogEntry } from "./notification.ts";
 import type { Routine, RoutineRun } from "./routines.ts";
@@ -632,7 +632,7 @@ export function nextOpenThread<T extends OpenThreadCandidate>(tasks: readonly T[
   return [listed, open, own].map((candidates) => orderedThreadList(candidates)[0]).find((task) => task !== undefined);
 }
 
-export interface OptionCardData extends WaitCardField, ComputerAskField, AccessRequestCardField, OutsideWriteCardField, AppSettingCardField, TeamProjectProposalCardField {
+export interface OptionCardData extends WaitCardField, ComputerAskField, AccessRequestCardField, OutsideWriteCardField, AppSettingCardField, TeamProjectProposalCardField, CanvasGenerationCardField {
   /** The harness asks the owner to let this line of theirs use the lent computer (server/host/lending-lifts.ts). */ lendingLift?: { requestMessageId: string; memoryToken?: string; outside?: true; botOpened?: true; allowedAt?: number };
   /** calls: one per outbound call the card covers, in subtitle order. */
   outboundRequest?: { tool: string; app: string | null; calls?: Array<{ app: string | null; label: string }> };

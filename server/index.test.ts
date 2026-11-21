@@ -9489,7 +9489,7 @@ describe("harness HTTP API", () => {
         chiefOfStaff: true,
         modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
       })).status).toBe(200);
-      const roster = "Current Roster end department (your team):\n- No other visible bots are available yet.";
+      const roster = "Your direct subordinates in the Roster end team's flow, in the order to hand work down to them:\n- Nobody is under you in the flow yet.";
 
       const sections = (await api("GET", `/api/bots/${bot.id}/system-prompt`)).body.sections as Array<{ id: string; text: string }>;
       const team = sections.find((section) => section.id === "coordination")?.text ?? "";

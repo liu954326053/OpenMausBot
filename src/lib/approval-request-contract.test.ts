@@ -124,6 +124,30 @@ describe("approval summary from driver event through persisted card to renderer"
       .toContain("github pede para continuar");
   });
 
+  it("renders a canvas generation card's reason in the person's language, from generation's own words only", () => {
+    const threadId = randomUUID();
+    const english = "A bot may start 3 videos a day without you, and this one has started 3. Confirm to let it make 1 more.";
+    const sent = new Store(selection).appendMessage(threadId, { role: "bot", kind: "options", card: {
+      title: "Generate “Poster”?", subtitle: english, options: ["Confirm", "Cancel"], requestId: "r1", tool: "canvas_generate", fixedOptions: true,
+      canvasGeneration: { requestId: "r1", projectId: "p1", nodeId: "n1", title: "Poster", botId: "b1", threadId, reasonKey: "serverError.projectGeneration.confirmVideos", reasonParams: { ceiling: 3, used: 3, asked: 1 }, createdAt: 1 },
+    } });
+    const message = JSON.parse(JSON.stringify(readMessage(threadId, sent.id))) as Message;
+    const shows = (detail: string) => {
+      expect(approvalDetailText(message.card!)).toBe(detail);
+      const [pending] = pendingApprovals([message]);
+      expect(pending?.detail).toBe(detail);
+      expect(renderToStaticMarkup(createElement(ApprovalCard, { message }))).toContain(detail);
+      const panel = renderToStaticMarkup(createElement(PendingApprovalPanel, { pending: pending!, count: 1, index: 0 }));
+      expect(panel).toContain("Generate “Poster”?");
+      expect(panel).toContain(detail);
+    };
+    shows(english);
+    setLocale("zh");
+    shows("一个机器人每天最多可以不经你确认发起 3 个视频，这个机器人已经发起了 3 个。确认后，它可以再生成 1 个。");
+    message.card!.canvasGeneration!.reasonKey = "approval.someone";
+    shows(english);
+  });
+
   it.each([undefined, "chat.notice.unknown", "approval.someone", "chat.notice.elicitationContinue"])("keeps the English fallback for a legacy, unknown, out-of-namespace or incomplete code %j", (summaryCode) => {
     const message = persistedRequest(claudeRequest("", ""));
     message.card!.summaryCode = summaryCode;
