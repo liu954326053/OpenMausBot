@@ -1942,6 +1942,7 @@ function reconcileParkedNode(node: HandoffView): boolean {
     }
     if (message.card?.mcpRequest && mcpRequests.decided(node.threadId, message.id)) return mcpRequests.resume(node.threadId, message.id, (text) => coordinator.answerNode(node.id, text));
     if (message.card?.teamProjectProposal && teamProjectProposals.decided(node.threadId, message.id)) return teamProjectProposals.resume(node.threadId, message.id, (text) => coordinator.answerNode(node.id, text));
+    if (message.card?.canvasGeneration?.result) return resumeCanvasGeneration(store, node.threadId, message.id, (text) => coordinator.answerNode(node.id, text));
     if (isMcpSignInCard(message)) {
       const heard = mcpSignInCards.parkedAnswer(message.connector);
       if (!heard) continue;
@@ -12194,6 +12195,7 @@ ROUTES.push(createBotCreateRoutes({
   profileOf: (email) => teamHost.people.profile(personKey({ id: "", email })) }));
 const teamProjects = createTeamProjectsHost({ store, routines: () => routines, teamMemory, importDeps: async () => packageImportDeps(await defaultSelection()), deleteBot: async (botId) => { const deleted = await deleteBotWithLifecycle(botId); return deleted.status < 300 ? null : deleted.body.error ?? `the deletion answered ${deleted.status}`; }, exportDocument: (target, listed, carries) => share.host.document(target, listed, carries), ownSkillNames: (botId) => listSkills(botId).map((skill) => skill.name), language: appLanguage }); setTeamProjectLookup(teamProjects.lookup); ROUTES.push(teamProjects.routes);
 const projectGeneration = createProjectGeneration({ dataDir: DATA_DIR, lookup: teamProjects.lookup, storedServers: () => cfg.mcpServers ?? {}, keys: mcpKeys, oauth: mcpOAuth, personMcp: teamConnections.personMcp, policyRefusal: mcpPolicyRefusal, probeAs: (server) => mcpServersHost.probeAs(server) }); ROUTES.push(projectGeneration.routes);
+import { createProjectCanvasHost } from "./project-canvas/host.ts"; import { resumeCanvasGeneration } from "./project-canvas/generation-card.ts"; const projectCanvas = createProjectCanvasHost({ store, projects: teamProjects.api, broadcast: (event) => broadcast({ ...event }, { adminOnly: true }), visibleFor: (auth) => visibleTo(viewerFor(auth)), threadBusy, mainThread: botMainThread, send: (auth, message) => acceptDirectSend({ ...message, sender: messageSender(auth), trigger: usageTriggerFor(auth), personPresent: true, admin: runActor(auth).admin }), generation: projectGeneration.api, answerCard: answerCardNode }); ROUTES.push(projectCanvas.routes);
 ROUTES.push(createBotSettingsRoutes({
   store, cfg, registry, commandAllowlist, commandAllowlistDrivers: COMMAND_ALLOWLIST_DRIVERS,
   cloudHome: Boolean(CLOUD_HOME), cloudOwnerProfileFields: CLOUD_OWNER_PROFILE_FIELDS,
@@ -15275,7 +15277,7 @@ const gracefulShutdown = createGracefulShutdown({
       cloudComputerPower.close(); boatRecovery.close();
       vps.closeAllVpsDesktopTunnels();
       watchdog.stop();
-      routines?.close(); void appTriggers.stop();
+      routines?.close(); void appTriggers.stop(); projectGeneration.close();
       calendarCalls?.stop(); botWaits.stop(); checkBacks.stop();
       memoryUpkeep.stop();
       cacheKeepWarm.dispose(); warmSummaries.dispose();

@@ -85,10 +85,11 @@ const staleRoutineCard = (card: OptionCardData) => Boolean(card.routineRequest &
 /** Cards whose server-written title and first option say what approving does. */
 export const titledCard = (card: OptionCardData | undefined) =>
   Boolean(card?.teamSetupRequest || card?.mcpRequest || card?.lendingLift || isSkillSwitchAction(card?.skillRequest?.action)
-    || card?.teamProjectProposal);
+    || card?.teamProjectProposal || card?.canvasGeneration);
 
 export function titledCardAction(card: OptionCardData): string {
   if (card.teamProjectProposal) return t("teamProjectProposal.create");
+  if (card.canvasGeneration) return t("approval.action.confirm");
   if (card.mcpRequest) return mcpRequestActionLabel(card.mcpRequest.action);
   if (card.teamSetupRequest) return t(card.teamSetupRequest.deletion ? "approval.action.deleteBot" : "approval.action.applySetup");
   return card.options[0] ?? t("approval.action.confirm");

@@ -3,6 +3,7 @@ import type { InstanceConfigMap } from "../contracts.ts";
 import type { DataContext } from "../data-context.ts";
 import type { ProviderRegistry } from "../harness/registry.ts";
 import type { hostedModelPolicy } from "../hosted-models.ts";
+import { answerCanvasGenerationCard } from "../project-canvas/card-route.ts";
 import { createQuotaSwitch, type QuotaRequest, type QuotaSwitchDeps } from "../quota-switch.ts";
 import type { BotRecord, Message } from "../store.ts";
 import type { UsageTrigger } from "../usage-ledger.ts";
@@ -43,10 +44,13 @@ export function createQuotaSwitchHost(deps: QuotaSwitchHostDeps) {
     resend: (botId, threadId, message, replyTo, spoken) => startOrQueueDirectMessage(botId, threadId, message.text ?? "", replyTo, undefined, message.sender, undefined, spoken.via, spoken.callId, message.dataContext),
   });
 
-  /** Settles a card the harness raised itself (a use-your-computer ask or a quota-switch offer); undefined for any other card. */
+  /** Settles a card the harness raised itself (a use-your-computer ask, a quota-switch offer, a canvas generation past a
+   * bot's ceiling); undefined for any other card. */
   async function harnessCardOutcome(threadId: string, requestId: string, behavior: "allow" | "deny" | "answer", message: unknown): Promise<string | undefined> {
     if (!store.messagesFor(threadId).some(candidate => candidate.card?.requestId === requestId)) return undefined;
     if (resolveYourComputerAsk(requestId, behavior) || deps.ownCards?.(requestId, behavior)) return behavior === "allow" ? "allowed-once" : "rejected";
+    const generation = await answerCanvasGenerationCard(threadId, requestId, behavior);
+    if (generation) return generation;
     return await quotaSwitch.answer(threadId, requestId, behavior, message) ?? undefined;
   }
 

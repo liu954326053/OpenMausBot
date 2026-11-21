@@ -1,0 +1,286 @@
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
+import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
+import type { TeamProjectWire } from "../../shared/team-projects.ts";
+import type { RequestAuth } from "../request-auth.ts";
+import type { BotRecord, Message, TaskRecord } from "../store.ts";
+import { CanvasDocuments } from "./document-store.ts";
+import { parseCanvasOps } from "./ops.ts";
+import { canvasRefusalOf, ProjectCanvasService, type ProjectCanvasServiceDeps } from "./service.ts";
+
+let dir: string;
+let folder: string;
+const auth = {} as RequestAuth;
+const person = { kind: "person" } as const;
+const writer = { kind: "bot", botId: "writer" } as const;
+
+const jobOf = (id: string, nodeId: string): GenerationJob => ({
+  id, projectId: "p1", nodeId, kind: "image", settings: DEFAULT_GENERATION_SETTINGS.image.defaults, status: "queued", requester: person, prompt: "A poster",
+  references: { images: [], audio: [] }, server: "gen", tool: "generate_image", files: [], createdAt: 1, updatedAt: 1,
+});
+
+function fakeGeneration() {
+  const jobs = new Map<string, GenerationJob>();
+  const started: Array<{ input: StartGenerationInput; requester: GenerationRequester }> = [];
+  let refusal: GenerationFailure | undefined;
+  const api: ProjectCanvasServiceDeps["generation"] = {
+    start: async (projectId, input, { requester }) => {
+      started.push({ input, requester });
+      if (refusal) return { refused: refusal };
+      const job = { ...jobOf(`job-${jobs.size + 1}`, input.nodeId), projectId, requester, prompt: input.prompt };
+      jobs.set(job.id, job);
+      return { job };
+    },
+    job: (_projectId, jobId) => jobs.get(jobId) ?? null,
+  };
+  return { api, jobs, started, refuseWith: (failure: GenerationFailure) => { refusal = failure; } };
+}
+
+beforeEach(() => {
+  dir = realpathSync(mkdtempSync(join(tmpdir(), "omb-canvas-service-")));
+  folder = join(dir, "Stand-in bride");
+  mkdirSync(join(dir, "attachments"), { recursive: true });
+  mkdirSync(folder);
+});
+
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
+  const events: ProjectCanvasEvent[] = [];
+  const sent: Array<{ botId: string; threadId: string; text: string }> = [];
+  const threads: Record<string, Message[]> = {};
+  const project = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {} } as TeamProjectWire;
+  const bots: Record<string, Partial<BotRecord>> = {
+    lead: { id: "lead", name: "Lead", title: "Producer", threadId: "lead-main", teamProject: { id: "p1", role: "producer" } },
+    writer: { id: "writer", name: "Writer", title: "Writes the episodes", threadId: "writer-main", teamProject: { id: "p1", role: "writer" } },
+    plain: { id: "plain", name: "Plain", threadId: "plain-main" },
+  };
+  let next = 0;
+  const generation = fakeGeneration();
+  const service = new ProjectCanvasService({
+    store: {
+      bot: (id) => (bots[id] ?? null) as BotRecord | null,
+      botByThread: (threadId) => (Object.values(bots).find((bot) => bot.threadId === threadId) ?? null) as BotRecord | null,
+      tasks: (id) => (bots[id] ? [{ threadId: bots[id].threadId, createdAt: 1 }] : []) as TaskRecord[],
+      taskByThread: (botId, threadId) => (bots[botId]?.threadId === threadId ? { threadId, createdAt: 1 } as TaskRecord : undefined),
+      messagesTail: (threadId) => ({ messages: threads[threadId] ?? [], hasMore: false, activeLeafId: null }),
+    },
+    projects: { list: () => [project] },
+    documents: new CanvasDocuments(join(dir, "canvases"), () => undefined),
+    broadcast: (event) => events.push(event),
+    visibleFor: () => ({ thread: () => true }),
+    threadBusy: () => false,
+    mainThread: (botId) => bots[botId]?.threadId,
+    send: async (_auth, message) => {
+      sent.push(message);
+      return { ok: true, threadId: message.threadId, message: { id: "sent-1", at: 1, role: "user", kind: "text", text: message.text } };
+    },
+    parentOf: () => undefined,
+    generation: generation.api,
+    openCards: () => [],
+    queuedThreads: () => new Set(),
+    saveImage: () => ({ path: join(dir, "attachments", "saved.png") }),
+    newId: () => `id-${++next}`,
+    log: () => undefined,
+    ...patch,
+  });
+  return { service, project, events, sent, threads, generation };
+}
+
+const opsOf = (...ops: unknown[]): CanvasOp[] => parseCanvasOps(ops);
+const nodeOf = (service: ProjectCanvasService, id: string) => service.botView(service.project("p1")).nodes.find((node) => node.id === id);
+
+describe("changing a project's canvas", () => {
+  it("stores a bot's node where the layout shows it once the bot adds a node beside it, and tells open apps once", () => {
+    const { service, project, events } = setup();
+    expect(service.botView(project).bots.writer!.placed).toBe(false);
+    const outcome = service.apply(project, writer, opsOf({ type: "add_node", nodeType: "text", metadata: { content: "Act one" } }));
+    expect(outcome).toEqual({ revision: 1, nodeIds: ["id-1"], connectionIds: ["id-2"] });
+    expect(service.botView(project).bots.writer!.placed).toBe(true);
+    expect(events).toEqual([{ kind: "project-canvas", projectId: "p1", revision: 1, reason: "document" }]);
+  });
+
+  it("refuses every change to an archived project's canvas", async () => {
+    const { service, project } = setup();
+    project.archivedAt = 5;
+    const read = (() => { try { service.apply(project, person, opsOf({ type: "add_node", nodeType: "text" })); } catch (error) { return error; } })();
+    expect(canvasRefusalOf(read)).toEqual({ status: 409, body: expect.objectContaining({ code: "canvas_read_only", reason: "archived" }) });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go" })).rejects.toMatchObject({ status: 409 });
+    await expect(service.generate(project, person, "n1")).rejects.toMatchObject({ status: 409 });
+    expect(service.snapshot("p1", auth).readOnly).toBe("archived");
+  });
+
+  it("answers a project it does not know with not found, and a bot of no project with no canvas", () => {
+    const { service } = setup();
+    expect(() => service.project("gone")).toThrow(expect.objectContaining({ status: 404 }));
+    expect(() => service.projectOfBot("plain")).toThrow(expect.objectContaining({ status: 403 }));
+    expect(service.projectOfBot("writer").id).toBe("p1");
+  });
+});
+
+describe("a file a project's bot attaches", () => {
+  const attached = (patch: Partial<Message> = {}): Message => ({
+    id: "m1", at: 1, role: "bot", kind: "text", text: "",
+    attachments: [{ kind: "image", path: join(dir, "attachments", "copy.png"), mime: "image/png", name: "poster.png", source: join(folder, "poster.png") }],
+    ...patch,
+  });
+
+  beforeEach(() => {
+    writeFileSync(join(folder, "poster.png"), "poster bytes");
+    writeFileSync(join(dir, "attachments", "copy.png"), "poster bytes");
+  });
+
+  it("becomes one node in its lane, connected from it, and none when it is attached again", async () => {
+    const { service, events } = setup();
+    await service.handOverLine("writer-main", attached());
+    await service.handOverLine("writer-main", attached({ id: "m2" }));
+    const view = service.botView(service.project("p1"));
+    const files = view.nodes.filter((node) => node.metadata?.file);
+    expect(files).toEqual([expect.objectContaining({ type: "image", title: "poster.png", createdBy: writer, metadata: { file: { path: "poster.png", mime: "image/png", bytes: 12, name: "poster.png" } } })]);
+    expect(view.connections).toContainEqual({ id: expect.any(String), fromNodeId: botNodeId("writer"), toNodeId: files[0]!.id, kind: "content" });
+    expect(events.filter((event) => event.reason === "document")).toHaveLength(1);
+  });
+
+  it("is left off the canvas for a bot of no project, a reply with words, and an image a tool made", async () => {
+    const { service } = setup();
+    await service.handOverLine("plain-main", attached());
+    await service.handOverLine("writer-main", attached({ text: "Here it is" }));
+    await service.handOverLine("writer-main", attached({ attachments: [{ kind: "image", path: join(dir, "attachments", "copy.png"), mime: "image/png", source: join(folder, "poster.png"), fromTool: true }] }));
+    expect(service.botView(service.project("p1")).nodes.filter((node) => node.metadata?.file)).toEqual([]);
+  });
+});
+
+describe("a task sent from the canvas", () => {
+  it("goes to the bot's conversation with what is connected into its node", async () => {
+    const { service, project, sent } = setup();
+    const made = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } }));
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
+    expect(await service.task("p1", auth, { botId: "writer", text: "Write it" })).toEqual({ threadId: "writer-main", messageId: "sent-1", references: 1 });
+    expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText \"Brief\":\n\n> The swap." }]);
+  });
+
+  it("is refused for a bot outside the project, a conversation the person cannot open, and nothing to say", async () => {
+    const { service } = setup();
+    await expect(service.task("p1", auth, { botId: "plain", text: "Go" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", threadId: "lead-main" })).rejects.toMatchObject({ status: 404 });
+    await expect(setup({ visibleFor: () => ({ thread: () => false }) }).service.task("p1", auth, { botId: "writer", text: "Go" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "  " })).rejects.toMatchObject({ status: 400 });
+    await expect(service.task("p1", auth, { botId: "writer" })).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("generating a node", () => {
+  const shot = (prompt = "A bride alone at the altar") => ({ type: "add_node", nodeType: "shot", metadata: { prompt } });
+
+  const file = (path: string, mime = "image/png"): CanvasFileRef => ({ path, mime, bytes: 3, name: path.split("/").at(-1)! });
+
+  it("starts the node's prompt, settings and title with the files connected into it, and shows the node loading", async () => {
+    const { service, project, generation } = setup();
+    const [still, song, poster] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "audio", metadata: { file: file("refs/song.mp3", "audio/mpeg") } },
+      { type: "add_node", nodeType: "image", title: " Poster ", metadata: { prompt: "A poster", settings: { aspect: "16:9", count: 2 } } },
+    )).nodeIds as [string, string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: poster }, { type: "connect_nodes", fromNodeId: song, toNodeId: poster }));
+    const take = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
+    expect(await service.generate(project, person, poster)).toEqual({ job: expect.objectContaining({ id: "job-1" }) });
+    await service.generate(project, person, take);
+    expect(generation.started).toEqual([
+      { input: { kind: "image", nodeId: poster, prompt: "A poster", references: { images: ["refs/still.png"], audio: ["refs/song.mp3"] }, overrides: { aspect: "16:9", count: 2 }, name: "Poster" }, requester: person },
+      { input: { kind: "video", nodeId: take, prompt: "A bride alone at the altar", references: { images: [], audio: [] } }, requester: person },
+    ]);
+    expect(nodeOf(service, poster)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
+  });
+
+  it("answers generation's refusal as it is, and leaves the node as it was", async () => {
+    const { service, project, generation } = setup();
+    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", status: "error", errorDetails: "Timed out.", jobId: "old" } })).nodeIds[0]!;
+    const before = nodeOf(service, id)!.metadata;
+    const refusal: GenerationFailure = { code: "no_server", error: "Choose an MCP server for videos in this project's settings first.", errorKey: "serverError.projectGeneration.noVideoServer" };
+    generation.refuseWith(refusal);
+    expect(await service.generate(project, person, id)).toEqual({ refused: refusal });
+    expect(nodeOf(service, id)!.metadata).toEqual(before);
+  });
+
+  it("lets a bot start only its own nodes, and a node only once while its job runs", async () => {
+    const { service, project, generation } = setup();
+    const theirs = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
+    await expect(service.generate(project, writer, theirs)).rejects.toMatchObject({ code: "not_yours" });
+    const mine = service.apply(project, writer, opsOf(shot())).nodeIds[0]!;
+    await service.generate(project, writer, mine);
+    await expect(service.generate(project, writer, mine)).rejects.toMatchObject({ status: 409 });
+    expect(generation.started.map((one) => one.requester)).toEqual([writer]);
+  });
+
+  it("shows a job on its node: each file it made as a node to its right, connected from it, once", async () => {
+    const { service, project, generation } = setup();
+    const id = service.apply(project, writer, opsOf(shot("A poster"))).nodeIds[0]!;
+    await service.generate(project, writer, id);
+    service.jobChanged({ ...jobOf("stray", id), status: "done", files: [file("产出/视频/stray.mp4", "video/mp4")] });
+    const done: GenerationJob = { ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/视频/a.mp4", "video/mp4"), file("产出/视频/b.mp4", "video/mp4")] };
+    service.jobChanged(done);
+    service.jobChanged(done);
+    const view = service.botView(project);
+    const node = view.nodes.find((one) => one.id === id)!;
+    expect(node.metadata).toEqual({ prompt: "A poster", status: "success", jobId: "job-1" });
+    const made = view.nodes.filter((one) => one.metadata?.file);
+    expect(made.map((one) => [one.type, one.title, one.metadata!.file!.path])).toEqual([["video", "a.mp4", "产出/视频/a.mp4"], ["video", "b.mp4", "产出/视频/b.mp4"]]);
+    expect(made.map((one) => one.position.x)).toEqual([node.position.x + node.width + 80, node.position.x + node.width + 80]);
+    expect(made[1]!.position.y).toBeGreaterThan(made[0]!.position.y);
+    expect(made.every((one) => one.createdBy?.kind === "bot" && one.createdBy.botId === "writer")).toBe(true);
+    for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: id, toNodeId: one.id, kind: "content" }));
+  });
+
+  it("puts a failure in errorDetails, and a cancelled job leaves the node idle", async () => {
+    const { service, project, generation } = setup();
+    const [failed, cancelled] = service.apply(project, person, opsOf(shot(), shot())).nodeIds as [string, string];
+    await service.generate(project, person, failed);
+    await service.generate(project, person, cancelled);
+    const failure = { code: "task_failed", error: "The server said: no faces.", errorKey: "serverError.projectGeneration.taskFailed", reason: "no faces" } as const;
+    service.jobChanged({ ...generation.jobs.get("job-1")!, status: "failed", failure });
+    service.jobChanged({ ...generation.jobs.get("job-2")!, status: "cancelled" });
+    expect(nodeOf(service, failed)!.metadata).toMatchObject({ status: "error", errorDetails: "The server said: no faces." });
+    expect(nodeOf(service, cancelled)!.metadata).toMatchObject({ status: "idle", jobId: "job-2" });
+  });
+
+  it("follows each loading node again at start: an ended job's outcome, a job generation no longer has, a node that never got one", () => {
+    const { service, project, generation } = setup();
+    const [ended, gone, never] = service.apply(project, person, opsOf(
+      { ...shot(), metadata: { prompt: "A", status: "loading", jobId: "j-ended" } },
+      { ...shot(), metadata: { prompt: "B", status: "loading", jobId: "j-gone" } },
+      { ...shot(), metadata: { prompt: "C", status: "loading" } },
+    )).nodeIds as [string, string, string];
+    generation.jobs.set("j-ended", { ...jobOf("j-ended", ended), kind: "video", settings: DEFAULT_GENERATION_SETTINGS.video.defaults, status: "done", files: [file("产出/视频/a.mp4", "video/mp4")] });
+    service.reconcileGenerations();
+    expect(nodeOf(service, ended)!.metadata).toMatchObject({ status: "success" });
+    expect(service.botView(project).nodes.find((one) => one.metadata?.file?.path === "产出/视频/a.mp4")).toMatchObject({ type: "video" });
+    expect(nodeOf(service, gone)!.metadata).toMatchObject({ status: "error", errorDetails: "That generation is no longer there." });
+    expect(nodeOf(service, never)!.metadata).toEqual({ prompt: "C" });
+  });
+});
+
+describe("what a viewer reads of a bot's conversations", () => {
+  it("is the bot's latest reply only from a conversation the viewer may open", () => {
+    const reply: Message = { id: "r1", at: 2, role: "bot", kind: "text", text: "Draft ready.", turnId: "t1", turnTerminal: true };
+    const open = setup();
+    open.threads["writer-main"] = [reply];
+    expect(open.service.snapshot("p1", auth).bots.writer!.output).toMatchObject({ text: "Draft ready.", threadId: "writer-main", messageId: "r1" });
+    expect(open.service.botView(open.project).bots.writer!.output).toBeUndefined();
+    const closed = setup({ visibleFor: () => ({ thread: () => false }) });
+    closed.threads["writer-main"] = [reply];
+    expect(closed.service.snapshot("p1", auth).bots.writer!.output).toBeUndefined();
+  });
+});
+
+describe("a refusal", () => {
+  it("is answered with its status and words, and anything else is not a refusal", () => {
+    const sendRefused = Object.assign(new Error("Spending is capped"), { status: 409, body: { error: "Spending is capped", code: "spend_cap" } });
+    expect(canvasRefusalOf(sendRefused)).toEqual({ status: 409, body: { error: "Spending is capped", code: "spend_cap" } });
+    expect(canvasRefusalOf(new Error("boom"))).toBeNull();
+    expect(canvasRefusalOf("boom")).toBeNull();
+  });
+});
