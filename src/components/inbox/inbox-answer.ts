@@ -9,7 +9,7 @@ import { accessRequestWords } from "../bot-access/access-card";
 import { senderLabel, subjectOf, textOf } from "./inbox-view";
 
 /** How a line is answered: by what it waits on the person for, else a reply to news that waits on one, or nothing but Done. */
-export type InboxAnswerKind = PersonWaitKind | "reply" | "none";
+export type InboxAnswerKind = PersonWaitKind | "chief" | "reply" | "none";
 
 /** The line as the chat shows it, so it answers here with the very card it asks with in the chat. */
 export const asMessage = (row: InboxRow): Message => ({
@@ -20,6 +20,7 @@ export const asMessage = (row: InboxRow): Message => ({
 
 export function answerKindOf(row: InboxRow): InboxAnswerKind {
   if (row.tab === "done") return "none";
+  if (row.needsChief) return "chief";
   if (row.kind === "ask") {
     const wait = personWait(asMessage(row));
     if (wait) return wait.kind;

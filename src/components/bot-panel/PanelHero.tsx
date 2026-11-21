@@ -3,6 +3,7 @@ import { Crown, Pencil } from "lucide-react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import { chiefTitle } from "../BotRole";
 import { imeComposing } from "@/lib/send-key";
 import type { MausState } from "@/lib/mascot";
 import type { Bot } from "@/state/store";
@@ -75,9 +76,9 @@ export function PanelHero({ bot, activeState, patch, editorOpen, onToggleEditor,
   });
   const title = bot.title.trim();
   const chief = bot.chiefOfStaff && (
-    <span data-panel-chief title={t("chat.chiefOfStaff")} className="absolute -bottom-0.5 -right-0.5 flex size-[22px] items-center justify-center rounded-full bg-accent text-accent-ink ring-[3px] ring-app">
+    <span data-panel-chief title={chiefTitle(bot)} className="absolute -bottom-0.5 -right-0.5 flex size-[22px] items-center justify-center rounded-full bg-accent text-accent-ink ring-[3px] ring-app">
       <Crown size={12} aria-hidden="true" />
-      <span className="sr-only">{t("chat.chiefOfStaff")}</span>
+      <span className="sr-only">{chiefTitle(bot)}</span>
     </span>
   );
 

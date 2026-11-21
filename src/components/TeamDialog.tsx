@@ -3,6 +3,8 @@ import { createPortal } from "react-dom";
 import { Plus, X } from "lucide-react";
 import { api, useStore, type Bot } from "@/state/store";
 import { BotPickerList } from "./BotPickerList";
+import { SETTINGS_INPUT } from "./SettingsPrimitives";
+import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { imeComposing } from "@/lib/send-key";
 import { useTeamProjectSide } from "@/state/team-projects";
@@ -68,11 +70,11 @@ export function TeamDialog({ section, rename = false, onClose, onRenamed, onCrea
     } });
   };
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onMouseDown={(event) => {
+    <div className="ui-scrim fixed inset-0 z-[60] flex items-center justify-center p-4" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !saving) onClose();
     }}>
-      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="team-dialog-title"
-        className="max-h-[90vh] w-full max-w-[430px] overflow-y-auto rounded-2xl border border-hairline/50 bg-panel p-5 text-ink shadow-2xl"
+      <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="team-dialog-title" tabIndex={-1}
+        className="ui-modal flex max-h-full w-full max-w-[480px] flex-col text-ink outline-none animate-pop-in motion-reduce:animate-none"
         onKeyDown={(event) => {
           if (imeComposing(event.nativeEvent)) { event.stopPropagation(); return; }
           if (event.key === "Escape" && !saving) { event.stopPropagation(); onClose(); }
@@ -84,40 +86,40 @@ export function TeamDialog({ section, rename = false, onClose, onRenamed, onCrea
             else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
           }
         }}>
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h2 id="team-dialog-title" className="text-[17px] font-semibold">{title}</h2>
-          <button aria-label={t("team.closeDialog")} disabled={saving} onClick={onClose} className="rounded-lg p-1.5 text-ink-secondary hover:bg-raised"><X size={18} /></button>
+        <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-5">
+          <h2 id="team-dialog-title" dir="auto" title={title} className="min-w-0 truncate text-[20px] font-semibold leading-7 tracking-[-0.01em]">{title}</h2>
+          <button type="button" aria-label={t("team.closeDialog")} disabled={saving} onClick={onClose} className="ui-icon-button shrink-0"><X size={18} /></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+          {(!moving || rename) && <label className="mb-3 block text-[13px] font-medium leading-[18px] text-ink">{t("team.name")}
+            <input value={name} dir="auto" maxLength={60} disabled={saving} onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && !imeComposing(event.nativeEvent)) void save(); }}
+              className={cn(SETTINGS_INPUT, "mt-1.5 font-normal")} />
+          </label>}
+          {!rename && <>
+            <p className="mb-3 text-[13px] leading-[18px] text-ink-secondary">
+              {managing ? t("team.manageIntro") : moving ? t("team.moveIntro") : t("team.createIntro")} {t("team.moveWarning")}
+            </p>
+            {managing && <button type="button" disabled={saving || state.botCreationPending} onClick={createBot} className="ui-button ui-button-sm mb-3">
+              <Plus size={14} />{t("sidebar.newBot")}
+            </button>}
+            <fieldset disabled={saving}>
+              <legend className="mb-1 text-[12px] font-medium text-ink-secondary">{t("team.existingBots")}</legend>
+              <BotPickerList bots={candidates} picked={picked} emptyHint={t("team.noBots")} onToggle={(id) => setPicked((previous) => {
+                const next = new Set(previous);
+                if (next.has(id)) next.delete(id); else next.add(id);
+                return next;
+              })} />
+            </fieldset>
+          </>}
+          {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
         </div>
-        {(!moving || rename) && <label className="mb-3 block text-[13px] text-ink-secondary">{t("team.name")}
-          <input value={name} maxLength={60} disabled={saving} onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && !imeComposing(event.nativeEvent)) void save(); }}
-            className="mt-1 w-full rounded-lg border border-hairline/50 bg-inset px-3 py-2 text-[14px] text-ink" />
-        </label>}
-        {!rename && <>
-          <p className="mb-3 text-[13px] leading-relaxed text-ink-secondary">
-            {managing ? t("team.manageIntro") : moving ? t("team.moveIntro") : t("team.createIntro")} {t("team.moveWarning")}
-          </p>
-          {managing && <button disabled={saving || state.botCreationPending} onClick={createBot}
-            className="mb-3 flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] text-accent hover:bg-raised disabled:opacity-40">
-            <Plus size={14} />{t("sidebar.newBot")}
-          </button>}
-          <fieldset disabled={saving}>
-            <legend className="mb-1 text-[12px] font-medium text-ink-secondary">{t("team.existingBots")}</legend>
-            <BotPickerList bots={candidates} picked={picked} emptyHint={t("team.noBots")} onToggle={(id) => setPicked((previous) => {
-              const next = new Set(previous);
-              if (next.has(id)) next.delete(id); else next.add(id);
-              return next;
-            })} />
-          </fieldset>
-        </>}
-        {error && <p role="alert" className="mt-3 text-[13px] text-danger">{error}</p>}
-        <div className="mt-4 flex justify-end gap-2">
-          <button disabled={saving} onClick={onClose} className="rounded-lg px-3 py-2 text-[13px] text-ink-secondary hover:bg-raised">{t("common.cancel")}</button>
-          <button disabled={saving || (!moving && !name.trim()) || unchanged} onClick={() => void save()}
-            className="rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white disabled:opacity-40">
+        <footer className="flex flex-wrap items-center justify-end gap-2 px-5 pb-5">
+          <button type="button" disabled={saving} onClick={onClose} className="ui-button ui-button-md">{t("common.cancel")}</button>
+          <button type="button" disabled={saving || (!moving && !name.trim()) || unchanged} onClick={() => void save()} className="ui-button ui-button-md ui-button-primary">
             {saving ? t("team.saving") : rename ? t("folder.saveName") : managing ? t("common.save") : moving ? picked.size ? t(picked.size === 1 ? "team.moveOne" : "team.moveMany", { count: picked.size }) : t("team.moveSelected") : t("team.create")}
           </button>
-        </div>
+        </footer>
       </div>
     </div>, document.body,
   );

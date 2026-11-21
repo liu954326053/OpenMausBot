@@ -111,3 +111,26 @@ describe("taking the main bot out of a department when the server starts", () =>
     expect([saved(), lines]).toEqual([[copy], []]);
   });
 });
+
+describe("the departments the main bot leaves without a Chief of Staff", () => {
+  it("names a department it left that still has bots and no Chief of its own", () => {
+    save([main, ada, scout]);
+    expect(run()).toEqual(["Sales"]);
+  });
+
+  it("leaves out a department with a Chief of its own, and one with no bots left the person sees", () => {
+    save([main, { ...ada, chiefOfStaff: true }, { ...scout, section: "Sales" }]);
+    expect(run()).toEqual([]);
+    save([main, { ...ada, hidden: true }]);
+    expect(run()).toEqual([]);
+    save([main]);
+    expect(run()).toEqual([]);
+  });
+
+  it("names none when the main bot stayed where it was", () => {
+    save([main, ada]);
+    expect(run(() => { throw new Error("no room for the backup"); })).toEqual([]);
+    save([{ ...main, section: undefined }, ada]);
+    expect(run()).toEqual([]);
+  });
+});
