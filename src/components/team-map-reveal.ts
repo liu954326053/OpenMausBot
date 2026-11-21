@@ -34,13 +34,16 @@ export interface MenuPlacement {
   room: number;
 }
 
-/** A department's menu opens below unless part of it would be covered there and more of it fits above. `gap`, `height`
- * and `room` are in world units; the menu button's `top` and `bottom` and the map's uncovered `upper` and `lower` edges
- * are on screen. */
-export function menuPlacement({ top, bottom, gap, height, scale, upper, lower }: { top: number; bottom: number; gap: number; height: number; scale: number; upper: number; lower: number }): MenuPlacement {
+/** A department's menu stays on its side (below when it opens) while all of it fits there, and otherwise takes the side
+ * with more room. `gap`, `height` and `room` are in world units; the menu button's `top` and `bottom` and the map's
+ * uncovered `upper` and `lower` edges are on screen. */
+export function menuPlacement({ top, bottom, gap, height, scale, upper, lower, above: wasAbove = false }: {
+  top: number; bottom: number; gap: number; height: number; scale: number; upper: number; lower: number; above?: boolean;
+}): MenuPlacement {
   const below = (lower - top) / scale - gap;
   const above = (bottom - upper) / scale - gap;
-  return height > below && above > below ? { above: true, room: above } : { above: false, room: Math.max(0, below) };
+  const opensAbove = height <= (wasAbove ? above : below) ? wasAbove : above > below;
+  return { above: opensAbove, room: Math.max(0, opensAbove ? above : below) };
 }
 
 function targetElement(viewport: HTMLElement, target: TeamMapTarget): HTMLElement | undefined {

@@ -38,4 +38,14 @@ describe("menuPlacement", () => {
     expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 0.5 })).toEqual({ above: false, room: 628 });
     expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 1.25 }).above).toBe(true);
   });
+
+  it("keeps an open menu on its side while all of it still fits there", () => {
+    expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 1, lower: 900, above: true })).toEqual({ above: true, room: 362 });
+    expect(menuPlacement({ ...menu, top: 200, bottom: 232, scale: 1, above: false })).toEqual({ above: false, room: 564 });
+  });
+
+  it("moves an open menu once the map moves it under the message box or past the top", () => {
+    expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 1, above: false })).toEqual({ above: true, room: 362 });
+    expect(menuPlacement({ ...menu, top: 300, bottom: 332, scale: 1, above: true })).toEqual({ above: false, room: 464 });
+  });
 });

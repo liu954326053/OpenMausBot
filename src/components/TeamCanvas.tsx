@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowRight, BookOpen, Brain, Crown, MessageCircle, Minus, Monitor, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { api, openBot, useStore, type Bot } from "@/state/store";
 import { teamBotName, useTeamPeople } from "@/state/team-people";
@@ -234,13 +234,24 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   useEffect(() => { fit(); }, [fit, teamSizes, layoutLoaded]);
   const revealed = useTeamMapReveal(viewport, layoutLoaded && viewportSize.width > 0, teamSizes, bottomInset, setView);
   const notes = useProjectTeamNotes(sections);
-  const placeMenu = (details: HTMLElement, bounds: DOMRect) => {
+  const placeMenu = (details: HTMLElement, bounds: DOMRect, above?: boolean) => {
     const button = details.getBoundingClientRect();
     return menuPlacement({
       top: button.top, bottom: button.bottom, gap: MENU_GAP, height: details.querySelector<HTMLElement>("[data-team-menu]")?.scrollHeight ?? 0,
-      scale: view.scale, upper: bounds.top, lower: bounds.bottom - bottomInset,
+      scale: view.scale, upper: bounds.top, lower: bounds.bottom - bottomInset, above,
     });
   };
+  useLayoutEffect(() => {
+    const open = viewport.current?.querySelector<HTMLDetailsElement>("details[open]");
+    const bounds = viewport.current?.getBoundingClientRect();
+    const key = open?.closest<HTMLElement>("[data-team-key]")?.dataset.teamKey;
+    if (!open || !bounds || key === undefined) return;
+    setMenuPlace((place) => {
+      if (place?.key !== key) return place;
+      const next = placeMenu(open, bounds, place.above);
+      return next.above === place.above && next.room === place.room ? place : { key, ...next };
+    });
+  }, [view, teamSizes, bottomInset]);
 
   useEffect(() => {
     const element = viewport.current;
