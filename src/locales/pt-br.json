@@ -7230,6 +7230,7 @@
   "teamProjects.changes.notice": "A equipe mudou",
   "teamProjects.changes.noticeNamed": "{name}: a equipe mudou",
   "teamProjects.changes.review": "Revisar mudanças na equipe…",
+  "projectView.loading": "Carregando o projeto…",
   "teamFiles.title": "Arquivos da equipe",
   "teamFiles.intro": "Uma pasta para todos em {team} e seus bots: registros, listas de clientes, modelos, materiais da marca.",
   "teamFiles.upload": "Enviar",

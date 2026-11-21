@@ -25,8 +25,9 @@ import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, TWO_SIDE_PANELS_FIT, useMediaQue
 import { preloadConnectedApps } from "@/lib/connected-apps";
 import {
   ActivityPanel, AnnouncementsPage, BotSettingsDialog, CloudAddDialog, ComputerPanel, FilesView, InspectorPanel, KeyboardShortcutsModal, LocalVmWorkspace,
-  PluginsPanel, preloadScreens, PublishedAppsPage, RemoteAgentSettingsPanel, RemoteDesktopPanel, RoomPanel, SettingsModal, SkillsLibraryPage, TeamFilesPage, TeamMapPage, TriggersPage,
+  PluginsPanel, preloadScreens, ProjectView, PublishedAppsPage, RemoteAgentSettingsPanel, RemoteDesktopPanel, RoomPanel, SettingsModal, SkillsLibraryPage, TeamFilesPage, TeamMapPage, TriggersPage,
 } from "@/components/lazy-screens";
+import { useLastProject } from "@/state/project-view";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useRoomPanelShown } from "@/lib/room-panel";
 import { WorkspaceBackupRecovery } from "@/components/WorkspaceBackupSettings";
@@ -146,7 +147,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   }, [dispatch]);
   useConnectLink(dispatch, Boolean(state.config?.team));
   useExternalChatLinks(state, dispatch); useDesktopNotificationOpens(state, dispatch); useNewBotFromOtherPlace(state.hydrated === true, useCallback(() => dispatch({ type: "newBot" }), [dispatch]));
-  usePresence(state, dispatch); useTeamPresence(state);
+  usePresence(state, dispatch); useTeamPresence(state); useLastProject(state, dispatch);
   usePageLanguage(effectiveLanguage(useLanguageChoice(), state.config?.language), true);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Stays mounted once opened: a Cloud bought in it can arrive after the sheet is closed.
@@ -384,6 +385,8 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       />}
       {state.activeView === "team-map" ? (
         <TeamMapPage />
+      ) : state.activeView === "project" && state.project ? (
+        <ProjectView projectId={state.project.id} selectedBotId={state.project.botId} />
       ) : state.activeView === "files" ? (
         <FilesView />
       ) : state.activeView === "web-panel" ? (

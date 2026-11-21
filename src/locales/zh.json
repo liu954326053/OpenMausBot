@@ -7230,6 +7230,7 @@
   "teamProjects.changes.notice": "团队有变化",
   "teamProjects.changes.noticeNamed": "{name}：团队有变化",
   "teamProjects.changes.review": "查看团队变化…",
+  "projectView.loading": "正在加载项目…",
   "teamFiles.title": "团队文件",
   "teamFiles.intro": "{team} 所有成员及其机器人共用的文件夹：记录、客户名单、模板、品牌素材。",
   "teamFiles.upload": "上传",

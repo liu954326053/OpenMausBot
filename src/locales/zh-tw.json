@@ -11016,6 +11016,7 @@
   "teamProjects.changes.notice": "團隊有變化",
   "teamProjects.changes.noticeNamed": "{name}：團隊有變化",
   "teamProjects.changes.review": "查看團隊變化…",
+  "projectView.loading": "正在載入專案…",
   "teamFiles.title": "團隊檔案",
   "teamFiles.intro": "{team} 的所有成員和機器人共用同一個資料夾：紀錄、客戶名單、範本、品牌素材。",
   "teamFiles.upload": "上傳",
