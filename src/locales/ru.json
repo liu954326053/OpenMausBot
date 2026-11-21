@@ -2464,6 +2464,7 @@
   "task.chip": "Ветка",
   "task.newShort": "Новая ветка",
   "task.sharedChat": "Общий чат",
+  "task.chooseChief": "Выбор начальника штаба",
   "task.matching": "{count} подходящих веток",
   "task.list": "Ветки",
   "task.namedList": "Ветки: {name}",
