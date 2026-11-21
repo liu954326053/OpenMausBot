@@ -23,6 +23,7 @@ import { useAdvancedMode } from "@/lib/interface-mode";
 import { useMoveToMyCloud } from "./MoveToMyCloud";
 import { useMoveToTeam } from "./MoveToTeam";
 import type { MenuState } from "./Sidebar";
+import { isBotMenuRequest } from "./bot-menu-request";
 import { moveBotsToSection, useMayMoveBot, useOpenDepartments } from "./bot-sections";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { isArchived } from "./SidebarThreadRow";
@@ -179,6 +180,7 @@ export function BotContextMenu({
     if (state.selectedId === bot.id) dispatch({ type: "select", id: bot.id });
     else openBot(dispatch, bot, showThreads);
   };
+  const duplicate = () => dispatch({ type: "duplicateBot", botId: bot.id, ...(isBotMenuRequest(shown) && { preserveSelection: true }) });
   const item = (
     icon: React.ReactNode,
     label: string,
@@ -277,7 +279,7 @@ export function BotContextMenu({
       pause,
       pauseAll,
       team ? null : chiefItem(),
-      member && !ownEdit ? null : item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), () => dispatch({ type: "duplicateBot", botId: bot.id })),
+      member && !ownEdit ? null : item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), duplicate),
       owner,
       ...moveToTeam.items(bot, item),
       ...moveToCloud.items(bot, item),
@@ -424,9 +426,7 @@ export function BotContextMenu({
           openForSettings();
           if (!state.settingsOpen) dispatch({ type: "toggleSettings", open: true });
         }),
-        (!member || ownEdit) && item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), () =>
-          dispatch({ type: "duplicateBot", botId: bot.id }),
-        ),
+        (!member || ownEdit) && item(<Copy size={16} className="text-ink-secondary" />, t("sidebar.bot.duplicate"), duplicate),
         pause,
         pauseAll,
         divider("d2"),
