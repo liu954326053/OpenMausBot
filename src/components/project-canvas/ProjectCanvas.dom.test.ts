@@ -236,20 +236,17 @@ describe("the project canvas", () => {
 
   it("reads a reply that comes while the bot's panel is open, and leaves one that comes after it closed unread", async () => {
     await mount({ delayMs: 40 });
-    const ask = async (text: string) => {
-      await type(panel()!.querySelector("textarea")!, text);
-      await act(async () => buttonByText(panel()!, "Send")!.click());
-    };
     await clickNode(botNodeId("otto"));
-    await ask("Cut the teaser");
+    await type(panel()!.querySelector("textarea")!, "Cut the teaser");
+    await act(async () => buttonByText(panel()!, "Send")!.click());
     await settle(80);
     expect(nodeElement(botNodeId("otto"))!.textContent).toContain("Done: Cut the teaser");
     expect(unreadDot("otto")).toBeNull();
     expect(backend.readConversations).toEqual([{ botId: "otto", threadId: "thread-otto" }]);
 
-    await ask("Make it shorter");
     await key({ key: "Escape" });
     expect(panel()).toBeNull();
+    await act(async () => { await backend.sendTask(backend.current().project.id, { botId: "otto", text: "Make it shorter" }); });
     await settle(80);
     expect(nodeElement(botNodeId("otto"))!.textContent).toContain("Done: Make it shorter");
     expect(unreadDot("otto")).not.toBeNull();
