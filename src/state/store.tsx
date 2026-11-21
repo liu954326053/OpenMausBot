@@ -708,7 +708,7 @@ export type Action =
   | { type: "botAdded"; bot: Bot; preserveSelection?: boolean }
   | { type: "deleteBot"; botId: string }
   | { type: "botDeletionPending"; botId: string; on: boolean }
-  | { type: "duplicateBot"; botId: string }
+  | { type: "duplicateBot"; botId: string; preserveSelection?: boolean }
   | { type: "markUnread"; botId: string }
   | { type: "botPatched"; bot: BotAnnouncement; tasksPartial?: true }
   | { type: "messageAdded"; threadId: string; message: Message }
@@ -2540,7 +2540,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                 method: "PATCH",
                 body: JSON.stringify(duplicateProfile),
               }).then(({ bot: patched }) => {
-                rawDispatch({ type: "botAdded", bot: { ...bot, ...patched, messages: bot.messages } });
+                rawDispatch({ type: "botAdded", bot: { ...bot, ...patched, messages: bot.messages }, ...(action.preserveSelection && { preserveSelection: true }) });
                 if (paused) showCreatedPaused(bot.id);
               }),
             )
