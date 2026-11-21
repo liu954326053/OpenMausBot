@@ -230,15 +230,21 @@ describe("a remote client", () => {
 });
 
 describe("the list in a narrow window", () => {
-  const openAt = (box: { left: number; right: number }, windowWidth: number) => {
-    const details = q("details") as HTMLDetailsElement;
-    const list = details.querySelector<HTMLElement>("summary + div")!;
-    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({ ...box, top: 40, bottom: 200, width: box.right - box.left, height: 160, x: box.left, y: 40, toJSON: () => ({}) });
+  const details = () => q("details") as HTMLDetailsElement;
+  const list = () => details().querySelector<HTMLElement>("summary + div")!;
+  const layOut = (box: { left: number; right: number }, windowWidth: number) => {
+    vi.spyOn(list(), "getBoundingClientRect").mockReturnValue({ ...box, top: 40, bottom: 200, width: box.right - box.left, height: 160, x: box.left, y: 40, toJSON: () => ({}) });
     vi.spyOn(window, "innerWidth", "get").mockReturnValue(windowWidth);
-    details.open = false;
-    details.open = true;
-    flushSync(() => details.dispatchEvent(new Event("toggle")));
-    return list.style.translate;
+  };
+  const setOpen = (open: boolean) => {
+    details().open = open;
+    flushSync(() => details().dispatchEvent(new Event("toggle")));
+  };
+  const openAt = (box: { left: number; right: number }, windowWidth: number) => {
+    setOpen(false);
+    layOut(box, windowWidth);
+    setOpen(true);
+    return list().style.translate;
   };
   afterEach(() => vi.restoreAllMocks());
 
@@ -248,5 +254,17 @@ describe("the list in a narrow window", () => {
     expect(openAt({ left: 20, right: 276 }, 260)).toBe("-12px");
     expect(openAt({ left: 10, right: 266 }, 260)).toBe("-2px");
     expect(openAt({ left: 505, right: 761 }, 1024)).toBe("");
+  });
+
+  it("moves again when the window narrows while it is open, and not once it is closed", () => {
+    expect(openAt({ left: 505, right: 761 }, 1024)).toBe("");
+    layOut({ left: -100, right: 156 }, 390);
+    window.dispatchEvent(new Event("resize"));
+    expect(list().style.translate).toBe("108px");
+
+    setOpen(false);
+    layOut({ left: 69, right: 325 }, 320);
+    window.dispatchEvent(new Event("resize"));
+    expect(list().style.translate).toBe("108px");
   });
 });

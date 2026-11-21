@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { MessageCircle, MessagesSquare, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 
 import { opensRowMenuFromKey } from "@/lib/bulk-select";
@@ -73,13 +73,22 @@ export function TeamMapRooms() {
   const [creating, setCreating] = useState(false);
   const [menu, setMenu] = useState<RoomMenuAt | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [listOpen, setListOpen] = useState(false);
   const toggleRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const deleting = deletingId ? state.groups.find((group) => group.id === deletingId) : undefined;
   const unread = rooms.some((room) => room.unread);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!listOpen || !list) return;
+    const fit = () => keepInWindow(list);
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [listOpen]);
   return <>
-    <details className="relative" onToggle={(event) => { if (event.currentTarget.open && listRef.current) keepInWindow(listRef.current); }}
+    <details className="relative" onToggle={(event) => setListOpen(event.currentTarget.open)}
       onBlur={(event) => { if (!insideListOrItsMenus(event.currentTarget, event.relatedTarget)) event.currentTarget.removeAttribute("open"); }} onKeyDown={(event) => {
       if (event.key === "Escape") { event.currentTarget.removeAttribute("open"); event.currentTarget.querySelector("summary")?.focus(); }
     }}>

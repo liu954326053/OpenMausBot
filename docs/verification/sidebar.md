@@ -155,8 +155,9 @@ and keyboard focus, always on touch), a right-click, or the ContextMenu key or
 Shift+F10 on the row: Rename, Set description (group chats only), Copy
 conversation ID and Delete. Rename and the description are edited in the menu;
 Enter saves, Escape leaves the name as it was. A remote client only copies the
-ID. In a narrow window the list moves sideways to stay on screen. The same
-`team-lifecycle-ui` run deletes a group chat from that list:
+ID. In a narrow window the list moves sideways to stay on screen, also when
+the window narrows while it is open. The same `team-lifecycle-ui` run deletes a
+group chat from that list:
 
 - Shift+F10 on the row, its ⋯ button and a right-click open the same menu, with
   focus on its first item.
