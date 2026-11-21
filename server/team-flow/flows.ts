@@ -29,7 +29,7 @@ export function projectParents(projectId: string): Record<string, string> {
   return installed.projectParents(projectId);
 }
 
-/** Null for a bot in no flow: the main bot, an archived bot, a bot in General or in a department without a Chief. */
+/** Null for a bot in no flow: the main bot, an archived bot, a bot in General, in a department without a Chief, or a Chief nobody is under yet. */
 export function flowLineOf(botId: string): FlowLine | null {
   return installed.lineOf(botId);
 }

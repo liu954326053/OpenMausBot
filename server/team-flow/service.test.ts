@@ -28,6 +28,16 @@ describe("a team's flow", () => {
     expect(app.flows.lineOf(id("Story"))).toEqual({ superior: id("Chief"), subordinates: [] });
   });
 
+  it("keeps a Chief with nobody under it out of any flow, so it reaches as it would without one, until a member joins", async () => {
+    const app = await installation();
+    const id = app.team("Leadership", "Chief");
+    expect(app.flows.lineOf(id("Chief"))).toBeNull();
+    expect(app.flows.wire().teams).toEqual([{ section: "Leadership", chiefId: id("Chief"), parents: {}, placed: [] }]);
+
+    const joined = app.bot("Analyst", "Leadership");
+    expect(app.flows.lineOf(id("Chief"))).toEqual({ superior: null, subordinates: [joined.id] });
+  });
+
   it("replaces a member's superior with the one it is given next", async () => {
     const app = await installation();
     const id = app.team("Studio", "Chief", "Story", "Board", "Video");
