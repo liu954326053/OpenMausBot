@@ -20,6 +20,7 @@ vi.mock("@/state/store", async (importOriginal) => ({
 }));
 
 const { setTeamPeople } = await import("@/state/team-people");
+const { TOAST_CLEAR_OF_COMPOSER } = await import("../NoticeCard");
 const { ShareBotButton } = await import("./ShareBotButton");
 
 const ADA = { email: "ada@acme.test", name: "Ada", role: "admin" };
@@ -111,6 +112,12 @@ it("removes a person at once, says so with Undo, and Undo puts the sharing back 
   await settle();
   expect(server.calls[1]).toEqual({ path: "/api/bots/payroll/access", body: editable.access });
   expect(document.querySelector("[data-access-toast]")).toBeNull();
+});
+
+it("shows the change's Undo in the notices' corner, clear of the chat's composer", async () => {
+  await open(editable);
+  await choose("Bob's access", "remove");
+  expect(document.querySelector<HTMLElement>("[data-access-toast]")!.className).toContain(TOAST_CLEAR_OF_COMPOSER);
 });
 
 it("suggests teammates not yet added, and arrow keys and Enter add one at Can chat with Undo", async () => {

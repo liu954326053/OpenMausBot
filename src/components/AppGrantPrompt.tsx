@@ -54,6 +54,7 @@ export function AppGrantNotice() {
   return (
     <UndoToast
       key={shown.text}
+      clearOfComposer
       text={shown.text}
       actionLabel={t("apps.usedByChange")}
       onUndo={async () => {

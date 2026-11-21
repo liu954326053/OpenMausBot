@@ -108,8 +108,8 @@ function SaveToTeamMemory({ dialog, botName }: { dialog: ConversationDialog & { 
   if ("error" in state) {
     const retry = async () => { retrying.current = true; setState(null); setAttempt((count) => count + 1); };
     const done = () => { if (retrying.current) retrying.current = false; else closeConversationDialog(); };
-    return <UndoToast text={state.error} actionLabel={t("common.tryAgain")} onDone={done} onUndo={retry} />;
+    return <UndoToast clearOfComposer text={state.error} actionLabel={t("common.tryAgain")} onDone={done} onUndo={retry} />;
   }
-  return <UndoToast text={t("teamMemorySave.saved", { bot: botName })} onDone={closeConversationDialog}
+  return <UndoToast clearOfComposer text={t("teamMemorySave.saved", { bot: botName })} onDone={closeConversationDialog}
     onUndo={() => removeTeamMemoryEntry(dialog.botId, state.saved)} />;
 }
