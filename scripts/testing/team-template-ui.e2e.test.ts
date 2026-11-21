@@ -80,6 +80,7 @@ describe("additive template imports in the real renderer", () => {
         await click("Add team");
       } else {
         await click("Import…");
+        await expect.poll(snapshot, { timeout: 10_000 }).toContain('dialog "Import"');
         // A browser chooses a folder through the input's change handler, not the OS picker; a folder holding the legacy team file.
         await evaluate(`(() => { const input = document.querySelector('[role=dialog] input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([JSON.stringify(window.templateFixture)], 'team.mausteam.json', { type: 'application/json' })); input.files = transfer.files; input.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
         await expect.poll(snapshot, { timeout: 10_000 }).toContain("Outreach writer");
