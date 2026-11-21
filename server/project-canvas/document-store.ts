@@ -144,6 +144,16 @@ export class CanvasDocuments {
     return structuredClone(this.load(projectId).document);
   }
 
+  /** Null while the canvas cannot be read. */
+  revisionOf(projectId: string): number | null {
+    try {
+      return this.load(projectId).document.revision;
+    } catch (error) {
+      if (error instanceof CanvasUnreadableError || error instanceof CanvasRequestError) return null;
+      throw error;
+    }
+  }
+
   change(projectId: string, request: CanvasChangeRequest): CanvasChangeOutcome {
     const stored = this.load(projectId);
     const current = stored.document;

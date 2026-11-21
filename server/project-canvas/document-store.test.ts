@@ -52,6 +52,8 @@ describe("a project's canvas on disk", () => {
     const documents = store();
     expect(change(documents, [{ type: "add_node", id: "brief", nodeType: "text" }]).revision).toBe(1);
     expect(change(documents, [{ type: "update_node", id: "brief", patch: { title: "Brief" } }]).revision).toBe(2);
+    expect(documents.revisionOf("p1")).toBe(2);
+    expect(store().revisionOf("p2")).toBe(0);
     expect(statSync(file()).mode & 0o777).toBe(0o600);
     const again = store().read("p1");
     expect(again.revision).toBe(2);
@@ -120,6 +122,7 @@ describe("a canvas file that cannot be read", () => {
     const documents = store();
     expect(thrown(() => documents.read("p1"))).toBeInstanceOf(CanvasUnreadableError);
     expect(thrown(() => change(documents, [{ type: "add_node", nodeType: "text" }]))).toBeInstanceOf(CanvasUnreadableError);
+    expect(documents.revisionOf("p1")).toBeNull();
     expect(readFileSync(file(), "utf8")).toBe(text);
     expect(logged).toEqual([`[project-canvas] p1: the canvas file could not be read (${reason}); it is left as it is`]);
   });
