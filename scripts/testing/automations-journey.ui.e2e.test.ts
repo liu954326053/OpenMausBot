@@ -284,15 +284,15 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
 
     await openRow(SCHEDULE);
     await clickIn('aside[aria-label="Automation"]', "Pause");
-    await expect.poll(panel).toMatch(/^.+\n(?:.+\n)?Paused\n/);
+    await expect.poll(panel).toMatch(/^.+\n+(?:.+\n+)?Paused\n/);
     await expect.poll(() => rowText(SCHEDULE)).toMatch(/Paused · /);
     await screenshot("panel-paused");
     await reload();
     await openAutomations();
     await openRow(SCHEDULE);
-    expect(await panel()).toMatch(/^.+\n(?:.+\n)?Paused\n/);
+    expect(await panel()).toMatch(/^.+\n+(?:.+\n+)?Paused\n/);
     await clickIn('aside[aria-label="Automation"]', "Resume");
-    await expect.poll(panel).toMatch(/^.+\n(?:.+\n)?On\n/);
+    await expect.poll(panel).toMatch(/^.+\n+(?:.+\n+)?On\n/);
     await expect.poll(() => rowText(SCHEDULE)).toMatch(/First run (today|tomorrow) 9:00 AM/);
     await click("Close");
 
@@ -325,7 +325,8 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await clickIn("[role=dialog]", "Save");
     await expect.poll(() => evaluate("Boolean(document.querySelector('[role=dialog]'))")).toBe(false);
     await expect.poll(() => rowText(EDITED)).toMatch(/next: (today|tomorrow) 10:30 AM/);
-    expect(await panel()).toContain(EDITED);
+    expect(await panel()).toContain("Every day at 10:30 AM · Scout");
+    expect(await panel()).toContain("Send me a summary of my inbox and my calendar.");
     await screenshot("edited");
     await click("Close");
 
@@ -334,7 +335,7 @@ async function openApp(server: { url: string; port: number; dataDir: string; log
     await expect.poll(() => evaluate(`document.querySelectorAll('[data-event-card][aria-label^="Morning inbox summary"]').length`)).toBeGreaterThan(0);
     await screenshot("calendar-week");
     await evaluate(`[...document.querySelectorAll('[data-event-card][aria-label^="Morning inbox summary"]')].at(-1).click(); true`);
-    await expect.poll(panel).toContain(EDITED);
+    await expect.poll(panel).toContain("Every day at 10:30 AM · Scout");
     await screenshot("calendar-event-panel");
     await click("Close");
     await click("List");
