@@ -20,7 +20,7 @@ import { ThreadRefText } from "./ThreadRefs";
 import { BugReportNote } from "./BugReportNote";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { MessageBoundary } from "./ChatView";
-import { SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX, SIMPLE_BUBBLE_TEXT, SIMPLE_USER_BUBBLE } from "./chat-bubble";
+import { FOLDED_SENT_TEXT, foldsSentText, SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX, SIMPLE_BUBBLE_TEXT, SIMPLE_USER_BUBBLE } from "./chat-bubble";
 import { ReplyBlocks } from "./ReplyBlocks";
 import { CopyButton, MESSAGE_ROW, MessageActions, messageActionClass, ReplyAction } from "./MessageActions";
 import { ReactAction, ReactionChips } from "./Reactions";
@@ -34,9 +34,6 @@ import { AttachmentGallery, MessageAttachmentGallery, replyAttachmentGroup } fro
 import { VoiceNoteBubble, type VoiceNoteAttachment } from "./VoiceNoteBubble";
 import { UserLineNote } from "./RichMessageRow";
 import { RoutedByLine } from "./RoomQueueList";
-
-const USER_COLLAPSE_CHARS = 600;
-const USER_COLLAPSE_LINES = 8;
 
 interface RoomTextMessageProps {
   groupId: string;
@@ -105,7 +102,7 @@ export const RoomTextMessage = memo(function RoomTextMessage({
   const speech = useSpeech();
   const speaking = speech.messageId === m.id && speech.status !== "idle";
   const focusedSearch = focusNonce !== null;
-  const collapsible = user && !expanded && (display.length > USER_COLLAPSE_CHARS || display.split("\n").length > USER_COLLAPSE_LINES);
+  const collapsible = user && !expanded && foldsSentText(display);
   useEffect(() => { if (focusedSearch && collapsible) setExpanded(true); }, [focusedSearch, collapsible, focusNonce]);
   const simple = !useAdvancedMode();
   const speakerBot = members.find((member) => member.id === m.from?.botId);
@@ -179,7 +176,7 @@ export const RoomTextMessage = memo(function RoomTextMessage({
             <>
               {attachments && <AttachmentGallery images={attachments.images} files={attachments.files} message={{ threadId, messageId: m.id }} eager={eager} className={!attachments.display ? "mb-0" : undefined} />}
               <div
-                className={cn(collapsible && "max-h-40 overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]")}
+                className={cn(collapsible && FOLDED_SENT_TEXT)}
                 data-citation-source={m.id}
                 data-citation-owner-type="group"
                 data-citation-owner={groupId}

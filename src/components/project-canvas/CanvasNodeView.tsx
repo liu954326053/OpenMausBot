@@ -1,17 +1,16 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
-import { createContext, memo, useContext, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import type { CanvasNode } from "../../../shared/project-canvas";
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import type { CanvasNode, CanvasViewport } from "../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import type { HandleType, ResizeCorner } from "@/lib/project-canvas/geometry";
+import { panelPlacement, type CanvasSize, type HandleType, type ResizeCorner } from "@/lib/project-canvas/geometry";
 import { pageDirection, useCanvasUi } from "./canvas-ui";
 import { NodeBody } from "./node-bodies";
 import { nodeLabel } from "./node-kinds";
 import { NodePanel } from "./NodePanel";
 
-/** What the stage lends each node: the zoom, the connection being drawn, and where a node's pointer presses go. */
+/** What the stage lends each node: the connection being drawn, and where a node's pointer presses go. */
 export interface StageHandlers {
-  k: number;
   connecting: { nodeId: string; handle: HandleType } | null;
   connectionTarget: string | null;
   onNodePointerDown(event: ReactPointerEvent, node: CanvasNode): void;
@@ -32,12 +31,9 @@ export interface CanvasNodeViewProps {
   node: CanvasNode;
   selected: boolean;
   related: boolean;
-  panelOpen: boolean;
-  /** Hidden while the canvas is panned or something on it is dragged, and kept as it was. */
-  panelHidden: boolean;
 }
 
-export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, related, panelOpen, panelHidden }: CanvasNodeViewProps) {
+export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, related }: CanvasNodeViewProps) {
   const ui = useCanvasUi();
   const stage = useContext(StageHandlersContext)!;
   const [hovered, setHovered] = useState(false);
@@ -62,7 +58,7 @@ export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, rel
       data-node-type={node.type}
       role="group"
       aria-label={label}
-      className={cn("absolute", isGroup ? "z-[5]" : panelOpen ? "z-[60]" : selected ? "z-50" : "z-10")}
+      className={cn("absolute", isGroup ? "z-[5]" : selected ? "z-50" : "z-10")}
       style={{ left: node.position.x, top: node.position.y, width: node.width, height: node.height }}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
@@ -129,25 +125,47 @@ export const CanvasNodeView = memo(function CanvasNodeView({ node, selected, rel
           />
         ))
         : null}
-
-      {panelOpen ? (
-        <div className={cn("pointer-events-none absolute inset-x-0 top-full z-[70] flex justify-center pt-4", panelHidden && "invisible")}>
-          <div
-            data-node-panel=""
-            data-canvas-no-zoom=""
-            dir={pageDirection()}
-            className="pointer-events-auto w-[600px] shrink-0"
-            style={{ transform: `scale(${1 / stage.k})`, transformOrigin: "top center" }}
-            onPointerDown={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-          >
-            <NodePanel node={node} />
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 });
+
+/** The open node's panel, on the screen over the canvas and its docks and wholly inside the canvas. Hidden while the
+ * canvas is panned, something on it is dragged or its node is out of view, and kept as it was. */
+export function NodePanelLayer({ node, viewport, size, hidden, onPointerDownCapture }: {
+  node: CanvasNode;
+  viewport: CanvasViewport;
+  size: CanvasSize;
+  hidden: boolean;
+  onPointerDownCapture: (event: ReactPointerEvent) => void;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    const content = contentRef.current!;
+    const measure = () => setHeight(content.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+  const place = panelPlacement(node, viewport, height, size);
+  return (
+    <div
+      data-node-panel=""
+      data-canvas-no-zoom=""
+      dir={pageDirection()}
+      className={cn("absolute z-[81]", height > place.maxHeight && "overflow-y-auto", hidden && "invisible")}
+      style={{ left: place.left, top: place.top, width: place.width, maxHeight: place.maxHeight }}
+      onPointerDownCapture={onPointerDownCapture}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      <div ref={contentRef}>
+        <NodePanel node={node} />
+      </div>
+    </div>
+  );
+}
 
 function Handle({ node, handle, visible, label }: { node: CanvasNode; handle: HandleType; visible: boolean; label: string }) {
   const ui = useCanvasUi();

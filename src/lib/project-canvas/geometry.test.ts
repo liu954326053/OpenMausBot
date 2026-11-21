@@ -14,6 +14,7 @@ import {
   groupWrapRect,
   intersects,
   normalizeConnection,
+  panelPlacement,
   resizeFrame,
   screenToWorld,
   settleDraggedNodes,
@@ -183,5 +184,51 @@ describe("focusing a node", () => {
     const withPanel = focusViewportForNode(node("a", 0, 0), { width: 1000, height: 800 }, { below: 200, bottomInset: 80 });
     expect(withPanel.k).toBe(1);
     expect(withPanel.y).toBeGreaterThan(focusViewportForNode(node("a", 0, 0), { width: 1000, height: 800 }).y - 200);
+  });
+});
+
+describe("a node's panel", () => {
+  const canvas = { width: 1200, height: 800 };
+  const bot = (x: number, y: number) => node("bot", x, y, { width: 300, height: 180 });
+  const still = { x: 0, y: 0, k: 1 };
+
+  it("sits 16px under its node and centred on it, 600 wide, where the canvas has room", () => {
+    expect(panelPlacement(bot(300, 100), still, 240, canvas)).toEqual({ left: 150, top: 296, width: 600, maxHeight: 768 });
+  });
+
+  it("moves along the left or right edge only as far as keeps it on the canvas", () => {
+    expect(panelPlacement(bot(10, 100), still, 240, canvas)).toMatchObject({ left: 16, top: 296 });
+    expect(panelPlacement(bot(-200, 100), still, 240, canvas)).toMatchObject({ left: 16, top: 296 });
+    expect(panelPlacement(bot(890, 100), still, 240, canvas)).toMatchObject({ left: 1200 - 16 - 600, top: 296 });
+  });
+
+  it("goes above its node with no room under it, to the side with more room when neither has enough, and past no edge", () => {
+    expect(panelPlacement(bot(300, 560), still, 240, canvas).top).toBe(560 - 28 - 16 - 240);
+    expect(panelPlacement(bot(300, 300), still, 600, canvas).top).toBe(800 - 16 - 600);
+    expect(panelPlacement(bot(300, 520), still, 600, canvas).top).toBe(16);
+    expect(panelPlacement(bot(300, -100), still, 240, canvas).top).toBe(96);
+    expect(panelPlacement(bot(300, -400), still, 240, canvas).top).toBe(16);
+  });
+
+  it("fits a canvas smaller than itself, as wide and as tall as the canvas allows", () => {
+    expect(panelPlacement(bot(100, 50), still, 900, { width: 500, height: 600 })).toEqual({ left: 16, top: 16, width: 468, maxHeight: 568 });
+  });
+
+  it("keeps its size on screen at any zoom, under its node as drawn", () => {
+    expect(panelPlacement(bot(400, 200), { x: 100, y: 50, k: 0.5 }, 240, canvas)).toEqual({ left: 75, top: 256, width: 600, maxHeight: 768 });
+  });
+
+  it("is wholly on the canvas wherever its node is", () => {
+    const outside: unknown[] = [];
+    for (let x = -600; x <= 1500; x += 75) {
+      for (let y = -500; y <= 1100; y += 75) {
+        for (const height of [120, 360, 700, 1200]) {
+          const place = panelPlacement(bot(x, y), still, height, canvas);
+          const bottom = place.top + Math.min(height, place.maxHeight);
+          if (place.left < 16 || place.left + place.width > 1200 - 16 || place.top < 16 || bottom > 800 - 16) outside.push({ x, y, height, place });
+        }
+      }
+    }
+    expect(outside).toEqual([]);
   });
 });
