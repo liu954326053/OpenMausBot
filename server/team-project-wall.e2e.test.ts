@@ -289,9 +289,6 @@ describe("two team projects made from one team, on the real server", () => {
           { tool: "manage_room", arguments: { action: "create", name: "Leads", member_bot_ids: [directorA.id] }, expectError: true },
           { tool: "start_thread", arguments: { title: "Scene 2", message: "Rewrite scene 2.", bot_id: NOBODY }, expectError: true },
           { tool: "start_thread", arguments: { title: "Scene 2", message: "Rewrite scene 2.", bot_id: writerA.id }, expectError: true },
-          { tool: "create_bot", arguments: { name: "Understudy", copy_from_bot_id: NOBODY }, expectError: true },
-          { tool: "create_bot", arguments: { name: "Understudy", copy_from_bot_id: writerA.id }, expectError: true },
-          { tool: "create_bot", arguments: { name: "Understudy", copy_from_bot_id: directorA.id }, expectError: true },
           { tool: "wait_until", arguments: { label: "the rewrite", kind: "bot_idle", bot: NOBODY }, expectError: true },
           { tool: "wait_until", arguments: { label: "the rewrite", kind: "bot_idle", bot: writerA.id }, expectError: true },
           { tool: "session_search", arguments: { query: "Ending", scope: "team" } },
@@ -313,11 +310,12 @@ describe("two team projects made from one team, on the real server", () => {
     for (const inside of [writerA.id, writerB.id, "Screenwriter", ...MIDNIGHT_ONLY, ...PAPER_ONLY]) expect(heard, inside).not.toContain(inside);
 
     const [listed, setup, nobody, memberById, memberByName, sharedName, memberProfile, leadProfile, memberSetup, leadSetup, newMember, retry, leadRetry, memberTriggers, leadTriggers, room,
-      noThread, memberThread, noCopy, memberCopy, leadCopy, noWait, memberWait, teamNotes, handed] = answers(turn);
+      noThread, memberThread, noWait, memberWait, teamNotes, handed] = answers(turn);
     expect(noThread).toContain("no such bot");
     expect(memberThread).toBe(noThread);
-    expect(noCopy).toContain("copy_from_bot_id must be the exact id of a bot you look after");
-    for (const copy of [memberCopy, leadCopy]) expect(copy).toBe(noCopy);
+    const toolList = JSON.stringify(turn.evidence[0]);
+    expect(toolList).toContain("list_team_setup");
+    expect(toolList, "the main bot copies no bot: it has no create_bot").not.toContain("create_bot");
     expect(noWait).toContain("No bot you can reach goes by that name");
     expect(memberWait).toBe(noWait);
     for (const ending of [KNOWN[MIDNIGHT].ending, KNOWN[PAPER].ending]) expect(teamNotes).not.toContain(ending);

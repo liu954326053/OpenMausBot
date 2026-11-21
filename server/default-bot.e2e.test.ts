@@ -1,6 +1,7 @@
 // MagicBot on a real server in an isolated fixture: a new install's first bot, never deleted or archived, taken off the
-// sidebar by its switch, and still holding a Chief's tools once another bot is the Chief. The fake engine holds its turn
-// open so this test can start the agents server that turn was handed and call create_bot the way the engine would.
+// sidebar by its switch, kept out of every department, and still holding a Chief's tools once another bot is the Chief. The
+// fake engine holds its turn open so this test can start the agents server that turn was handed and call its tools the way
+// the engine would.
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { expect, it } from "vitest";
@@ -53,7 +54,7 @@ it("makes MagicBot a new install's first bot, never deleted, hidden by its switc
     expect((await bots()).find((bot) => bot.id === maus.id)?.sidebarHidden).toBe(true);
     expect((await api("PATCH", `/api/bots/${maus.id}`, { sidebarHidden: false })).status).toBe(200);
     expect((await bots()).find((bot) => bot.id === maus.id)?.sidebarHidden).toBe(false);
-    // A hidden MagicBot comes back when it is renamed or moved to a department, unless the change itself says hidden.
+    // A hidden MagicBot comes back when it is renamed, unless the change itself says hidden.
     const hiddenAfter = async (patch: Record<string, unknown>) => {
       expect((await api("PATCH", `/api/bots/${maus.id}`, { sidebarHidden: true })).status).toBe(200);
       expect((await api("PATCH", `/api/bots/${maus.id}`, patch)).status).toBe(200);
@@ -61,9 +62,12 @@ it("makes MagicBot a new install's first bot, never deleted, hidden by its switc
     };
     expect(await hiddenAfter({ color: "blue" })).toBe(true);
     expect(await hiddenAfter({ name: "Nova" })).toBe(false);
-    expect(await hiddenAfter({ section: "C Suite" })).toBe(false);
-    expect(await hiddenAfter({ section: "C Suite" })).toBe(true);
     expect(await hiddenAfter({ name: "Nova Two", sidebarHidden: true })).toBe(true);
+    const moved = await api("PATCH", `/api/bots/${maus.id}`, { section: "C Suite" });
+    expect(moved.status).toBe(409);
+    expect(moved.body.error).toBe("Nova Two belongs to no department, so it can't be moved into one.");
+    expect((await bots()).find((bot) => bot.id === maus.id)).toMatchObject({ sidebarHidden: true, name: "Nova Two" });
+    expect((await bots()).find((bot) => bot.id === maus.id)?.section).toBeUndefined();
     expect((await api("PATCH", `/api/bots/${maus.id}`, { name: maus.name, section: null, sidebarHidden: false })).status).toBe(200);
 
     const { bot: clive } = await control(["new-bot", "--name", "Clive"]);
@@ -79,11 +83,13 @@ it("makes MagicBot a new install's first bot, never deleted, hidden by its switc
     expect(agents.env.OMB_CHIEF_OF_STAFF).toBe("1");
     expect(launched.systemPrompt).toContain("You are also this person's MagicBot");
     expect(launched.systemPrompt).toContain("but you are not the Chief");
+    const setup = await callTool(agents, "list_team_setup", {});
+    expect(setup.error).toBeUndefined();
+    expect(setup.result?.isError, setup.result?.content?.[0]?.text).toBeFalsy();
     const created = await callTool(agents, "create_bot", { name: "Scout", role: "Researcher", instructions: "Find what the person asks for." });
-    expect(created.error).toBeUndefined();
-    expect(created.result?.isError, created.result?.content?.[0]?.text).toBeFalsy();
+    expect(created.error).toEqual({ code: -32602, message: "Unknown tool: create_bot" });
     const after = await bots();
-    expect(after.find((bot) => bot.name === "Scout")?.chiefOfStaff).toBeFalsy();
+    expect(after.some((bot) => bot.name === "Scout")).toBe(false);
     expect(after.filter((bot) => bot.chiefOfStaff).map((bot) => bot.id)).toEqual([clive.id]);
     expect(after.filter((bot) => bot.defaultBot).map((bot) => bot.id)).toEqual([maus.id]);
     await control(["interrupt", "--bot", maus.id]);
