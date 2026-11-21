@@ -10,7 +10,7 @@
 
 1. **数据只经过 `CanvasBackend`。** 画布从它读快照、发操作、订阅变化、上传文件、给机器人发任务、停止机器人、列模型、读写项目的生成设置、开始和取消生成。浏览器里不存任何东西。
 2. **类型和操作用两个负责人提交的契约**：`shared/project-canvas.ts`（`canvas-server`）和 `shared/project-generation.ts`（`generation`），原样拿进来，不改。操作是 `add_node`（`nodeType`，不能是机器人）、`update_node`（`patch` 和 `metadata`，`null` 删掉键，`settings` 和 `file` 整个替换）、`delete_node`、`connect_nodes`、`delete_connections`、`set_viewport`、`set_background`。契约里没有的（机器人的头像、文本节点的回复写回哪里、最近的来往、打开对话）放在 `src/lib/project-canvas/types.ts` 和 `CanvasBackend` 里，在报告里列出来。
-3. **本地先改，再交给后端。** 拖动和缩放节点时只改本地，松手时发一次操作。后端答复之前收到的新快照，会把还没确认的操作叠上去，画面不会跳回去。普通的修改不带 `baseRevision`（按字段后写的为准），生成中服务器改状态时不会把人的拖动整批拒掉。
+3. **本地先改，再交给后端。** 拖动和缩放节点时只改本地，松手时发一次操作。后端答复之前收到的新快照，会把还没确认的操作叠上去，画面不会跳回去。改内容的批次带 `baseRevision`；只挪位置、改大小、视口和背景的批次不带（后写的为准），生成中服务器改状态时不会把人的拖动整批拒掉。
 4. **撤销和重做**按 infinite-canvas 的规则：最多 50 步，视口不算，撤销后清空选择。但记的是“操作和它的反向操作”，不是整份快照：文档在服务器上，机器人也会改，撤销只撤自己的改动。
 5. **视口**改了 500 毫秒后保存（同 infinite-canvas），不进撤销。
 6. **机器人节点**的编号是 `bot:<botId>`，快照里每个机器人都有节点和推出来的状态（`CanvasBotState`）。没人摆过的（`placed: false`）用服务器的默认布局，和程序的树是同一条规则，所以打开时照快照的位置画，不写回。机器人节点不能删除、复制、打组，只能挪和改大小，面板里不选模型。
@@ -67,3 +67,15 @@
 - 单元测试：几何、操作和反向操作、撤销重做、选择、连线规则、设置继承、树形排列、生成结果的位置。
 - DOM 测试（happy-dom）：节点外壳、各个面板。
 - 预览页截图放在 `/tmp/omb-wt-canvas-client/`，用独立的预览，不碰正在用的 app 和数据；占用 UI fixture 时按章程加锁。
+
+## 第二阶段：接真的服务器
+
+合进 `wt/canvas-server` 的 `4909861ad` 之后，两个契约用负责人的版本。
+
+1. **`src/lib/project-canvas/server-backend.ts`**：`createServerCanvasBackend(store)` 用 app 自己的 `api()` 发请求，用 `/api/events` 的帧（`listenLiveFrames`）听 `project-canvas` 事件，不另写 fetch。409 的冲突、过期和只读变成 `CanvasBackendError`；生成接口回的 `GenerationFailure` 变成 `Refused`。
+2. **契约外的几样**用 app 的东西：机器人的样子从 store 的 `bots` 读；最近的来往读机器人项目对话（`mainThreadId`，任务就发到这里）的最近消息；打开对话用 `openBot` / `openThread`；停止对它每个在忙的对话发 store 的 `interrupt`。
+3. **`baseRevision`**：取画布当时的修订号，但不早于自己上一批的修订号，免得和自己的上一批冲突。冲突时这一批不生效，显示服务器的原因，再读一次快照。
+4. **重读**：每个事件、以及实时流重连后漏掉事件时，都再读快照和机器人的样子。
+5. **生成**的开始和取消等 `canvas-server` 合进 `main`，照最终的路由和确认卡片做。
+6. **端到端**：`scripts/testing/project-canvas-server-preview.tsx` 把 `ProjectCanvas` 放在 app 的 `StoreProvider` 里，经预览的代理接真的服务器（`launchRestartableServer`，脚本化的假引擎）。`scripts/testing/project-canvas-ui.e2e.test.ts` 用 agent-browser 走：快照画出项目的机器人、操作刷新后还在、上传进 `素材`、带参考的任务到达机器人、外面的修改让打开的画布更新。
+7. 要服务器做的两处（`targetNodeId`、撤销时加回删掉的节点）写在报告里，等 `canvas-server` 合进 `main` 后加到它的模块里。
