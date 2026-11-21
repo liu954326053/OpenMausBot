@@ -10730,6 +10730,7 @@
   "remote.diagnosis.next.joinWifi": "请将这台电脑连接到 Wi-Fi。",
   "remote.diagnosis.next.otherCopy": "退出另一个 {app} 副本，然后关闭再重新打开“任何地方”。",
   "serverError.mailbox.outgoingFields": "请检查发件服务器：名称如 mail.example.com，端口在 1 到 65535 之间，以及 SSL/TLS 或 STARTTLS。",
+  "serverError.mainBot.noDepartment": "{bot}不属于任何部门，不能移进部门。",
   "server.meetings.card.title": "会议记录",
   "server.meetings.card.starting": "正在准备云电脑…",
   "server.meetings.card.joining": "正在加入会议…",

@@ -39,11 +39,11 @@ export interface TeamProjectsHost {
   /** For whoever places a project bot's own files and decides whether it may run. */
   lookup: TeamProjectLookup;
   routes: RouteHandler;
-  /** For a Chief's team setup: throws when a change would move a bot into or out of a project. */
+  /** For a Chief's team setup: throws when a change would move a bot into or out of a project, or the main bot into a department. */
   checkSetupChange: TeamProjects["checkSetupChange"];
   /** Why a change to these fields of a bot is refused: it is a copy that shows what its source shows. Null otherwise. */
   copyRefusal: TeamProjects["copyRefusal"];
-  copyChangeRefusal: TeamProjects["copyChangeRefusal"];
+  setupRefusal: TeamProjects["setupRefusal"];
 }
 
 const COPIES_SETTLE_MS = 1000;
@@ -83,6 +83,6 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
     api: projects, root: () => projects.listWire().root, lookup: projects.lookup, routes: createTeamProjectRoutes(projects),
     checkSetupChange: (before, fields) => projects.checkSetupChange(before, fields),
     copyRefusal: (botId, fields) => projects.copyRefusal(botId, fields),
-    copyChangeRefusal: (botId, changes) => projects.copyChangeRefusal(botId, changes),
+    setupRefusal: (target, fields) => projects.setupRefusal(target, fields),
   };
 }

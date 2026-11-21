@@ -258,6 +258,7 @@ export const USER_ERROR = {
   "serverError.teamProject.departmentFixed": "{department} is a project's team, so it can't be renamed or deleted.",
   "serverError.teamProject.copyFollows": "{bot} follows {source} in {team}. Change {source} in {team} instead.",
   "serverError.teamProject.contextFollows": "{department} takes its shared instructions from {team}. Change them in {team} instead.",
+  "serverError.mainBot.noDepartment": "{bot} belongs to no department, so it can't be moved into one.",
   "serverError.teamProject.teamChangesInvalid": "Choose which of the team's changes to make, then try again.",
 } as const;
 

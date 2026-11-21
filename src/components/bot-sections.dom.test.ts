@@ -96,3 +96,26 @@ describe("moving bots between departments, with projects", () => {
     expect([offered.includes("main"), offered.includes("sales"), offered.includes("writer"), offered.includes("lead")]).toEqual([true, true, false, false]);
   });
 });
+
+describe("the main bot", () => {
+  beforeEach(() => {
+    fixture.state = { ...fixture.state, bots: [...fixture.state.bots, bot("MagicBot", { defaultBot: {} })] };
+  });
+
+  it("is offered no department to move to", async () => {
+    expect(await probe("MagicBot")).toBe("false Sales");
+  });
+
+  it("is not offered to add to a department, nor to make one with", async () => {
+    await act(async () => root.render(createElement(TeamDialog, { section: "Sales", onClose: () => {} })));
+    expect(document.body.textContent).not.toContain("MagicBot");
+    await act(async () => root.render(createElement(TeamDialog, { onClose: () => {} })));
+    expect(document.body.textContent).not.toContain("MagicBot");
+  });
+
+  it("is offered to move out of a department it is still in", async () => {
+    fixture.state = { ...fixture.state, bots: fixture.state.bots.map((one) => (one.id === "MagicBot" ? { ...one, section: "Sales" } : one)) };
+    await act(async () => root.render(createElement(TeamDialog, { section: "", onClose: () => {} })));
+    expect(document.body.textContent).toContain("MagicBot");
+  });
+});

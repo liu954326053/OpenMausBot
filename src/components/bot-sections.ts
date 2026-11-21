@@ -11,10 +11,11 @@ export function useMayMoveBots(): boolean {
   return useOwnerOrAdmin() !== false;
 }
 
-/** Whether this person may move this bot into or out of a department. A project's bot stays in its project's team. */
-export function useMayMoveBot(bot: Pick<Bot, "id" | "section"> | undefined): boolean {
+/** Whether this person may move this bot into or out of a department. A project's bot stays in its project's team, and
+ * the main bot belongs to no department. */
+export function useMayMoveBot(bot: Pick<Bot, "id" | "section" | "defaultBot"> | undefined): boolean {
   const projects = useTeamProjectSide();
-  return useMayMoveBots() && !(bot && projects.of(bot));
+  return useMayMoveBots() && !(bot && (bot.defaultBot || projects.of(bot)));
 }
 
 /** The departments a bot or a group chat can be moved into: every one in use but a project's, which is its project's team. */

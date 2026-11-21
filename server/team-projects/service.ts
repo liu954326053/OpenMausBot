@@ -4,6 +4,7 @@ import type {
   CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamChangesInput, TeamChangesResult, TeamProjectLookup, TeamProjectRecord,
   TeamProjectWire, TeamProjectsApi, TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
+import type { TeamSetupFields } from "../../shared/team-setup.ts";
 import type { PackageImportDeps } from "../package-import.ts";
 import type { RoutineManager } from "../routines.ts";
 import type { ShareTarget } from "../share.ts";
@@ -48,7 +49,7 @@ export interface TeamProjectsDeps {
   log?(line: string): void;
 }
 
-type MovingBot = Pick<BotRecord, "name" | "section" | "teamProject">;
+type MovingBot = Pick<BotRecord, "name" | "section" | "teamProject" | "defaultBot">;
 
 function publicRecord(project: StoredTeamProject): TeamProjectRecord {
   const { pausedRoutineIds: _paused, ...record } = project;
@@ -312,6 +313,7 @@ export class TeamProjects implements TeamProjectsApi {
   moveRefusal(bot: MovingBot, to: string | null | undefined): UserError | null {
     const target = sectionKey(to);
     if (target === sectionKey(bot.section)) return null;
+    if (target && bot.defaultBot && !bot.teamProject) return userError("serverError.mainBot.noDepartment", { bot: bot.name });
     if (bot.teamProject && (!this.deps.registry.readable || this.deps.registry.find(bot.teamProject.id))) {
       return userError("serverError.teamProject.botStays", { bot: bot.name });
     }
@@ -360,7 +362,12 @@ export class TeamProjects implements TeamProjectsApi {
     return teamSection ? userError("serverError.teamProject.contextFollows", { department: name, team: teamSection }) : null;
   }
 
-  /** For a Chief's team setup: throws when the change moves a bot into or out of a project. */
+  /** Why a team setup may not make these changes to `target`: the department it would go to, or what a copy takes from its source. */
+  setupRefusal(target: MovingBot & Pick<BotRecord, "id">, fields: TeamSetupFields): UserError | null {
+    return (fields.section === undefined ? null : this.moveRefusal(target, fields.section)) ?? this.copyChangeRefusal(target.id, fields);
+  }
+
+  /** For a Chief's team setup: throws when the change moves a bot into or out of a project, or the main bot into a department. */
   checkSetupChange(before: MovingBot, fields: { section?: string }): void {
     if (fields.section === undefined) return;
     const refused = this.moveRefusal(before, fields.section);

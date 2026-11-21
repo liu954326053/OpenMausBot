@@ -741,6 +741,19 @@ describe("MagicBot's Chief-level team setup", () => {
     }
   });
 
+  it("lets MagicBot make a new team with a new bot of its own as the Chief, and appoint no other Chief", () => {
+    const h = harness();
+    const maus = h.bot("Maus", { defaultBot: {}, section: "" });
+    h.peer.section = "";
+    const lead = { action: "create", key: "Lead", fields: { ...specialist("Lead", "Drama").fields, title: "Showrunner", chiefOfStaff: true } };
+    const propose = (operations: unknown[], newTeams: string[]) =>
+      h.service.propose({ botId: maus.id, threadId: maus.threadId, plan: { reason: "A team for the drama", operations, newTeams } });
+    expect(propose([lead, specialist("Writer", "Drama")], ["Drama"]).detail).toContain("Showrunner");
+    const refused = /Only the Chief of Staff changes who the Chief is/;
+    expect(() => propose([{ ...lead, fields: { ...lead.fields, section: "Work" } }], [])).toThrow(refused);
+    expect(() => propose([specialist("Writer", "Drama"), { action: "update", botId: h.peer.id, fields: { section: "Drama", chiefOfStaff: true } }], ["Drama"])).toThrow(refused);
+  });
+
   it("refuses a Team Cloud User's MagicBot, which holds no more than its member", () => {
     const h = harness();
     const maus = h.bot("Maus", { defaultBot: { person: "user@example.com" } });

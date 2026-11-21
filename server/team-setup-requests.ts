@@ -201,7 +201,8 @@ export class TeamSetupRequestService {
         if (this.options.targetBusy(target.id, sourceThreadId) && (confirming || target.id !== chief.id)) throw new TeamSetupError(`Stop @${target.name}'s work before changing its setup`, 409);
       }
       const fields = this.fields(operation.fields, target ?? undefined);
-      if (fields.chiefOfStaff !== undefined && !chief.chiefOfStaff) throw new TeamSetupError(`Only the Chief of Staff changes who the Chief is; ${chief.name} doesn't.`, 403);
+      const leadsNewTeam = !target && fields.chiefOfStaff === true && request.newTeams.includes(section(fields.section));
+      if (fields.chiefOfStaff !== undefined && !chief.chiefOfStaff && !(chief.defaultBot && leadsNewTeam)) throw new TeamSetupError(`Only the Chief of Staff changes who the Chief is; ${chief.name} doesn't.`, 403);
       if (confirming && target) this.options.validateChange?.(target, fields);
       const locked = target && this.options.fieldsRefusal?.(target, fields);
       if (locked) throw new TeamSetupError(locked, 409);
