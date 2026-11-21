@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { expect, it } from "vitest";
 import { FIXTURE_STARTER_BOT_NAME, launchVerificationServer } from "../scripts/control-omb.ts";
 
@@ -22,13 +22,12 @@ it("pins the fixture starter bot's name deterministically (#1257)", async () => 
   }
 });
 
-/** Installed outside anything the fixture is granted (node's own directory is its whole PATH). */
+/** Installed outside anything the fixture is granted (its PATH holds only node). */
 function machineInstalledCli(): string | undefined {
-  const granted = dirname(process.execPath);
   for (const dir of ["/opt/homebrew/bin", "/usr/local/bin"]) {
-    if (dir === granted || !existsSync(dir)) continue;
+    if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir).sort()) {
-      if (!/^[\w.-]+$/.test(name) || existsSync(join(granted, name))) continue;
+      if (!/^[\w.-]+$/.test(name) || name === "node") continue;
       try {
         const stat = statSync(join(dir, name));
         if (stat.isFile() && stat.mode & 0o111) return name;

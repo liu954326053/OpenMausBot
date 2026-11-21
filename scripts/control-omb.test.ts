@@ -1,13 +1,29 @@
 // What crosses from the launching shell into a fixture server: only what a
 // test scripted on purpose. A real OpenAI key must never reach a fixture that
 // could send it to OpenAI.
+import { mkdtempSync, readdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
+import { removeTempDir } from "../server/testing/cleanup.ts";
 import { verificationServerEnvironment } from "./control-omb.ts";
 
-const childEnv = (parentEnv: NodeJS.ProcessEnv) => verificationServerEnvironment(parentEnv, join(tmpdir(), "omb-fixture-env"), 9100);
+const dataDir = mkdtempSync(join(tmpdir(), "omb-fixture-env-"));
+afterAll(() => removeTempDir(dataDir));
+const childEnv = (parentEnv: NodeJS.ProcessEnv) => verificationServerEnvironment(parentEnv, dataDir, 9100);
+
+describe("what the fixture can reach", () => {
+  it.skipIf(process.platform === "win32")("runs this node and no CLI installed beside it", () => {
+    const { PATH } = childEnv({});
+    expect(readdirSync(PATH!)).toEqual(["node"]);
+    expect(realpathSync(join(PATH!, "node"))).toBe(realpathSync(process.execPath));
+  });
+
+  it("keeps the bundled model list rather than downloading one", () => {
+    expect(childEnv({}).OMB_DISABLE_MODEL_MANIFEST_FETCH).toBe("1");
+  });
+});
 
 describe("a fixture driven from a real browser", () => {
   it("trusts this machine's browsers as `pnpm dev` does, unless the caller tests the sign-in", () => {
