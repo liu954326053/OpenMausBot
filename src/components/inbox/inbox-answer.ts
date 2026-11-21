@@ -3,6 +3,7 @@ import type { InboxRow } from "../../../shared/inbox";
 import { personWait, type PersonWaitKind } from "../../../shared/person-wait";
 import type { Message } from "@/state/store";
 import { t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { cardQuestions } from "../QuestionCard";
 import { accessRequestWords } from "../bot-access/access-card";
 import { senderLabel, subjectOf, textOf } from "./inbox-view";
@@ -81,7 +82,8 @@ export function snippetOf(row: InboxRow): string | null {
 export function matchesSearch(row: InboxRow, query: string): boolean {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!words.length) return true;
-  const hay = [senderLabel(row), row.origin?.title ?? "", headlineOf(row), textOf(row), choicesLine(row) ?? ""].join(" ").toLowerCase();
+  const title = row.origin?.title ?? "";
+  const hay = [senderLabel(row), title, localizedTaskTitle(title), headlineOf(row), textOf(row), choicesLine(row) ?? ""].join(" ").toLowerCase();
   return words.every((word) => hay.includes(word));
 }
 

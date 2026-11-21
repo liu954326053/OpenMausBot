@@ -13,6 +13,7 @@ import { bestColumns, polylinePath, teamGeometry, type TeamGeometry } from "@/li
 import { teamComputersFor, type ShownFrame } from "@/lib/map-computers";
 import { activityPreview, botEngine } from "@/lib/failed-turn";
 import { computerStepLine } from "@/lib/computer-step";
+import { localizedTaskTitle } from "@/lib/task-title";
 import type { MapComputer, MapComputerState } from "../../shared/map-computer";
 import { BotAvatar } from "./Avatar";
 import { ComputerNode } from "./ComputerNode";
@@ -113,7 +114,8 @@ function currentActivity(bot: Bot | undefined, instances: ReturnType<typeof useS
   const open = bot.tasks?.find((task) => task.threadId === bot.threadId);
   const last = !open || open.busy ? bot.messages.findLast((message) => message.kind === "activity" && message.tool) : undefined;
   if (last?.tool) return computerStepLine(last.tool) ?? activityPreview(last.tool, botEngine(bot, instances), last.dataResult);
-  return bot.tasks?.find((task) => task.busy && task.threadId !== bot.threadId && task.title.trim())?.title;
+  const working = bot.tasks?.find((task) => task.busy && task.threadId !== bot.threadId && task.title.trim());
+  return working && localizedTaskTitle(working.title);
 }
 
 export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemory, onEditTeam, onDeleteTeam, onComputer, onComputerDrop, onTeamComputer, teamComputers = {}, connectedBotIds = [], computers = NO_COMPUTERS, computerFrames = {}, onOpenComputer, taggedBotIds = [], sent, bottomInset = 0 }: {

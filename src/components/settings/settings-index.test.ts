@@ -35,14 +35,19 @@ describe("the pages", () => {
   });
 
   it.each(["local only", "This computer, with My Cloud", "My Cloud's page in the desktop window", "My Cloud in a browser (owner)"] as const)(
-    "shows Simple's ten entries for %s", (who) => {
-      expect(ids({ ...PEOPLE[who], advanced: false })).toEqual(["overview", "phone", "ai", "vault", "usage", "transfer", "account", "plan", "app", "appearance"]);
+    "shows Simple's ten entries for %s, and Data after Import & export where the place has projects", (who) => {
+      const simple = { ...PEOPLE[who], advanced: false };
+      expect(ids({ ...simple, projects: false })).toEqual(["overview", "phone", "ai", "vault", "usage", "transfer", "account", "plan", "app", "appearance"]);
+      expect(ids(simple)).toEqual(["overview", "phone", "ai", "vault", "usage", "transfer", "data", "account", "plan", "app", "appearance"]);
     });
 
-  it("is shorter in Simple: the four Advanced pages come back in Advanced, in place", () => {
-    const simple = ids(fullContext({ advanced: false }));
-    for (const page of ADVANCED_PAGES) expect(simple).not.toContain(page);
-    expect(ids(fullContext()).filter((id) => simple.includes(id))).toEqual(simple);
+  it("is shorter in Simple: the Advanced pages come back in Advanced, in place", () => {
+    for (const projects of [false, true]) {
+      const simple = ids(fullContext({ advanced: false, projects }));
+      for (const page of ADVANCED_PAGES) expect(simple).not.toContain(page);
+      expect(ids(fullContext({ projects })).filter((id) => simple.includes(id))).toEqual(simple);
+    }
+    expect(ADVANCED_PAGES).toEqual(["bots", "desktops", "general"]);
   });
 
   it("turns Advanced on for a link, a notice or a search hit that asks for an Advanced page or row from Simple", () => {
@@ -229,9 +234,26 @@ describe("search", () => {
       expect(first("归档")?.id).toBe("archived-projects");
     });
 
-    it("turns Advanced on from Simple, where Data is not shown", () => {
+    it("opens them from Simple without turning Advanced on, while Data's other rows still need it", () => {
       const simple = fullContext({ advanced: false });
-      expect(find("projects root", simple)[0]).toMatchObject({ entry: { id: "projects-root" }, advanced: true });
+      for (const [query, id] of [["projects root", "projects-root"], ["archived", "archived-projects"], ["restore project", "archived-projects"]] as const) {
+        const hit = find(query, simple)[0];
+        expect(hit, query).toMatchObject({ entry: { id } });
+        expect(hit?.advanced, query).toBeUndefined();
+      }
+      expect(resolveSettingsTarget("data", simple)).toEqual({ page: "data" });
+      expect(needsAdvanced({ page: "data", anchor: "projects" }, simple)).toBe(false);
+      expect(needsAdvanced({ page: "data", anchor: "archived-projects" }, simple)).toBe(false);
+      expect(needsAdvanced({ page: "data", anchor: "storage" }, simple)).toBe(true);
+      expect(find("storage", simple)[0]).toMatchObject({ entry: { id: "storage" }, advanced: true });
+      expect(resolveSettingsTarget("activity", { ...PEOPLE["a team admin"], advanced: false })).toEqual({ page: "data", anchor: "activity", advanced: true });
+    });
+
+    it("finds neither on a place without projects, where Data is Advanced's alone", () => {
+      const simple = fullContext({ advanced: false, projects: false });
+      for (const query of ["projects root", "archived", "restore project"]) {
+        expect(find(query, simple).filter((hit) => hit.entry.page === "data"), query).toEqual([]);
+      }
       expect(resolveSettingsTarget("data", simple)).toEqual({ page: "data", advanced: true });
     });
 
