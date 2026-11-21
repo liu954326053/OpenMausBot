@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { launchVerificationServer, runControlOmb, type VerificationServer } from "../control-omb.ts";
 import { waitForExit } from "../../server/testing/cleanup.ts";
-import { ensureUiBrowser } from "./control-omb-ui.ts";
+import { ensureUiBrowser, openFromPalette } from "./control-omb-ui.ts";
+import { fixtureApi } from "./preview-fixture.ts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const enabled = process.env.OMB_UI_E2E === "1";
@@ -58,6 +59,7 @@ async function connect(url: string) {
     if (!tools.chrome) throw new Error("This recipe needs the pinned Chrome for Testing");
     fixture = await launchVerificationServer({}, undefined, undefined, undefined, undefined, undefined, [], undefined, build);
     const { url, dataDir, logPath } = fixture.info;
+    await fixtureApi(url)("PATCH", "/api/config", { language: "en" });
     const { bot } = await runControlOmb(["new-bot", "--name", "Pepper", "--url", url]) as { bot: { id: string; activeTaskId: string } };
     const profile = join(dataDir, "chrome");
     mkdirSync(profile, { recursive: true });
@@ -85,7 +87,8 @@ async function connect(url: string) {
     await request("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
     await request("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await request("Page.navigate", { url });
-    await expect.poll(() => evaluate("document.querySelector('textarea[aria-label^=\"Message\"]') !== null"), { timeout: 20_000 }).toBe(true);
+    await expect.poll(() => evaluate(openFromPalette("Pepper", `bot:${bot.id}`)), { timeout: 20_000 }).toBe(true);
+    await expect.poll(() => evaluate("document.querySelector('textarea[aria-label=\"Message Pepper\"]') !== null"), { timeout: 20_000 }).toBe(true);
     // iOS automatically zooms small form text on focus, leaving a standalone
     // window shifted after the keyboard closes. Keep the mention mirror aligned.
     const touchText = await evaluate(`(() => {
