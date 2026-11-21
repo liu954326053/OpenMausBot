@@ -11,6 +11,7 @@ import { expect, it } from "vitest";
 
 import { cloudHomeChildEnvironments, spawnWithSecrets } from "../../server/cloud-home-start.ts";
 import { cloudHomeConfiguration, cloudPairingSignature } from "../../server/cloud-home.ts";
+import type { Routine, RoutineRun } from "../../server/routines.ts";
 import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { freePortBlock } from "../../server/testing/ports.ts";
 import { healthAnswerer, launchRestartableServer, type RestartableServer, webhookPortRefusal } from "../../server/testing/restartable-server.ts";
@@ -50,20 +51,20 @@ type App = Awaited<ReturnType<typeof openApp>>;
   const server = await launchRestartableServer({ scripted: true, dataDirRoot: SHORT_TMP });
   let app: App | undefined;
   try {
-    const api = async (method: string, path: string, body?: unknown) => {
+    const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
       const response = await fetch(`${server.url}${path}`, { method, headers: { "content-type": "application/json", origin: server.url }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       expect(response.ok).toBe(true);
-      return response.json();
+      return await response.json() as T;
     };
-    const bot = (await api("GET", "/api/bots?messages=0")).bots[0];
+    const bot = (await api<{ bots: Array<{ id: string; name: string }> }>("GET", "/api/bots?messages=0")).bots[0];
     const setReply = (fail: boolean) => writeFileSync(server.planPath, JSON.stringify({ [bot.id]: { script: [{ key: "check", match: ["Check notification history."], repeat: true, steps: [], ...(fail ? { failWith: "Provider disconnected." } : { reply: "Nothing new." }) }] } }));
-    const { routine } = await api("POST", "/api/routines", { name: "Keep an eye on my day", prompt: "Check notification history.", botId: bot.id, schedule: { type: "interval", everyMinutes: 1440, anchorAt: Date.now() + 86_400_000 } });
+    const { routine } = await api<{ routine: Routine }>("POST", "/api/routines", { name: "Keep an eye on my day", prompt: "Check notification history.", botId: bot.id, schedule: { type: "interval", everyMinutes: 1440, anchorAt: Date.now() + 86_400_000 } });
     let failedId = "";
     for (let index = 0; index < 7; index++) {
       setReply(index === 0);
-      const { run } = await api("POST", `/api/routines/${routine.id}/run`);
+      const { run } = await api<{ run: RoutineRun }>("POST", `/api/routines/${routine.id}/run`);
       if (index === 0) failedId = run.id;
-      await expect.poll(async () => (await api("GET", "/api/routines")).runs.find((candidate: { id: string }) => candidate.id === run.id)?.status, { timeout: 30_000 }).toBe(index === 0 ? "failed" : "completed");
+      await expect.poll(async () => (await api<{ runs: RoutineRun[] }>("GET", "/api/routines")).runs.find((candidate) => candidate.id === run.id)?.status, { timeout: 30_000 }).toBe(index === 0 ? "failed" : "completed");
     }
     await server.stop();
     await server.start();
@@ -74,7 +75,7 @@ type App = Awaited<ReturnType<typeof openApp>>;
     await app.screenshot("unread-failure-explained");
     await app.openRow(routine.name);
     await expect.poll(app.panel).toContain("Provider disconnected.");
-    await expect.poll(async () => Boolean((await api("GET", "/api/routines")).runs.find((run: { id: string }) => run.id === failedId)?.seenAt)).toBe(true);
+    await expect.poll(async () => Boolean((await api<{ runs: RoutineRun[] }>("GET", "/api/routines")).runs.find((run) => run.id === failedId)?.seenAt)).toBe(true);
     await expect.poll(() => app!.evaluate('Boolean(document.querySelector(\'[data-testid="routines-attention"]\'))')).toBe(false);
     await app.screenshot("failure-read");
     await app.close();
@@ -540,11 +541,13 @@ await import(${JSON.stringify(pathToFileURL(join(ROOT, "server", "testing", "fak
     app = await openApp({ url: cloud.url, port: cloud.port, dataDir: cloud.dataDir, logPath: cloud.logPath }, { shots, bots: { Scout: scout, Ledger: ledger }, proxyHeaders: cloud.owner });
     const { evaluate, click, screenshot, text, clickIn, rowText, rowStatus, flip, switchState, panel, cardText, clickCard, openAutomations, openChat, say } = app;
 
-    await expect.poll(() => evaluate(`(() => { const skip = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "Skip setup"); skip?.click(); return Boolean(skip); })()`), { timeout: 30_000 }).toBe(true);
+    // A new personal Cloud's first hour ends its welcome steps, so it opens on a chat.
+    await expect.poll(() => evaluate("document.querySelector('textarea')?.getAttribute('placeholder') ?? ''"), { timeout: 30_000 }).toMatch(/^Message /);
+    expect(await evaluate("Boolean(document.querySelector('[data-cloud-welcome]'))")).toBe(false);
 
     // The owner sets up a schedule and a webhook from chat; the address to paste is the Cloud's public one.
     await say("Scout", "every morning, summarize my inbox");
-    await expect.poll(() => cardText(SCHEDULE), { timeout: 30_000 }).toContain("Next:");
+    await expect.poll(() => cardText(SCHEDULE), { timeout: 30_000 }).toContain("First run ");
     await say("Scout", "whenever our form sends a lead, draft a follow-up");
     await expect.poll(() => cardText(FORM), { timeout: 30_000 }).toContain("Hasn't run yet");
     await evaluate("window.__copied = []; navigator.clipboard.writeText = async (value) => { window.__copied.push(value); }; true");
