@@ -306,6 +306,7 @@ export function TeamMapPage() {
   const { show: showComputers, loaded: computersChoiceLoaded, choose: setShowComputers } = useShowComputers(anyComputer);
   const mapComputers = useMapComputers(!remoteClient && computersChoiceLoaded && showComputers);
   const [taggedBotIds, setTaggedBotIds] = useState<string[]>([]);
+  const [composerHeight, setComposerHeight] = useState(96);
   const [sent, setSent] = useState<{ botIds: string[]; key: number } | null>(null);
   const sentTimer = useRef<number | undefined>(undefined);
   const acknowledgeSent = useCallback((botIds: string[]) => {
@@ -400,7 +401,7 @@ export function TeamMapPage() {
       </div>}
       <div className="relative flex min-h-0 flex-1">
       <div className="relative flex min-h-0 min-w-0 flex-1">
-      <TeamCanvas sections={sections} canManage={!remoteClient && admin !== false} onMove={requestMove} taggedBotIds={taggedBotIds} sent={sent} bottomInset={bots.length ? 96 : 0}
+      <TeamCanvas sections={sections} canManage={!remoteClient && admin !== false} onMove={requestMove} taggedBotIds={taggedBotIds} sent={sent} bottomInset={bots.length ? composerHeight : 0}
         connectedBotIds={state.settingsOpen ? edges.flatMap((edge) => edge.sourceBotId === state.selectedId ? [edge.targetBotId] : edge.targetBotId === state.selectedId ? [edge.sourceBotId] : []) : []}
         onComputer={(bot) => openBotSettings(dispatch, "access", { botId: bot.id })}
         computers={showComputers && computersChoiceLoaded && !remoteClient ? mapComputers.computers : undefined} computerFrames={mapComputers.frames}
@@ -413,7 +414,7 @@ export function TeamMapPage() {
         onEditTeam={(section, rename) => setTeamEditor({ section, rename })}
         onDeleteTeam={setDeletingTeam}
         isEmpty={(key) => ![...state.bots, ...state.groups].some((record) => record.section?.trim() === key)} />
-      {bots.length > 0 && <MapComposer bots={bots} teams={composerTeams} onTagged={setTaggedBotIds} onSent={acknowledgeSent} />}
+      {bots.length > 0 && <MapComposer bots={bots} teams={composerTeams} onTagged={setTaggedBotIds} onSent={acknowledgeSent} onHeight={setComposerHeight} />}
       </div>
       {!remoteClient && <CanvasComputers open={computersOpen} createRequest={createComputerRequest} drop={computerDrop} sections={sections}
         onClose={() => setComputersOpen(false)} onDropHandled={clearComputerDrop} onChange={setComputers} />}

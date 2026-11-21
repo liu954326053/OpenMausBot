@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { centredOn, menuOpensAbove, targetMark } from "./team-map-reveal";
+import { centredOn, menuPlacement, targetMark } from "./team-map-reveal";
 
 describe("centredOn", () => {
   it("puts the box in the middle of the area at the same zoom", () => {
@@ -18,20 +18,24 @@ describe("targetMark", () => {
   });
 });
 
-describe("menuOpensAbove", () => {
-  const menu = { gap: 40, height: 300, bottom: 900, inset: 96 };
+describe("menuPlacement", () => {
+  const menu = { gap: 40, height: 300, upper: 100, lower: 804 };
 
-  it("opens a menu below while all of it stays above the composer", () => {
-    expect(menuOpensAbove({ ...menu, top: 200, scale: 1 })).toBe(false);
+  it("opens a menu below while all of it stays above the message box", () => {
+    expect(menuPlacement({ ...menu, top: 200, bottom: 232, scale: 1 })).toEqual({ above: false, room: 564 });
   });
 
-  it("opens it above once its last item would sit under the composer", () => {
-    expect(menuOpensAbove({ ...menu, top: 470, scale: 1 })).toBe(true);
-    expect(menuOpensAbove({ ...menu, top: 470, scale: 1, inset: 0 })).toBe(false);
+  it("opens it above once its last item would sit under the message box and there is more room above", () => {
+    expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 1 })).toEqual({ above: true, room: 362 });
+    expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 1, lower: 900 })).toEqual({ above: false, room: 390 });
   });
 
-  it("measures the menu at the map's zoom", () => {
-    expect(menuOpensAbove({ ...menu, top: 470, scale: 0.6 })).toBe(false);
-    expect(menuOpensAbove({ ...menu, top: 470, scale: 1.2 })).toBe(true);
+  it("keeps it below when the map's top would cut off more of it, within the room there", () => {
+    expect(menuPlacement({ ...menu, top: 300, bottom: 332, scale: 1, lower: 560 })).toEqual({ above: false, room: 220 });
+  });
+
+  it("measures the menu and its room at the map's zoom", () => {
+    expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 0.5 })).toEqual({ above: false, room: 628 });
+    expect(menuPlacement({ ...menu, top: 470, bottom: 502, scale: 1.25 }).above).toBe(true);
   });
 });

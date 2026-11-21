@@ -29,9 +29,18 @@ function worldBox(element: HTMLElement, world: Element): WorldBox {
 
 export const targetMark = (target: TeamMapTarget): string => "department" in target ? target.department : target.botId;
 
-/** `gap` and `height` are in world units; `top`, `bottom` and `inset` are on screen. */
-export function menuOpensAbove({ top, gap, height, scale, bottom, inset }: { top: number; gap: number; height: number; scale: number; bottom: number; inset: number }): boolean {
-  return top + (gap + height) * scale > bottom - inset;
+export interface MenuPlacement {
+  above: boolean;
+  room: number;
+}
+
+/** A department's menu opens below unless part of it would be covered there and more of it fits above. `gap`, `height`
+ * and `room` are in world units; the menu button's `top` and `bottom` and the map's uncovered `upper` and `lower` edges
+ * are on screen. */
+export function menuPlacement({ top, bottom, gap, height, scale, upper, lower }: { top: number; bottom: number; gap: number; height: number; scale: number; upper: number; lower: number }): MenuPlacement {
+  const below = (lower - top) / scale - gap;
+  const above = (bottom - upper) / scale - gap;
+  return height > below && above > below ? { above: true, room: above } : { above: false, room: Math.max(0, below) };
 }
 
 function targetElement(viewport: HTMLElement, target: TeamMapTarget): HTMLElement | undefined {

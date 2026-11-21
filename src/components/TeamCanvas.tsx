@@ -19,7 +19,7 @@ import { ComputerNode } from "./ComputerNode";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { TeamMapDepartmentItems, TeamMapNote, useProjectTeamNotes } from "./TeamMapDepartment";
-import { menuOpensAbove, useTeamMapReveal } from "./team-map-reveal";
+import { menuPlacement, useTeamMapReveal, type MenuPlacement } from "./team-map-reveal";
 import { TeamFlowTree } from "./team-flow/TeamFlowTree";
 import { useTeamFlowMap } from "@/state/team-flows";
 
@@ -126,7 +126,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   taggedBotIds?: string[];
   /** Bots a message from the map just went to; `key` changes with every send. */
   sent?: { botIds: string[]; key: number } | null;
-  /** Height covered at the bottom (the map composer): fitting keeps the teams above it. */
+  /** Height covered at the bottom (the map composer): fitting keeps the teams above it, and the status line and zoom sit above it. */
   bottomInset?: number;
 }) {
   const { state } = useStore();
@@ -145,7 +145,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   const [moving, setMoving] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [layoutLoaded, setLayoutLoaded] = useState(false);
-  const [menuAbove, setMenuAbove] = useState<string | null>(null);
+  const [menuPlace, setMenuPlace] = useState<MenuPlacement & { key: string } | null>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const geometries = useMemo<Array<TeamGeometry | null>>(() => sections.map((section) => {
     if (!computers.length) return null;
@@ -234,10 +234,13 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   useEffect(() => { fit(); }, [fit, teamSizes, layoutLoaded]);
   const revealed = useTeamMapReveal(viewport, layoutLoaded && viewportSize.width > 0, teamSizes, bottomInset, setView);
   const notes = useProjectTeamNotes(sections);
-  const opensAbove = (details: HTMLElement, bounds: DOMRect) => menuOpensAbove({
-    top: details.getBoundingClientRect().top, gap: MENU_GAP, height: details.querySelector<HTMLElement>("[data-team-menu]")?.offsetHeight ?? 0,
-    scale: view.scale, bottom: bounds.bottom, inset: bottomInset,
-  });
+  const placeMenu = (details: HTMLElement, bounds: DOMRect) => {
+    const button = details.getBoundingClientRect();
+    return menuPlacement({
+      top: button.top, bottom: button.bottom, gap: MENU_GAP, height: details.querySelector<HTMLElement>("[data-team-menu]")?.scrollHeight ?? 0,
+      scale: view.scale, upper: bounds.top, lower: bounds.bottom - bottomInset,
+    });
+  };
 
   useEffect(() => {
     const element = viewport.current;
@@ -365,6 +368,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     : dragged && dropSection ? (dragged.bot.section?.trim() ?? "") === dropSection.key
       ? t("canvas.arrangeBot", { name: dragged.bot.name, team: dropSection.name }) : t("canvas.moveBot", { name: dragged.bot.name, team: dropSection.name })
       : null;
+  const statusLine = dropHint ?? announcement;
 
   return <div ref={viewport} role="region" aria-label={t("canvas.region")} tabIndex={0} data-team-canvas
     className="relative min-h-0 flex-1 touch-none overflow-clip outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/40"
@@ -456,13 +460,13 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
             {canManage && <details className="relative" onToggle={(event) => {
               if (event.currentTarget.open) {
                 const bounds = viewport.current?.getBoundingClientRect();
-                setMenuAbove(bounds && opensAbove(event.currentTarget, bounds) ? section.key : null);
+                setMenuPlace(bounds ? { key: section.key, ...placeMenu(event.currentTarget, bounds) } : null);
                 viewport.current?.querySelectorAll("details[open]").forEach((element) => { if (element !== event.currentTarget) element.removeAttribute("open"); });
               }
             }}>
               <summary aria-label={t("canvas.manageTeam", { name: section.name })} className={cn(iconButton, "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}><MoreHorizontal size={17} /></summary>
-              <div data-team-menu="" className="absolute right-0 z-30 w-[220px] animate-pop-in rounded-xl border border-hairline bg-panel p-1.5 shadow-xl"
-                style={menuAbove === section.key ? { bottom: MENU_GAP } : { top: MENU_GAP }} onClick={(event) => {
+              <div data-team-menu="" className="absolute right-0 z-30 w-[220px] animate-pop-in overflow-y-auto rounded-xl border border-hairline bg-panel p-1.5 shadow-xl"
+                style={menuPlace?.key === section.key ? { [menuPlace.above ? "bottom" : "top"]: MENU_GAP, maxHeight: menuPlace.room } : { top: MENU_GAP }} onClick={(event) => {
                 const menu = event.currentTarget.closest("details");
                 menu?.querySelector("summary")?.focus();
                 menu?.removeAttribute("open");
@@ -514,10 +518,10 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
       <span className="flex items-center gap-2"><BotAvatar bot={dragged.bot} size={24} animated={false} />{dragged.bot.name}</span>
       {dropHint && <p className="mt-1 text-[10px] text-ink-secondary">{dropHint}</p>}
     </div>}
-    <div className="pointer-events-none absolute inset-x-5 bottom-5 flex items-end justify-between gap-3">
-      <div className="min-w-0 rounded-lg bg-app/90 px-2 py-1.5 text-[11px] text-ink-secondary">
+    <div className="pointer-events-none absolute inset-x-5 flex items-end justify-between gap-3" style={{ bottom: bottomInset + 20 }}>
+      <div className={cn("min-w-0 rounded-lg px-2 py-1.5 text-[12px] leading-4 text-ink-secondary", (!bottomInset || statusLine) && "bg-app/90")}>
         {!bottomInset && <p className="max-sm:hidden">{t("canvas.hint")}</p>}
-        <p role="status" aria-live="polite" className="max-w-[440px]">{dropHint ?? announcement}</p>
+        <p role="status" aria-live="polite" data-canvas-status className="max-w-[440px]">{statusLine}</p>
       </div>
       <div className="pointer-events-auto flex shrink-0 items-center gap-0.5 rounded-xl border border-hairline/60 bg-panel p-1 shadow-sm">
         <button className={iconButton} aria-label={t("canvas.zoomOut")} onClick={() => zoom(1 / 1.2)}><Minus size={15} /></button>
