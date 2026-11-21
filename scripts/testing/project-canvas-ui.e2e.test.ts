@@ -7,8 +7,9 @@
 // generation won't take, a task asked from a text node writes its reply there, and undo gives a deleted bot node back
 // to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
-// drawn clear of the others, a member row chooses its bot, and a project archived while open gives way to the main bot.
-import { createHash } from "node:crypto";
+// drawn clear of the others, a member row chooses its bot, a project archived while open gives way to the main bot, and
+// the project's settings and a picture's preview cover the whole canvas while a terminal's sign-in card stays above them.
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -439,16 +440,16 @@ type Box = { x: number; y: number; w: number; h: number };
       await fit(fitZh);
       const sceneNode = async () => (await snapshot()).nodes.find((one) => one.id === sceneId)!;
       const ghost = `[data-generation-ghost=${JSON.stringify(sceneId)}]`;
-      const nodeList = 'aside[aria-label="节点"]';
-      const focusOn = async (title: string) => {
+      const focusOn = async (title: string, labels = { list: "节点", search: "搜索节点", close: "关闭" }) => {
+        const nodeList = `aside[aria-label="${labels.list}"]`;
         await clickEmpty();
-        await clickSelector('button[aria-label="节点"]');
+        await clickSelector(`button[aria-label="${labels.list}"]`);
         await waitFor(`document.querySelector(${JSON.stringify(nodeList)})`, "the node list");
-        await browser("find", "role", "searchbox", "fill", title, "--name", "搜索节点", "--exact");
+        await browser("find", "role", "searchbox", "fill", title, "--name", labels.search, "--exact");
         const entry = await evaluate<Box | null>(`(() => { const e = [...document.querySelectorAll(${JSON.stringify(`${nodeList} li button`)})].find((b) => b.querySelector("span")?.textContent === ${JSON.stringify(title)}); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; })()`);
         if (!entry) throw new Error(`no ${title} in the node list`);
         await clickAt(centre(entry).x, centre(entry).y);
-        await clickSelector(`${nodeList} button[aria-label="关闭"]`);
+        await clickSelector(`${nodeList} button[aria-label="${labels.close}"]`);
         await new Promise((resolve) => setTimeout(resolve, 300));
       };
       const chapel = "[task][hold] 雨后的教堂，清晨";
@@ -656,6 +657,75 @@ type Box = { x: number; y: number; w: number; h: number };
       const listed = (await api("GET", "/api/team-projects")).projects as TeamProjectWire[];
       expect(listed.find((one) => one.id === project.id)?.archivedAt).toEqual(expect.any(Number));
       await shot("27-archived-from-the-sidebar-opens-the-main-bot.png");
+
+      await api("POST", `/api/team-projects/${project.id}/restore`);
+      await evaluate("window.dispatchEvent(new Event('focus')); true");
+      await openProject();
+      await focusOn(sceneTitle, { list: "Nodes", search: "Search nodes", close: "Close" });
+      await openPanelOf(sceneId, "the image node's panel in the app");
+      await revealPanelEnd();
+      const banner = `${view} [role="status"].popover-surface`;
+      await clickSelector('[data-node-panel] button[aria-label="Add references from the canvas"]');
+      await waitFor(`document.querySelector(${JSON.stringify(banner)})?.textContent.includes("Click nodes to add them as references")`, "the picking banner over the canvas");
+      const canvasLayers = {
+        topBar: `${view} header`,
+        nodeList: `${view} aside[aria-label="Nodes"]`,
+        panel: `${view} [data-node-panel]`,
+        banner,
+        toolbar: `${view} [role="toolbar"][aria-label="Canvas tools"]`,
+        zoom: `${view} input[aria-label="Zoom"]`,
+        minimap: `${view} [role="img"][aria-label="Minimap"]`,
+      };
+      await clickSelector(`${view} header button[aria-label="Nodes"]`);
+      await waitFor(`document.querySelector(${JSON.stringify(canvasLayers.nodeList)})`, "the node list over the canvas");
+      const coveredBy = (overlay: string) => evaluate<Record<string, boolean | "missing">>(`(() => {
+        const scrim = document.querySelector(${JSON.stringify(overlay)})?.closest(".ui-scrim");
+        return Object.fromEntries(Object.entries(${JSON.stringify(canvasLayers)}).map(([name, selector]) => {
+          const layer = document.querySelector(selector);
+          if (!layer) return [name, "missing"];
+          const r = layer.getBoundingClientRect();
+          return [name, Boolean(scrim && scrim.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)))];
+        }));
+      })()`);
+      const allCovered = Object.fromEntries(Object.keys(canvasLayers).map((name) => [name, true]));
+      const settingsDialog = "[data-project-canvas-settings]";
+      await clickSelector(`${view} header button[aria-label="Project settings"]`);
+      await waitFor(`document.querySelector(${JSON.stringify(settingsDialog)})`, "the project settings over the canvas");
+      expect(await coveredBy(settingsDialog)).toEqual(allCovered);
+      await shot("28-project-settings-cover-the-canvas.png");
+
+      const verifier = randomBytes(32).toString("base64url");
+      const fromTerminal = (path: string, body: unknown) => fetch(fixture.url + path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const signIn = await fromTerminal("/api/auth/cli-login", { label: "openmausbot CLI in the fixture", scope: "client", verifierHash: createHash("sha256").update(verifier).digest("base64url") });
+      expect(signIn.status).toBe(201);
+      const login = (await signIn.json()) as { id: string; code: string };
+      const loginCard = "[data-notice='cli-login']";
+      await waitFor(`document.querySelector(${JSON.stringify(loginCard)})?.textContent.includes(${JSON.stringify(login.code)})`, "the CLI login card over the project settings");
+      expect(await evaluate<boolean>(`(() => { const card = document.querySelector(${JSON.stringify(loginCard)}); const r = card.getBoundingClientRect(); return card.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); })()`)).toBe(true);
+      await shot("29-cli-login-card-above-the-project-settings.png");
+      await clickButton("Deny", loginCard);
+      await waitFor(`!document.querySelector(${JSON.stringify(loginCard)})`, "the CLI login answered from its card");
+      expect(await (await fromTerminal(`/api/auth/cli-login/${login.id}`, { verifier })).json()).toMatchObject({ state: "denied" });
+      expect(await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(settingsDialog)}))`)).toBe(true);
+      await clickAt(20, 20);
+      await waitFor(`!document.querySelector(${JSON.stringify(settingsDialog)})`, "the project settings closed from their scrim");
+      await clickButton("Done", banner);
+      await waitFor(`!document.querySelector(${JSON.stringify(banner)})`, "picking done");
+
+      const sceneShownInApp = centre((await box(node(sceneId)))!);
+      await move(sceneShownInApp.x, sceneShownInApp.y);
+      await browser("mouse", "down", "right");
+      await browser("mouse", "up", "right");
+      await waitFor(`document.querySelector('[role="menu"]')`, "the image node's menu");
+      await clickButton("Copy", '[role="menu"]');
+      await waitFor(`document.querySelector(${JSON.stringify(banner)})?.textContent.includes("Copied: 1")`, "the copied notice over the canvas");
+      await browser("dblclick", `${node(sceneId)} img`);
+      const imagePreview = `[role="dialog"][aria-label=${JSON.stringify(sceneTitle)}]`;
+      await waitFor(`document.querySelector(${JSON.stringify(imagePreview)})`, "the image node's picture in its preview");
+      expect(await coveredBy(imagePreview)).toEqual(allCovered);
+      await shot("30-image-preview-covers-the-canvas.png");
+      await browser("press", "Escape");
+      await waitFor(`!document.querySelector(${JSON.stringify(imagePreview)})`, "the preview closed");
       evidence.app = { main: main.id, room: room.id, folder: project.folder, bots: (await snapshot()).nodes.filter((one) => one.type === "bot").map((one) => one.id) };
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {
