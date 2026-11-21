@@ -7,7 +7,7 @@ import { loadLocale, setLocale } from "@/lib/i18n";
 import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
 import { PLACEMENT_GAP } from "@/lib/project-canvas/placement";
-import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "@/testing/project-canvas-sample";
+import { SAMPLE_EXCHANGES, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "@/testing/project-canvas-sample";
 import { ProjectCanvas } from "./ProjectCanvas";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -420,10 +420,73 @@ describe("the project canvas", () => {
       pointer(stage(), "pointerdown", { clientX: 3000, clientY: 2500 });
       pointer(stage(), "pointermove", { clientX: 3100, clientY: 2550 });
     });
-    expect(panel()!.parentElement!.classList.contains("invisible")).toBe(true);
+    expect(panel()!.classList.contains("invisible")).toBe(true);
     await act(async () => pointer(stage(), "pointerup", { clientX: 3100, clientY: 2550 }));
-    expect(panel()!.parentElement!.classList.contains("invisible")).toBe(false);
+    expect(panel()!.classList.contains("invisible")).toBe(false);
     expect(buttonByText(panel()!, "Open the full chat")).toBeDefined();
+  });
+
+  it("keeps a bot's panel wholly on the canvas at its left, right and bottom edges, the node and the view where they were", async () => {
+    const start = sampleCanvasSnapshot();
+    const otto = start.nodes.find((one) => one.id === botNodeId("otto"))!;
+    const panelWithNodeAt = async (screen: { x: number; y: number }) => {
+      act(() => root.unmount());
+      root = createRoot(host);
+      await mount({ snapshot: { ...start, viewport: { x: screen.x - otto.position.x, y: screen.y - otto.position.y, k: 1 } } });
+      const world = stage().firstElementChild as HTMLElement;
+      const drawn = () => ({ node: nodeElement(otto.id)!.getAttribute("style"), view: world.style.transform });
+      const before = drawn();
+      await clickNode(otto.id);
+      expect(drawn()).toEqual(before);
+      const { left, top, width } = panel()!.style;
+      return { left, top, width };
+    };
+    expect(await panelWithNodeAt({ x: 20, y: 200 })).toEqual({ left: "16px", top: "396px", width: "600px" });
+    expect(await panelWithNodeAt({ x: 4000 - 20 - 300, y: 200 })).toEqual({ left: `${4000 - 16 - 600}px`, top: "396px", width: "600px" });
+    expect(await panelWithNodeAt({ x: 1800, y: 3000 - 20 - 180 })).toEqual({ left: `${1800 + 150 - 300}px`, top: `${3000 - 20 - 180 - 28 - 16}px`, width: "600px" });
+  });
+
+  it("draws an open panel on the screen above the minimap, outside the zoomed canvas and its node", async () => {
+    await mount();
+    await clickNode(botNodeId("mira"));
+    const shown = panel()!;
+    const minimap = host.querySelector('[role="img"][aria-label="Minimap"]')!;
+    expect((stage().firstElementChild as HTMLElement).style.transform).toContain("scale(");
+    expect(stage().firstElementChild!.contains(shown)).toBe(false);
+    const canvasArea = minimap.closest(".isolate")!;
+    const zIndex = (element: Element) => Number(/(?:^|\s)z-\[?(\d+)\]?(?:\s|$)/.exec(element.className)?.[1]);
+    const layersUpTo = (element: Element) => {
+      const layers: Element[] = [];
+      for (let at: Element = element; at !== canvasArea; at = at.parentElement!) {
+        if (!Number.isNaN(zIndex(at)) || (at as HTMLElement).style.transform || at.classList.contains("isolate")) layers.push(at);
+      }
+      return layers;
+    };
+    const [panelLayer, ...underPanel] = layersUpTo(shown);
+    const [minimapLayer, ...underMinimap] = layersUpTo(minimap);
+    expect([panelLayer, underPanel, underMinimap]).toEqual([shown, [], []]);
+    expect(zIndex(panelLayer!)).toBeGreaterThan(zIndex(minimapLayer!));
+  });
+
+  it("shows a picture a person sent in the panel's conversation as the chat does, folded, never its tag or its path", async () => {
+    const picture = "/tmp/omb-data/attachments/278b7337-3b67-4e33-afe3-0a444e40c67a.png";
+    const asked = ["Add a twist", "", "Connected to your node on the project's canvas:", "", "Text 1:", "", "> The bride is swapped at the altar.", "", 'Image 1 "chapel.png":', "", `<attached-image path="${picture}" name="chapel.png"/>`].join("\n");
+    await mount({ exchanges: { ...SAMPLE_EXCHANGES, otto: [{ id: "o-1", role: "person", text: asked, at: 1 }, { id: "o-2", role: "bot", text: "The stand-in is the bride's lost sister.", at: 2 }] } });
+    await clickNode(botNodeId("otto"));
+    await act(async () => buttonByText(panel()!, "Conversation")!.click());
+    await settle();
+    const shown = panel()!;
+    expect(shown.textContent).toContain("The stand-in is the bride's lost sister.");
+    expect([...shown.querySelectorAll("img")].map((image) => [image.getAttribute("src"), image.getAttribute("alt")])).toEqual([["/api/attachments/278b7337-3b67-4e33-afe3-0a444e40c67a.png", "chapel.png"]]);
+    const words = [...shown.querySelectorAll(".whitespace-pre-wrap")].find((one) => one.textContent?.startsWith("Add a twist"))!;
+    expect(words.textContent).toBe(asked.slice(0, asked.indexOf("\n\n<attached-image")));
+    expect(words.classList.contains("max-h-40")).toBe(true);
+    const leaks = () => ["attached-image", "/tmp/omb-data"].filter((raw) => shown.innerHTML.includes(raw));
+    expect(leaks()).toEqual([]);
+    await act(async () => buttonByText(shown, "Show full message")!.click());
+    expect(words.classList.contains("max-h-40")).toBe(false);
+    expect(buttonByText(shown, "Show less")).toBeDefined();
+    expect(leaks()).toEqual([]);
   });
 
   it("leaves a left press on the canvas to move the focus, so the text being written in a node is saved", async () => {

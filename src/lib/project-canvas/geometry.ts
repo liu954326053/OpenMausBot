@@ -303,6 +303,40 @@ export function focusViewportForNode(node: Pick<CanvasNode, "position" | "width"
   return { x: size.width / 2 - centerX * k, y: groupTop + groupHeight / 2 - centerY * k - (below - above) / 2, k };
 }
 
+const PANEL_WIDTH = 600;
+const PANEL_GAP = 16;
+const PANEL_INSET = 16;
+const NODE_TITLE_ROOM = 28;
+
+export interface PanelPlace {
+  left: number;
+  top: number;
+  width: number;
+  maxHeight: number;
+}
+
+/** Where a node's panel `height` tall shows on a canvas of `size`: 600px wide at every zoom, 16px under its node and
+ * centred on it, then moved only as far as keeps it wholly on the canvas, 16px clear of every edge. With no room under
+ * the node it goes above it, or to the side with more room. The node and the view stay where they are. */
+export function panelPlacement(node: Pick<CanvasNode, "position" | "width" | "height">, viewport: CanvasViewport, height: number, size: CanvasSize): PanelPlace {
+  const x = node.position.x * viewport.k + viewport.x;
+  const y = node.position.y * viewport.k + viewport.y;
+  const bottom = y + node.height * viewport.k;
+  const width = Math.max(0, Math.min(PANEL_WIDTH, size.width - PANEL_INSET * 2));
+  const maxHeight = Math.max(0, size.height - PANEL_INSET * 2);
+  const shown = Math.min(height, maxHeight);
+  const roomBelow = size.height - PANEL_INSET - bottom - PANEL_GAP;
+  const roomAbove = y - NODE_TITLE_ROOM - PANEL_GAP - PANEL_INSET;
+  const top = roomBelow >= shown || roomBelow >= roomAbove ? bottom + PANEL_GAP : y - NODE_TITLE_ROOM - PANEL_GAP - shown;
+  const within = (value: number, extent: number, limit: number) => Math.min(Math.max(value, PANEL_INSET), Math.max(PANEL_INSET, limit - PANEL_INSET - extent));
+  return {
+    left: within(x + (node.width * viewport.k) / 2 - width / 2, width, size.width),
+    top: within(top, shown, size.height),
+    width,
+    maxHeight,
+  };
+}
+
 export interface ResizeStart {
   corner: ResizeCorner;
   left: number;

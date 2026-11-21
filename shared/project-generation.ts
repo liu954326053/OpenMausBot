@@ -202,6 +202,28 @@ export function settingProblems(kind: GenerationKind, settings: ImageSettings | 
   return problems;
 }
 
+const firstUnless = <T>(value: T, offered: readonly T[]): T => (offered.includes(value) ? value : offered[0]!);
+const nearest = (value: number, offered: readonly number[]): number =>
+  offered.reduce((best, choice) => (Math.abs(choice - value) < Math.abs(best - value) ? choice : best));
+
+/**
+ * `settings` with each value `model` does not offer replaced by one it does: the nearest count or length, otherwise its
+ * first choice. A form that shows these once a model is chosen can always save what it shows.
+ */
+export function fitSettings(kind: "image", settings: ImageSettings, model: GenerationModel): ImageSettings;
+export function fitSettings(kind: "video", settings: VideoSettings, model: GenerationModel): VideoSettings;
+export function fitSettings(kind: GenerationKind, settings: ImageSettings | VideoSettings, model: GenerationModel): ImageSettings | VideoSettings;
+export function fitSettings(kind: GenerationKind, settings: ImageSettings | VideoSettings, model: GenerationModel): ImageSettings | VideoSettings {
+  const offers = modelOffers(model);
+  if (offers.kind !== kind) return settings;
+  if (offers.kind === "image") {
+    const image = settings as ImageSettings;
+    return { ...image, aspect: firstUnless(image.aspect, offers.aspects), quality: firstUnless(image.quality, offers.qualities), count: nearest(image.count, offers.counts) };
+  }
+  const video = settings as VideoSettings;
+  return { ...video, resolution: firstUnless(video.resolution, offers.resolutions), aspect: firstUnless(video.aspect, offers.aspects), seconds: nearest(video.seconds, offers.durations) };
+}
+
 /** Where results are saved, as folders under the project folder. */
 export const GENERATION_OUTPUT_FOLDERS: Readonly<Record<GenerationKind, readonly [string, string]>> = frozen({ image: ["产出", "图片"], video: ["产出", "视频"] });
 

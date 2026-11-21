@@ -6,8 +6,10 @@
 // page generates into itself and then beside itself, its @ list starting with its own picture and naming nothing a
 // generation won't take, a text node with text there names its own text first in its @, a clip too, and shows the bot
 // writing its revision as a placeholder to its right, through a reload, that the revision takes and that goes when a
-// revision is stopped or fails, an empty text node takes the reply itself, a note's task in English is answered in the
-// same way beside the note, and undo gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
+// revision is stopped or fails, an empty text node takes the reply itself, a bot's panel stays wholly on the canvas at
+// its left edge and above the minimap, its conversation showing a sent picture and folding its references as the chat
+// does, in the light skin and the dark, a note's task in English is answered in the same way beside the note, and undo
+// gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
 // project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
 // drawn clear of the others, a search for the writer names it on the project's one row and that row opens the canvas
 // with the writer chosen, a project archived while open gives way to the main bot, and the project's settings and a
@@ -15,7 +17,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
 import { botNodeId, dispatchConnectionId, replyTitle, type CanvasNode, type CanvasOpsRequest, type CanvasSnapshot } from "../../shared/project-canvas.ts";
 import type { GenerationJob } from "../../shared/project-generation.ts";
@@ -690,6 +692,92 @@ type Box = { x: number; y: number; w: number; h: number };
       evidence.emptyText = { node: taglineNode, asked: taglineAsked };
       await focusOn(taglineTitle);
       await shot("21-empty-text-node-filled-in-place.png");
+
+      const twist = "再补一个反转";
+      const twistReply = "反转：替身原来是新娘失散多年的妹妹。";
+      plan([{ key: "twist", match: [twist], reply: twistReply }]);
+      await focusOn(writer.name);
+      await openPanelOf(botNodeId(writer.id), "the writer's panel in Chinese");
+      await browser("find", "role", "textbox", "fill", twist, "--name", `发给 ${writer.name} 的消息`, "--exact");
+      await clickButton("发送", "[data-node-panel]");
+      await waitFor(`document.querySelector(${JSON.stringify(writerNode)})?.textContent.includes(${JSON.stringify(twistReply)})`, "the twist on the writer's node");
+      await settled();
+      const twistAsked = await sentToWriter(twist);
+      expect(twistAsked.startsWith(`${twist}\n\n项目画布上连到你的节点的内容：\n\n`)).toBe(true);
+      expect(twistAsked).toContain(`文本 1:\n\n> ${BRIEF}`);
+      expect(twistAsked).toContain('图片 1 "board.png":\n\n<attached-image path="');
+      const twistPicture = /<attached-image path="([^"]+)"/.exec(twistAsked)![1]!;
+      const canvasBox = async () => (await box("[data-project-canvas-stage]"))!;
+      const within = (inner: Box, outer: Box) => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
+      const writerPanelAt = async (at: { x: number; y: number }, what: string) => {
+        await clickEmpty();
+        for (let attempt = 0; ; attempt += 1) {
+          const [canvas, drawn] = [await canvasBox(), (await box(writerNode))!];
+          const by = { x: canvas.x + at.x - drawn.x, y: canvas.y + at.y - drawn.y };
+          if (Math.abs(by.x) <= 1.5 && Math.abs(by.y) <= 1.5) break;
+          if (attempt === 6) throw new Error(`the writer's node did not reach ${at.x},${at.y} on the canvas`);
+          const spot = (await emptySpot())!;
+          await drag(spot, { x: Math.min(Math.max(spot.x + by.x, canvas.x + 4), canvas.x + canvas.w - 4), y: Math.min(Math.max(spot.y + by.y, canvas.y + 4), canvas.y + canvas.h - 4) });
+        }
+        const before = (await box(writerNode))!;
+        await openPanelOf(botNodeId(writer.id), what);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(await box(writerNode), `the writer's node where it was with ${what} open`).toEqual(before);
+        const panelBox = (await box("[data-node-panel]"))!;
+        expect(within(panelBox, await canvasBox()), `${what} wholly on the canvas`).toBe(true);
+        return panelBox;
+      };
+      const inBothSkins = async (name: string) => {
+        const surface = () => evaluate<string>(`getComputedStyle(document.querySelector("[data-node-panel] .popover-surface")).backgroundColor`);
+        const light = await surface();
+        await shot(`${name}.png`);
+        await evaluate(`document.documentElement.dataset.skin = "midnight"`);
+        await expect.poll(surface, { message: `${name} in the dark skin` }).not.toBe(light);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await shot(`${name}-dark.png`);
+        await evaluate(`document.documentElement.dataset.skin = "daylight"`);
+        await expect.poll(surface, { message: `${name} back in the light skin` }).toBe(light);
+      };
+      const minimapCover = () => evaluate<{ overlap: boolean; panelOnTop: boolean; minimapBeside: boolean }>(`(() => {
+        const panel = document.querySelector("[data-node-panel]").getBoundingClientRect();
+        const minimap = document.querySelector('[role="img"][aria-label="小地图"]');
+        const map = minimap.getBoundingClientRect();
+        const minimapBeside = minimap.contains(document.elementFromPoint(map.left + 12, (map.top + map.bottom) / 2));
+        const left = Math.max(panel.left, map.left) + 8, right = Math.min(panel.right, map.right) - 8, top = Math.max(panel.top, map.top) + 8, bottom = Math.min(panel.bottom, map.bottom) - 8;
+        if (left >= right || top >= bottom) return { overlap: false, panelOnTop: false, minimapBeside };
+        const points = [[left, top], [right, top], [left, bottom], [right, bottom], [(left + right) / 2, (top + bottom) / 2]];
+        return { overlap: true, panelOnTop: points.every(([x, y]) => Boolean(document.elementFromPoint(x, y)?.closest("[data-node-panel]"))), minimapBeside };
+      })()`);
+
+      const atLeftEdge = await writerPanelAt({ x: 20, y: 40 }, "the writer's panel at the canvas's left edge");
+      expect(atLeftEdge.x - (await canvasBox()).x).toBe(16);
+      await inBothSkins("39-panel-at-the-left-edge");
+
+      const minimapBox = (await box('[role="img"][aria-label="小地图"]'))!;
+      const writerSize = (await box(writerNode))!;
+      const besideMinimap = minimapBox.x - (await canvasBox()).x + 126 + 300 - writerSize.w / 2;
+      await writerPanelAt({ x: besideMinimap, y: minimapBox.y - (await canvasBox()).y - 80 - 16 - writerSize.h }, "the writer's panel over the minimap");
+      expect(await minimapCover()).toEqual({ overlap: true, panelOnTop: true, minimapBeside: true });
+      await inBothSkins("40-panel-above-the-minimap");
+
+      await writerPanelAt({ x: besideMinimap, y: 40 }, "the writer's panel for its conversation");
+      await clickButton("对话", "[data-node-panel]");
+      await waitFor(`document.querySelector("[data-node-panel]")?.textContent.includes(${JSON.stringify(twistReply)})`, "the twist's exchange in the panel");
+      await waitFor(`(() => { const image = document.querySelector('[data-node-panel] img[src*="/api/attachments/"]'); return image && image.complete && image.naturalWidth === 320; })()`, "the sent picture in the panel's conversation");
+      const panelLeaks = () => evaluate<string[]>(`(() => { const panel = document.querySelector("[data-node-panel]"); return [${JSON.stringify(twistPicture)}, ${JSON.stringify(dirname(twistPicture))}, "attached-image"].filter((raw) => panel.innerHTML.includes(raw)); })()`);
+      expect(await panelLeaks()).toEqual([]);
+      const sentWords = `[...document.querySelectorAll("[data-node-panel] .whitespace-pre-wrap")].find((words) => words.textContent.startsWith(${JSON.stringify(twist)}))`;
+      expect(await evaluate<boolean>(`${sentWords}.classList.contains("max-h-40")`)).toBe(true);
+      await evaluate(`[...document.querySelectorAll("[data-node-panel] button")].find((button) => button.textContent.trim() === "显示完整消息").scrollIntoView({ block: "nearest" })`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(within((await box("[data-node-panel]"))!, await canvasBox()), "the panel with its conversation wholly on the canvas").toBe(true);
+      expect(await minimapCover()).toEqual({ overlap: true, panelOnTop: true, minimapBeside: true });
+      await inBothSkins("41-picture-in-the-conversation");
+      await clickButton("显示完整消息", "[data-node-panel]");
+      await waitFor(`[...document.querySelectorAll("[data-node-panel] button")].some((button) => button.textContent.trim() === "收起")`, "the whole message in the panel");
+      expect(await evaluate<boolean>(`${sentWords}.classList.contains("max-h-40")`)).toBe(false);
+      expect(await panelLeaks()).toEqual([]);
+      evidence.panelOnTheCanvas = { atLeftEdge, minimap: minimapBox, asked: twistAsked };
       await fit(fitZh);
       await expect.poll(async () => (await snapshot()).viewport.k, { timeout: 15_000, message: "the fitted view saved before the page opens again" }).toBeLessThan(1);
       await openPage();
