@@ -33,13 +33,24 @@ const card: OptionCardData = { title: "Run a command?", subtitle: `curl -H "Auth
 
 describe("the bots on a project's canvas", () => {
   it("are a node each, named, at their stored place or the default layout", () => {
-    const stored: CanvasNode = { id: "bot:writer", type: "bot", title: "", position: { x: 5, y: 6 }, width: 320, height: 200 };
+    const stored: CanvasNode = { id: "bot:writer", type: "bot", title: "", position: { x: 5, y: 600 }, width: 320, height: 200 };
     const snapshot = buildSnapshot(input({ document: canvas([stored]) }));
     expect(snapshot.nodes.map((node) => [node.id, node.title])).toEqual([["bot:lead", "Lead"], ["bot:writer", "Writer"], ["bot:boards", "Boards"]]);
-    expect(snapshot.nodes[1]).toMatchObject({ position: { x: 5, y: 6 }, width: 320, height: 200 });
+    expect(snapshot.nodes[1]).toMatchObject({ position: { x: 5, y: 600 }, width: 320, height: 200 });
     expect(snapshot.bots.writer).toMatchObject({ name: "Writer", title: "writer title", lead: false, placed: true });
     expect(snapshot.bots.lead).toMatchObject({ lead: true, placed: false });
     expect(snapshot.nodes[0]!.position).toEqual({ x: 0, y: 0 });
+  });
+
+  it("go below a stored node where the default layout would lay one over it, a bot that left in nobody's way", () => {
+    const writer: CanvasNode = { id: "bot:writer", type: "bot", title: "", position: { x: 880, y: 240 }, width: 300, height: 180 };
+    const gone: CanvasNode = { id: "bot:gone", type: "bot", title: "", position: { x: 0, y: 0 }, width: 300, height: 180 };
+    const snapshot = buildSnapshot(input({ document: canvas([writer, gone]) }));
+    const frame = (id: string) => snapshot.nodes.find((node) => node.id === id)!;
+    expect(frame("bot:lead").position).toEqual({ x: 0, y: 0 });
+    expect(frame("bot:writer").position).toEqual({ x: 880, y: 240 });
+    expect(frame("bot:boards")).toMatchObject({ position: { x: 880, y: 460 }, width: 300, height: 180 });
+    expect(snapshot.bots.boards).toMatchObject({ placed: false });
   });
 
   it("drop a bot that left, keep what it made, and show only connections whose two ends are there", () => {

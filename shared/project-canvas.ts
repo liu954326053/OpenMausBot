@@ -224,8 +224,8 @@ export interface CanvasBotState {
   output?: { text: string; truncated?: true; threadId: string; messageId: string; at: number };
   /** The question or approval card it waits on the person with. */
   waiting?: { threadId: string; messageId: string; card: OptionCardData };
-  /** The person or a bot set its node's position. False: the position is the server's default layout, which the
-   * app may replace with its own by storing positions. */
+  /** The person or a bot set its node's position. False: the position is the server's default layout, moved down
+   * clear of the canvas's other nodes, which the app may replace with its own by storing positions. */
   placed: boolean;
   /** Text nodes its reply to a task running or waiting in its queue goes into. */
   writingInto?: string[];
