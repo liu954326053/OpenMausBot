@@ -23,6 +23,16 @@ describe("resumableCards", () => {
     expect(waitsOn(card({ expired: true, options: [] })), "superseded").toEqual([]);
   });
 
+  it("waits on a canvas generation card until the bot hears the person's decision", () => {
+    const asked = { requestId: "r1", projectId: "p1", nodeId: "n1", title: "Poster", botId: "kiwi", threadId: "t1", reasonKey: "serverError.projectGeneration.confirmVideos", createdAt: 1 };
+    const generation = (extra: Partial<OptionCardData>, more: Partial<NonNullable<OptionCardData["canvasGeneration"]>> = {}) =>
+      waitsOn({ title: "Generate “Poster”?", subtitle: "Past its ceiling.", options: ["Confirm", "Cancel"], requestId: "r1", tool: "canvas_generate", ...extra, canvasGeneration: { ...asked, ...more } });
+    expect(generation({})).toEqual([{ id: "m1", waits: "generation decision: Generate “Poster”?" }]);
+    expect(generation({ answered: "deny" }, { result: { state: "declined" } }), "answered, not yet handed to the turn").toHaveLength(1);
+    expect(generation({ answered: "deny" }, { result: { state: "declined" }, resumed: true })).toEqual([]);
+    expect(generation({ answered: "unavailable", dismissed: true }), "closed by Stop").toEqual([]);
+  });
+
   it("waits on an MCP Sign in card the person set aside until the bot hears it, never on one a newer card replaced", () => {
     const signIn = (extra: Partial<ConnectorCardData>) => resumableCards({ activePath: () => [{ id: "m2", at: 10, role: "bot", kind: "connector",
       connector: { source: "mcp", slug: "linear", label: "Linear", description: "", status: "required", resumeKey: "mcp-1", ...extra } }] } as unknown as Pick<Store, "activePath">, "t1", 0);
