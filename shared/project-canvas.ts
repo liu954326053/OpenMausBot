@@ -224,9 +224,11 @@ export interface CanvasBotState {
   output?: { text: string; truncated?: true; threadId: string; messageId: string; at: number };
   /** The question or approval card it waits on the person with. */
   waiting?: { threadId: string; messageId: string; card: OptionCardData };
-  /** The person or a bot set its node's position. False: the position is the server's default layout, which the
-   * app may replace with its own by storing positions. */
+  /** The person or a bot set its node's position. False: the position is the server's default layout, moved down
+   * clear of the canvas's other nodes, which the app may replace with its own by storing positions. */
   placed: boolean;
+  /** Text nodes its reply to a task running or waiting in its queue goes into. */
+  writingInto?: string[];
 }
 
 /** `GET /api/team-projects/:id/canvas`. `nodes` hold a node for every bot of the project, `connections` the
@@ -252,11 +254,17 @@ export interface ProjectCanvasEvent {
 /** `POST /api/team-projects/:id/canvas/tasks`: the person's task for one bot of the project. What is connected into
  * the bot's node goes with it, each reference named by the label `connectedReferences` gives it and its title: a text
  * node's text, a shot's fields, media and other files as attachments. Without `threadId` it goes to the conversation
- * the bot has open. */
+ * the bot has open. With `targetNodeId`, a text node of this canvas, the bot's reply to the task becomes the node's
+ * text once its turn ends well, secrets redacted, cut to `CANVAS_CONTENT_MAX_CHARS`. A stopped or failed turn, a turn
+ * the task joined while it ran, or a server restart before the reply leaves the node as it was. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;
   threadId?: string;
+  /** A text node of this canvas the person wrote the task in. What goes with the task is then that node's: the
+   * references `mentionReferences` gives it, labelled as its prompt panel labels them, and the other nodes connected
+   * into it. */
+  targetNodeId?: string;
   /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
    * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
   language?: string;
@@ -281,14 +289,15 @@ export interface CanvasUploadResponse {
 }
 
 /** `POST /api/team-projects/:id/canvas/generate`: the project's generation starts for a shot, image, video or config
- * node, from its prompt, its `settings` and the files of the image and audio among the references `generationInputs`
+ * node, from its prompt, its `settings` and the files of the image and audio among the references `mentionReferences`
  * gives it, so a model never rewrites the request. The prompt sent begins with which label names which of those files,
  * in the words of `language`, and ends with each text reference under its label. Answered 202; a refusal is answered
  * with generation's own `GenerationFailure`, or, for a node that is gone, has no prompt or is generating already, with
- * the canvas's `ServerErrorBody`. The node shows `loading` while the job runs. On success each file the job made becomes
- * a node to its right, connected from it, below the ones made before; on failure `errorDetails`, `errorKey` and
- * `errorParams` say why. A bot past its ceiling is asked about on a card instead (`OptionCardData.canvasGeneration`),
- * which its node shows in `waiting` until the person answers. */
+ * the canvas's `ServerErrorBody`. The node shows `loading` while the job runs. On success an empty image or video node
+ * takes the first file of its kind, and each other file the job made becomes a node to its right, connected from it,
+ * below the ones made before; on failure `errorDetails`, `errorKey` and `errorParams` say why. A bot past its ceiling
+ * is asked about on a card instead (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the
+ * person answers. */
 export interface CanvasGenerateRequest {
   nodeId: string;
   /** As in `CanvasTaskRequest`. */

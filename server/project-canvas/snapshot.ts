@@ -13,7 +13,7 @@ import {
 import type { OptionCardData } from "../../shared/wire.ts";
 import { redactSecrets, redactSecretsInText } from "../redact.ts";
 import type { CanvasFrame } from "./ops.ts";
-import { defaultBotFrames, treeParents, type BotTree } from "./placement.ts";
+import { clearBelow, defaultBotFrames, treeParents, type BotTree } from "./placement.ts";
 
 /** One conversation of a bot, as its node needs it. */
 export interface ThreadFacts {
@@ -55,15 +55,20 @@ export interface SnapshotInput {
 
 export type PlacedFrame = CanvasFrame & { placed: boolean };
 
-/** Each bot node's frame by node id: where it is stored, or where the default layout puts it. */
+/** Each bot node's frame by node id: where it is stored, or where the default layout puts it, moved down clear of the
+ * nodes on the canvas and of the bots before it. */
 export function botFrames(document: CanvasDocument, tree: BotTree): Map<string, PlacedFrame> {
   const defaults = defaultBotFrames(tree);
+  const members = new Set(tree.botIds.map(botNodeId));
   const stored = new Map(document.nodes.filter((node) => node.type === "bot").map((node) => [node.id, node]));
-  return new Map(tree.botIds.map((botId) => {
+  const taken: CanvasFrame[] = document.nodes.filter((node) => node.type !== "group" && (node.type !== "bot" || members.has(node.id)));
+  return new Map(tree.botIds.map((botId): [string, PlacedFrame] => {
     const id = botNodeId(botId);
     const own = stored.get(id);
-    const frame = own ? { position: own.position, width: own.width, height: own.height } : defaults.get(id)!;
-    return [id, { ...frame, placed: own !== undefined }];
+    if (own) return [id, { position: own.position, width: own.width, height: own.height, placed: true }];
+    const frame = clearBelow(defaults.get(id)!, taken);
+    taken.push(frame);
+    return [id, { ...frame, placed: false }];
   }));
 }
 

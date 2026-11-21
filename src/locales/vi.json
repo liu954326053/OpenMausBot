@@ -181,6 +181,7 @@
   "server.projectCanvas.node.config": "Cấu hình",
   "server.projectCanvas.node.file": "Tệp",
   "server.projectCanvas.task.connected": "Được nối vào nút của bạn trên canvas dự án:",
+  "server.projectCanvas.task.textNode": "Những gì nút văn bản {title} trên canvas dự án tham chiếu đến:",
   "server.projectCanvas.task.fileGone": "(tệp {path} của nó hiện không có trong thư mục dự án)",
   "server.mcp.askedSignIn": "Đã yêu cầu đăng nhập máy chủ MCP {name}",
   "server.mcp.signIn.card": "Máy chủ MCP của {label} cần đăng nhập. Hãy mở cuộc trò chuyện này trong MagicBot để đăng nhập.",

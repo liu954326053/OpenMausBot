@@ -150,6 +150,7 @@
   "server.projectCanvas.node.config": "Configuration",
   "server.projectCanvas.node.file": "Fichier",
   "server.projectCanvas.task.connected": "Relié à votre nœud sur le canevas du projet :",
+  "server.projectCanvas.task.textNode": "Ce à quoi renvoie le nœud de texte {title} sur le canevas du projet :",
   "server.projectCanvas.task.fileGone": "(son fichier {path} n'est plus dans le dossier du projet)",
   "server.mcp.askedSignIn": "Demande de connexion au serveur MCP {name}",
   "server.mcp.signIn.card": "Le serveur MCP de {label} demande une connexion. Ouvrez cette conversation dans MagicBot pour vous connecter.",

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
+import type { DirectSendReceipt } from "../direct-send.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { addServerLinePacks } from "../server-lines.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
@@ -106,6 +107,17 @@ describe("changing a project's canvas", () => {
     expect(events).toEqual([{ kind: "project-canvas", projectId: "p1", revision: 1, reason: "document" }]);
   });
 
+  it("keeps a bot's node the bot's when the person deletes it and adds it back, as undo does", () => {
+    const { service, project } = setup();
+    const [shotId] = service.apply(project, writer, opsOf({ type: "add_node", nodeType: "shot", title: "Shot 1", metadata: { prompt: "Veil, dawn" } })).nodeIds;
+    const made = nodeOf(service, shotId!)!;
+    service.apply(project, person, opsOf({ type: "delete_node", id: shotId }));
+    service.apply(project, person, opsOf({ type: "add_node", id: shotId, nodeType: "shot", title: made.title, position: made.position, metadata: made.metadata }));
+    expect(nodeOf(service, shotId!)?.createdBy).toEqual(writer);
+    service.apply(project, writer, opsOf({ type: "update_node", id: shotId, metadata: { prompt: "Veil, dusk" } }));
+    expect(nodeOf(service, shotId!)?.metadata?.prompt).toBe("Veil, dusk");
+  });
+
   it("refuses every change to an archived project's canvas", async () => {
     const { service, project } = setup();
     project.archivedAt = 5;
@@ -203,6 +215,23 @@ describe("a task sent from the canvas", () => {
     expect(sent.map((one) => one.text)).toEqual([inChinese, inChinese, "@Text 1\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap."]);
   });
 
+  it("is numbered from the text node it was written in, as that node's panel numbers it, and only a text node of this canvas takes it", async () => {
+    const { service, project, sent } = setup();
+    const [brief, scene, logline, take] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "Goes to the bot only" } },
+      { type: "add_node", nodeType: "text", title: "Scene", metadata: { content: "Rain on the steps." } },
+      { type: "add_node", nodeType: "text", title: "Logline", metadata: { content: "Draft" } },
+      { type: "add_node", nodeType: "shot", title: "Shot 1" },
+    )).nodeIds as [string, string, string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: brief, toNodeId: botNodeId("writer") }, { type: "connect_nodes", fromNodeId: scene, toNodeId: logline }));
+    expect(await service.task("p1", auth, { botId: "writer", text: "Write the logline from @Text 1", targetNodeId: logline })).toMatchObject({ references: 1 });
+    expect(sent.map((one) => one.text)).toEqual(["Write the logline from @Text 1\n\nWhat the text node \"Logline\" on the project's canvas refers to:\n\nText 1 \"Scene\":\n\n> Rain on the steps."]);
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: take })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: "gone" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: 7 })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toHaveLength(1);
+  });
+
   it("is refused for a bot outside the project, a conversation the person cannot open, a language that is no language, and nothing to say", async () => {
     const { service, sent } = setup();
     await expect(service.task("p1", auth, { botId: "plain", text: "Go" })).rejects.toMatchObject({ status: 404 });
@@ -212,6 +241,87 @@ describe("a task sent from the canvas", () => {
     await expect(service.task("p1", auth, { botId: "writer", text: "Go", language: 7 })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer", text: "  " })).rejects.toMatchObject({ status: 400 });
     await expect(service.task("p1", auth, { botId: "writer" })).rejects.toMatchObject({ status: 400 });
+    expect(sent).toEqual([]);
+  });
+});
+
+describe("a task whose reply goes into a text node", () => {
+  const KEY = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+  const turnEnd = (requestMessageId: string, text: string, patch: Partial<Message> = {}): Message => ({
+    id: `reply-to-${requestMessageId}`, at: 5, role: "bot", kind: "text", text, turnId: "t1", turnTerminal: true, turnSucceeded: true, requestMessageId, ...patch,
+  });
+  const textNodes = (service: ProjectCanvasService, project: TeamProjectWire, ...titles: string[]) =>
+    service.apply(project, person, opsOf(...titles.map((title) => ({ type: "add_node", nodeType: "text", title, metadata: { content: "Draft" } })))).nodeIds;
+  const contentOf = (service: ProjectCanvasService, id: string | undefined) => nodeOf(service, id!)?.metadata?.content;
+  const writingInto = (service: ProjectCanvasService) => service.snapshot("p1", auth).bots.writer!.writingInto;
+
+  it("gets the bot's reply once its turn ends well, secrets redacted, and shows the bot writing into it until then", async () => {
+    let busy = true;
+    const { service, project, events } = setup({ threadBusy: () => busy });
+    const [logline] = textNodes(service, project, "Logline");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("sent-1", "A bride swaps places.", { turnSucceeded: undefined }));
+    expect(contentOf(service, logline)).toBe("Draft");
+    busy = false;
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", `A bride swaps places. Key: ${KEY}`));
+    expect(contentOf(service, logline)).toMatch(/^A bride swaps places\. Key: «redacted/);
+    expect(contentOf(service, logline)).not.toContain(KEY);
+    expect(nodeOf(service, logline!)?.createdBy).toEqual(person);
+    expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
+    expect(writingInto(service)).toBeUndefined();
+  });
+
+  it("waits for a queued task's message to reach the conversation, and takes no reply for a task steered into a running turn", async () => {
+    let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
+    const queued = new Set(["writer-main"]);
+    const { service, project } = setup({ send: async () => receipt, queuedThreads: () => queued });
+    const [logline, notes] = textNodes(service, project, "Logline", "Notes");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    queued.clear();
+    service.taskLine("writer-main", { id: "m7", at: 7, role: "user", kind: "text", text: "Write the logline", queueId: "q1" });
+    service.taskLine("writer-main", turnEnd("m7", "Swapped at the altar.", { at: 9 }));
+    expect(contentOf(service, logline)).toBe("Swapped at the altar.");
+    receipt = { ok: true, threadId: "writer-main", message: { id: "m10", at: 10, role: "user", kind: "text", text: "Notes too" }, steered: true };
+    await service.task("p1", auth, { botId: "writer", text: "Notes too", targetNodeId: notes });
+    service.taskLine("writer-main", turnEnd("m10", "Both done.", { at: 12 }));
+    expect(contentOf(service, notes)).toBe("Draft");
+  });
+
+  it("stays as it was after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
+    const { service, project, events } = setup({ threadBusy: () => true });
+    const [logline] = textNodes(service, project, "Logline");
+    const ask = () => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: logline });
+    await ask();
+    service.taskLine("writer-main", turnEnd("earlier", "An older reply, changed again", { at: 0 }));
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
+    expect(writingInto(service)).toBeUndefined();
+    await ask();
+    service.taskLine("writer-main", turnEnd("later", "A reply to a later message"));
+    expect(writingInto(service)).toBeUndefined();
+    service.taskLine("writer-main", turnEnd("sent-1", "Too late"));
+    await ask();
+    project.archivedAt = 9;
+    service.taskLine("writer-main", turnEnd("sent-1", "Into an archived canvas"));
+    delete project.archivedAt;
+    expect(contentOf(service, logline)).toBe("Draft");
+    await ask();
+    service.apply(project, person, opsOf({ type: "delete_node", id: logline }));
+    const told = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", "Into nothing"));
+    expect(nodeOf(service, logline!)).toBeUndefined();
+    expect(events.slice(told)).toEqual([]);
+  });
+
+  it("is refused for anything but a text node of this canvas, and nothing is sent", async () => {
+    const { service, project, sent } = setup();
+    const [shot] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "shot", title: "Shot 1" })).nodeIds;
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: shot })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: "gone" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", targetNodeId: 7 })).rejects.toMatchObject({ status: 400 });
     expect(sent).toEqual([]);
   });
 });
@@ -352,6 +462,55 @@ describe("generating a node", () => {
     expect(made[1]!.position.y).toBeGreaterThan(made[0]!.position.y);
     expect(made.every((one) => one.createdBy?.kind === "bot" && one.createdBy.botId === "writer")).toBe(true);
     for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: id, toNodeId: one.id, kind: "content" }));
+  });
+
+  it("fills an empty image or video node with the first file of its kind, and puts each other one to its right", async () => {
+    const { service, project, generation } = setup();
+    const [poster, clip] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", title: "Poster", metadata: { prompt: "A poster", settings: { count: 2 } } },
+      { type: "add_node", nodeType: "video", title: "Clip", metadata: { prompt: "Rain" } },
+    )).nodeIds as [string, string];
+    await service.generate(project, person, poster);
+    await service.generate(project, person, clip);
+    const done: GenerationJob = { ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/图片/a.png"), file("产出/图片/b.png")] };
+    service.jobChanged(done);
+    service.jobChanged(done);
+    service.jobChanged({ ...generation.jobs.get("job-2")!, status: "done", files: [file("产出/视频/a.mp4", "video/mp4")] });
+    const view = service.botView(project);
+    const filled = view.nodes.find((one) => one.id === poster)!;
+    expect(filled).toMatchObject({ type: "image", title: "Poster", metadata: { prompt: "A poster", settings: { count: 2 }, status: "success", jobId: "job-1", file: file("产出/图片/a.png") } });
+    expect(nodeOf(service, clip)!.metadata).toEqual({ prompt: "Rain", status: "success", jobId: "job-2", file: file("产出/视频/a.mp4", "video/mp4") });
+    const made = view.nodes.filter((one) => one.metadata?.file && one.id !== poster && one.id !== clip);
+    expect(made.map((one) => [one.type, one.metadata!.file!.path])).toEqual([["image", "产出/图片/b.png"]]);
+    expect(made[0]!.position.x).toBe(filled.position.x + filled.width + 80);
+    expect(view.connections.filter((one) => one.fromNodeId === poster || one.fromNodeId === clip)).toEqual([expect.objectContaining({ fromNodeId: poster, toNodeId: made[0]!.id, kind: "content" })]);
+  });
+
+  it("sends an image node's own picture first, as Image 1, and puts what it makes to its right; a video node never sends its own clip", async () => {
+    const { service, project, generation } = setup();
+    const [cover, still, take] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "image", title: "Cover", metadata: { file: file("refs/cover.png"), prompt: "@Image 1 at night, the veil from @Image 2" } },
+      { type: "add_node", nodeType: "image", metadata: { file: file("refs/still.png") } },
+      { type: "add_node", nodeType: "video", metadata: { file: file("refs/take.mp4", "video/mp4"), prompt: "Slower" } },
+    )).nodeIds as [string, string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: cover }, { type: "connect_nodes", fromNodeId: still, toNodeId: take }));
+    await service.generate(project, person, cover);
+    await service.generate(project, person, take);
+    const labels = (names: string) => `Reference image labels: ${names}. Use these labels to interpret image references in the prompt.`;
+    expect(generation.started.map((one) => [one.input.prompt, one.input.references])).toEqual([
+      [`${labels("Image 1, Image 2")}\n\n@Image 1 at night, the veil from @Image 2`, { images: ["refs/cover.png", "refs/still.png"], audio: [] }],
+      [`${labels("Image 1")}\n\nSlower`, { images: ["refs/still.png"], audio: [] }],
+    ]);
+    service.jobChanged({ ...generation.jobs.get("job-1")!, status: "done", files: [file("产出/图片/night.png")] });
+    service.jobChanged({ ...generation.jobs.get("job-2")!, status: "done", files: [file("产出/视频/slow.mp4", "video/mp4")] });
+    expect(nodeOf(service, cover)!.metadata!.file).toEqual(file("refs/cover.png"));
+    expect(nodeOf(service, take)!.metadata!.file).toEqual(file("refs/take.mp4", "video/mp4"));
+    const view = service.botView(project);
+    for (const [from, path] of [[cover, "产出/图片/night.png"], [take, "产出/视频/slow.mp4"]] as const) {
+      const made = view.nodes.find((one) => one.metadata?.file?.path === path)!;
+      expect(made.position.x).toBeGreaterThan(nodeOf(service, from)!.position.x);
+      expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: from, toNodeId: made.id, kind: "content" }));
+    }
   });
 
   it("puts a failure on its node in English and as generation's key and values, and a cancelled job leaves the node idle", async () => {
