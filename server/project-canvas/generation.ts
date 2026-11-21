@@ -3,15 +3,6 @@ import type { CanvasDocument, CanvasNode } from "../../shared/project-canvas.ts"
 import type { GenerationKind, StartGenerationInput } from "../../shared/project-generation.ts";
 import { serverLine } from "../server-lines.ts";
 
-/** What generating a node makes: a picture for an image node, a clip for a video node or a shot, and what a config node
- * is set to make. Null for a node that is not generated. */
-export function generationKindOf(node: CanvasNode): GenerationKind | null {
-  if (node.type === "image") return "image";
-  if (node.type === "video" || node.type === "shot") return "video";
-  if (node.type === "config") return node.metadata?.generationMode ?? "image";
-  return null;
-}
-
 /** The prompt a generation is sent: first which label names which image and audio reference, in the words of
  * `language`, the one the person's prompt names them in; then their prompt; then each text reference under its label. */
 export function generationPrompt(prompt: string, references: readonly CanvasReference[], language: string | undefined): string {

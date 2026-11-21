@@ -339,9 +339,11 @@ export function resizeFrame(start: ResizeStart, dx: number, dy: number) {
   };
 }
 
+/** The frame that shows a picture of `width` by `height` whole: its shape, no larger than the maximum, and no smaller
+ * than a node can be resized to unless the maximum forbids it. */
 export function fitNodeSize(width: number, height: number, maxWidth = 640, maxHeight = 640): CanvasSize {
   const w = Math.max(1, width);
   const h = Math.max(1, height);
-  const scale = Math.min(1, maxWidth / w, maxHeight / h);
+  const scale = Math.min(maxWidth / w, maxHeight / h, Math.max(1, NODE_MIN_WIDTH / w, NODE_MIN_HEIGHT / h));
   return { width: w * scale, height: h * scale };
 }

@@ -1,20 +1,24 @@
 // Seeds a fixture data folder for scripts/bench-desktop.ts before its server starts: many bots in departments, two
-// threads each, a few unread, and one long conversation of markdown, code, tables, images and tool rows. Runs only in
-// a child whose OMB_DATA_DIR and HOME are the fixture's own folder; prints the ids the bench needs as JSON.
-//   OMB_DATA_DIR=... node --experimental-strip-types scripts/testing/bench-desktop-seed.ts BOTS THREADS MESSAGES
+// threads each, a few unread, and one long conversation of markdown, code, tables, images and tool rows; with PROJECTS,
+// also MagicBot and that many projects made from the Support team in FOLDER. Runs only in a child whose OMB_DATA_DIR
+// and HOME are the fixture's own folder; prints the ids the bench needs as JSON.
+//   OMB_DATA_DIR=... node --experimental-strip-types scripts/testing/bench-desktop-seed.ts BOTS THREADS MESSAGES [PROJECTS FOLDER]
 import { copyFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dataDir = process.env.OMB_DATA_DIR;
 if (!dataDir || !dataDir.includes("openmausbot-bench-")) throw new Error("bench-desktop-seed runs only on a bench fixture folder");
-const [bots = 150, threads = 300, messages = 2000] = process.argv.slice(2).map(Number);
+const [bots = 150, threads = 300, messages = 2000, projects = 0] = process.argv.slice(2, 6).map(Number);
+const projectsFolder = process.argv[6] ?? "";
+if (projects > 0 && !projectsFolder.includes("openmausbot-bench-")) throw new Error("bench-desktop-seed makes projects only in a bench fixture folder");
 
 const { Store } = await import("../../server/store.ts");
 const { ATTACHMENTS_DIR } = await import("../../server/attachments.ts");
 type Message = import("../../server/store.ts").Message;
 
-const store = new Store(() => ({ instanceId: "claude", model: "claude-sonnet-5" }));
+const SELECTION = { instanceId: "claude", model: "claude-sonnet-5" };
+const store = new Store(() => SELECTION);
 const SECTIONS = ["Sales", "Support", "Engineering", "Research", "Operations", "Marketing", "Finance", "People"];
 const start = Date.now() - 30 * 24 * 3600_000;
 let clock = start;
@@ -91,6 +95,9 @@ for (const [index, bot] of created.entries()) {
 }
 const longRows = conversation(messages);
 store.importTranscript(big.threadId, longRows, longRows.at(-1)!.id);
+const projectIds = projects > 0
+  ? await (await import("./bench-seed-projects.ts")).seedProjects(store, { team: SECTIONS[1]!, count: projects, root: projectsFolder, selection: SELECTION })
+  : [];
 
 process.stdout.write(`${JSON.stringify({
   bigBotId: big.id,
@@ -102,6 +109,7 @@ process.stdout.write(`${JSON.stringify({
   otherBotName: created[0]!.name,
   otherThreadId: created[0]!.threadId,
   otherSideThreadId,
+  projectIds,
   bots: store.bots.length,
   threads: store.bots.reduce((sum, bot) => sum + (bot.tasks?.length ?? 0), 0),
   unread: store.bots.filter((bot) => bot.tasks?.some((task) => task.unread)).length,

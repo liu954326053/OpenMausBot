@@ -26,7 +26,7 @@ function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; o
   const label = referenceLabel(reference, t);
   const Icon = reference.kind === "video" ? Video : reference.kind === "audio" ? Music : FileText;
   return (
-    <div className="relative flex w-12 flex-col items-center gap-1" title={reference.title || label}>
+    <div data-reference="" className="relative flex w-12 flex-col items-center gap-1" title={reference.title || label}>
       <div className="flex size-12 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-inset text-ink-secondary">
         {reference.kind === "image" && reference.file ? (
           <img src={ui.controller.fileUrl(reference.file)} alt="" draggable={false} className="size-full object-cover" />
@@ -50,8 +50,8 @@ function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; o
   );
 }
 
-/** The references the node's prompt can name, as its "@" lists them, with the "+" that picks more on the canvas. What
- * is picked, or removed, is connected into the node whose inputs the list holds. */
+/** The references the panel's prompt names, labelled as it names them, with the "+" that picks more on the canvas. What
+ * is picked, or taken off, is connected into the node whose inputs the list holds. */
 export function ReferenceBar({ node, references }: { node: CanvasNode; references: readonly CanvasReference[] }) {
   const ui = useCanvasUi();
   const holder = mentionHolder(node.id, ui.snapshot.nodes, ui.snapshot.connections);

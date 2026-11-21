@@ -84,9 +84,13 @@ describe("the project view", () => {
     expect(fixture.canvas).toEqual({ projectId: "p-bride", selectedBotId: "writer" });
   });
 
-  it("names the project's folder in the canvas's top bar while the folder is there", async () => {
+  it("names the project's folder in the canvas's top bar, set as a path, while the folder is there", async () => {
     await draw({ projectId: "p-bride" });
-    expect(q("[data-project-folder]")?.textContent).toBe("/dramas/The bride");
+    const folder = q("[data-project-folder]")!;
+    expect(folder.textContent).toBe("/dramas/The bride");
+    expect(folder.title).toBe("/dramas/The bride");
+    expect(folder.classList).toContain("font-mono");
+    expect(folder.classList).toContain("truncate");
     await act(async () => setTeamProjects({ root: "/dramas", projects: [{ ...bride, folderState: "missing" }] }));
     expect(q("[data-project-folder]")).toBeNull();
   });

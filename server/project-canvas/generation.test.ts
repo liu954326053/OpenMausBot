@@ -1,26 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { CanvasReference } from "../../shared/project-canvas-references.ts";
-import type { CanvasNode } from "../../shared/project-canvas.ts";
 import { addServerLinePacks } from "../server-lines.ts";
-import { generationKindOf, generationPrompt } from "./generation.ts";
+import { generationPrompt } from "./generation.ts";
 
-const node = (type: CanvasNode["type"], metadata?: CanvasNode["metadata"]): CanvasNode => ({ id: type, type, title: "", position: { x: 0, y: 0 }, width: 340, height: 240, ...(metadata ? { metadata } : {}) });
 const reference = (kind: CanvasReference["kind"], index: number, text?: string): CanvasReference =>
   ({ nodeId: `${kind}-${index}`, sourceNodeId: `${kind}-${index}`, kind, index, title: "", ...(text ? { text } : {}) });
 
 const references = [reference("image", 1), reference("text", 1, "Rain on the steps.\nShe runs."), reference("image", 2), reference("audio", 1), reference("video", 1), reference("text", 2, "Dusk")];
-
-describe("what generating a canvas node makes", () => {
-  it("is a picture for an image node, a clip for a video node or a shot, and what a config node is set to", () => {
-    expect(generationKindOf(node("image"))).toBe("image");
-    expect(generationKindOf(node("video"))).toBe("video");
-    expect(generationKindOf(node("shot"))).toBe("video");
-    expect(generationKindOf(node("config", { generationMode: "video" }))).toBe("video");
-    expect(generationKindOf(node("config"))).toBe("image");
-    expect(["text", "audio", "file", "group", "bot"].map((type) => generationKindOf(node(type as CanvasNode["type"])))).toEqual([null, null, null, null, null]);
-  });
-});
 
 describe("the prompt a canvas generation is sent", () => {
   it("numbers its images and audio first, then the person's prompt, then each text under its label", () => {

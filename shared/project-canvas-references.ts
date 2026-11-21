@@ -24,7 +24,7 @@
  * SOFTWARE.
  */
 
-import type { CanvasConnection, CanvasFileRef, CanvasNode } from "./project-canvas.ts";
+import { generationKindOf, type CanvasConnection, type CanvasFileRef, type CanvasNode } from "./project-canvas.ts";
 import type { GenerationReferences, ReferenceCounts } from "./project-generation.ts";
 
 export type CanvasResourceKind = "image" | "video" | "audio" | "text";
@@ -117,16 +117,19 @@ export function connectedReferences(nodeId: string, nodes: readonly CanvasNode[]
   return label(expand(inputNodes(nodeId, nodes, connections), nodes));
 }
 
+/** What a generation takes in: the files of image and audio references, and the words of text ones in its prompt. */
+const GENERATION_TAKES: ReadonlySet<CanvasResourceKind> = new Set(["image", "audio", "text"]);
+
 /** What a node's prompt can name with "@", which is exactly what goes with it, numbered as it is sent: the node's own
  * picture or text first when that goes too (generating from an image node edits its picture, and a task written in a
- * text node revises its text); then the inputs of its `mentionHolder`; groups opened up, each node once. A generation
- * hands over no video, so only a text node's list, a task's, holds videos. */
+ * text node revises its text); then the inputs of its `mentionHolder`; groups opened up, each node once. A node that
+ * generates names only what a generation takes in, while a task written in a text node takes videos too. */
 export function mentionReferences(nodeId: string, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): CanvasReference[] {
   const node = nodes.find((item) => item.id === nodeId);
   if (!node) return [];
   const inputs = inputNodes(mentionHolder(nodeId, nodes, connections), nodes, connections).filter((input) => input.id !== nodeId);
   const references = label(expand(sendsItself(node) ? [node, ...inputs] : inputs, nodes));
-  return node.type === "text" ? references : references.filter((reference) => reference.kind !== "video");
+  return generationKindOf(node) ? references.filter((reference) => GENERATION_TAKES.has(reference.kind)) : references;
 }
 
 /** The project files of the images and audio among `references`, in their numbering's order. */

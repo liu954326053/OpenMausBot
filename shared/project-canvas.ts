@@ -24,6 +24,7 @@
  * SOFTWARE.
  */
 
+import type { GenerationKind } from "./project-generation.ts";
 import type { ServerTextParams } from "./server-text.ts";
 import type { OptionCardData } from "./wire.ts";
 
@@ -352,4 +353,13 @@ export function canvasFileNodeType(mime: string): CanvasFileNodeType {
   if (type.startsWith("video/")) return "video";
   if (type.startsWith("audio/")) return "audio";
   return "file";
+}
+
+/** What generating a node makes: a picture for an image node, a clip for a video node or a shot, and what a config node
+ * is set to make. Null for a node that is not generated. */
+export function generationKindOf(node: CanvasNode): GenerationKind | null {
+  if (node.type === "image") return "image";
+  if (node.type === "video" || node.type === "shot") return "video";
+  if (node.type === "config") return node.metadata?.generationMode ?? "image";
+  return null;
 }

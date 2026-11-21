@@ -1,14 +1,14 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AlertCircle, Clock, Crown, LoaderCircle, RotateCcw } from "lucide-react";
-import { botIdOfNode, type CanvasBotStatus, type CanvasNode } from "../../../shared/project-canvas";
+import { botIdOfNode, generationKindOf, type CanvasBotStatus, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, mentionReferences } from "../../../shared/project-canvas-references";
 import { BotAvatar } from "@/components/Avatar";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { fitNodeSize } from "@/lib/project-canvas/geometry";
-import { generationKindOf, nodeSettings } from "@/lib/project-canvas/settings";
+import { nodeSettings } from "@/lib/project-canvas/settings";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
 import { formatBytes, NODE_ICONS, nodeLabel, nodeTypeLabel } from "./node-kinds";

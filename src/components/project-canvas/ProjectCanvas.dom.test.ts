@@ -219,7 +219,7 @@ describe("the project canvas", () => {
       ] });
     });
     await settle();
-    const shelf = () => [...panel()!.querySelectorAll("div[title] > span")].map((label) => label.textContent);
+    const shelf = () => [...panel()!.querySelectorAll("[data-reference]")].map((thumb) => thumb.textContent);
     const choices = () => [...host.querySelectorAll('[role="option"]')].map((option) => option.querySelector("span")?.textContent);
 
     await clickNode("logline");
@@ -274,6 +274,59 @@ describe("the project canvas", () => {
     await act(async () => { add.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
     expect(host.textContent).not.toContain("Click nodes to add them as references");
     expect(panel()).not.toBeNull();
+  });
+
+  it("names an image node's own picture first in its references and its @ list, leaves out a clip no generation takes, and takes off only what is connected in", async () => {
+    await mount();
+    await act(async () => {
+      await backend.applyOps(SAMPLE_PROJECT_ID, {
+        ops: [
+          { type: "add_node", id: "clip", nodeType: "video", position: { x: 2400, y: 0 }, metadata: { file: { path: "素材/rain.mp4", name: "rain.mp4", mime: "video/mp4", bytes: 1 } } },
+          { type: "connect_nodes", fromNodeId: "clip", toNodeId: "city-night" },
+          { type: "connect_nodes", fromNodeId: "logline", toNodeId: "city-night" },
+        ],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await clickNode("city-night");
+    const open = panel()!;
+    expect([...open.querySelectorAll("[data-reference]")].map((thumb) => thumb.textContent)).toEqual(["Image 1", "Text 1"]);
+    expect(open.querySelector('button[aria-label="Remove Image 1"]')).toBeNull();
+    expect(open.querySelector('button[aria-label="Remove Text 1"]')).not.toBeNull();
+
+    const prompt = open.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(prompt, "@");
+      prompt.setSelectionRange(1, 1);
+      prompt.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await settle();
+    expect([...open.querySelectorAll('[role="listbox"] [role="option"]')].map((option) => option.querySelector("span")?.textContent)).toEqual(["Image 1", "Text 1"]);
+  });
+
+  it("generates an empty image node into itself with no placeholder beside it, and draws the next picture's placeholder to its right", async () => {
+    await mount({ delayMs: 40 });
+    await act(async () => {
+      await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "image", position: { x: 2400, y: 600 }, metadata: { prompt: "A bride at dawn" } }] });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const madeFromBlank = () => backend.current().connections.filter((connection) => connection.fromNodeId === "blank");
+    await clickNode("blank");
+    await act(async () => buttonByText(panel()!, "Generate")!.click());
+    await settle();
+    expect(nodeElement("blank")!.textContent).toContain("Generating…");
+    expect(host.querySelector('[data-generation-ghost="blank"]')).toBeNull();
+    await settle(120);
+    expect(shown("blank")!.metadata).toMatchObject({ status: "success", file: { mime: "image/png" } });
+    expect(nodeElement("blank")!.querySelector("img")).not.toBeNull();
+    expect(madeFromBlank()).toEqual([]);
+
+    await act(async () => buttonByText(panel()!, "Generate")!.click());
+    await settle();
+    expect(host.querySelector('[data-generation-ghost="blank"]')).not.toBeNull();
+    await settle(120);
+    expect(host.querySelector('[data-generation-ghost="blank"]')).toBeNull();
+    expect(madeFromBlank()).toHaveLength(1);
   });
 
   it("takes the pointer on a node only once it drags, so a double-click on the node reaches it", async () => {

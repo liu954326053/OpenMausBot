@@ -1,7 +1,7 @@
-import { CANVAS_NODE_SIZE, type CanvasConnection, type CanvasNode, type CanvasNodeType, type CanvasPoint } from "../../../shared/project-canvas";
+import { CANVAS_NODE_SIZE, generationKindOf, type CanvasConnection, type CanvasNode, type CanvasNodeType, type CanvasPoint } from "../../../shared/project-canvas";
 import { generationReferences } from "../../../shared/project-canvas-references";
 import type { StartGenerationInput } from "../../../shared/project-generation";
-import { generationKindOf, nodeOverrides } from "./settings";
+import { nodeOverrides } from "./settings";
 
 /** How far right of its source the server puts a result. */
 export const OUTPUT_OFFSET_X = 80;
@@ -23,6 +23,9 @@ export function generationInput(node: CanvasNode, nodes: readonly CanvasNode[], 
   };
 }
 
+/** Whether generating `node` puts its first result in the node itself: an empty image or video node takes it in place. */
+export const takesResultInPlace = (node: CanvasNode): boolean => (node.type === "image" || node.type === "video") && !node.metadata?.file;
+
 const outputColumn = (source: CanvasNode) => source.position.x + source.width + OUTPUT_OFFSET_X;
 
 /** The results made from `source` before: what it connects to in the column right of it. */
@@ -31,9 +34,6 @@ export function previousOutputs(source: CanvasNode, nodes: readonly CanvasNode[]
   const targets = new Set(connections.filter((connection) => connection.fromNodeId === source.id).map((connection) => connection.toNodeId));
   return nodes.filter((node) => targets.has(node.id) && node.position.x < x + CANVAS_NODE_SIZE.video.width && node.position.x + node.width > x);
 }
-
-/** An empty image or video node takes the first result of its generation itself, as the server fills it. */
-export const fillsItself = (node: CanvasNode): boolean => (node.type === "image" || node.type === "video") && !node.metadata?.file;
 
 /** Where the next result of `source` lands: right of it, level with its top, under the results made before. */
 export function nextOutputFrame(source: CanvasNode, type: CanvasNodeType, nodes: readonly CanvasNode[], connections: readonly CanvasConnection[]): { position: CanvasPoint; width: number; height: number } {

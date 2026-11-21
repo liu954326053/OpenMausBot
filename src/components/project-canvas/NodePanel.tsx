@@ -1,7 +1,7 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node-prompt-panel.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
 import { useEffect, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
-import { botIdOfNode, type CanvasNode } from "../../../shared/project-canvas";
+import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, mentionReferences, referenceCounts, referenceFiles } from "../../../shared/project-canvas-references";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { Select } from "@/components/Select";
@@ -10,7 +10,7 @@ import { approvalDetailText } from "@/lib/approval-summary";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { canvasErrorText } from "@/lib/project-canvas/backend";
-import { generationKindOf, referenceProblems } from "@/lib/project-canvas/settings";
+import { referenceProblems } from "@/lib/project-canvas/settings";
 import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";

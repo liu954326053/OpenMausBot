@@ -100,14 +100,19 @@ utilityProcess.fork = function (entry, ...rest) {
   return child;
 };
 
+const MAIN_BOT_ROW = "[data-sidebar-bot-row]:not([data-sidebar-project-member])";
+const SIDEBAR_ROWS = `${MAIN_BOT_ROW}, [data-sidebar-project-row]`;
+const FORGET_LAST_PROJECT = `localStorage.removeItem("openmausbot.lastProject.v1")`;
 const COLLECT = (target) => `(() => {
   if (window.__ombLaunch) return;
   const L = window.__ombLaunch = { seen: {}, painted: {}, longtasks: [], paints: {} };
   const abs = () => performance.timeOrigin + performance.now();
+  const mainBotRow = () => Boolean(document.querySelector(${JSON.stringify(MAIN_BOT_ROW)}));
+  const projectRows = ${JSON.stringify((target.projectIds ?? []).map((id) => `[data-sidebar-project-row="${id}"]`))};
   const checks = {
     root: () => (document.getElementById("root")?.childElementCount ?? 0) > 0,
-    sidebarRow: () => Boolean(document.querySelector("[data-sidebar-bot-row]")),
-    sidebarRows: () => document.querySelectorAll("[data-sidebar-bot-row]").length >= ${Number(target.rows) || 1},
+    sidebarRow: mainBotRow,
+    sidebarRows: () => mainBotRow() && projectRows.every((row) => document.querySelector(row) !== null),
     anyMessage: () => Boolean(document.querySelector("[data-mid]")),
     lastMessage: () => Boolean(document.querySelector(${JSON.stringify(`[data-mid="${target.lastMessageId ?? "-"}"]`)})),
   };
@@ -128,7 +133,7 @@ const REPORT = `(() => {
   const nav = performance.getEntriesByType("navigation")[0];
   return {
     timeOrigin: performance.timeOrigin, now: performance.now(), seen: L.seen, painted: L.painted, longtasks: L.longtasks, paints: L.paints,
-    visibility: document.visibilityState, rows: document.querySelectorAll("[data-sidebar-bot-row]").length, messages: document.querySelectorAll("[data-mid]").length,
+    visibility: document.visibilityState, rows: document.querySelectorAll(${JSON.stringify(SIDEBAR_ROWS)}).length, messages: document.querySelectorAll("[data-mid]").length,
     title: document.title, text: (document.body?.innerText ?? "").slice(0, 400),
     nav: nav ? { responseStart: nav.responseStart, responseEnd: nav.responseEnd, domInteractive: nav.domInteractive, dcl: nav.domContentLoadedEventEnd, load: nav.loadEventEnd, bytes: nav.transferSize } : null,
     resources: performance.getEntriesByType("resource").map((entry) => ({ url: entry.name.replace(location.origin, ""), kind: entry.initiatorType, start: entry.startTime, end: entry.responseEnd, wait: entry.responseStart - entry.requestStart, transfer: entry.transferSize, encoded: entry.encodedBodySize, decoded: entry.decodedBodySize })),
@@ -223,6 +228,8 @@ async function finish() {
   }));
   const hardStop = setTimeout(() => app.exit(0), 10_000);
   hardStop.unref();
+  if (main && !main.isDestroyed()) await main.executeJavaScript(FORGET_LAST_PROJECT).catch(() => {});
+  session.defaultSession.flushStorageData();
   app.quit();
 }
 void app.whenReady().then(finish);

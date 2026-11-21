@@ -14,6 +14,9 @@
 //   --server-prof-tail ms past it; those launches are slower for it.
 // --quiet-ms: how long the page must stay free of long tasks after the chat is drawn before the app is quit; 4000 or
 //   more lets the app write its own launch record (launch-timings.json in the data folder) first.
+// --seed: the workspace's bots, threads and messages. It also holds MagicBot and min(9, bots - 1) projects made from its
+//   Support team, which is what the sidebar lists: `sidebarRows` is when MagicBot's row and every project's are there,
+//   and `rows` counts them. Each launch forgets the project it closed on, so the next one still opens the long chat.
 // Not measured: a signed app's signature and keychain checks (a mock keychain stands in), the real engines' probes
 // (the fixture's sealed PATH hides them), the computer-control and browser helpers (not staged), any network call
 // (all refused and counted in `egress`).
@@ -44,7 +47,7 @@ for (const needed of ["electron/main.mjs", "dist/index.html", "dist-server/deskt
 const BENCH_PORTS = [38799, 48799, 58799];
 const paths = {
   home: join(root, "home"), tmp: join(root, "tmp"), data: join(root, "data"), userData: join(root, values.dev ? "user-data-dev" : "user-data"), stage: join(root, `stage-${values.label}`),
-  egress: join(root, "egress.log"), seed: join(root, "seed.json"), results: join(root, "results"),
+  egress: join(root, "egress.log"), seed: join(root, "seed.json"), results: join(root, "results"), projects: join(root, "projects"),
 };
 for (const dir of [paths.home, paths.tmp, paths.userData, paths.results]) mkdirSync(dir, { recursive: true });
 
@@ -81,8 +84,10 @@ function stage() {
 function seed() {
   if (existsSync(paths.seed)) return JSON.parse(readFileSync(paths.seed, "utf8"));
   const [bots, threads, messages] = values.seed.split(",");
+  const projects = Math.max(0, Math.min(10, Number(bots)) - 1);
   mkdirSync(join(paths.data, "tmp"), { recursive: true });
-  const out = execFileSync(process.execPath, ["--experimental-strip-types", join(appRoot, "scripts", "testing", "bench-desktop-seed.ts"), bots, threads, messages], {
+  mkdirSync(paths.projects, { recursive: true });
+  const out = execFileSync(process.execPath, ["--experimental-strip-types", join(appRoot, "scripts", "testing", "bench-desktop-seed.ts"), bots, threads, messages, String(projects), paths.projects], {
     cwd: appRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
     env: { PATH: dirname(process.execPath), HOME: paths.data, OMB_DATA_DIR: paths.data, TMPDIR: join(paths.data, "tmp") },
   });
@@ -125,7 +130,7 @@ function launch(name, { prime = false, screenshot = false } = {}) {
   rmSync(out, { force: true });
   const config = {
     root, resources: staged.resources, blocker: staged.blocker, out, timeoutMs: 60_000, quietMs: Number(values["quiet-ms"]), dev: values.dev,
-    target: { rows: Math.min(10, Number(values.seed.split(",")[0])), lastMessageId: seeded.bigLastMessageId },
+    target: { projectIds: seeded.projectIds ?? [], lastMessageId: seeded.bigLastMessageId },
     ...(prime ? { prime: { storage: STORAGE, botId: seeded.bigBotId, botName: seeded.bigBotName } } : {}),
     ...(screenshot ? { screenshot: join(paths.results, `${values.label}-${name}.png`) } : {}),
   };
