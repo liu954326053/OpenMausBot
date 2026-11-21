@@ -236,6 +236,18 @@ describe("a template dialog", () => {
     }
   });
 
+  it("is one modal dialog, named by its own title, also when one opens inside another", () => {
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    flushSync(() => root.render(createElement(TemplateModal, { title: "Share Sales crew", labelledBy: "share", onClose: vi.fn(),
+      children: createElement(TemplateModal, { title: "Publish to GitHub", labelledBy: "publish", onClose: vi.fn(), children: "Repository" }) })));
+
+    const dialogs = [...document.querySelectorAll('dialog, [role="dialog"], [role="alertdialog"]')];
+    expect(dialogs.map((dialog) => document.getElementById(dialog.getAttribute("aria-labelledby") ?? "")?.textContent ?? null).sort())
+      .toEqual(["Publish to GitHub", "Share Sales crew"]);
+    expect(dialogs.every((dialog) => dialog instanceof HTMLDialogElement && dialog.open && dialog.matches('[role="dialog"][aria-modal="true"]'))).toBe(true);
+    root.unmount();
+  });
+
   it("stays open when a dialog opened inside it is cancelled", () => {
     const closeShare = vi.fn();
     const closePublish = vi.fn();
