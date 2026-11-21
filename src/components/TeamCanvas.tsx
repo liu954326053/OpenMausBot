@@ -19,7 +19,7 @@ import { ComputerNode } from "./ComputerNode";
 import { InstanceProviderMark, ProviderMark } from "./ProviderIcons";
 import { openBotSettings } from "./bot-panel/panel-link";
 import { TeamMapDepartmentItems, TeamMapNote, useProjectTeamNotes } from "./TeamMapDepartment";
-import { useTeamMapReveal } from "./team-map-reveal";
+import { menuOpensAbove, useTeamMapReveal } from "./team-map-reveal";
 
 type Gesture = {
   id: number;
@@ -31,6 +31,7 @@ type Gesture = {
 
 const iconButton = "flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-secondary hover:bg-control hover:text-ink focus-visible:outline-2 focus-visible:outline-accent";
 const menuButton = "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] text-ink-secondary hover:bg-control hover:text-ink";
+const MENU_GAP = 40;
 
 function BotCard({ bot, selected, moving, connected, tagged = false, sent, onComputer, onArrange }: {
   bot: Bot;
@@ -230,12 +231,15 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
   useEffect(() => { fit(); }, [fit, teamSizes, layoutLoaded]);
   const revealed = useTeamMapReveal(viewport, layoutLoaded && viewportSize.width > 0, teamSizes, bottomInset, setView);
   const notes = useProjectTeamNotes(sections);
+  const opensAbove = (details: HTMLElement, bounds: DOMRect) => menuOpensAbove({
+    top: details.getBoundingClientRect().top, gap: MENU_GAP, height: details.querySelector<HTMLElement>("[data-team-menu]")?.offsetHeight ?? 0,
+    scale: view.scale, bottom: bounds.bottom, inset: bottomInset,
+  });
   useEffect(() => {
     const open = viewport.current?.querySelector<HTMLDetailsElement>("details[open]");
     const bounds = viewport.current?.getBoundingClientRect();
-    if (open && bounds) setMenuAbove(open.getBoundingClientRect().bottom > bounds.bottom - 380 * view.scale
-      ? open.closest<HTMLElement>("[data-team-key]")?.dataset.teamKey ?? null : null);
-  }, [view, teamSizes]);
+    if (open && bounds) setMenuAbove(opensAbove(open, bounds) ? open.closest<HTMLElement>("[data-team-key]")?.dataset.teamKey ?? null : null);
+  }, [view, teamSizes, bottomInset]);
 
   useEffect(() => {
     const element = viewport.current;
@@ -454,12 +458,13 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
             {canManage && <details className="relative" onToggle={(event) => {
               if (event.currentTarget.open) {
                 const bounds = viewport.current?.getBoundingClientRect();
-                setMenuAbove(bounds && event.currentTarget.getBoundingClientRect().bottom > bounds.bottom - 380 * view.scale ? section.key : null);
+                setMenuAbove(bounds && opensAbove(event.currentTarget, bounds) ? section.key : null);
                 viewport.current?.querySelectorAll("details[open]").forEach((element) => { if (element !== event.currentTarget) element.removeAttribute("open"); });
               }
             }}>
               <summary aria-label={t("canvas.manageTeam", { name: section.name })} className={cn(iconButton, "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}><MoreHorizontal size={17} /></summary>
-              <div className={cn("absolute right-0 z-30 w-[220px] animate-pop-in rounded-xl border border-hairline bg-panel p-1.5 shadow-xl", menuAbove === section.key ? "bottom-10" : "top-10")} onClick={(event) => {
+              <div data-team-menu="" className="absolute right-0 z-30 w-[220px] animate-pop-in rounded-xl border border-hairline bg-panel p-1.5 shadow-xl"
+                style={menuAbove === section.key ? { bottom: MENU_GAP } : { top: MENU_GAP }} onClick={(event) => {
                 const menu = event.currentTarget.closest("details");
                 menu?.querySelector("summary")?.focus();
                 menu?.removeAttribute("open");

@@ -29,6 +29,11 @@ function worldBox(element: HTMLElement, world: Element): WorldBox {
 
 export const targetMark = (target: TeamMapTarget): string => "department" in target ? target.department : target.botId;
 
+/** `gap` and `height` are in world units; `top`, `bottom` and `inset` are on screen. */
+export function menuOpensAbove({ top, gap, height, scale, bottom, inset }: { top: number; gap: number; height: number; scale: number; bottom: number; inset: number }): boolean {
+  return top + (gap + height) * scale > bottom - inset;
+}
+
 function targetElement(viewport: HTMLElement, target: TeamMapTarget): HTMLElement | undefined {
   if ("department" in target) return [...viewport.querySelectorAll<HTMLElement>("[data-team-key]")].find((node) => node.dataset.teamKey === target.department);
   return [...viewport.querySelectorAll<HTMLElement>("[data-bot-id]")].find((node) => node.dataset.botId === target.botId)?.closest("article") ?? undefined;
