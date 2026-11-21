@@ -19,6 +19,7 @@ vi.mock("../MenuMotion", () => ({
 
 import { setLocale } from "@/lib/i18n";
 import { setTeamProjects, useTeamProjectSide } from "@/state/team-projects";
+import { TOAST_CLEAR_OF_COMPOSER } from "../NoticeCard";
 import { SidebarTeamProjects, type SidebarTeamProjectsMode } from "./SidebarTeamProjects";
 
 const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
@@ -173,6 +174,29 @@ describe("the projects in the sidebar", () => {
     expect([row("The bride")!.getAttribute("aria-current"), under("The bride")]).toEqual(["page", []]);
   });
 
+  it("marks the project whose bot's or group chat's conversation is open, in the rail too", async () => {
+    const current = () => [row("The bride")!.getAttribute("aria-current"), row("The heir")!.getAttribute("aria-current")];
+    for (const open of ["bride-writer", "bride-room"]) {
+      fixture.state = { ...fixture.state, activeView: "chat", selectedId: open };
+      await draw();
+      expect([open, ...current()]).toEqual([open, "page", null]);
+    }
+    mode = { ...mode, density: "icons" };
+    await draw();
+    expect(block("The bride")!.querySelector('[aria-current="page"]')).toBeTruthy();
+  });
+
+  it("leaves the mark to the conversation's own row, and to a view that is not that conversation", async () => {
+    bots = bots.map((one) => (one.id === "bride-writer" ? { ...one, pinned: true } : one));
+    fixture.state = { ...fixture.state, activeView: "chat", selectedId: "bride-writer" };
+    await draw();
+    expect(row("The bride")!.getAttribute("aria-current")).toBeNull();
+    bots = team();
+    fixture.state = { ...fixture.state, activeView: "team-map", selectedId: "bride-editor" };
+    await draw();
+    expect(row("The bride")!.getAttribute("aria-current")).toBeNull();
+  });
+
   it("leaves archived projects out", async () => {
     list = { root: "/dramas", projects: [{ ...bride, archivedAt: 3 }, heir] };
     await draw();
@@ -298,6 +322,13 @@ describe("the project's menu", () => {
     await click(toast.querySelector("button"));
     expect(posts()).toEqual(["/api/team-projects/The%20bride/archive", "/api/team-projects/The%20bride/restore"]);
     expect([listed(), q('[role="status"]')]).toEqual([["The bride", "The heir"], null]);
+  });
+
+  it("offers Undo in the notices' corner, clear of the composer", async () => {
+    await draw();
+    await click(menuButton("The bride"));
+    await click(q("[data-team-project-archive]"));
+    expect(q("[data-access-toast]")!.className).toContain(TOAST_CLEAR_OF_COMPOSER);
   });
 
   it("leaves the chat of a project it archives for the main bot, and comes back to it on Undo", async () => {

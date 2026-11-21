@@ -33,6 +33,7 @@ import {
 import { localizedRelativeTime } from "@/lib/relative-time";
 import { shortPath } from "@/lib/short-path";
 import { activeLocale, t } from "@/lib/i18n";
+import { localizedTaskTitle } from "@/lib/task-title";
 import { roomMemoryCaptureEnabled } from "@/lib/feature-flags";
 import { api, ApiError, useStore, type Bot, type ConfigStatus } from "@/state/store";
 import { Switch } from "../SettingsPrimitives";
@@ -692,7 +693,7 @@ export function MemoryJournalList({
                 {source && (
                   <>
                     {" · "}
-                    <span className="text-ink-secondary">{sourceKey ? t(sourceKey, row.threadTitle ? { title: row.threadTitle } : undefined) : source}</span>
+                    <span className="text-ink-secondary">{sourceKey ? t(sourceKey, row.threadTitle ? { title: localizedTaskTitle(row.threadTitle) } : undefined) : source}</span>
                   </>
                 )}
               </div>

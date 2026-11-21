@@ -1,8 +1,10 @@
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { TeamProjectWire } from "../../../shared/team-projects";
 import { setLocale } from "@/lib/i18n";
 import type { AppSettingsSection } from "@/state/store";
+import { setTeamProjects } from "@/state/team-projects";
 import type { Switch } from "../SettingsPrimitives";
 
 const fixture = vi.hoisted(() => ({
@@ -106,6 +108,28 @@ describe("the Settings window", () => {
     fixture.advanced = false;
     expect(render("general")).toMatch(/data-settings-page-open="general"/);
     expect(render("activity")).toMatch(/data-settings-page-open="data"/);
+  });
+
+  describe("Data on a place with projects", () => {
+    const archived: TeamProjectWire = {
+      id: "p-heir", name: "The heir", folder: "/dramas/The heir", section: "The heir", team: { key: "team:urban", name: "Urban romance" }, follows: {},
+      leadBotId: "heir-lead", createdAt: 1, archivedAt: 5, folderState: "ready", botIds: ["heir-lead"],
+    };
+    beforeEach(() => setTeamProjects({ root: "/dramas", projects: [archived] }));
+    afterEach(() => setTeamProjects(null));
+
+    it("is in Simple's menu after Import & export, and holds only the projects there", () => {
+      fixture.advanced = false;
+      const nav = navPages(render("overview"));
+      expect(nav.slice(nav.indexOf("transfer"), nav.indexOf("transfer") + 2)).toEqual(["transfer", "data"]);
+      const simple = render("data");
+      expect(simple).toMatch(/data-settings-page-open="data"/);
+      for (const block of ["projects", "archived-projects"]) expect(simple).toContain(`data-settings-block="${block}"`);
+      expect(simple).toContain('data-team-project-restore="p-heir"');
+      expect(simple).not.toContain('data-settings-block="storage"');
+      fixture.advanced = true;
+      expect(render("data")).toContain('data-settings-block="storage"');
+    });
   });
 
   const order = (html: string, marks: string[]) => marks.map((mark) => html.indexOf(mark));
