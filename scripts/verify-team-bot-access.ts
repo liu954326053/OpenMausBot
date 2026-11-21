@@ -8,6 +8,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { WELCOME_VERSION } from "../electron/onboarding-record.mjs";
+import { SPOTLIGHTS } from "../src/lib/first-conversation.ts";
+import { TOUR_STEPS } from "../src/lib/guided-tour.ts";
 import { launchCloudSendFixture } from "./testing/cloud-send-fixture.ts";
 import { openFromPalette, searchPalette } from "./testing/control-omb-ui.ts";
 import { mountPreview, type MountedPreview } from "./testing/preview-fixture.ts";
@@ -125,7 +128,10 @@ try {
     if (!bots.find((bot) => bot.id === payroll.id)?.busy) break;
     await delay(200);
   }
+  const onboarding = { completedAt: new Date().toISOString(), version: WELCOME_VERSION, hintsSeen: [...TOUR_STEPS.map((step) => step.id), ...SPOTLIGHTS, "cloud-welcome-done", "cloud-setup-hidden"] };
+  await as("olive", "PATCH", "/api/config", { onboarding, language: "en" });
   for (const who of Object.keys(PEOPLE) as Who[]) {
+    await as(who, "PUT", "/api/me/welcome", { welcomed: true });
     const own = ((await as(who, "GET", "/api/bots")).bots as Array<{ id: string; defaultBot?: { person?: string } }>).find((bot) => bot.defaultBot?.person === PEOPLE[who].email);
     if (own) await as(who, "PATCH", `/api/bots/${own.id}`, { welcomed: true });
   }

@@ -37,8 +37,8 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
         winKeys: ["Ctrl", "Shift", "N"],
       },
       {
-        id: "jump-bot",
-        description: "Jump to bot 1–9 in the roster",
+        id: "jump-number",
+        description: "Jump to your main bot (1) or one of the first eight projects (2–9)",
         macKeys: ["⌘", "1–9"],
         winKeys: ["Ctrl", "1–9"],
       },

@@ -636,6 +636,7 @@ export type Action =
       groupId: string;
       patch: Partial<Pick<Group, "name" | "bulletin" | "description" | "memberIds" | "defaultResponder" | "turnsPerMember" | "pinnedMessageId" | "section">>;
     }
+  | { type: "deleteGroup"; groupId: string }
   | { type: "newGroupTask"; groupId: string }
   | ForkPanelAction
   | { type: "switchGroupTask"; groupId: string; threadId: string }
@@ -1734,6 +1735,7 @@ export function reducer(state: AppState, action: Action): AppState {
     case "reorderProjects":
     case "interrupt":
     case "createGroup":
+    case "deleteGroup":
     case "interruptGroup":
     case "setGroupHold":
     case "steerGroupQueued":
@@ -2659,6 +2661,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             method: "PATCH",
             body: JSON.stringify(action.patch),
           }).catch(showSavedState({ groupId: action.groupId }));
+          break;
+        case "deleteGroup":
+          api(`/api/groups/${action.groupId}`, { method: "DELETE" }).catch(showError);
           break;
         case "setModel":
           if (action.threadId) {
