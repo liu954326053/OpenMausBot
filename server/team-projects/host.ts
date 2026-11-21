@@ -22,6 +22,8 @@ export interface TeamProjectsHostDeps {
   routines(): RoutineManager | null;
   teamMemory: TeamMemory;
   importDeps(): Promise<PackageImportDeps>;
+  /** Deletes a bot as a person deleting it would. Null when it is gone; else why it could not be deleted now. */
+  deleteBot(botId: string): Promise<string | null>;
   /** The share export of a department or of one bot, with these routines and carrying the skills `carries` picks. */
   exportDocument(target: ShareTarget, routines: readonly Routine[], carries: (bot: BotRecord, skill: string) => boolean): ExportedTeam;
   /** The names of the skills a bot learned itself. */
@@ -58,6 +60,7 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
     routines: deps.routines,
     ensureWorkspace: (botId) => { ensureWorkspace(botId, deps.language()); },
     importDeps: deps.importDeps,
+    deleteBot: deps.deleteBot,
     exportDocument: (target, carries) => deps.exportDocument(target, deps.routines()?.listRoutines() ?? [], carries),
     ownSkillNames: deps.ownSkillNames,
     teamKey: ensureSectionMemoryKey,

@@ -121,7 +121,10 @@ export const refusalKey = (code: TeamProjectRefusal): LocaleKey => REFUSAL_KEYS[
 /** Why no project can be made from a team, as the New project dialog says it beside the team. */
 export const unusableKey = (reason: ProjectTeamUnusable): LocaleKey => UNUSABLE_KEYS[reason];
 
-/** Changes when a bot comes, goes or is archived, and when the departments change: each is a reason to read the projects again. */
-export function teamProjectsVersion(bots: ReadonlyArray<{ id: string; hidden?: boolean }>, sections: readonly string[] | undefined): string {
-  return JSON.stringify([bots.map((bot) => (bot.hidden ? `${bot.id} archived` : bot.id)).sort(), sections ?? null]);
+/**
+ * Changes when a bot comes, goes, is archived or moves to another department, and when the departments change: each
+ * is a reason to read the projects again.
+ */
+export function teamProjectsVersion(bots: ReadonlyArray<{ id: string; hidden?: boolean; section?: string }>, sections: readonly string[] | undefined): string {
+  return JSON.stringify([bots.map((bot) => `${bot.id}${bot.hidden ? " archived" : ""} in ${bot.section?.trim() ?? ""}`).sort(), sections ?? null]);
 }

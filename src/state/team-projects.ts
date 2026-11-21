@@ -2,10 +2,10 @@
 // sends no live update for it, so it is read again when the set of bots or departments changes, after every change made
 // here, and when the window gets focus again. A server without projects answers 404 and is not asked again.
 import { useEffect, useSyncExternalStore } from "react";
-import type { CreateTeamProjectInput, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
+import type { CreateTeamProjectInput, TeamChangesInput, TeamChangesResult, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
 import { teamProjectSide, type TeamProjectSide } from "../lib/team-projects";
 import {
-  archiveTeamProject, createTeamProject, listTeamProjects, restoreTeamProject, saveTeamProjectsRoot, type CreateTeamProjectOutcome,
+  archiveTeamProject, createTeamProject, decideTeamChanges, listTeamProjects, restoreTeamProject, saveTeamProjectsRoot, type CreateTeamProjectOutcome,
 } from "../lib/team-projects-api";
 
 let list: TeamProjectsListWire | null = null;
@@ -105,6 +105,12 @@ async function changed(request: Promise<TeamProjectWire>): Promise<TeamProjectWi
 
 export const archiveProject = (id: string): Promise<TeamProjectWire> => changed(archiveTeamProject(id));
 export const restoreProject = (id: string): Promise<TeamProjectWire> => changed(restoreTeamProject(id));
+
+export async function decideProjectTeamChanges(id: string, input: TeamChangesInput): Promise<TeamChangesResult> {
+  const result = decideTeamChanges(id, input);
+  await changed(result.then((decided) => decided.project));
+  return result;
+}
 
 export async function saveProjectsRoot(path: string): Promise<{ root: string } | { error: string }> {
   const saved = await saveTeamProjectsRoot(path);

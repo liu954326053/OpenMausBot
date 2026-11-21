@@ -92,7 +92,7 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
   let ids = 0;
   let scheduled = 0;
   const placed: string[] = [];
-  const hooks: { onPlace?: (botId: string) => void; onExport?: () => void } = {};
+  const hooks: { onPlace?: (botId: string) => void; onExport?: () => void; onDelete?: (botId: string) => string | null | undefined } = {};
   const registryFile = join(DATA_DIR, "projects.json");
   const registry = new TeamProjectRegistry(registryFile, (line) => logged.push(line));
   const deps: TeamProjectsDeps = {
@@ -100,6 +100,12 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
     routines: () => routines,
     ensureWorkspace: (botId) => { placed.push(botId); hooks.onPlace?.(botId); },
     importDeps: async () => importDeps,
+    deleteBot: async (botId) => {
+      const refused = hooks.onDelete?.(botId);
+      if (refused) return refused;
+      store.deleteBot(botId);
+      return null;
+    },
     exportDocument: (target, carries) => {
       hooks.onExport?.();
       exports.push(target.scope === "bot" ? target.bot.id : target.section);
@@ -158,6 +164,8 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
     exports,
     set onPlace(hook: ((botId: string) => void) | undefined) { hooks.onPlace = hook; },
     set onExport(hook: (() => void) | undefined) { hooks.onExport = hook; },
+    /** Returns why a bot cannot be deleted now, or nothing to let the deletion go ahead. */
+    set onDelete(hook: ((botId: string) => string | null | undefined) | undefined) { hooks.onDelete = hook; },
   };
 }
 

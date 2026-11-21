@@ -38,7 +38,7 @@ export class Following {
   }
 
   /** The department of the project's team now: null when the team was deleted, undefined when that cannot be told. */
-  private teamSection(project: StoredTeamProject): string | null | undefined {
+  teamSection(project: StoredTeamProject): string | null | undefined {
     if (!project.team) return undefined;
     try {
       return this.deps.teamOfKey(project.team.key);

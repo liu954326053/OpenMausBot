@@ -145,6 +145,8 @@ describe("what the list is read again for", () => {
   it("changes with the set of bots and with the departments, not with their order", () => {
     const version = teamProjectsVersion([{ id: "a" }, { id: "b" }], ["Sales"]);
     expect(teamProjectsVersion([{ id: "b" }, { id: "a" }], ["Sales"])).toBe(version);
+    expect(teamProjectsVersion([{ id: "a", section: "Sales" }, { id: "b" }], ["Sales"])).not.toBe(version);
+    expect(teamProjectsVersion([{ id: "a", hidden: true }, { id: "b" }], ["Sales"])).not.toBe(version);
     expect(teamProjectsVersion([{ id: "a" }], ["Sales"])).not.toBe(version);
     expect(teamProjectsVersion([{ id: "a" }, { id: "b" }], ["Sales", "bride"])).not.toBe(version);
     expect(teamProjectsVersion([{ id: "a" }, { id: "b" }], undefined)).not.toBe(version);

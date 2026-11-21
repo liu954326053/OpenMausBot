@@ -3,7 +3,7 @@ import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { TeamProjectsListWire, TeamProjectWire } from "../../../shared/team-projects";
+import type { TeamChangesInput, TeamChangesResult, TeamProjectsListWire, TeamProjectWire } from "../../../shared/team-projects";
 import type { Bot, Group } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: { bots: [] as unknown[], groups: [] as unknown[], sections: [] as string[], selectedId: "" } }));
@@ -46,6 +46,8 @@ interface Call { path: string; method: string }
 let calls: Call[] = [];
 let list: TeamProjectsListWire = { root: "/dramas", projects: [bride, heir] };
 let refuse = false;
+let decided: TeamChangesInput[] = [];
+let decide: (project: TeamProjectWire) => TeamChangesResult = (project) => ({ project: { ...project, teamChanges: undefined }, skipped: [] });
 let gate: Promise<void> | null = null;
 let mode: SidebarTeamProjectsMode = { density: "comfortable", advanced: false, tight: true, remote: false, followed: true };
 let query = "";
@@ -94,6 +96,8 @@ beforeEach(() => {
   calls = [];
   list = { root: "/dramas", projects: [bride, heir] };
   refuse = false;
+  decided = [];
+  decide = (project) => ({ project: { ...project, teamChanges: undefined }, skipped: [] });
   gate = null;
   mode = { density: "comfortable", advanced: false, tight: true, remote: false, followed: true };
   query = "";
@@ -105,6 +109,13 @@ beforeEach(() => {
     const call = { path: String(input), method: init?.method ?? "GET" };
     calls.push(call);
     await gate;
+    const deciding = /\/api\/team-projects\/(.+)\/team-changes$/.exec(call.path);
+    if (deciding) {
+      decided.push(JSON.parse(String(init!.body)) as TeamChangesInput);
+      const answer = decide(list.projects.find((one) => one.id === decodeURIComponent(deciding[1]!))!);
+      list = { ...list, projects: list.projects.map((one) => (one.id === answer.project.id ? answer.project : one)) };
+      return new Response(JSON.stringify(answer), { status: 200, headers: { "content-type": "application/json" } });
+    }
     const changed = /\/api\/team-projects\/(.+)\/(archive|restore)$/.exec(call.path);
     const [status, body] = call.path === "/api/team-projects/teams" ? [200, { teams: [] }]
       : !changed ? [200, list]
@@ -321,6 +332,76 @@ describe("the project's menu", () => {
     await draw();
     expect([menuButton("The bride"), q("[data-team-project-new]")]).toEqual([null, null]);
     expect(drawn("The bride")).toHaveLength(4);
+  });
+});
+
+describe("a project whose team changed", () => {
+  const ada = { id: "src-ada", name: "Ada", title: "Researcher" };
+  const editor = { id: "bride-editor", name: "bride-editor", title: "" };
+  const changedBride = { ...bride, teamChanges: { joined: [ada], left: [editor] } };
+  const radio = (copy: string, label: string) =>
+    [...q(`[data-team-change-copy="${copy}"]`)!.querySelectorAll<HTMLElement>('[role="radio"]')].find((one) => one.textContent === label)!;
+
+  beforeEach(() => { list = { root: "/dramas", projects: [changedBride, heir] }; });
+
+  it("says so on the project's row, and only there", async () => {
+    await draw();
+    expect(block("The bride")!.querySelector("[data-team-project-changes]")!.textContent).toBe("Team changed");
+    expect(block("The heir")!.querySelector("[data-team-project-changes]")).toBeNull();
+  });
+
+  it("offers the new members as added and the bots that left as kept, and makes only what the person chose", async () => {
+    await draw();
+    await click(block("The bride")!.querySelector("[data-team-project-changes]"));
+    const dialog = q('[data-team-changes="The bride"]')!;
+    expect(dialog.querySelector("h2")!.textContent).toBe("Team changes");
+    const add = dialog.querySelector<HTMLInputElement>('[data-team-change-member="src-ada"] input')!;
+    expect([add.checked, add.getAttribute("aria-label")]).toEqual([true, "Add Ada to The bride"]);
+    expect(radio("bride-editor", "Keep").getAttribute("aria-checked")).toBe("true");
+    await click(radio("bride-editor", "Remove"));
+    await click(q("[data-team-changes-apply]"));
+    expect(decided).toEqual([{ add: ["src-ada"], remove: ["bride-editor"], keep: [] }]);
+    expect([q("[data-team-changes]"), block("The bride")!.querySelector("[data-team-project-changes]")]).toEqual([null, null]);
+  });
+
+  it("adds no one the person unticked, and keeps the bots that left unless told otherwise", async () => {
+    await draw();
+    await click(block("The bride")!.querySelector("[data-team-project-changes]"));
+    await click(q('[data-team-change-member="src-ada"] input'));
+    await click(q("[data-team-changes-apply]"));
+    expect(decided).toEqual([{ add: [], remove: [], keep: ["bride-editor"] }]);
+  });
+
+  it("stays open with what is still to decide when some changes were not made", async () => {
+    decide = (project) => ({ project: { ...project, teamChanges: { joined: [ada], left: [] } }, skipped: ["src-ada"] });
+    await draw();
+    await click(block("The bride")!.querySelector("[data-team-project-changes]"));
+    await click(q("[data-team-changes-apply]"));
+    expect(q("[data-team-changes-problem]")!.textContent).toBe("Some changes weren't made: the team changed again, or a bot was busy. Check the list and try again.");
+    expect([q("[data-team-changes-left]"), document.body.querySelector<HTMLInputElement>('[data-team-change-member="src-ada"] input')!.checked]).toEqual([null, true]);
+  });
+
+  it("opens from the project's menu too, before Archive", async () => {
+    await draw();
+    await click(block("The bride")!.querySelector<HTMLElement>('button[aria-haspopup="menu"]'));
+    expect(all('[role="menuitem"]').map((item) => item.textContent)).toEqual(["Review team changes…", "Archive"]);
+    await click(q("[data-team-project-review]"));
+    expect([q('[role="menu"]'), q('[data-team-changes="The bride"]') !== null]).toEqual([null, true]);
+  });
+
+  it("is not offered when this app drives another computer", async () => {
+    mode = { ...mode, remote: true };
+    await draw();
+    expect(q("[data-team-project-changes]")).toBeNull();
+  });
+
+  it("is a named mark in the narrow column of icons", async () => {
+    mode = { density: "icons", advanced: false, tight: false, remote: false, followed: true };
+    await draw();
+    const mark = block("The bride")!.querySelector<HTMLElement>("[data-team-project-changes]")!;
+    expect([mark.getAttribute("aria-label"), mark.getAttribute("title")]).toEqual(["The bride: team changed", "The bride: team changed"]);
+    await click(mark);
+    expect(q('[data-team-changes="The bride"]')).not.toBeNull();
   });
 });
 

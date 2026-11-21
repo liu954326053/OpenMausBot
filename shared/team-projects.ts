@@ -107,6 +107,25 @@ export interface TeamProjectChanges {
   left: TeamMemberWire[];
 }
 
+/**
+ * `POST /api/team-projects/:id/team-changes`: what the person decided about the changes they were shown. Each change
+ * is made only if it still stands; the ones that do not, or that could not be made, are `skipped`.
+ */
+export interface TeamChangesInput {
+  /** Members of the team to make copies of: ids from `joined`. */
+  add: string[];
+  /** Copies to delete: ids from `left`. Their files in the project folder are moved aside, not removed. */
+  remove: string[];
+  /** Copies to keep as the project's own: ids from `left`. */
+  keep: string[];
+}
+
+export interface TeamChangesResult {
+  project: TeamProjectWire;
+  /** The ids of the changes that were not made. */
+  skipped: string[];
+}
+
 /** A project as the app shows it. */
 export interface TeamProjectWire extends TeamProjectRecord {
   /** "missing": the project folder is not there, as when its drive is not connected. Its bots do not run. */

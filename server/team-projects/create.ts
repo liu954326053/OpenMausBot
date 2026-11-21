@@ -111,7 +111,8 @@ function removeProjectFolder(folder: string): void {
   rmdirSync(folder);
 }
 
-function removeTeam(result: PackageImportResult, deps: PackageImportDeps): void {
+/** Takes back what an import made: its routines, group chats, bots, connections and department. */
+export function removeImported(result: PackageImportResult, deps: PackageImportDeps): void {
   const failures: string[] = [];
   const attempt = (step: () => void) => {
     try { step(); } catch (error) { failures.push(detailOf(error)); }
@@ -212,7 +213,7 @@ export async function createTeamProject(input: CreateTeamProjectInput, context: 
     } finally {
       stopAdopting();
     }
-    undo.push(() => removeTeam(result, deps));
+    undo.push(() => removeImported(result, deps));
     if (misplaced.length) throw misplaced[0];
     if (result.section !== name) throw new Error(`the department was named ${result.section}`);
 

@@ -1,4 +1,4 @@
-import { Archive, FolderX, Plus } from "lucide-react";
+import { Archive, FolderX, Plus, UsersRound } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -22,6 +22,7 @@ import { SidebarSectionHeader } from "../SidebarSectionHeader";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
 import { SIMPLE_RAIL_BUTTON } from "../SidebarSimpleTop";
 import { NewTeamProjectDialog } from "./NewTeamProjectDialog";
+import { TeamChangesDialog } from "./TeamChangesDialog";
 import { dataSettingsPlace } from "./where-in-settings";
 
 export interface SidebarTeamProjectsMode {
@@ -67,6 +68,7 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
   const menuReturn = useRef<HTMLElement | null>(null);
   const [archived, setArchived] = useState<{ project: TeamProjectWire; left: { from: string; to: string } | null } | null>(null);
   const [creating, setCreating] = useState(false);
+  const [reviewing, setReviewing] = useState<TeamProjectWire | null>(null);
   const forget = useCallback(() => setArchived(null), []);
 
   if (!side.shown) return null;
@@ -101,6 +103,11 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
     if (home) openBot(dispatch, home, showThreads);
     setArchived({ project, left: home ? { from: open, to: home.id } : null });
   };
+  const review = (project: TeamProjectWire) => {
+    closeMenu();
+    setReviewing(project);
+  };
+  const changesOf = (project: TeamProjectWire) => (remote ? undefined : project.teamChanges);
   const undo = async ({ project, left }: NonNullable<typeof archived>) => {
     await restoreProject(project.id);
     if (left && latest.current.selectedId === left.to) dispatch({ type: "select", id: left.from });
@@ -124,7 +131,14 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
               if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); event.stopPropagation(); closeMenu(); return; }
               navigateThreadMenu(event);
             }}>
-            <button type="button" role="menuitem" autoFocus data-team-project-archive="" className={cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary")}
+            {menuMotion.value.project.teamChanges && (
+              <button type="button" role="menuitem" autoFocus data-team-project-review="" className={cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary")}
+                onClick={() => review(menuMotion.value!.project)}>
+                <UsersRound size={16} aria-hidden="true" />{t("teamProjects.changes.review")}
+              </button>
+            )}
+            <button type="button" role="menuitem" autoFocus={!menuMotion.value.project.teamChanges} data-team-project-archive=""
+              className={cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary")}
               onClick={() => void archive(menuMotion.value!.project)}>
               <Archive size={16} aria-hidden="true" />{t("teamProjects.archive")}
             </button>
@@ -135,6 +149,7 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
       {archived && <UndoToast key={archived.project.id} text={t("teamProjects.archived", { name: archived.project.name })}
         failedText={t("teamProjects.undoFailed", { place: dataSettingsPlace() })} onUndo={() => undo(archived)} onDone={forget} />}
       {creating && <NewTeamProjectDialog onClose={() => setCreating(false)} />}
+      {reviewing?.teamChanges && <TeamChangesDialog project={reviewing} changes={reviewing.teamChanges} onClose={() => setReviewing(null)} />}
     </>
   );
 
@@ -144,6 +159,7 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
         {shownProjects.map(({ project, team, rooms }) => {
           const missing = project.folderState === "missing";
           const missingText = t("teamProjects.folderMissingNamed", { name: project.name });
+          const changedText = t("teamProjects.changes.noticeNamed", { name: project.name });
           return (
             <div key={project.id} role="group" aria-label={project.name} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
               <SidebarRailSeparator />
@@ -151,6 +167,12 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
                 <span role="img" data-team-project-missing="" aria-label={missingText} title={missingText} className="mx-auto flex size-6 shrink-0 items-center justify-center text-warning">
                   <FolderX size={16} aria-hidden="true" />
                 </span>
+              )}
+              {changesOf(project) && (
+                <button type="button" data-team-project-changes="" aria-label={changedText} title={changedText} onClick={() => review(project)}
+                  className={cn(SIMPLE_RAIL_BUTTON, "mx-auto text-accent-text")}>
+                  <UsersRound size={16} aria-hidden="true" />
+                </button>
               )}
               <div data-team-project-team="" className={cn("flex flex-col", gap, missing && "opacity-50")}>
                 {team.map(botRow)}
@@ -201,6 +223,12 @@ export function SidebarTeamProjects({ side, all, found, query, sections, mode, b
               <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
                 <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
               </p>
+            )}
+            {changesOf(project) && (
+              <button type="button" data-team-project-changes="" onClick={() => review(project)}
+                className={cn("flex items-center gap-1.5 rounded-md pb-1 text-start text-[12px] leading-4 text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-focus", simple ? "px-2" : "px-3")}>
+                <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
+              </button>
             )}
             {!collapsed && (
               <div data-team-project-team="" className={cn("flex flex-col", gap, missing && "opacity-50")}>

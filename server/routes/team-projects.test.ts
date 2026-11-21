@@ -66,6 +66,7 @@ function fakeHost(overrides: Partial<TeamProjectRouteHost> = {}): TeamProjectRou
     create: async (input) => { asked.push(input); return { project: PROJECT }; },
     archive: (id) => (id === PROJECT.id ? { ...PROJECT, archivedAt: 5 } : null),
     restore: (id) => (id === PROJECT.id ? PROJECT : null),
+    decideTeamChanges: async (id, input) => { asked.push(input); return id === PROJECT.id ? { project: PROJECT, skipped: ["src-9"] } : null; },
     setRoot: (path) => (path === "/dramas" ? { root: "/dramas" } : { error: "Give the folder's full path.", errorKey: "serverError.teamProject.rootNotAbsolute" }),
     moveRefusalFor: () => null,
     departmentRefusal: () => null,
@@ -81,7 +82,7 @@ describe("the project routes", () => {
     const { requiredScope } = await import("../request-auth.ts");
     for (const [method, path] of [
       ["GET", "/api/team-projects"], ["GET", "/api/team-projects/teams"], ["POST", "/api/team-projects"], ["PUT", "/api/team-projects/root"],
-      ["POST", "/api/team-projects/project-1/archive"], ["POST", "/api/team-projects/project-1/restore"],
+      ["POST", "/api/team-projects/project-1/archive"], ["POST", "/api/team-projects/project-1/restore"], ["POST", "/api/team-projects/project-1/team-changes"],
     ] as const) expect(requiredScope(method, path), `${method} ${path}`).toBe("admin");
   });
 
@@ -128,6 +129,22 @@ describe("the project routes", () => {
     expect(await call("POST", "/api/team-projects/nope/restore")).toEqual(missing);
   });
 
+  it("make the team changes a person decided on, and answer 404 for a project that is not there and 422 for no decisions", async () => {
+    const host = fakeHost();
+    const call = await serve(host);
+    expect(await call("POST", "/api/team-projects/project-1/team-changes", { add: ["src-9", "src-9"], keep: ["bot-2"] })).toEqual({
+      status: 200, body: { project: PROJECT, skipped: ["src-9"] },
+    });
+    expect(host.asked).toEqual([{ add: ["src-9"], remove: [], keep: ["bot-2"] }]);
+    expect(await call("POST", "/api/team-projects/nope/team-changes", {})).toEqual({
+      status: 404, body: { error: "That project is no longer there.", errorKey: "serverError.teamProject.notFound" },
+    });
+    expect(await call("POST", "/api/team-projects/project-1/team-changes", { add: "src-9" })).toEqual({
+      status: 422, body: { error: "Choose which of the team's changes to make, then try again.", errorKey: "serverError.teamProject.teamChangesInvalid" },
+    });
+    expect(host.asked).toHaveLength(2);
+  });
+
   it("save the folder for projects, and answer 422 with the reason when it cannot hold them", async () => {
     const call = await serve(fakeHost());
     expect(await call("PUT", "/api/team-projects/root", { path: "/dramas" })).toEqual({ status: 200, body: { root: "/dramas" } });
@@ -164,6 +181,7 @@ describe("the project routes", () => {
     expect(await call("PUT", "/api/team-projects/root", { path: "/dramas" })).toEqual(refused);
     expect(await call("POST", "/api/team-projects/project-1/archive")).toEqual(refused);
     expect(await call("POST", "/api/team-projects/project-1/restore")).toEqual(refused);
+    expect(await call("POST", "/api/team-projects/project-1/team-changes", { add: ["src-9"] })).toEqual(refused);
     expect(host.asked).toEqual([]);
   });
 });

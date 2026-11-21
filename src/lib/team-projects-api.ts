@@ -1,4 +1,6 @@
-import type { CreateTeamProjectInput, ProjectTeamsWire, ProjectTeamWire, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
+import type {
+  CreateTeamProjectInput, ProjectTeamsWire, ProjectTeamWire, TeamChangesInput, TeamChangesResult, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire,
+} from "../../shared/team-projects";
 import { api, ApiError } from "@/state/api";
 import { isTeamProjectRefusal } from "./team-projects";
 
@@ -36,6 +38,9 @@ const change = async (id: string, verb: "archive" | "restore"): Promise<TeamProj
 
 export const archiveTeamProject = (id: string): Promise<TeamProjectWire> => change(id, "archive");
 export const restoreTeamProject = (id: string): Promise<TeamProjectWire> => change(id, "restore");
+
+export const decideTeamChanges = (id: string, input: TeamChangesInput): Promise<TeamChangesResult> =>
+  api<TeamChangesResult>(`${ROUTE}/${encodeURIComponent(id)}/team-changes`, { method: "POST", body: JSON.stringify(input) });
 
 /** `error` is the server's own sentence about a folder it refuses, "" without one. */
 export async function saveTeamProjectsRoot(path: string): Promise<{ root: string } | { error: string }> {

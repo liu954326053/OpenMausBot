@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type {
-  CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamProjectLookup, TeamProjectRecord, TeamProjectWire, TeamProjectsApi,
-  TeamProjectsListWire,
+  CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamChangesInput, TeamChangesResult, TeamProjectLookup, TeamProjectRecord,
+  TeamProjectWire, TeamProjectsApi, TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
 import type { PackageImportDeps } from "../package-import.ts";
 import type { RoutineManager } from "../routines.ts";
@@ -16,6 +16,7 @@ import { changedCopyFields, isCopyField } from "./follow.ts";
 import { Following } from "./following.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 import { checkTeamProjectsRoot } from "./root.ts";
+import { addCopy, teamChangesOf } from "./team-changes.ts";
 import { findProjectTeam, projectTeams, teamBots, type TeamSources } from "./teams.ts";
 
 export interface TeamProjectsDeps {
@@ -27,6 +28,8 @@ export interface TeamProjectsDeps {
   /** Puts a project bot's own files where its project keeps them. Throws when the project folder cannot take them. */
   ensureWorkspace(botId: string): void;
   importDeps(): Promise<PackageImportDeps>;
+  /** Deletes a bot as a person deleting it would. Null when it is gone; else why it could not be deleted now. */
+  deleteBot(botId: string): Promise<string | null>;
   /** The share export of a department or of one bot, carrying the skills `carries` picks and no others. Throws when it cannot be made. */
   exportDocument(target: ShareTarget, carries: (bot: BotRecord, skill: string) => boolean): ExportedTeam;
   /** The names of the skills a bot learned itself: the ones its copies take. */
@@ -119,7 +122,12 @@ export class TeamProjects implements TeamProjectsApi {
     if (ready && !this.writtenCopies.has(project.id)) this.touch(project.id);
     const bots = this.botsOf(project.id);
     const follows = Object.fromEntries(bots.flatMap((bot) => (bot.teamProject?.source && !bot.teamProject.sourceLeft ? [[bot.id, bot.teamProject.source]] : [])));
-    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: bots.map((bot) => bot.id), follows };
+    const teamChanges = project.archivedAt === undefined ? this.teamChanges(project) : null;
+    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: bots.map((bot) => bot.id), follows, ...(teamChanges ? { teamChanges } : {}) };
+  }
+
+  private teamChanges(project: StoredTeamProject) {
+    return teamChangesOf(this.deps.store.bots, project.id, this.following.teamSection(project));
   }
 
   list(): TeamProjectWire[] {
@@ -177,6 +185,54 @@ export class TeamProjects implements TeamProjectsApi {
       log: (line) => this.log(line),
     });
     return "project" in outcome ? { project: this.wire(outcome.project) } : outcome;
+  }
+
+  /**
+   * Makes the changes in the project's team the person decided on, each only if it still stands: copies of new members,
+   * and the departed copies deleted or kept as the project's own. Null: no project has that id.
+   */
+  async decideTeamChanges(id: string, input: TeamChangesInput): Promise<TeamChangesResult | null> {
+    const project = this.stored(id);
+    if (!project) return null;
+    const teamSection = this.following.teamSection(project);
+    const changes = this.teamChanges(project);
+    const joined = new Set(changes?.joined.map((member) => member.id));
+    const left = new Set(changes?.left.map((copy) => copy.id));
+    const skipped: string[] = [];
+    const skip = (id: string, line?: string) => {
+      skipped.push(id);
+      if (line) this.log(line);
+    };
+    for (const copyId of input.keep) {
+      const copy = left.has(copyId) ? this.deps.store.bot(copyId) : null;
+      if (!copy?.teamProject) { skip(copyId); continue; }
+      try {
+        this.deps.store.patchBot(copyId, { teamProject: { id: copy.teamProject.id, role: copy.teamProject.role } });
+      } catch (error) {
+        skip(copyId, `${copy.name} was not kept in ${project.name}: ${detailOf(error)}`);
+      }
+    }
+    for (const copyId of input.remove) {
+      const copy = left.has(copyId) ? this.deps.store.bot(copyId) : null;
+      if (!copy) { skip(copyId); continue; }
+      const refused = await this.deps.deleteBot(copyId).catch(detailOf);
+      if (refused) skip(copyId, `${copy.name} was not removed from ${project.name}: ${refused}`);
+    }
+    for (const sourceId of input.add) {
+      const source = joined.has(sourceId) && teamSection ? this.deps.store.bot(sourceId) : null;
+      if (!source || !teamSection) { skip(sourceId); continue; }
+      try {
+        await addCopy(project, source, teamSection, {
+          importDeps: this.deps.importDeps,
+          exportMember: (member, section) => this.exportOf({ scope: "department", section, bots: [member] }),
+          ensureWorkspace: this.deps.ensureWorkspace,
+          syncCopy: (botId) => void this.following.sync(botId),
+        });
+      } catch (error) {
+        skip(sourceId, `no copy of ${source.name} was made in ${project.name}: ${detailOf(error)}`);
+      }
+    }
+    return { project: this.afterChange(id)!, skipped };
   }
 
   private stored(id: string): StoredTeamProject | undefined {

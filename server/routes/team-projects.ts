@@ -1,10 +1,12 @@
 import type { IncomingMessage } from "node:http";
 
 import type {
-  CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, ProjectTeamsWire, TeamProjectRefusal, TeamProjectWire, TeamProjectsListWire,
+  CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, ProjectTeamsWire, TeamChangesInput, TeamChangesResult, TeamProjectRefusal,
+  TeamProjectWire, TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
 import { onParsedBody } from "../harness/http.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
+import { teamChangesInput } from "../team-projects/team-changes.ts";
 import { userError, userErrorThrown, type UserError } from "../user-errors.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
@@ -14,6 +16,7 @@ export interface TeamProjectRouteHost {
   create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult>;
   archive(id: string): TeamProjectWire | null;
   restore(id: string): TeamProjectWire | null;
+  decideTeamChanges(id: string, input: TeamChangesInput): Promise<TeamChangesResult | null>;
   setRoot(path: unknown): { root: string } | UserError;
   moveRefusalFor(botId: string, to: string | null | undefined): UserError | null;
   departmentRefusal(section: string | null | undefined): UserError | null;
@@ -113,6 +116,13 @@ export function createTeamProjectRoutes(projects: TeamProjectRouteHost): RouteHa
     if (action) {
       const project = action[2] === "archive" ? projects.archive(action[1]!) : projects.restore(action[1]!);
       return project ? json(res, 200, { project }) : json(res, 404, userError("serverError.teamProject.notFound"));
+    }
+    const decided = method === "POST" ? path.match(/^\/api\/team-projects\/([\w-]+)\/team-changes$/) : null;
+    if (decided) {
+      const input = teamChangesInput(await readBody(req));
+      if (!input) return json(res, 422, userError("serverError.teamProject.teamChangesInvalid"));
+      const outcome = await projects.decideTeamChanges(decided[1]!, input);
+      return outcome ? json(res, 200, outcome) : json(res, 404, userError("serverError.teamProject.notFound"));
     }
     const section = url.searchParams.get("section")?.trim();
     const refused = guardDepartments(projects, req, method, path, section) ?? guardCopies(projects, req, method, path, section);
