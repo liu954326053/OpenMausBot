@@ -8,7 +8,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { CanvasNode, CanvasSnapshot } from "../shared/project-canvas.ts";
 import type { GenerationJob } from "../shared/project-generation.ts";
+import { formatServerText, type ServerTextParams } from "../shared/server-text.ts";
 import type { TeamProjectWire } from "../shared/team-projects.ts";
+import zh from "../src/locales/zh.json" with { type: "json" };
 import { removeTempDir } from "./testing/cleanup.ts";
 import { startFakeGenerationMcp } from "./testing/fake-generation-mcp-server.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
@@ -29,6 +31,12 @@ const keep = (name: string, value: unknown) => {
   if (evidenceDir) writeFileSync(join(evidenceDir, name), `${JSON.stringify(value, null, 2)}\n`);
 };
 
+const inChinese = (key: string | undefined, params?: ServerTextParams) => {
+  const line = formatServerText((zh as Record<string, string>)[key ?? ""] ?? "", params);
+  expect(line, key).toMatch(/^[^{}]+$/);
+  return line;
+};
+
 const take = (n: number) => ({ type: "add_node", id: `take-${n}`, nodeType: "shot", title: `镜头 ${n}`, metadata: { prompt: `Take ${n}: the bride turns to the camera` } });
 const generate = (n: number) => ({ tool: "canvas_generate", arguments: { node_id: `take-${n}` } });
 
@@ -38,9 +46,11 @@ const script = [
     { tool: "canvas_apply_ops", arguments: { ops: [1, 2, 3, 4, 5].map(take) } },
     generate(1), generate(2), generate(3), generate(4), generate(4),
   ] },
+  { key: "refused", match: ["MagicBot generation decision", "but generation refused"], reply: "HEARD REFUSAL" },
   { key: "confirmed", match: ["MagicBot generation decision", "the person confirmed"], reply: "HEARD CONFIRM" },
   { key: "fifth", match: ["ONE-MORE"], reply: "ASKED FOR THE FIFTH", steps: [generate(5)] },
   { key: "declined", match: ["MagicBot generation decision", "the person declined"], reply: "HEARD DECLINE" },
+  { key: "sixth", match: ["A-SIXTH-IN-CHINESE"], reply: "ASKED FOR THE SIXTH", steps: [{ tool: "canvas_apply_ops", arguments: { ops: [take(6)] } }, generate(6)] },
 ];
 
 describe("generating on a project's canvas", () => {
@@ -65,7 +75,7 @@ describe("generating on a project's canvas", () => {
     return read.body;
   };
   const node = async (id: string) => (await canvas()).nodes.find((one) => one.id === id)!;
-  const addNodes = async (...ops: unknown[]) => {
+  const applyOps = async (...ops: unknown[]) => {
     const added = await api("POST", `${canvasPath()}/ops`, { baseRevision: (await canvas()).revision, ops });
     expect(added.status, JSON.stringify(added.body)).toBe(200);
   };
@@ -158,7 +168,7 @@ describe("generating on a project's canvas", () => {
   });
 
   it("puts what a person's generate makes to the right of its node, connected from it, with its files in 产出/图片 and 产出/视频", async () => {
-    await addNodes(
+    await applyOps(
       { type: "add_node", id: "poster", nodeType: "image", title: "海报", metadata: { prompt: "A lighthouse at dusk", settings: { count: 2 } } },
       { type: "add_node", id: "opening", nodeType: "shot", title: "开场", metadata: { prompt: "Waves against the lighthouse" } },
     );
@@ -188,7 +198,7 @@ describe("generating on a project's canvas", () => {
   }, hostTimeout(90_000));
 
   it("answers generation's refusal in its own words and keys, and shows a failed job on its node", async () => {
-    await addNodes(
+    await applyOps(
       { type: "add_node", id: "wide", nodeType: "image", title: "Wide", metadata: { prompt: "A wide sea", settings: { aspect: "21:9" } } },
       { type: "add_node", id: "storm", nodeType: "shot", title: "Storm", metadata: { prompt: "A storm [fail:the model is overloaded]" } },
     );
@@ -200,13 +210,16 @@ describe("generating on a project's canvas", () => {
 
     expect((await generateNode("storm")).status).toBe(202);
     const failed = await settledNode("storm");
-    expect(failed.metadata).toMatchObject({ status: "error", errorDetails: "gen couldn't make it: the model is overloaded" });
+    expect(failed.metadata).toMatchObject({
+      status: "error", errorDetails: "gen couldn't make it: the model is overloaded",
+      errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "the model is overloaded" },
+    });
     expect(await results("storm")).toEqual([]);
     keep("02-refused-and-failed.json", { refused, failed });
   }, hostTimeout(90_000));
 
   it("finishes a node whose job was running when the server restarted", async () => {
-    await addNodes({ type: "add_node", id: "held", nodeType: "shot", title: "镜头 H", metadata: { prompt: "A storm over the sea [hold]" } });
+    await applyOps({ type: "add_node", id: "held", nodeType: "shot", title: "镜头 H", metadata: { prompt: "A storm over the sea [hold]" } });
     const started = await generateNode("held");
     expect(started.status).toBe(202);
     await expect.poll(async () => (await jobs()).find((job) => job.id === started.body.jobId)?.taskId, { timeout: 30_000 }).toBeTruthy();
@@ -283,5 +296,52 @@ describe("generating on a project's canvas", () => {
     expect(waitingTurns()).toEqual([]);
     expect(turns().filter((turn) => turn.unplanned).map((turn) => ownTurnText(turn.prompt).slice(0, 200))).toEqual([]);
     keep("05-bot-past-its-ceiling-declined.json", { card, before, after: await node("take-5"), mcpGenerateCalls: fake.calls.filter((call) => String(call.arguments.prompt ?? "").includes("Take 5")) });
+  }, hostTimeout(90_000));
+
+  it("tells a person who reads Chinese why in Chinese: a failure on its node, and a refusal where they press generate and on the card", async () => {
+    expect((await api("PUT", "/api/config", { language: "zh" })).status).toBe(200);
+
+    const storm = (await node("storm")).metadata!;
+    expect(inChinese(storm.errorKey, storm.errorParams)).toBe("gen 没能生成：the model is overloaded");
+
+    await applyOps({ type: "add_node", id: "blank", nodeType: "shot", title: "空镜", metadata: { prompt: " " } });
+    const blank = await generateNode("blank");
+    expect(blank).toEqual({ status: 400, body: { code: "no_prompt", error: "Write a prompt for this node first.", errorKey: "serverError.projectCanvas.noPrompt" } });
+    expect(inChinese(blank.body.errorKey)).toBe("请先给这个节点写提示词。");
+
+    await say(writer, "A-SIXTH-IN-CHINESE");
+    await said(writer.threadId, "ASKED FOR THE SIXTH");
+    const card = (await cards()).at(-1)!;
+    const asked = card.card.canvasGeneration;
+    expect(card.card).toMatchObject({ title: "生成“镜头 6”？", canvasGeneration: { nodeId: "take-6", reasonKey: "serverError.projectGeneration.confirmVideos" } });
+    expect(inChinese(asked.reasonKey, asked.reasonParams))
+      .toBe(`一个机器人每天最多可以不经你确认发起 3 个视频，这个机器人已经发起了 ${asked.reasonParams.used} 个。确认后，它可以再生成 1 个。`);
+    await expect.poll(waitingTurns, { timeout: 15_000 }).toEqual([[card.id]]);
+
+    const line = "Motion 1 不能生成 21:9 比例的画面。它支持 16:9, 9:16。";
+    await applyOps({ type: "update_node", id: "take-6", metadata: { settings: { aspect: "21:9" } } });
+    const pressed = await generateNode("take-6");
+    expect(pressed).toMatchObject({ status: 422, body: { code: "setting_refused", errorKey: "serverError.projectGeneration.aspectRefused" } });
+    expect(inChinese(pressed.body.errorKey, pressed.body.errorParams)).toBe(line);
+
+    expect(await respond(card.card.requestId, "allow")).toEqual({ status: 200, body: { ok: true, outcome: "allowed-once" } });
+    await said(writer.threadId, "HEARD REFUSAL");
+    const answered = (await cards()).at(-1)!.card;
+    expect(answered).toMatchObject({
+      answered: "allow", held: pressed.body.error, heldCode: pressed.body.errorKey, heldParams: pressed.body.errorParams,
+      canvasGeneration: { result: { state: "refused", code: "setting_refused", error: pressed.body.error }, resumed: true },
+    });
+    expect(inChinese(answered.heldCode, answered.heldParams)).toBe(line);
+    expect(ownTurnText(turnOf("refused").prompt)).toContain(`the person confirmed, but generation refused "镜头 6" (take-6) (setting_refused): ${pressed.body.error}`);
+    expect((await jobs()).filter((job) => job.nodeId === "take-6")).toEqual([]);
+    expect((await node("take-6")).metadata).toEqual({ prompt: "Take 6: the bride turns to the camera", settings: { aspect: "21:9" } });
+    await idle();
+    expect(waitingTurns()).toEqual([]);
+    expect(turns().filter((turn) => turn.unplanned).map((turn) => ownTurnText(turn.prompt).slice(0, 200))).toEqual([]);
+    keep("06-in-chinese.json", {
+      failureOnTheNode: { stored: storm, shown: inChinese(storm.errorKey, storm.errorParams) },
+      noPrompt: { answered: blank, shown: inChinese(blank.body.errorKey) },
+      pressed: { answered: pressed, shown: line }, card: { asked: card.card, answered, shownHeld: inChinese(answered.heldCode, answered.heldParams) },
+    });
   }, hostTimeout(90_000));
 });

@@ -37,7 +37,7 @@ function fakeGeneration() {
     },
     job: (_projectId, jobId) => jobs.get(jobId) ?? null,
   };
-  return { api, jobs, started, refuseWith: (failure: GenerationFailure) => { refusal = failure; } };
+  return { api, jobs, started, refuseWith: (failure: GenerationFailure | undefined) => { refusal = failure; } };
 }
 
 beforeEach(() => {
@@ -196,14 +196,18 @@ describe("generating a node", () => {
     expect(nodeOf(service, poster)!.metadata).toMatchObject({ status: "loading", jobId: "job-1" });
   });
 
-  it("answers generation's refusal as it is, and leaves the node as it was", async () => {
+  it("answers generation's refusal as it is, and leaves the node as it was, its last error too", async () => {
     const { service, project, generation } = setup();
-    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", status: "error", errorDetails: "Timed out.", jobId: "old" } })).nodeIds[0]!;
+    const timedOut = { status: "error", errorDetails: "gen gave no result within 10 minutes.", errorKey: "serverError.projectGeneration.timedOut", errorParams: { server: "gen", minutes: 10 } };
+    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", ...timedOut, jobId: "old" } })).nodeIds[0]!;
     const before = nodeOf(service, id)!.metadata;
     const refusal: GenerationFailure = { code: "no_server", error: "Choose an MCP server for videos in this project's settings first.", errorKey: "serverError.projectGeneration.noVideoServer" };
     generation.refuseWith(refusal);
     expect(await service.generate(project, person, id)).toEqual({ refused: refusal });
     expect(nodeOf(service, id)!.metadata).toEqual(before);
+    generation.refuseWith(undefined);
+    await service.generate(project, person, id);
+    expect(nodeOf(service, id)!.metadata).toEqual({ prompt: "A bride", status: "loading", jobId: "job-1" });
   });
 
   it("lets a bot start only its own nodes, and a node only once while its job runs", async () => {
@@ -214,6 +218,18 @@ describe("generating a node", () => {
     await service.generate(project, writer, mine);
     await expect(service.generate(project, writer, mine)).rejects.toMatchObject({ status: 409 });
     expect(generation.started.map((one) => one.requester)).toEqual([writer]);
+  });
+
+  it("refuses a node that is gone, has no prompt or is generating already with a line the person reads in their language", async () => {
+    const { service, project, generation } = setup();
+    const [blank, busy] = service.apply(project, person, opsOf(shot("  "), shot())).nodeIds as [string, string];
+    await service.generate(project, person, busy);
+    const refusalOf = (nodeId: string) => service.generate(project, person, nodeId).then(() => null, (error: unknown) => canvasRefusalOf(error));
+    expect(await refusalOf("gone")).toEqual({ status: 404, body: { code: "not_found", error: "That node isn't on the canvas.", errorKey: "serverError.projectCanvas.nodeMissing" } });
+    expect(await refusalOf(blank)).toEqual({ status: 400, body: { code: "no_prompt", error: "Write a prompt for this node first.", errorKey: "serverError.projectCanvas.noPrompt" } });
+    expect(await refusalOf(busy)).toEqual({ status: 409, body: { code: "generating", error: "This node is being generated already.", errorKey: "serverError.projectCanvas.alreadyGenerating" } });
+    expect(nodeOf(service, blank)!.metadata).toEqual({ prompt: "  " });
+    expect(generation.started).toHaveLength(1);
   });
 
   it("shows a job on its node: each file it made as a node to its right, connected from it, once", async () => {
@@ -235,16 +251,22 @@ describe("generating a node", () => {
     for (const one of made) expect(view.connections).toContainEqual(expect.objectContaining({ fromNodeId: id, toNodeId: one.id, kind: "content" }));
   });
 
-  it("puts a failure in errorDetails, and a cancelled job leaves the node idle", async () => {
+  it("puts a failure on its node in English and as generation's key and values, and a cancelled job leaves the node idle", async () => {
     const { service, project, generation } = setup();
     const [failed, cancelled] = service.apply(project, person, opsOf(shot(), shot())).nodeIds as [string, string];
     await service.generate(project, person, failed);
     await service.generate(project, person, cancelled);
-    const failure = { code: "task_failed", error: "The server said: no faces.", errorKey: "serverError.projectGeneration.taskFailed", reason: "no faces" } as const;
+    const failure: GenerationFailure = {
+      code: "task_failed", error: "gen couldn't make it: no faces", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "no faces" }, reason: "no faces",
+    };
     service.jobChanged({ ...generation.jobs.get("job-1")!, status: "failed", failure });
     service.jobChanged({ ...generation.jobs.get("job-2")!, status: "cancelled" });
-    expect(nodeOf(service, failed)!.metadata).toMatchObject({ status: "error", errorDetails: "The server said: no faces." });
+    expect(nodeOf(service, failed)!.metadata).toEqual({
+      prompt: "A bride alone at the altar", status: "error", jobId: "job-1",
+      errorDetails: "gen couldn't make it: no faces", errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "no faces" },
+    });
     expect(nodeOf(service, cancelled)!.metadata).toMatchObject({ status: "idle", jobId: "job-2" });
+    expect(nodeOf(service, cancelled)!.metadata).not.toHaveProperty("errorKey");
   });
 
   it("follows each loading node again at start: an ended job's outcome, a job generation no longer has, a node that never got one", () => {
@@ -258,7 +280,9 @@ describe("generating a node", () => {
     service.reconcileGenerations();
     expect(nodeOf(service, ended)!.metadata).toMatchObject({ status: "success" });
     expect(service.botView(project).nodes.find((one) => one.metadata?.file?.path === "产出/视频/a.mp4")).toMatchObject({ type: "video" });
-    expect(nodeOf(service, gone)!.metadata).toMatchObject({ status: "error", errorDetails: "That generation is no longer there." });
+    expect(nodeOf(service, gone)!.metadata).toEqual({
+      prompt: "B", status: "error", jobId: "j-gone", errorDetails: "That generation is no longer there.", errorKey: "serverError.projectGeneration.jobGone",
+    });
     expect(nodeOf(service, never)!.metadata).toEqual({ prompt: "C" });
   });
 });

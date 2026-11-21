@@ -24,6 +24,7 @@
  * SOFTWARE.
  */
 
+import type { ServerTextParams } from "./server-text.ts";
 import type { OptionCardData } from "./wire.ts";
 
 export type { CanvasGenerationConfirmation, CanvasGenerationDecision } from "../packages/phone-protocol/src/canvas-generation-card.ts";
@@ -77,8 +78,8 @@ export interface CanvasNodeSettings {
  * - text: `content`, `fontSize`;
  * - image, video, audio, file: `file`; image and video also `naturalWidth`, `naturalHeight`; audio and video
  *   `durationMs`;
- * - image, video, shot and config: `prompt`, `status`, `errorDetails`, `jobId`, `settings`; config also
- *   `generationMode`;
+ * - image, video, shot and config: `prompt`, `status`, `errorDetails`, `errorKey`, `errorParams`, `jobId`, `settings`;
+ *   config also `generationMode`;
  * - bot and group: none. */
 export interface CanvasNodeMetadata {
   content?: string;
@@ -89,7 +90,13 @@ export interface CanvasNodeMetadata {
   durationMs?: number;
   prompt?: string;
   status?: CanvasGenerationStatus;
+  /** The English line: what a bot reads, and what a client shows when it doesn't know `errorKey`. */
   errorDetails?: string;
+  /** A `serverError.projectGeneration.*` or `serverError.projectCanvas.*` key a client shows instead of `errorDetails`.
+   * The three error fields change together: setting or clearing any of them drops the others. */
+  errorKey?: string;
+  /** Values for the placeholders of `errorKey`. */
+  errorParams?: ServerTextParams;
   jobId?: string;
   settings?: CanvasNodeSettings;
   generationMode?: "image" | "video";
@@ -270,10 +277,11 @@ export interface CanvasUploadResponse {
 
 /** `POST /api/team-projects/:id/canvas/generate {nodeId}`: the project's generation starts for a shot, image or video
  * node, from its prompt, its `settings` and the files of the image and audio nodes connected into it, so a model never
- * rewrites the request. Answered 202; a refusal is answered with generation's own `GenerationFailure`. The node shows
- * `loading` while the job runs. On success each file the job made becomes a node to its right, connected from it, below
- * the ones made before; on failure `errorDetails` says why. A bot past its ceiling is asked about on a card instead
- * (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the person answers. */
+ * rewrites the request. Answered 202; a refusal is answered with generation's own `GenerationFailure`, or, for a node
+ * that is gone, has no prompt or is generating already, with the canvas's `ServerErrorBody`. The node shows `loading`
+ * while the job runs. On success each file the job made becomes a node to its right, connected from it, below the ones
+ * made before; on failure `errorDetails`, `errorKey` and `errorParams` say why. A bot past its ceiling is asked about on
+ * a card instead (`OptionCardData.canvasGeneration`), which its node shows in `waiting` until the person answers. */
 export interface CanvasGenerateResponse {
   jobId: string;
 }

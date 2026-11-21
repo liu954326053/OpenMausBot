@@ -104,6 +104,10 @@ const newId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const nodeRef = z.string().regex(/^(?:bot:)?[\w-]{1,128}$/);
 const title = z.string().max(CANVAS_TITLE_MAX_CHARS).refine((value) => !/\p{Cc}/u.test(value), "a title is one line");
 const short = (max: number) => z.string().max(max);
+/** Security: a bot sets the error of a node it made, so the line it names is only ever a generation or canvas error. */
+const ERROR_KEY = /^serverError\.project(?:Generation|Canvas)\.\w+$/;
+const errorParams = z.record(z.string().regex(/^\w{1,40}$/), z.union([short(2_000), z.number().finite()]))
+  .refine((params) => Object.keys(params).length <= 8, "errorParams holds at most 8 values");
 
 const settings = z.object({
   model: short(200).optional(),
@@ -131,6 +135,8 @@ const METADATA_FIELDS = {
   prompt: z.string().max(CANVAS_PROMPT_MAX_CHARS),
   status: z.enum(["idle", "loading", "success", "error"]),
   errorDetails: short(2_000),
+  errorKey: z.string().regex(ERROR_KEY, "errorKey is a serverError.projectGeneration or serverError.projectCanvas key"),
+  errorParams,
   jobId: short(200),
   settings,
   generationMode: z.enum(["image", "video"]),
@@ -177,7 +183,8 @@ export function parseCanvasOps(input: unknown): CanvasOp[] {
   });
 }
 
-const GENERATION: readonly MetadataKey[] = ["prompt", "status", "errorDetails", "jobId", "settings"];
+const ERROR_FIELDS = ["errorDetails", "errorKey", "errorParams"] as const;
+const GENERATION: readonly MetadataKey[] = ["prompt", "status", ...ERROR_FIELDS, "jobId", "settings"];
 const TYPE_KEYS: Record<CanvasNodeType, readonly MetadataKey[]> = {
   bot: [],
   group: [],
@@ -209,6 +216,7 @@ function checkMetadata(type: CanvasNodeType, values: { settings?: unknown }, ind
 
 function mergeMetadata(current: CanvasNodeMetadata | undefined, patch: Record<string, unknown>): CanvasNodeMetadata | undefined {
   const next: Record<string, unknown> = { ...current };
+  if (ERROR_FIELDS.some((key) => patch[key] !== undefined)) for (const key of ERROR_FIELDS) delete next[key];
   for (const [key, value] of Object.entries(patch)) {
     if (value === null) delete next[key];
     else if (value !== undefined) next[key] = value;
