@@ -48,12 +48,8 @@ function within(root: string, candidate: string): string | null {
 }
 
 async function projectRoot(folder: string): Promise<string> {
-  try {
-    const root = await realpath(folder);
-    if ((await stat(root)).isDirectory()) return root;
-  } catch {
-    // The folder is gone or a drive is disconnected: refused below as missing.
-  }
+  const root = await realpath(folder).catch(() => null);
+  if (root && (await stat(root).catch(() => null))?.isDirectory()) return root;
   throw pathError("folder_missing", "the project folder is missing");
 }
 
