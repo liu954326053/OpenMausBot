@@ -11588,7 +11588,7 @@
   "projectCanvas.settings.noReferenceAudio": "Este modelo não aceita áudio de referência.",
   "projectCanvas.settings.server": "Servidor MCP",
   "projectCanvas.settings.noServer": "Nenhum",
-  "projectCanvas.settings.serverNote": "O servidor MCP que gera para este projeto, em Plugins → Servidores MCP.",
+  "projectCanvas.settings.serverNote": "O servidor MCP que gera para este projeto, em Apps → Servidores MCP.",
   "projectCanvas.settings.inheritNote": "Os nós usam estes, a menos que definam os seus. Restaurar padrão em um nó volta a segui-los.",
   "projectCanvas.settings.save": "Salvar",
   "projectCanvas.settings.unavailable": "Não foi possível ler as configurações de geração do projeto.",

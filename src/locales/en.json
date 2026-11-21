@@ -11588,7 +11588,7 @@
   "projectCanvas.settings.noReferenceAudio": "This model takes no reference audio.",
   "projectCanvas.settings.server": "MCP server",
   "projectCanvas.settings.noServer": "None",
-  "projectCanvas.settings.serverNote": "The MCP server that generates for this project, from Plugins → MCP servers.",
+  "projectCanvas.settings.serverNote": "The MCP server that generates for this project, from Apps → MCP servers.",
   "projectCanvas.settings.inheritNote": "Nodes use these unless they set their own. A node's Restore default follows them again.",
   "projectCanvas.settings.save": "Save",
   "projectCanvas.settings.unavailable": "The project's generation settings couldn't be read.",

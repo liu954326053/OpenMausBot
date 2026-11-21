@@ -11588,7 +11588,7 @@
   "projectCanvas.settings.noReferenceAudio": "该模型不接受参考音频。",
   "projectCanvas.settings.server": "MCP 服务器",
   "projectCanvas.settings.noServer": "无",
-  "projectCanvas.settings.serverNote": "为本项目生成内容的 MCP 服务器，来自“插件 → MCP 服务器”。",
+  "projectCanvas.settings.serverNote": "为本项目生成内容的 MCP 服务器，来自“应用 → MCP 服务器”。",
   "projectCanvas.settings.inheritNote": "节点没有自己的设置时就用这些。节点的“恢复默认”会重新跟随它们。",
   "projectCanvas.settings.save": "保存",
   "projectCanvas.settings.unavailable": "无法读取项目的生成设置。",
