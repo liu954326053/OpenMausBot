@@ -2,7 +2,7 @@
 // The openmausbot headless verbs for verifying an isolated fixture. A verb that
 // changes something never runs on a server it merely found.
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -128,6 +128,17 @@ export interface VerificationServer {
   close(): Promise<void>;
 }
 
+/** A folder holding only this node: node's own folder also holds every CLI
+ * `npm install -g` put there (nvm, Homebrew node). Windows allows a symlink
+ * only in Developer Mode. */
+function fixtureNodePath(fixtureTemp: string): string {
+  if (process.platform === "win32") return dirname(process.execPath);
+  const dir = join(fixtureTemp, "node-path");
+  mkdirSync(dir, { recursive: true });
+  if (!existsSync(join(dir, "node"))) symlinkSync(process.execPath, join(dir, "node"));
+  return dir;
+}
+
 /** A temporary home in `dataDir`, the fake engine's knobs from `parentEnv`, node
  * on PATH, and nothing else from the parent shell or this machine's CLIs. */
 export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, dataDir: string, port: number): NodeJS.ProcessEnv {
@@ -158,12 +169,14 @@ export function verificationServerEnvironment(parentEnv: NodeJS.ProcessEnv, data
     FAKE_CLAUDE_DUMP: join(dataDir, "fake-claude-dump.json"),
     // POSIX resolves the fake CLI's `#!/usr/bin/env node` shebang through PATH;
     // Windows resolves it through spawnCli without a shell.
-    PATH: dirname(process.execPath),
+    PATH: fixtureNodePath(fixtureTemp),
     // Without it the server also scans /opt/homebrew/bin, /usr/local/bin and the
     // login shell's PATH, finding a developer's own engine CLIs that CI lacks.
     OMB_TEST_SEALED_PATH: "1",
     // The project's live announcement cards would sit over the corner the UI tests click in.
     OMB_DISABLE_ANNOUNCEMENTS: "1",
+    // The bundled model list: a fixture never reaches the internet.
+    OMB_DISABLE_MODEL_MANIFEST_FETCH: "1",
   });
   // The fake engines' knobs are the one thing a caller may script into the child.
   for (const [key, value] of Object.entries(parentEnv)) {
