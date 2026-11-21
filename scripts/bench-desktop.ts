@@ -26,7 +26,7 @@ import { gzipSync } from "node:zlib";
 
 import { runControlOmb, verificationServerArgs, verificationServerEnvironment } from "./control-omb.ts";
 import { installedChrome } from "./testing/control-omb-ui.ts";
-import { FRAMES_START, FRAMES_STOP, launchChrome, revealRowExpression, switchExpression, TRANSCRIPT_BOX, type BenchBot, type Chrome, type Page } from "./testing/bench-desktop-page.ts";
+import { botEntry, FRAMES_START, FRAMES_STOP, launchChrome, revealRowExpression, switchExpression, TRANSCRIPT_BOX, type BenchBot, type Chrome, type Page } from "./testing/bench-desktop-page.ts";
 import { removeTempDir, waitForExit } from "../server/testing/cleanup.ts";
 import { freePortBlock } from "../server/testing/ports.ts";
 import { LAST_CONVERSATION_KEY } from "../src/lib/last-conversation.ts";
@@ -373,7 +373,7 @@ const cpuDelta = (before: Record<string, number>, after: Record<string, number>)
   Object.fromEntries(Object.keys(after).map((type) => [type, Math.round((after[type]! - (before[type] ?? 0)) * 1000)]));
 
 const COMPONENT_GROUPS: Record<string, RegExp> = {
-  sidebar: /^(Sidebar|BotThreadList|BotListItem|GroupListItem|PinnedCircle|ThreadRow|PlacesRail)/,
+  sidebar: /^(Sidebar|BotThreadList|BotListItem|PinnedCircle|ThreadRow|PlacesRail)/,
   composer: /Composer|MentionTextarea/,
   transcript: /^(ChatView|ChatRows?|MessagesList|Bubble|MessageActions|ReactionChips|AttachmentGallery|ActivityChip|TurnPresence|CallRecordRow)/,
   markdown: /Markdown/,
@@ -649,7 +649,7 @@ async function main() {
       const profiled = await chrome.newPage({ storage: STORAGE });
       await pageLoad(profiled, preview.url);
       await profiled.evaluate(revealRowExpression({ id: botId, name: "Pepper" }));
-      await profiled.evaluate(`document.querySelector('[data-sidebar-bot-row="${botId}"]')?.click()`);
+      await profiled.evaluate(`${botEntry({ id: botId, name: "Pepper" })}?.click()`);
       await sleep(1_500);
       log("streaming a reply, small workspace");
       result.stream = { small: await streamTurn(chrome, profiled, fixture, botId) };
@@ -765,7 +765,7 @@ async function main() {
       await profiled.evaluate(revealRowExpression(bot));
       await profiled.evaluate("window.__bench.reset()");
       const at = performance.now();
-      await profiled.evaluate(`document.querySelector('[data-sidebar-bot-row="${bot.id}"]')?.click()`);
+      await profiled.evaluate(`${botEntry(bot)}?.click()`);
       await profiled.waitFor(lastId ? `document.querySelector('[data-mid="${lastId}"]')` : "document.querySelector('[data-mid]')", 30_000);
       const ms = performance.now() - at;
       await sleep(1_000);

@@ -54,6 +54,7 @@ import { GlassBar, GlassScrollFrame, GlassScroller } from "./GlassScrollFrame";
 import { SidebarSectionHeader } from "./SidebarSectionHeader";
 import { SidebarSearchPill, SidebarSearchToggle } from "./SidebarSimpleTop";
 import { SimpleRailFooter } from "./SidebarSimpleRail";
+import { SidebarTeamProjects } from "./team-projects/SidebarTeamProjects";
 
 const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
   id, threadId: `${id}-thread`, name: id, title: "", description: "", notifications: true,
@@ -79,7 +80,7 @@ function render(collapseToIcons = false) {
 }
 const headers = (tree: ReactElement<Props>[]) => tree.filter((node) => node.type === SidebarSectionHeader) as ReactElement<Parameters<typeof SidebarSectionHeader>[0]>[];
 const listedBots = (tree: ReactElement<Props>[]) => tree.map((node) => (node.props.bot as Bot | undefined)?.id).filter(Boolean);
-const outside = (tree: ReactElement<Props>[]) => tree.some((node) => node.props["data-sidebar-outside-projects"] !== undefined);
+const projectSearch = (tree: ReactElement<Props>[]) => (tree.find((node) => node.type === SidebarTeamProjects)!.props as Parameters<typeof SidebarTeamProjects>[0]).query;
 
 beforeEach(() => {
   fixture.values = [];
@@ -154,23 +155,23 @@ describe("Simple-mode sidebar layout", () => {
   it("toggles a search pill from the round search button, and closing it clears the filter", () => {
     const toggle = () => render().tree.find((node) => node.type === SidebarSearchToggle)!.props as Parameters<typeof SidebarSearchToggle>[0];
     const pill = () => render().tree.find((node) => node.type === SidebarSearchPill)?.props as Parameters<typeof SidebarSearchPill>[0] | undefined;
-    expect(render().tree.some((node) => node.props["aria-label"] === "Search bots and messages" && node.type === "input")).toBe(false);
+    expect(render().tree.some((node) => node.props["aria-label"] === "Search projects" && node.type === "input")).toBe(false);
     expect(pill()).toBeUndefined();
     expect(toggle().open).toBe(false);
     toggle().onToggle();
     expect(toggle().open).toBe(true);
     pill()!.onQuery("bea");
     expect(pill()!.query).toBe("bea");
-    expect(listedBots(render().tree)).toEqual(["bea"]);
+    expect([projectSearch(render().tree), listedBots(render().tree)]).toEqual(["bea", []]);
     pill()!.onClose();
     expect(pill()).toBeUndefined();
-    expect(outside(render().tree)).toBe(false);
+    expect(projectSearch(render().tree)).toBe("");
     toggle().onToggle();
     pill()!.onQuery("atlas");
-    expect(outside(render().tree)).toBe(true);
+    expect(projectSearch(render().tree)).toBe("atlas");
     toggle().onToggle();
     expect(pill()).toBeUndefined();
-    expect(outside(render().tree)).toBe(false);
+    expect(projectSearch(render().tree)).toBe("");
   });
 
   it("opens at 280px in Simple and 320px in Advanced, each remembering its own resized width", () => {
@@ -258,12 +259,12 @@ describe("Simple-mode sidebar layout", () => {
     expect(fixture.dispatch.mock.calls.map(([action]) => action)).toEqual(made);
   });
 
-  const railSearch = (tree: ReactElement<Props>[]) => tree.find((node) => node.type === "button" && node.props["aria-label"] === "Search bots and messages")!.props.onClick as () => void;
+  const railSearch = (tree: ReactElement<Props>[], label: string) => tree.find((node) => node.type === "button" && node.props["aria-label"] === label)!.props.onClick as () => void;
 
   it("opens the search pill from the rail's search button by expanding the sidebar", () => {
     setSidebarDensity("icons");
     expect(render().tree.some((node) => node.type === SidebarSearchPill)).toBe(false);
-    railSearch(render().tree)();
+    railSearch(render().tree, "Search projects")();
     const { tree } = render();
     expect(tree.some((node) => node.type === SimpleRailFooter)).toBe(false);
     expect(tree.some((node) => node.type === SidebarSearchPill)).toBe(true);
@@ -272,7 +273,7 @@ describe("Simple-mode sidebar layout", () => {
   it("opens the command palette instead when a side panel holds the sidebar collapsed", () => {
     const opened = vi.fn();
     window.addEventListener("omb:open-command-palette", opened);
-    const search = railSearch(render(true).tree);
+    const search = railSearch(render(true).tree, "Search bots and messages");
     expect(edge(render(true).tree), "no edge to drag while a side panel holds it collapsed").toBeUndefined();
     search();
     expect(opened).toHaveBeenCalledOnce();

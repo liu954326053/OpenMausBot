@@ -59,7 +59,6 @@ export function threadsWaitingOnPerson(bot: Bot, queued: Record<string, unknown[
   return orderedThreadList(sidebarBotActivityTasks(bot, queued).filter((task) => task.activity === "waiting-on-you" || task.unread));
 }
 
-/** Must derive each thread's state exactly as GroupThreadList's sidebar rows do. */
 export function sidebarGroupActivityTasks(group: Group, bots: Bot[], queued: Record<string, unknown[]>): Array<Task & { queued: boolean }> {
   if (group.dm) return [];
   const tasks = (group.tasks ?? [{ threadId: group.threadId, title: group.name, createdAt: group.createdAt }]).map((task) => {

@@ -97,7 +97,7 @@
    - 项目文件夹的路径，文件夹在的时候显示；
    - “团队有变化”，点开 `TeamChangesDialog`，远程客户端不显示；
    - 项目自己的群聊：有群聊时才出现的一个按钮，点开是 `SidebarPopoverMenu` 的菜单，未读的带强调色的点，选一个就打开它。
-2. **从侧栏打开**：项目行打开画布；搜索时项目还是一行，行上写着搜到的机器人，点它打开画布并选中搜到的机器人的节点（几个都搜到时先选负责人）；打开着的项目在别处或在侧栏菜单里被归档，就回到主机器人。没有删除项目的接口，归档走的是同一条路。
+2. **从侧栏打开**：项目行打开画布；侧栏的搜索按项目名找，搜到的项目还是一行，点它照常打开画布；打开着的项目在别处或在侧栏菜单里被归档，就回到主机器人。没有删除项目的接口，归档走的是同一条路。
 3. **合进 `canvas-server` 的第二次之后**：
    - 参考的编号用 `shared/project-canvas-references.ts`，画布自己那份 `references.ts` 和 `projectCanvas.reference.label` 删掉。名字是 `{种类} {序号}`，种类的词是 `server.projectCanvas.reference.*`，和服务器写给机器人、写进生成提示词的一样。
    - 任务和生成带上页面的语言（`CanvasTaskRequest.language`、`CanvasGenerateRequest.language`，取 `activeLocale()`），服务器用它给参考起名、写生成提示词开头的编号行。`startGeneration` 改为接 `CanvasGenerateRequest`。

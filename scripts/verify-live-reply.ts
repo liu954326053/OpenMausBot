@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 import { caseTokens, LIVE_REPLY_CASES, liveReplyScripts, type LiveReplyCase } from "../server/testing/live-reply-cases.ts";
-import { findInSidebar, runControlOmbUi } from "./testing/control-omb-ui.ts";
+import { openFromPalette, runControlOmbUi } from "./testing/control-omb-ui.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** The instance each engine's fixture adds, and the model Pepper is moved to. */
@@ -131,16 +131,11 @@ const CONSOLE_ERRORS = async (handle: Handle): Promise<number> => {
   return entries.filter((entry) => (entry.type ?? entry.level) === "error").length;
 };
 
-/** The sidebar lists a bot in no project or a room outside projects once it is searched for by name. */
-async function openRow(handle: Handle, row: string, name: string) {
-  for (let tries = 0; tries < 40 && !(await evaluate(handle, `Boolean(document.querySelector(${JSON.stringify(row)}))`)); tries++) {
-    await evaluate(handle, findInSidebar(name));
-    await pause(250);
-  }
-  await evaluate(handle, `document.querySelector(${JSON.stringify(row)})?.click(); 'opened'`);
+async function openRow(handle: Handle, entry: `bot:${string}` | `room:${string}`, name: string) {
+  for (let tries = 0; tries < 40 && !(await evaluate(handle, openFromPalette(name, entry))); tries++) await pause(250);
 }
 
-async function runCase(handle: Handle, engine: string, entry: LiveReplyCase & { prompt?: string; tokens?: string[] }, context: { threadId: string; otherBotRow: string; otherName: string; botRow: string; composer: string; chat: string }): Promise<Verdict> {
+async function runCase(handle: Handle, engine: string, entry: LiveReplyCase & { prompt?: string; tokens?: string[] }, context: { threadId: string; otherBotRow: `bot:${string}`; otherName: string; botRow: `bot:${string}`; composer: string; chat: string }): Promise<Verdict> {
   const tokens = entry.tokens ?? caseTokens(entry);
   const problems: string[] = [];
   if (entry.action === "steer" && !STEERS.has(engine)) return { engine, name: entry.name, ok: true, problems: ["skipped: this engine does not steer in its fake"] };
@@ -215,7 +210,7 @@ async function runRoom(handle: Handle, engine: string): Promise<Verdict> {
   const basil = (await api(handle, "POST", "/api/bots", { name: "Basil", modelSelection: { instanceId: spec.instanceId, model: spec.model } })).bot;
   const room = (await api(handle, "POST", "/api/groups", { memberIds: [handle.botId, basil.id], name: "Launch room",
     setup: { bulletin: "", defaultResponder: { kind: "member", botId: handle.botId } } })).group;
-  await openRow(handle, `[data-sidebar-group-row="${room.id}"]`, "Launch room");
+  await openRow(handle, `room:${room.id}`, "Launch room");
   for (let tries = 0; tries < 40 && !(await evaluate(handle, `Boolean(document.querySelector('textarea[aria-label="Message Launch room"]'))`)); tries++) await pause(250);
   const entry = LIVE_REPLY_CASES.find((candidate) => candidate.name === "two-messages")!;
   const tokens = caseTokens(entry);
@@ -275,7 +270,7 @@ for (const engine of values.engines!.split(",")) {
     await evaluate(handle, "console.error('verify-live-reply console probe'); 'probed'");
     if ((await CONSOLE_ERRORS(handle)) !== before + 1) throw new Error("the console check cannot see console errors");
     const context = { threadId: pepper.threadId, chat: "Pepper", composer: "Message Pepper",
-      botRow: `[data-sidebar-bot-row="${pepper.id}"]`, otherBotRow: `[data-sidebar-bot-row="${other.id}"]`, otherName: other.name };
+      botRow: `bot:${pepper.id}` as const, otherBotRow: `bot:${other.id}` as const, otherName: other.name };
     for (const entry of engine === "opencode" ? REAL_CASES : cases) {
       const verdict = await runCase(handle, engine, entry, context).catch((error: unknown) => ({ engine, name: entry.name, ok: false, problems: [String(error).slice(0, 300)] }));
       verdicts.push(verdict);

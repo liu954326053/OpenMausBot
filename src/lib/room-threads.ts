@@ -66,14 +66,3 @@ export function roomQueueLabel(entry: RoomQueueEntry, nameOf: (botId: string) =>
     ? t("room.queue.waitingFor", { name, position: entry.position, of: entry.of })
     : t("room.queue.waiting", { position: entry.position, of: entry.of });
 }
-
-export function roomWorkingPreview(group: RoomThreads & Pick<Group, "queue">, nameOf: (botId: string) => string | undefined): string | undefined {
-  const speakerId = group.busyBotId ?? roomSpeakerIds(group)[0];
-  const queued = (group.queue ?? []).filter((entry) => entry.state === "queued");
-  if (speakerId) {
-    const name = nameOf(speakerId) ?? t("sidebar.preview.aBot");
-    return queued.length ? t("sidebar.preview.botWorkingQueued", { name, count: queued.length }) : t("sidebar.preview.botWorking", { name });
-  }
-  if (queued[0]) return t("room.queue.member", { name: nameOf(queued[0].botId) ?? t("sidebar.preview.aBot"), status: roomQueueLabel(queued[0], nameOf) });
-  return undefined;
-}

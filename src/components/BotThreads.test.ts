@@ -3,7 +3,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { initialState, StoreProvider, type Bot, type Group } from "@/state/store";
 import { BotThreadList, botRowProps } from "./Sidebar";
-import { GroupThreadList } from "./SidebarGroupThreadList";
 import { formatUpdatedAt } from "./SidebarThreadRow";
 import { GroupTaskPicker, TaskPicker } from "./TaskPicker";
 
@@ -25,8 +24,8 @@ const bot: Bot = {
   ],
 };
 
-const threadList = (candidate: Bot, query = "") => createElement(BotThreadList, {
-  ...botRowProps(initialState, vi.fn(), candidate, { density: "comfortable", query, onMenu: vi.fn() }),
+const threadList = (candidate: Bot) => createElement(BotThreadList, {
+  ...botRowProps(initialState, vi.fn(), candidate, { density: "comfortable", onMenu: vi.fn() }),
   selected: true,
 });
 
@@ -95,13 +94,11 @@ describe("sidebar bot threads", () => {
         { threadId: "routine-execution", title: "Internal daily digest execution", projectId: "daily", createdAt: 5, routineRunId: "run-daily", unread: true, busy: true, activity: "waiting-on-you" },
       ],
     };
-    for (const query of ["", "daily"]) {
-      const markup = renderToStaticMarkup(threadList(routineBot, query));
-      expect(markup).toContain('data-sidebar-thread-row="routine-result"');
-      expect(markup).toContain("Daily digest results");
-      expect(markup).not.toContain("routine-execution");
-      expect(markup).not.toContain("Internal daily digest execution");
-    }
+    const markup = renderToStaticMarkup(threadList(routineBot));
+    expect(markup).toContain('data-sidebar-thread-row="routine-result"');
+    expect(markup).toContain("Daily digest results");
+    expect(markup).not.toContain("routine-execution");
+    expect(markup).not.toContain("Internal daily digest execution");
   });
 
   it("folds idle threads another bot opened into one collapsed group outside the six visible rows, and keeps one at work in view", () => {
@@ -121,27 +118,13 @@ describe("sidebar bot threads", () => {
     expect(markup).not.toContain('data-sidebar-thread-row="pricing"');
     expect(markup).toContain('data-sidebar-thread-row="review"');
     expect(markup).toContain("Show all 9 threads");
-    const searched = renderToStaticMarkup(threadList({ ...bot, threadId: "own-6", tasks: [...own, ...helpers] }, "pricing"));
-    expect(searched).toContain('data-sidebar-thread-row="pricing"');
-    expect(searched).not.toContain("data-sidebar-helper-threads");
   });
 
-  it("exposes group history through the same nested thread rows and All threads picker", () => {
+  it("exposes group history through the All threads picker", () => {
     const group: Group = { id: "team", threadId: "group-current", name: "Launch team", memberIds: [], defaultResponder: { kind: "everyone" }, bulletin: "", unread: false, createdAt: 1, messages: [],
       tasks: [{ threadId: "group-current", title: "Launch plan", createdAt: 3 }, { threadId: "group-old", title: "Previous review", createdAt: 2 }] };
-    const markup = renderToStaticMarkup(createElement(StoreProvider, null, createElement(GroupThreadList, { group, selected: true })));
-    expect(markup).toContain('aria-label="Launch team threads"');
-    expect(markup).toContain('data-sidebar-thread-row="group-current" aria-current="page"');
-    expect(markup).toContain("Previous review");
-    expect(markup).not.toContain("New thread");
     const picker = renderToStaticMarkup(createElement(StoreProvider, null, createElement(GroupTaskPicker, { group })));
     expect(picker).toContain('aria-label="All threads"');
     expect(picker).not.toContain("Tasks");
-    const working = renderToStaticMarkup(createElement(StoreProvider, null, createElement(GroupThreadList, { group: { ...group, working: true }, selected: true })));
-    expect(working).toContain(`title="Launch plan · ${formatUpdatedAt(3)} · Working"`);
-    const archived = { ...group, tasks: [group.tasks![0]!, { ...group.tasks![1]!, archivedAt: 5 }] };
-    const withArchived = renderToStaticMarkup(createElement(StoreProvider, null, createElement(GroupThreadList, { group: archived, selected: true })));
-    expect(withArchived).not.toContain("Previous review");
-    expect(withArchived).toContain("Show all");
   });
 });
