@@ -1,7 +1,9 @@
-/** Where a bot stands in its flow: its superior (null for the root) and its direct subordinates, in the app's order. */
+/** Where a bot stands in its flow: its superior (null for the root), its direct subordinates in the app's order, and every
+ * bot of the flow, the root included. */
 export interface FlowLine {
   superior: string | null;
   subordinates: string[];
+  team: string[];
 }
 
 /** What the running server's flows answer; see `TeamFlows`. */
@@ -29,7 +31,7 @@ export function projectParents(projectId: string): Record<string, string> {
   return installed.projectParents(projectId);
 }
 
-/** Null for a bot in no flow: the main bot, an archived bot, a bot in General, in a department without a Chief, or a Chief nobody is under yet. */
+/** Null for a bot in no flow: the main bot, an archived bot, a bot in General or in a department without a Chief. */
 export function flowLineOf(botId: string): FlowLine | null {
   return installed.lineOf(botId);
 }

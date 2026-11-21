@@ -24,18 +24,19 @@ describe("a team's flow", () => {
 
     expect(app.flows.parents("Studio")).toEqual({ [id("Story")]: id("Chief"), [id("Board")]: id("Chief") });
     const listed = app.store.bots.map((bot) => bot.id).filter((bot) => bot === id("Story") || bot === id("Board"));
-    expect(app.flows.lineOf(id("Chief"))).toEqual({ superior: null, subordinates: listed });
-    expect(app.flows.lineOf(id("Story"))).toEqual({ superior: id("Chief"), subordinates: [] });
+    const team = [id("Chief"), ...listed];
+    expect(app.flows.lineOf(id("Chief"))).toEqual({ superior: null, subordinates: listed, team });
+    expect(app.flows.lineOf(id("Story"))).toEqual({ superior: id("Chief"), subordinates: [], team });
   });
 
-  it("keeps a Chief with nobody under it out of any flow, so it reaches as it would without one, until a member joins", async () => {
+  it("makes a Chief with nobody under it the top of a flow of its own, which a member joins under it", async () => {
     const app = await installation();
     const id = app.team("Leadership", "Chief");
-    expect(app.flows.lineOf(id("Chief"))).toBeNull();
+    expect(app.flows.lineOf(id("Chief"))).toEqual({ superior: null, subordinates: [], team: [id("Chief")] });
     expect(app.flows.wire().teams).toEqual([{ section: "Leadership", chiefId: id("Chief"), parents: {}, placed: [] }]);
 
     const joined = app.bot("Analyst", "Leadership");
-    expect(app.flows.lineOf(id("Chief"))).toEqual({ superior: null, subordinates: [joined.id] });
+    expect(app.flows.lineOf(id("Chief"))).toEqual({ superior: null, subordinates: [joined.id], team: [id("Chief"), joined.id] });
   });
 
   it("replaces a member's superior with the one it is given next", async () => {
@@ -218,7 +219,9 @@ describe("a project's flow", () => {
     expect(app.flows.projectParents("Season one")).toEqual({ [one("Story 1")]: one("Lead 1"), [one("Script 1")]: one("Story 1") });
     expect(app.flows.projectParents("Season two")).toEqual({ [two("Story 2")]: two("Lead 2"), [two("Script 2")]: two("Story 2") });
     expect(app.flows.parents("Season two")).toEqual(app.flows.projectParents("Season two"));
-    expect(app.flows.lineOf(two("Story 2"))).toEqual({ superior: two("Lead 2"), subordinates: [two("Script 2")] });
+    const line = app.flows.lineOf(two("Story 2"))!;
+    expect({ ...line, team: [...line.team].sort() })
+      .toEqual({ superior: two("Lead 2"), subordinates: [two("Script 2")], team: [two("Lead 2"), two("Story 2"), two("Script 2")].sort() });
     expect(app.flows.wire().teams.map((team) => team.section)).toEqual(["Studio"]);
   });
 

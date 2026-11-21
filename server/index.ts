@@ -127,7 +127,7 @@ import { createSideJobs, helperSelection } from "./side-jobs.ts";
 import type { CaptureTurn, RoomLine } from "./memory-capture.ts";
 import { createAboutMe } from "./about-me.ts"; import { createPersonPreference } from "./host/person-preference.ts";
 import { botMemoryUpdate, ownersOwnAsk } from "./memory-forget.ts";
-import { canManage, canReach, departmentRefusal, flowRelation, hasTeamAuthority, inChargeOfEvery, isMainBot, livePeerRoster, livePeerRosterBlock, peerName, peerRosterPrompt, peerRosterSystemPrompt, peerStatus, peerStatusWords, reachablePeers, reachesOnlyHere, resolveTeammate, roomPeerRosterSystemPrompt, roomRosterLine, teamProjectAllows, teamProjectRoomChange, teamProjectRoomConflict } from "./peer-roster.ts"; import { roomPostRefusal, sharedNamesNote, unreachedMentionLines } from "./same-name-mentions.ts";
+import { canManage, canReach, departmentRefusal, flowPlace, flowRelation, hasTeamAuthority, inChargeOfEvery, isMainBot, livePeerRoster, livePeerRosterBlock, peerName, peerRosterPrompt, peerRosterSystemPrompt, peerStatus, peerStatusWords, reachablePeers, reachesOnlyHere, resolveTeammate, roomPeerRosterSystemPrompt, roomRosterLine, teamProjectAllows, teamProjectRoomChange, teamProjectRoomConflict } from "./peer-roster.ts"; import { roomPostRefusal, sharedNamesNote, unreachedMentionLines } from "./same-name-mentions.ts";
 import {
   containerComputerAction,
   containerComputerFrame,
@@ -13235,7 +13235,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
               description: b.description || undefined, ...flowRelation(sender, b),
             };
           });
-        return json(res, 200, { bots: [...bots, ...(reachesOnlyHere(sender) ? [] : botLink.link.agents())] });
+        return json(res, 200, { bots: [...bots, ...(reachesOnlyHere(sender) ? [] : botLink.link.agents())], ...flowPlace(sender) });
       }
       if (await dispatchRoutes([createInternalThreadRoutes({
         store, coordinator, from: internalSender, fromThreadId: internalCapability.threadId,

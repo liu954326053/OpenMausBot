@@ -116,10 +116,12 @@ export class TeamFlows implements InstalledFlows {
     const bot = this.deps.store.bots.find((candidate) => candidate.id === botId);
     if (!bot || bot.hidden || bot.defaultBot) return null;
     const flow = this.flowOf(sectionKey(bot.section));
-    if (!flow || !Object.keys(flow.parents).length || (bot.id !== flow.rootId && !Object.hasOwn(flow.parents, bot.id))) return null;
+    if (!flow || (bot.id !== flow.rootId && !Object.hasOwn(flow.parents, bot.id))) return null;
+    const members = Object.keys(flow.parents);
     return {
       superior: bot.id === flow.rootId ? null : flow.parents[bot.id]!,
-      subordinates: Object.keys(flow.parents).filter((member) => flow.parents[member] === bot.id),
+      subordinates: members.filter((member) => flow.parents[member] === bot.id),
+      team: [flow.rootId, ...members],
     };
   }
 

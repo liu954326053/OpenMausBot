@@ -220,8 +220,6 @@ describe("a team's flow on the real server", () => {
         steps: [
           { tool: "list_bots", arguments: {} },
           { arguments: { bot_ids: [video.id], message: "Cut the trailer." }, expectError: true },
-          { arguments: { bot_ids: [scout.id], message: "Find buyers for the trailer." }, expectError: true },
-          { arguments: { bot_ids: ["MagicBot"], message: "What do you think?", consult: true }, expectError: true },
           { arguments: { bot_ids: [board.id], message: "Draw the storyboard for the trailer." } },
         ],
         reply: "Board is drawing it",
@@ -231,6 +229,8 @@ describe("a team's flow on the real server", () => {
         steps: [
           { arguments: { bot_ids: [sol.id], message: "Here is my storyboard." }, expectError: true },
           { arguments: { bot_ids: [story.id], message: "Which story is it?", consult: true }, expectError: true },
+          { arguments: { bot_ids: [scout.id], message: "Who buys trailers?", consult: true }, expectError: true },
+          { arguments: { bot_ids: ["MagicBot"], message: "What do you think?", consult: true }, expectError: true },
         ],
         reply: "Storyboard: twelve frames",
       },
@@ -243,19 +243,21 @@ describe("a team's flow on the real server", () => {
       `- Board — Storyboard artist [your subordinate]: Draws every shot. [id: ${board.id}]`,
       `- Story — Story editor [your subordinate]: Picks the stories worth telling. [id: ${story.id}]`,
     ].join("\n"));
-    expect(chiefHeard).toContain("In the Studio team's flow you are at the top");
-    for (const beyond of [video.id, scout.id]) expect(chiefHeard, nameOf(beyond)).not.toContain(beyond);
+    expect(chiefHeard).toContain("In the Studio team's flow you are at the top: inside the team you reach only your direct subordinates");
+    expect(chiefHeard).toContain("Outside the Studio team, every other bot, in any department, is reachable too");
+    expect(chiefHeard).toContain("Other bots you can reach, in other departments:");
+    expect(chiefHeard).toContain(`- Scout — Researcher (Sales) [id: ${scout.id}]`);
+    expect(chiefHeard).not.toContain(video.id);
 
-    const [listed, further, otherTeam, mainBot, handed] = answers(chiefTurn);
-    expect(listed).toContain("Bots you can reach in your team's flow");
+    const [listed, further, handed] = answers(chiefTurn);
+    expect(listed).toContain("Bots you can reach: in your own team only your direct subordinates, marked so, and every other bot listed outside your team:");
     expect(listed).toContain(`[id: ${story.id}, model:`);
     expect(listed).toContain(`[id: ${board.id}, model:`);
     expect(listed).toContain("your subordinate");
-    for (const beyond of [video.id, scout.id, main.id]) expect(listed, nameOf(beyond)).not.toContain(beyond);
+    for (const outside of [scout.id, main.id]) expect(listed, nameOf(outside)).toContain(`[id: ${outside}, model:`);
+    expect(listed).not.toContain(video.id);
     const reachable = `You can hand work to your direct subordinates: Board (id ${board.id}), Story (id ${story.id}). Nothing was sent.`;
     expect(further).toBe(`Video is not your direct subordinate: it works under Board. Hand the work to Board, who can pass it on. ${reachable}`);
-    expect(otherTeam).toBe(`Scout is not on your lines in your team's flow, so it cannot be reached from here. ${reachable}`);
-    expect(mainBot).toBe(`MagicBot is not on your lines in your team's flow, so it cannot be reached from here. ${reachable}`);
     expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: board.id, botName: "Board" }]);
 
     const memberTurn = firstTurn(seen, board);
@@ -265,13 +267,40 @@ describe("a team's flow on the real server", () => {
     expect(memberHeard).toContain(`- Sol — Showrunner [Chief of Staff] [your superior] [id: ${sol.id}]`);
     expect(memberHeard).toContain(`- Video — Video editor [your subordinate]: Cuts the boards into a video. [id: ${video.id}]`);
     expect(memberHeard).toContain("Draw the storyboard for the trailer.");
-    const [up, sideways] = answers(memberTurn);
+    expect(memberHeard).not.toContain(scout.id);
+    const [up, sideways, otherTeam, mainBot] = answers(memberTurn);
     expect(up).toContain("Sol is your superior in your team's flow, and work goes only down it");
     expect(up).toContain("Ask it a question with consult: true");
     expect(sideways).toContain("Story is not on your lines in your team's flow");
+    const memberReach = `You can hand work to your direct subordinates: Video (id ${video.id}). You can ask your superior, Sol (id ${sol.id}), a question with consult: true. Nothing was sent.`;
+    expect(otherTeam).toBe(`Scout is not on your lines in your team's flow, so it cannot be reached from here. ${memberReach}`);
+    expect(mainBot).toBe(`MagicBot is not on your lines in your team's flow, so it cannot be reached from here. ${memberReach}`);
 
     expect(told(resumedTurn(seen, sol))).toContain("Storyboard: twelve frames");
     expect([...new Set(seen.map((turn) => nameOf(turn.botId)))].sort()).toEqual(["Board", "Sol"]);
+  }, 120_000);
+
+  it("lets the Chief reach outside its team as before: it consults the main bot and hands work to a bot in no flow", async () => {
+    const seen = await personAsks("the Chief reaches outside its team", sol, "Find buyers for the trailer.", {
+      [sol.id]: {
+        steps: [
+          { arguments: { bot_ids: ["MagicBot"], message: "Which buyers did we pitch last year?", consult: true } },
+          { arguments: { bot_ids: [scout.id], message: "Find three buyers for the trailer." } },
+        ],
+        reply: "Asked MagicBot and Scout",
+        resumeReply: "Scout found the buyers",
+      },
+      [main.id]: { reply: "Last year: Northwind and Contoso" },
+      [scout.id]: { reply: "Buyers: Northwind, Contoso, Fabrikam" },
+    });
+    const [consulted, handed] = answers(firstTurn(seen, sol));
+    expect(JSON.parse(consulted!).receipts).toMatchObject([{ botId: main.id }]);
+    expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: scout.id, botName: "Scout" }]);
+    expect(told(firstTurn(seen, main))).toContain("Which buyers did we pitch last year?");
+    expect(told(firstTurn(seen, scout))).toContain("Find three buyers for the trailer.");
+    const resumed = seen.filter((turn) => turn.botId === sol.id && turn.resumed).map(told).join("\n");
+    expect(resumed).toContain("Last year: Northwind and Contoso");
+    expect(resumed).toContain("Buyers: Northwind, Contoso, Fabrikam");
   }, 120_000);
 
   it("lets a subordinate hand work on to its own subordinate, and the result comes back up to it", async () => {
@@ -312,24 +341,41 @@ describe("a team's flow on the real server", () => {
   it("holds a project's bots to the team's flow mapped onto their copies", async () => {
     const [season] = seasons;
     const lead = (await call("GET", "/api/bots?messages=0")).body.bots.find((bot: FixtureBot) => bot.id === season!.leadBotId) as FixtureBot;
+    const storyCopy = copyIn(season!, story);
     const seen = await personAsks("a project's lead", lead, "Cut a teaser.", {
       [lead.id]: {
         steps: [
           { tool: "list_bots", arguments: {} },
           { arguments: { bot_ids: [copyIn(season!, video)], message: "Cut a teaser." }, expectError: true },
           { arguments: { bot_ids: [video.id], message: "Cut a teaser." }, expectError: true },
+          { arguments: { bot_ids: ["MagicBot"], message: "How long should a teaser run?", consult: true } },
+          { arguments: { bot_ids: [storyCopy], message: "Pick the teaser's story beats." } },
         ],
-        reply: "Asked the right bot",
+        reply: "Asked the right bots",
+        resumeReply: "Story picked the beats",
+      },
+      [main.id]: { reply: "Fifteen seconds" },
+      [storyCopy]: {
+        steps: [{ arguments: { bot_ids: ["MagicBot"], message: "Which beats sell?", consult: true }, expectError: true }],
+        reply: "Beats: hook, twist, title",
       },
     });
-    const [listed, further, team] = answers(firstTurn(seen, lead));
-    expect(listed).toContain(copyIn(season!, story));
+    const [listed, further, team, consulted, handed] = answers(firstTurn(seen, lead));
+    expect(listed).toContain(storyCopy);
     expect(listed).toContain(copyIn(season!, board));
-    for (const beyond of [copyIn(season!, video), main.id, sol.id, story.id, board.id, video.id]) expect(listed, beyond).not.toContain(beyond);
+    expect(listed).toContain(`[id: ${main.id}, model:`);
+    for (const beyond of [copyIn(season!, video), sol.id, story.id, board.id, video.id]) expect(listed, beyond).not.toContain(beyond);
     expect(further).toContain("Video is not your direct subordinate: it works under Story. Hand the work to Story, who can pass it on. You can hand work to your direct subordinates: ");
-    for (const subordinate of [`Story (id ${copyIn(season!, story)})`, `Board (id ${copyIn(season!, board)})`]) expect(further).toContain(subordinate);
+    for (const subordinate of [`Story (id ${storyCopy})`, `Board (id ${copyIn(season!, board)})`]) expect(further).toContain(subordinate);
     expect(team).toContain(`No bot with id or name "${video.id}"`);
-    expect(team).toContain("You work in your team's flow: you can reach your superior and your direct subordinates and no other bot");
+    expect(team).toContain("In your team project you are at the top of its flow: there you can reach only your direct subordinates");
+    expect(JSON.parse(consulted!).receipts).toMatchObject([{ botId: main.id }]);
+    expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: storyCopy }]);
+    const [memberAsked] = answers(firstTurn(seen, { id: storyCopy }));
+    expect(memberAsked).toContain("MagicBot is not on your lines in your team's flow, so it cannot be reached from here.");
+    const resumed = seen.filter((turn) => turn.botId === lead.id && turn.resumed).map(told).join("\n");
+    expect(resumed).toContain("Fifteen seconds");
+    expect(resumed).toContain("Beats: hook, twist, title");
   }, 120_000);
 
   it("puts every bot of a project made before projects had a source team under its lead", async () => {

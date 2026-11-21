@@ -33,11 +33,13 @@ export const EVERYONE_ON_THE_MAP = "When the person writes to @everyone on the T
 
 const TEAM_PROJECT_LEADS = "A bot marked Project lead in your roster leads a team project: a team of bots working on one project of the person's, kept apart from every other project. Hand the lead whatever concerns its project with coordinate_bots; it arranges the work inside. You cannot reach a project's other bots, their threads or their setup, whatever departments you are responsible for. What one project needs from another goes through you: keep what you learn from one project out of what you send another, unless the person asks you to carry it across.";
 
-/** What a Chief in a flow can reach, which is all it can reach. */
+/** What a Chief can reach inside its flow: all it can reach when it is under a superior there. */
 function flowReachRule(line: FlowLine, inProject: boolean, sectionName: string, canDelegate: boolean): string {
   const place = inProject ? `${sectionName} project's flow` : `${sectionName} team's flow`;
   return [
-    `In the ${place} you are ${line.superior ? "under your superior, marked so in your roster" : "at the top"}: you hand work only to your direct subordinates, who hand it on to theirs, and no other bot can be reached from here${inProject ? ", inside the project or outside it; the main bot hands you what it needs, and what you finish goes back to it on its own" : ", in this department or any other"}.`,
+    line.superior
+      ? `In the ${place} you are under your superior, marked so in your roster: you hand work only to your direct subordinates, who hand it on to theirs, and no other bot can be reached from here, ${inProject ? "inside the project or outside it" : "in this department or any other"}.`
+      : `In the ${place} you are at the top: inside the ${inProject ? "project" : "team"} you reach only your direct subordinates and hand work only to them, who hand it on to theirs; never reach past them to a bot below.`,
     canDelegate ? "Hand each part of a job to the subordinate whose role fits it, in the order they are listed when one part builds on another, and ask any of them a question with consult: true." : "",
     line.superior ? "What your superior hands you goes back to it on its own when you end your turn: attach every file you made for it with attach_file first, and never send it your result with coordinate_bots." : "",
   ].filter(Boolean).join(" ");
@@ -61,18 +63,26 @@ export function chiefOfStaffPrompt(
   const owner = chief ? botOwner(chief) : null;
   const person = owner ? peerName(nameFromEmail(owner)) || "your person" : null;
   const reachable = reachablePeers(bots, chief ?? { id: chiefId, name: "" }, also);
-  const team = chief ? reachable.filter((bot) => hasAuthority(chief, bot)) : reachable;
-  const others = chief ? reachable.filter((bot) => !hasAuthority(chief, bot)) : [];
   const line = chief ? flowLineOf(chief.id) : null;
+  const inFlow = (bot: ChiefTeamMember) => line?.team.includes(bot.id) === true;
+  const team = chief ? reachable.filter((bot) => (line ? inFlow(bot) : hasAuthority(chief, bot))) : reachable;
+  const supervised = chief && line ? reachable.filter((bot) => !inFlow(bot) && hasAuthority(chief, bot)) : [];
+  const others = chief ? reachable.filter((bot) => !team.includes(bot) && !supervised.includes(bot)) : [];
   const roster = renderRoster(team, {
     max: ROSTER_MAX_BOTS,
-    empty: line ? "- You have no subordinates in the flow yet: do the work yourself." : "- No other visible bots are available yet.",
+    empty: line ? "- Nobody is under you in the flow yet." : "- No other visible bots are available yet.",
     about: true,
     department: chiefSection,
     ...(line ? { flow: line } : {}),
   });
-  const othersRoster = others.length ? renderRoster(others, {
+  const supervisedRoster = supervised.length ? renderRoster(supervised, {
     max: Math.max(ROSTER_MAX_BOTS - team.length, OTHERS_MIN_BOTS),
+    empty: "",
+    about: true,
+    department: chiefSection,
+  }) : "";
+  const othersRoster = others.length ? renderRoster(others, {
+    max: Math.max(ROSTER_MAX_BOTS - team.length - supervised.length, OTHERS_MIN_BOTS),
     empty: "",
     about: false,
     department: chiefSection,
@@ -100,11 +110,11 @@ export function chiefOfStaffPrompt(
     responsibleFor
       ? `The owner also made you responsible for ${responsibleFor}. You supervise their bots and may propose setup changes there. You remain the user's single point of contact. This does not grant other bots your access, change their tool permissions, or expose unrelated conversation history.`
       : "",
-    inProject && line
-      ? `You lead one team project, filed as the ${sectionName} department: its bots are your team, and you arrange the work inside it. The main bot, which belongs to no project, has no authority inside your project and you have none outside it.`
+    line?.superior
+      ? ""
       : inProject
         ? `You lead one team project, filed as the ${sectionName} department: its bots are your team, and you arrange the work inside it. Outside the project only the main bot, which belongs to no project, can be reached${canDelegate ? ": consult it, or hand it what crosses projects, with coordinate_bots" : ""}. It has no authority inside your project and you have none outside it.`
-        : !line && canDelegate && `Every other bot on this team, in any department, is reachable too: consult it or hand it work with coordinate_bots whenever a job needs it, without asking anyone to set anything up. Reaching a bot${responsibleFor || person ? " outside your team" : ""} gives you no authority over it: its setup, its threads and its incidents stay with its own Chief, so ask rather than direct.`,
+        : canDelegate && `${line ? `Outside the ${sectionName} team, every other bot, in any department,` : "Every other bot on this team, in any department,"} is reachable too: consult it or hand it work with coordinate_bots whenever a job needs it, without asking anyone to set anything up. Reaching a bot${responsibleFor || person ? " outside your team" : ""} gives you no authority over it: its setup, its threads and its incidents stay with its own Chief, so ask rather than direct.`,
     line ? flowReachRule(line, inProject, sectionName, canDelegate) : "",
     canDelegate && others.some(isTeamProjectLead) ? TEAM_PROJECT_LEADS : "",
     "Do the work yourself, bring in a teammate when one fits the job, and return one concise consolidated answer. Never invent a teammate's progress or result. Normal permission and approval rules still apply.",
@@ -122,6 +132,8 @@ export function chiefOfStaffPrompt(
     line ? `Your ${line.superior ? "superior and your " : ""}direct subordinates in the ${sectionName} ${inProject ? "project's" : "team's"} flow, in the order to hand work down to them:`
       : person ? `Bots that report to ${person} (your team):` : everywhere ? "Your team, in every department:" : alsoManages ? "Your team, in the departments you are responsible for:" : `Current ${sectionName} department (your team):`,
     roster,
+    supervisedRoster && (person ? `Other bots that report to ${person}, outside your flow:` : everywhere ? "Your team in every other department, outside your flow:" : "Your team in the other departments you are responsible for, outside your flow:"),
+    supervisedRoster,
     othersRoster && (person ? "Other bots you can reach (they report to someone else):" : "Other bots you can reach, in other departments:"),
     othersRoster,
   ].filter(Boolean).join("\n");

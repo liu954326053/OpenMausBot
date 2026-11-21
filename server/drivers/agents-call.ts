@@ -367,9 +367,14 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       const line = b.flow === "superior" || b.flow === "subordinate" ? `, your ${b.flow}` : "";
       return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${team}${line}${state ? `, ${state}` : ""}]`;
     });
-    if (bots.some((b) => b.flow === "superior" || b.flow === "subordinate")) {
+    if (r.flow === "under") {
       return {
         text: `Bots you can reach in your team's flow (your superior and your direct subordinates, and no other bot):\n${lines.join("\n")}\n\nHand work only to a subordinate with coordinate_bots; ask your superior or a subordinate a question with consult: true. Then end your turn: busy teammates queue and results resume you automatically.`,
+      };
+    }
+    if (r.flow === "top") {
+      return {
+        text: `Bots you can reach: in your own team only your direct subordinates, marked so, and every other bot listed outside your team:\n${lines.join("\n")}\n\nIn your team hand work only to a subordinate with coordinate_bots, never to a bot below it; outside it, use coordinate_bots for concrete work or, with consult: true, for advice. Then end your turn: busy teammates queue and results resume you automatically.`,
       };
     }
     return {
