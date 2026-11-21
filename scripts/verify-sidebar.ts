@@ -16,13 +16,13 @@ try {
   if (process.argv.includes("--unread")) {
     const api = fixtureApi(fixture.info.url);
     const { bots } = await api("GET", "/api/bots?messages=0");
-    const atlas = bots.find((bot: { name: string }) => bot.name === "Sidebar Atlas");
-    const folder = (await api("POST", `/api/bots/${atlas.id}/projects`, { name: "Reports" })).project;
+    const main = bots.find((bot: { defaultBot?: unknown }) => bot.defaultBot);
+    const folder = (await api("POST", `/api/bots/${main.id}/projects`, { name: "Reports" })).project;
     for (let i = 0; i < 12; i++) {
-      await api("POST", `/api/bots/${atlas.id}/tasks`, { title: `Webhook report ${i + 1}`, ...(i % 2 ? { projectId: folder.id } : {}) });
-      await api("PATCH", `/api/bots/${atlas.id}`, { unread: true });
+      await api("POST", `/api/bots/${main.id}/tasks`, { title: `Webhook report ${i + 1}`, ...(i % 2 ? { projectId: folder.id } : {}) });
+      await api("PATCH", `/api/bots/${main.id}`, { unread: true });
     }
-    const working = (await api("POST", `/api/bots/${atlas.id}/tasks`, { title: "Working report" })).task;
+    const working = (await api("POST", `/api/bots/${main.id}/tasks`, { title: "Working report" })).task;
     const wrapper = join(fixture.info.dataDir, "read-fixture-claude.mjs");
     writeFileSync(wrapper, ["#!/usr/bin/env node", 'process.env.FAKE_CLAUDE_MODE = "slow";',
       `process.env.FAKE_CLAUDE_SLOW_FINISH_GATE = ${JSON.stringify(join(fixture.info.dataDir, "finish-read-fixture"))};`,
@@ -30,14 +30,14 @@ try {
     ].join("\n"));
     await api("PATCH", "/api/instances/claude", { cli: wrapper });
     await api("PATCH", "/api/config", { threads: { maxConcurrentPerBot: 1 } });
-    await api("POST", `/api/bots/${atlas.id}/messages`, { threadId: working.threadId, text: "Keep this fixture turn running" });
-    await api("PATCH", `/api/bots/${atlas.id}`, { unread: true });
+    await api("POST", `/api/bots/${main.id}/messages`, { threadId: working.threadId, text: "Keep this fixture turn running" });
+    await api("PATCH", `/api/bots/${main.id}`, { unread: true });
     // A sibling waits on capacity; a plain follow-up to Claude's running
     // thread would steer into that turn rather than exercise the queue.
-    const queued = (await api("POST", `/api/bots/${atlas.id}/tasks`, { title: "Queued report" })).task;
-    const receipt = await api("POST", `/api/bots/${atlas.id}/messages`, { threadId: queued.threadId, text: "Queued report must survive reading" });
+    const queued = (await api("POST", `/api/bots/${main.id}/tasks`, { title: "Queued report" })).task;
+    const receipt = await api("POST", `/api/bots/${main.id}/messages`, { threadId: queued.threadId, text: "Queued report must survive reading" });
     if (!receipt.queued) throw new Error("the read fixture must retain a queued report");
-    await api("PATCH", `/api/bots/${atlas.id}`, { unread: true });
+    await api("PATCH", `/api/bots/${main.id}`, { unread: true });
     writeFileSync(join(fixture.info.dataDir, "bulk-read-before.json"), JSON.stringify(await api("GET", "/api/bots"), null, 2));
   }
   ui = await mountPreview(fixture, {
