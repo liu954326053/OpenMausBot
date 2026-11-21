@@ -228,8 +228,22 @@ export interface CanvasBotState {
   /** The person or a bot set its node's position. False: the position is the server's default layout, moved down
    * clear of the canvas's other nodes, which the app may replace with its own by storing positions. */
   placed: boolean;
-  /** Text nodes a task running or waiting in its queue was written in, which its reply goes into or beside. */
+  /** Text nodes a task running or waiting in its queue was written in that had no text when it was sent: its reply
+   * goes into each. */
   writingInto?: string[];
+  /** The new nodes the replies to tasks running or waiting in its queue become, beside the text nodes the tasks were
+   * written in that had text when each was sent, in the order they were sent. */
+  writingBeside?: CanvasReplyPlaceholder[];
+}
+
+/** Where a reply being written beside the text node `nodeId` goes: the id, position and size of the node it becomes
+ * once its turn ends well. No node the server places is put there until then. */
+export interface CanvasReplyPlaceholder {
+  id: string;
+  nodeId: string;
+  position: CanvasPoint;
+  width: number;
+  height: number;
 }
 
 /** `GET /api/team-projects/:id/canvas`. `nodes` hold a node for every bot of the project, `connections` the
@@ -256,9 +270,12 @@ export interface ProjectCanvasEvent {
  * the bot's node goes with it, each reference named by the label `connectedReferences` gives it and its title: a text
  * node's text, a shot's fields, media and other files as attachments. Without `threadId` it goes to the conversation
  * the bot has open. With `targetNodeId` the bot's reply, once its turn ends well, secrets redacted and cut to
- * `CANVAS_CONTENT_MAX_CHARS`, becomes the text of that node when it has none, and otherwise a new text node to its
- * right, connected from it and titled by `replyTitle`. A stopped or failed turn, a turn the task joined while it ran,
- * or a server restart before the reply adds nothing. */
+ * `CANVAS_CONTENT_MAX_CHARS`, becomes the text of that node when it had none as the task was sent and still has none,
+ * and otherwise a new text node to its right, connected from it and titled by `replyTitle`. For a node that had text,
+ * that new node is the one the bot's `writingBeside` shows from the moment the task is sent, which the reply takes
+ * exactly. A stopped or failed turn, a turn the task joined while it ran, a turn for a message queued after the task
+ * that it was merged into, or a server restart before the reply adds nothing and ends what `writingInto` or
+ * `writingBeside` showed for it. */
 export interface CanvasTaskRequest {
   botId: string;
   text: string;

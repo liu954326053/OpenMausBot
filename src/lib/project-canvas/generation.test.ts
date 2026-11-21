@@ -40,4 +40,10 @@ describe("where a result lands", () => {
     const links = [link("shot", "v1"), link("shot", "v2"), link("shot", "v4")];
     expect(nextOutputFrame(shot, "video", [shot, first, second, unrelated, elsewhere], links).position).toEqual({ x: column, y: 320 + 236 + OUTPUT_GAP_Y });
   });
+
+  it("puts the next result under the frames of results still to come in that column, and not under those elsewhere", () => {
+    const first = node("v1", "video", { position: { x: column, y: 50 }, width: 420, height: 236 });
+    const coming = [{ position: { x: column, y: 50 + 236 + OUTPUT_GAP_Y }, width: 340, height: 240 }, { position: { x: column + 900, y: 2000 }, width: 340, height: 240 }];
+    expect(nextOutputFrame(shot, "text", [shot, first], [link("shot", "v1")], coming).position).toEqual({ x: column, y: 50 + 236 + OUTPUT_GAP_Y + 240 + OUTPUT_GAP_Y });
+  });
 });

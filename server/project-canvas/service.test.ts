@@ -3,15 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { botNodeId, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
+import { PERSON_STOPPED_TURN_NAME } from "../../shared/client-cancel.ts";
+import { failedTurnTool } from "../../shared/failed-turn.ts";
+import { botNodeId, CANVAS_NODE_SIZE, type CanvasFileRef, type CanvasOp, type ProjectCanvasEvent } from "../../shared/project-canvas.ts";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationFailure, type GenerationJob, type GenerationRequester, type StartGenerationInput } from "../../shared/project-generation.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import type { DirectSendReceipt } from "../direct-send.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { addServerLinePacks } from "../server-lines.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
+import { canvasStateText } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import { parseCanvasOps } from "./ops.ts";
+import { LANE_GAP, NODE_GAP } from "./placement.ts";
 import { canvasRefusalOf, ProjectCanvasService, type ProjectCanvasServiceDeps } from "./service.ts";
 
 let dir: string;
@@ -85,6 +89,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     generation: generation.api,
     openCards: () => [],
     queuedThreads: () => new Set(),
+    stillQueued: () => false,
     saveImage: () => ({ path: join(dir, "attachments", "saved.png") }),
     language: () => undefined,
     newId: () => `id-${++next}`,
@@ -262,6 +267,14 @@ describe("a task written in a text node", () => {
     return view.nodes.filter((node) => to.has(node.id));
   };
   const writingInto = (service: ProjectCanvasService) => service.snapshot("p1", auth).bots.writer!.writingInto;
+  const writingBeside = (service: ProjectCanvasService) => service.snapshot("p1", auth).bots.writer!.writingBeside;
+  const numberedSends = (): ProjectCanvasServiceDeps["send"] => {
+    let count = 0;
+    return async (_auth, message) => {
+      count += 1;
+      return { ok: true, threadId: message.threadId, message: { id: `sent-${count}`, at: count, role: "user", kind: "text", text: message.text } };
+    };
+  };
 
   it("fills an empty text node with the bot's reply once its turn ends well, secrets redacted, and shows the bot writing into it until then", async () => {
     let busy = true;
@@ -269,6 +282,7 @@ describe("a task written in a text node", () => {
     const [logline] = textNodes(service, project, undefined, "Logline");
     await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
     expect(writingInto(service)).toEqual([logline]);
+    expect(writingBeside(service)).toBeUndefined();
     service.taskLine("writer-main", turnEnd("sent-1", "A bride swaps places.", { turnSucceeded: undefined }));
     expect(contentOf(service, logline)).toBeUndefined();
     busy = false;
@@ -282,65 +296,130 @@ describe("a task written in a text node", () => {
     expect(writingInto(service)).toBeUndefined();
   });
 
-  it("keeps a text node's own text and puts each reply in the bot's new text node to its right, connected from it and titled by the request", async () => {
+  it("shows the node a reply beside a text node with text becomes from the moment the task is sent, which the reply takes exactly, connected from the node that keeps its text", async () => {
     let busy = true;
     const { service, project, events } = setup({ threadBusy: () => busy });
     const [logline] = textNodes(service, project, "Draft", "Logline");
-    const request = "Make it one sentence,\nwith the rain and the ring in it";
-    await service.task("p1", auth, { botId: "writer", text: request, targetNodeId: logline });
-    expect(writingInto(service)).toEqual([logline]);
-    busy = false;
-    const told = events.length;
-    service.taskLine("writer-main", turnEnd("sent-1", `Rain, a ring, a swap. Key: ${KEY}`));
     const source = nodeOf(service, logline!)!;
-    expect(source.metadata?.content).toBe("Draft");
-    const [first] = beside(service, logline);
-    expect(first).toMatchObject({ type: "text", title: "Make it one sentence, with the r", createdBy: writer, metadata: { content: expect.stringMatching(/^Rain, a ring, a swap\. Key: «redacted/) } });
-    expect(first!.metadata!.content).not.toContain(KEY);
-    expect(first!.position.x).toBeGreaterThanOrEqual(source.position.x + source.width);
-    expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
+    const request = "Make it one sentence,\nwith the rain and the ring in it";
+    const told = events.length;
+    await service.task("p1", auth, { botId: "writer", text: request, targetNodeId: logline });
+    const [placeholder] = writingBeside(service)!;
+    expect(writingBeside(service)).toEqual([{ id: expect.any(String), nodeId: logline, position: { x: source.position.x + source.width + LANE_GAP, y: source.position.y }, ...CANVAS_NODE_SIZE.text }]);
     expect(writingInto(service)).toBeUndefined();
+    expect(events.slice(told)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "bots" }]);
+    expect(service.snapshot("p1", auth).nodes.map((node) => node.id)).not.toContain(placeholder!.id);
+    expect(canvasStateText(service.botView(project), "writer", {})).not.toContain(`"${placeholder!.id}"`);
+    busy = false;
+    const replied = events.length;
+    service.taskLine("writer-main", turnEnd("sent-1", `Rain, a ring, a swap. Key: ${KEY}`));
+    expect(contentOf(service, logline)).toBe("Draft");
+    const [first] = beside(service, logline);
+    expect(first).toMatchObject({
+      id: placeholder!.id, type: "text", title: "Make it one sentence, with the r", position: placeholder!.position, width: placeholder!.width, height: placeholder!.height,
+      createdBy: writer, metadata: { content: expect.stringMatching(/^Rain, a ring, a swap\. Key: «redacted/) },
+    });
+    expect(first!.metadata!.content).not.toContain(KEY);
+    expect(events.slice(replied)).toEqual([{ kind: "project-canvas", projectId: "p1", revision: expect.any(Number), reason: "document" }]);
+    expect(writingBeside(service)).toBeUndefined();
+    busy = true;
     await service.task("p1", auth, { botId: "writer", text: "Shorter", targetNodeId: logline });
+    const [next] = writingBeside(service)!;
+    expect(next!.position).toEqual({ x: first!.position.x, y: first!.position.y + first!.height + NODE_GAP });
     service.taskLine("writer-main", turnEnd("sent-1", "Rain, a swap."));
-    const second = beside(service, logline).find((node) => node.id !== first!.id)!;
-    expect(second).toMatchObject({ title: "Shorter", metadata: { content: "Rain, a swap." } });
-    expect(second.position.y).toBeGreaterThanOrEqual(first!.position.y + first!.height);
+    expect(beside(service, logline).find((node) => node.id !== first!.id)).toMatchObject({ id: next!.id, title: "Shorter", position: next!.position, metadata: { content: "Rain, a swap." } });
     expect(contentOf(service, logline)).toBe("Draft");
   });
 
-  it("waits for a queued task's message to reach the conversation, and takes no reply for a task steered into a running turn", async () => {
-    let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
-    const queued = new Set(["writer-main"]);
-    const { service, project } = setup({ send: async () => receipt, queuedThreads: () => queued });
-    const [logline, notes] = textNodes(service, project, undefined, "Logline", "Notes");
-    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
-    expect(writingInto(service)).toEqual([logline]);
-    queued.clear();
-    service.taskLine("writer-main", { id: "m7", at: 7, role: "user", kind: "text", text: "Write the logline", queueId: "q1" });
-    service.taskLine("writer-main", turnEnd("m7", "Swapped at the altar.", { at: 9 }));
-    expect(contentOf(service, logline)).toBe("Swapped at the altar.");
-    receipt = { ok: true, threadId: "writer-main", message: { id: "m10", at: 10, role: "user", kind: "text", text: "Notes too" }, steered: true };
-    await service.task("p1", auth, { botId: "writer", text: "Notes too", targetNodeId: notes });
-    service.taskLine("writer-main", turnEnd("m10", "Both done.", { at: 12 }));
-    expect(contentOf(service, notes)).toBeUndefined();
-    expect(beside(service, notes)).toEqual([]);
+  it("gives two pending revisions of a node two placeholders that do not overlap, each taken by its own reply whichever turn ends first", async () => {
+    const { service, project } = setup({ threadBusy: () => true, send: numberedSends() });
+    const [logline] = textNodes(service, project, "Draft", "Logline");
+    await service.task("p1", auth, { botId: "writer", text: "Shorter", targetNodeId: logline });
+    await service.task("p1", auth, { botId: "lead", text: "Darker", targetNodeId: logline });
+    const { writer: shorter, lead: darker } = service.snapshot("p1", auth).bots;
+    const [mine, theirs] = [shorter!.writingBeside![0]!, darker!.writingBeside![0]!];
+    expect(theirs.position).toEqual({ x: mine.position.x, y: mine.position.y + mine.height + NODE_GAP });
+    service.taskLine("lead-main", turnEnd("sent-2", "Darker now"));
+    expect(writingBeside(service)).toEqual([mine]);
+    service.taskLine("writer-main", turnEnd("sent-1", "Shorter now"));
+    expect(beside(service, logline)).toEqual([
+      expect.objectContaining({ id: theirs.id, position: theirs.position, metadata: { content: "Darker now" } }),
+      expect.objectContaining({ id: mine.id, position: mine.position, metadata: { content: "Shorter now" } }),
+    ]);
   });
 
-  it("adds nothing after a failed or stopped turn, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
+  it("shows a queued task while its message waits, and neither shows nor takes a reply for a task from the moment it is merged into a later message's turn, taken out of the queue, or steered into a running turn", async () => {
+    let receipt: DirectSendReceipt = { ok: true, queued: true, queueId: "q1", threadId: "writer-main" };
+    const queue = new Set(["q1"]);
+    const { service, project } = setup({ send: async () => receipt, stillQueued: (_botId, _threadId, queueId) => queue.has(queueId), threadBusy: () => true });
+    const [logline, notes] = textNodes(service, project, undefined, "Logline", "Notes");
+    const [draft] = textNodes(service, project, "Draft", "Synopsis");
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: logline });
+    expect(writingInto(service)).toEqual([logline]);
+    queue.clear();
+    service.taskLine("writer-main", { id: "m7", at: 7, role: "user", kind: "text", text: "Write the logline", queueId: "q1" });
+    expect(writingInto(service)).toEqual([logline]);
+    service.taskLine("writer-main", turnEnd("m7", "Swapped at the altar.", { at: 9 }));
+    expect(contentOf(service, logline)).toBe("Swapped at the altar.");
+
+    for (const queueId of ["q2", "q3"]) {
+      receipt = { ok: true, queued: true, queueId, threadId: "writer-main" };
+      queue.add(queueId);
+      await service.task("p1", auth, { botId: "writer", text: `Revise ${queueId}`, targetNodeId: draft });
+    }
+    const [merged, kept] = writingBeside(service)!;
+    expect(kept!.position.y).toBe(merged!.position.y + merged!.height + NODE_GAP);
+    queue.clear();
+    service.taskLine("writer-main", { id: "m10", at: 10, role: "user", kind: "text", text: "Revise q2", queueId: "q2" });
+    service.taskLine("writer-main", { id: "m11", at: 11, role: "user", kind: "text", text: "Revise q3", queueId: "q3" });
+    expect(writingBeside(service)).toEqual([kept]);
+    service.taskLine("writer-main", turnEnd("m11", "Both at once.", { at: 12 }));
+    expect(beside(service, draft)).toEqual([expect.objectContaining({ id: kept!.id, position: kept!.position, metadata: { content: "Both at once." } })]);
+    expect(writingBeside(service)).toBeUndefined();
+
+    receipt = { ok: true, queued: true, queueId: "q4", threadId: "writer-main" };
+    queue.add("q4");
+    await service.task("p1", auth, { botId: "writer", text: "Drop this", targetNodeId: draft });
+    expect(writingBeside(service)).toHaveLength(1);
+    queue.delete("q4");
+    expect(writingBeside(service)).toBeUndefined();
+
+    receipt = { ok: true, threadId: "writer-main", message: { id: "m13", at: 13, role: "user", kind: "text", text: "Notes too" }, steered: true };
+    await service.task("p1", auth, { botId: "writer", text: "Notes too", targetNodeId: notes });
+    await service.task("p1", auth, { botId: "writer", text: "Synopsis too", targetNodeId: draft });
+    expect(writingInto(service)).toBeUndefined();
+    expect(writingBeside(service)).toBeUndefined();
+    service.taskLine("writer-main", turnEnd("m13", "Both done.", { at: 14 }));
+    expect(contentOf(service, notes)).toBeUndefined();
+    expect(beside(service, notes)).toEqual([]);
+    expect(beside(service, draft)).toHaveLength(1);
+  });
+
+  it("adds nothing and shows nothing after a turn that fails or is stopped, with or without a line of its own, the end of a later message's turn, on an archived canvas, and once the node is gone", async () => {
     const { service, project, events } = setup({ threadBusy: () => true });
     const [logline, empty] = [...textNodes(service, project, "Draft", "Logline"), ...textNodes(service, project, undefined, "Empty")];
     const ask = (targetNodeId = logline) => service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId });
     await ask(empty);
     service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
     expect(contentOf(service, empty)).toBeUndefined();
+    expect(writingInto(service)).toBeUndefined();
     await ask();
     service.taskLine("writer-main", turnEnd("earlier", "An older reply, changed again", { at: 0 }));
-    expect(writingInto(service)).toEqual([logline]);
+    expect(writingBeside(service)).toEqual([expect.objectContaining({ nodeId: logline })]);
     service.taskLine("writer-main", turnEnd("sent-1", "Half a line", { turnSucceeded: false }));
+    expect(writingBeside(service)).toBeUndefined();
+    await ask();
+    service.taskLine("writer-main", { id: "stopped", at: 2, role: "bot", kind: "activity", tool: { name: PERSON_STOPPED_TURN_NAME, ok: true }, turnId: "t1" });
+    expect(writingBeside(service)).toBeUndefined();
+    await ask(empty);
+    service.taskLine("writer-main", { id: "failed", at: 2, role: "bot", kind: "activity", tool: failedTurnTool("The engine stopped answering.") });
     expect(writingInto(service)).toBeUndefined();
+    service.taskLine("writer-main", turnEnd("sent-1", "After it failed"));
+    expect(contentOf(service, empty)).toBeUndefined();
+    expect(beside(service, logline)).toEqual([]);
     await ask();
     service.taskLine("writer-main", turnEnd("later", "A reply to a later message"));
-    expect(writingInto(service)).toBeUndefined();
+    expect(writingBeside(service)).toBeUndefined();
     service.taskLine("writer-main", turnEnd("sent-1", "Too late"));
     await ask();
     project.archivedAt = 9;
@@ -350,24 +429,46 @@ describe("a task written in a text node", () => {
     expect([...beside(service, logline), ...beside(service, empty)]).toEqual([]);
     await ask();
     service.apply(project, person, opsOf({ type: "delete_node", id: logline }));
+    expect(writingBeside(service)).toBeUndefined();
     const told = events.length;
     service.taskLine("writer-main", turnEnd("sent-1", "Into nothing"));
     expect(nodeOf(service, logline!)).toBeUndefined();
     expect(events.slice(told)).toEqual([]);
   });
 
-  it("adds nothing for a reply that ends its turn after a restart", async () => {
+  it("adds and shows nothing for a task whose turn ends after a restart", async () => {
     const before = setup();
     const [logline, empty] = [...textNodes(before.service, before.project, "Draft", "Logline"), ...textNodes(before.service, before.project, undefined, "Empty")];
     await before.service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: logline });
     await before.service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: empty });
-    const after = setup();
+    const after = setup({ threadBusy: () => true });
+    expect(writingInto(after.service)).toBeUndefined();
+    expect(writingBeside(after.service)).toBeUndefined();
     const told = after.events.length;
     after.service.taskLine("writer-main", turnEnd("sent-1", "After the restart"));
     expect(contentOf(after.service, logline)).toBe("Draft");
     expect(contentOf(after.service, empty)).toBeUndefined();
     expect([...beside(after.service, logline), ...beside(after.service, empty)]).toEqual([]);
     expect(after.events.slice(told)).toEqual([]);
+  });
+
+  it("decides when the task is sent whether its reply fills the node: one given text meanwhile gets the reply beside it, one emptied meanwhile gets it in its placeholder", async () => {
+    const { service, project } = setup({ threadBusy: () => true, send: numberedSends() });
+    const [draft] = textNodes(service, project, "Draft", "Synopsis");
+    const [empty] = textNodes(service, project, undefined, "Empty");
+    await service.task("p1", auth, { botId: "writer", text: "Write it", targetNodeId: empty });
+    expect(writingInto(service)).toEqual([empty]);
+    service.apply(project, person, opsOf({ type: "update_node", id: empty, metadata: { content: "Typed meanwhile" } }));
+    service.taskLine("writer-main", turnEnd("sent-1", "The bot's line", { at: 1 }));
+    const source = nodeOf(service, empty!)!;
+    expect(source.metadata?.content).toBe("Typed meanwhile");
+    expect(beside(service, empty)).toEqual([expect.objectContaining({ title: "Write it", position: { x: source.position.x + source.width + LANE_GAP, y: source.position.y }, metadata: { content: "The bot's line" } })]);
+    await service.task("p1", auth, { botId: "writer", text: "Shorter", targetNodeId: draft });
+    const [placeholder] = writingBeside(service)!;
+    service.apply(project, person, opsOf({ type: "update_node", id: draft, metadata: { content: null } }));
+    service.taskLine("writer-main", turnEnd("sent-2", "Shorter now", { at: 2 }));
+    expect(contentOf(service, draft)).toBeUndefined();
+    expect(beside(service, draft)).toEqual([expect.objectContaining({ id: placeholder!.id, position: placeholder!.position, metadata: { content: "Shorter now" } })]);
   });
 
   it("is refused for anything but a text node of this canvas, and nothing is sent", async () => {

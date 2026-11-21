@@ -12,6 +12,7 @@ import {
   type CanvasOp,
   type CanvasOpsResponse,
   type CanvasReadOnly,
+  type CanvasReplyPlaceholder,
   type CanvasSnapshot,
   type CanvasTaskResponse,
   type ProjectCanvasEvent,
@@ -93,6 +94,8 @@ export interface ProjectCanvasServiceDeps {
   generation: Pick<ProjectGenerationApi, "start" | "job">;
   openCards(): OpenCardRow[];
   queuedThreads(): ReadonlySet<string>;
+  /** Whether a message still waits in a bot's queue: neither in the conversation yet nor taken out of the queue. */
+  stillQueued(botId: string, threadId: string, queueId: string): boolean;
   /** Keeps an image as the app's own attachment, which a message may carry. */
   saveImage(bytes: Buffer, mime: string): { path: string };
   /** The language the server writes its own lines in: references are named in it when a request names no language. */
@@ -202,13 +205,27 @@ export class ProjectCanvasService {
       parentOf: (botId) => this.deps.parentOf(project.id, botId),
       sees,
     });
-    const queued = this.deps.queuedThreads();
-    for (const target of this.targets.of(project.id)) {
+    for (const target of this.writing(project.id, snapshot.nodes)) {
       const bot = snapshot.bots[target.botId];
-      const running = queued.has(target.threadId) || this.deps.threadBusy(target.botId, target.threadId);
-      if (bot && running && snapshot.nodes.some((node) => node.id === target.nodeId)) bot.writingInto = [...(bot.writingInto ?? []), target.nodeId];
+      if (!bot) continue;
+      if (target.beside) bot.writingBeside = [...(bot.writingBeside ?? []), { ...target.beside }];
+      else bot.writingInto = [...(bot.writingInto ?? []), target.nodeId];
     }
     return snapshot;
+  }
+
+  /** The tasks of a project its bots are on or have queued, each written in a text node still among `nodes`. */
+  private writing(projectId: string, nodes: readonly CanvasNode[]): TaskTarget[] {
+    const present = new Set(nodes.map((node) => node.id));
+    const pending = (target: TaskTarget) => (target.requestId === undefined
+      ? target.queueId !== undefined && this.deps.stillQueued(target.botId, target.threadId, target.queueId)
+      : this.deps.threadBusy(target.botId, target.threadId));
+    return this.targets.of(projectId).filter((target) => present.has(target.nodeId) && pending(target));
+  }
+
+  /** The nodes the replies being written beside text nodes of `document` become, where the server places nothing else. */
+  private reserved(projectId: string, document: CanvasDocument): CanvasReplyPlaceholder[] {
+    return this.writing(projectId, document.nodes).flatMap((target) => (target.beside ? [target.beside] : []));
   }
 
   snapshot(projectId: string, auth: RequestAuth): CanvasSnapshot {
@@ -237,7 +254,7 @@ export class ProjectCanvasService {
       targets: opTargets(ops),
       apply: (document, removed) => {
         const bots = botFrames(document, this.tree(project));
-        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots), removed });
+        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots, this.reserved(project.id, current)), removed });
         if (actor.kind === "bot" && result.nodeIds.length) pinBot(result.document, result.changed, actor.botId, bots);
         return result;
       },
@@ -286,7 +303,7 @@ export class ProjectCanvasService {
         if (document.nodes.length >= CANVAS_MAX_NODES || document.nodes.some((node) => node.metadata?.file?.path === ref.path)) return null;
         const actor: CanvasNodeCreator = { kind: "bot", botId };
         const node: CanvasNode = { id: this.deps.newId(), type: nodeType, title, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE[nodeType], metadata: { file: ref }, createdBy: actor };
-        node.position = placeForActor(document, node, actor, bots);
+        node.position = placeForActor(document, node, actor, bots, this.reserved(project.id, document));
         const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: botNodeId(botId), toNodeId: node.id, kind: "content" };
         document.nodes.push(node);
         document.connections.push(connection);
@@ -317,30 +334,51 @@ export class ProjectCanvasService {
       throw new CanvasRefusal(404, { error: "That is not a conversation of this bot you can open." });
     }
     const document = this.deps.documents.read(project.id);
-    if (targetNodeId !== undefined && document.nodes.find((node) => node.id === targetNodeId)?.type !== "text") {
+    const target = targetNodeId === undefined ? undefined : document.nodes.find((node) => node.id === targetNodeId);
+    if (targetNodeId !== undefined && target?.type !== "text") {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
     }
     const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
     const message = taskMessage(text, references, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = await this.deps.send(auth, { botId, threadId, text: message });
-    if (targetNodeId !== undefined) this.awaitReply({ projectId: project.id, botId, threadId: receipt.threadId, nodeId: targetNodeId, title: replyTitle(text) }, receipt);
+    if (targetNodeId !== undefined) {
+      this.awaitReply(project, { botId, threadId: receipt.threadId, nodeId: targetNodeId, title: replyTitle(text) }, Boolean(target?.metadata?.content?.trim()), receipt);
+    }
     return "queued" in receipt
       ? { threadId: receipt.threadId, queued: true, references: references.count }
       : { threadId: receipt.threadId, messageId: receipt.message.id, references: references.count };
   }
 
-  private awaitReply(where: Omit<TaskTarget, "requestId" | "requestAt" | "queueId">, receipt: DirectSendReceipt): void {
-    if ("queued" in receipt) this.targets.add({ ...where, queueId: receipt.queueId });
-    else if (!receipt.steered) this.targets.add({ ...where, requestId: receipt.message.id, requestAt: receipt.message.at });
+  /** Keeps the text node a task was written in until the turn for the task ends. A node that had text gets the node its
+   * reply becomes now, and open apps are told so they show it while the bot writes. */
+  private awaitReply(project: TeamProjectWire, where: Pick<TaskTarget, "botId" | "threadId" | "nodeId" | "title">, hadText: boolean, receipt: DirectSendReceipt): void {
+    if (!("queued" in receipt) && receipt.steered) return;
+    const document = this.deps.documents.read(project.id);
+    const source = document.nodes.find((node) => node.id === where.nodeId);
+    if (!source) return;
+    const beside = hadText ? this.replyNode(project, document, source) : undefined;
+    const sent = "queued" in receipt ? { queueId: receipt.queueId } : { requestId: receipt.message.id, requestAt: receipt.message.at };
+    this.targets.add({ projectId: project.id, ...where, ...(beside ? { beside } : {}), ...sent });
+    const revision = this.revisionOf(project.id);
+    if (beside && revision !== null) this.deps.broadcast({ kind: "project-canvas", projectId: project.id, revision, reason: "bots" });
   }
 
-  /** A line of a conversation: the bot's reply to a task written in a text node becomes the node's text when it has
-   * none, and otherwise the bot's new text node to its right, connected from it. */
+  /** The node a reply beside `source` becomes: to its right, below its other results and the replies still being
+   * written there. */
+  private replyNode(project: TeamProjectWire, document: CanvasDocument, source: CanvasNode): CanvasReplyPlaceholder {
+    const size = CANVAS_NODE_SIZE.text;
+    const position = placeAfter(document, source, size, botFrames(document, this.tree(project)), this.reserved(project.id, document));
+    return { id: this.deps.newId(), nodeId: source.id, position, ...size };
+  }
+
+  /** A line of a conversation: the bot's reply to a task written in a text node goes into the node when it had no text
+   * as the task was sent and still has none, and otherwise becomes the bot's new text node to its right, connected
+   * from it: the node the task was given when it was sent, or one placed now. */
   taskLine(threadId: string, message: Message): void {
     const settled = this.targets.heard(threadId, message);
     if (!settled?.reply) return;
-    const { projectId, botId, nodeId, title } = settled.target;
+    const { projectId, botId, nodeId, title, beside } = settled.target;
     const project = this.deps.projects.list().find((one) => one.id === projectId);
     if (!project || project.archivedAt !== undefined) return;
     const content = replyText(settled.reply);
@@ -348,13 +386,15 @@ export class ProjectCanvasService {
       this.serverChange(project, (document, bots) => {
         const node = document.nodes.find((one) => one.id === nodeId);
         if (node?.type !== "text") return null;
-        if (!node.metadata?.content?.trim()) {
+        if (!beside && !node.metadata?.content?.trim()) {
           node.metadata = { ...node.metadata, content };
           return { nodes: [node.id], connections: [] };
         }
         if (document.nodes.length >= CANVAS_MAX_NODES) throw new Error("the canvas is full");
-        const made: CanvasNode = { id: this.deps.newId(), type: "text", title, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE.text, metadata: { content }, createdBy: { kind: "bot", botId } };
-        made.position = placeAfter(document, node, made, bots);
+        const size = CANVAS_NODE_SIZE.text;
+        const frame = beside ?? { id: this.deps.newId(), position: placeAfter(document, node, size, bots, this.reserved(projectId, document)), ...size };
+        const id = document.nodes.some((one) => one.id === frame.id) ? this.deps.newId() : frame.id;
+        const made: CanvasNode = { id, type: "text", title, position: frame.position, width: frame.width, height: frame.height, metadata: { content }, createdBy: { kind: "bot", botId } };
         const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: node.id, toNodeId: made.id, kind: "content" };
         document.nodes.push(made);
         document.connections.push(connection);
@@ -442,7 +482,7 @@ export class ProjectCanvasService {
           }
           if (document.nodes.length >= CANVAS_MAX_NODES) break;
           const made: CanvasNode = { id: this.deps.newId(), type, title: file.name, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE[type], metadata: { file }, ...(node.createdBy ? { createdBy: node.createdBy } : {}) };
-          made.position = placeAfter(document, node, made, bots);
+          made.position = placeAfter(document, node, made, bots, this.reserved(project.id, document));
           const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: node.id, toNodeId: made.id, kind: "content" };
           document.nodes.push(made);
           document.connections.push(connection);

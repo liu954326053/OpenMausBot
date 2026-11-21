@@ -1,4 +1,6 @@
-import { CANVAS_CONTENT_MAX_CHARS } from "../../shared/project-canvas.ts";
+import { isStoppedTurnName } from "../../shared/client-cancel.ts";
+import { failedTurnCause } from "../../shared/failed-turn.ts";
+import { CANVAS_CONTENT_MAX_CHARS, type CanvasReplyPlaceholder } from "../../shared/project-canvas.ts";
 import { redactSecretsInText } from "../redact.ts";
 import type { Message } from "../store.ts";
 
@@ -11,6 +13,8 @@ export interface TaskTarget {
   nodeId: string;
   /** The title of the node the reply becomes beside a node with text. */
   title: string;
+  /** The node the reply becomes, given when the node had text as the task was sent. */
+  beside?: CanvasReplyPlaceholder;
   requestId?: string;
   /** When the task's message joined the conversation. */
   requestAt?: number;
@@ -30,6 +34,10 @@ type SettledLine = Message & { requestMessageId: string; turnSucceeded: boolean 
 const isSettledLine = (message: Message): message is SettledLine =>
   message.role === "bot" && message.kind === "text" && message.turnTerminal === true && message.turnSucceeded !== undefined && message.requestMessageId !== undefined;
 
+/** The row a turn that failed or was stopped ends with, whether or not it wrote a line before. */
+const isUnfinishedTurn = (message: Message) => message.kind === "activity" && message.tool !== undefined && message.tool.partial !== true
+  && (failedTurnCause(message.tool.name) !== null || isStoppedTurnName(message.tool.name));
+
 /** A reply as a text node's text. Security: redacted before it is cut, so a cut never leaves part of a key
  * unrecognised. */
 export function replyText(reply: string): string {
@@ -45,9 +53,8 @@ export function replyText(reply: string): string {
 export class TaskTargets {
   private targets: TaskTarget[] = [];
 
-  /** A newer task for the same node takes the place of the older. */
   add(target: TaskTarget): void {
-    this.targets = [...this.targets.filter((one) => one.projectId !== target.projectId || one.nodeId !== target.nodeId), target].slice(-MAX_TARGETS);
+    this.targets = [...this.targets, target].slice(-MAX_TARGETS);
   }
 
   of(projectId: string): readonly TaskTarget[] {
@@ -55,19 +62,32 @@ export class TaskTargets {
   }
 
   /** Hears a new or changed line of a conversation, and answers the task whose turn it ends. A conversation runs one
-   * turn at a time, so a turn ending there also ends every task whose message came before it: those get no reply. */
+   * turn at a time, so a turn ending there, however it ends, ends every task whose message came before it. So does a
+   * queued message joining it: the queue lets messages in only once the bot is free, and they start the next turn
+   * together. Those tasks get no reply. */
   heard(threadId: string, message: Message): SettledTask | null {
     if (message.role === "user" && message.queueId) {
       for (const one of this.targets) {
         if (one.threadId === threadId && one.queueId === message.queueId) Object.assign(one, { requestId: message.id, requestAt: message.at });
       }
+      this.endBefore(threadId, message.at, message.id);
+      return null;
+    }
+    if (isUnfinishedTurn(message)) {
+      this.endBefore(threadId, message.at);
       return null;
     }
     if (!isSettledLine(message)) return null;
     const target = this.targets.find((one) => one.threadId === threadId && one.requestId === message.requestMessageId);
-    this.targets = this.targets.filter((one) => one !== target && (one.threadId !== threadId || one.requestAt === undefined || one.requestAt > message.at));
+    this.targets = this.targets.filter((one) => one !== target);
+    this.endBefore(threadId, message.at);
     if (!target) return null;
     const reply = message.turnSucceeded ? message.text?.trim() : undefined;
     return reply ? { target, reply } : { target };
+  }
+
+  /** Ends the tasks of a conversation whose messages joined it by `at`, but the task of the message `kept`. */
+  private endBefore(threadId: string, at: number, kept?: string): void {
+    this.targets = this.targets.filter((one) => one.threadId !== threadId || one.requestAt === undefined || one.requestAt > at || one.requestId === kept);
   }
 }

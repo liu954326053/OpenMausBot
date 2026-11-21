@@ -12,6 +12,7 @@ import {
   type CanvasOpsRequest,
   type CanvasOpsResponse,
   type CanvasPoint,
+  type CanvasReplyPlaceholder,
   type CanvasSnapshot,
   type CanvasTaskRequest,
 } from "../../../shared/project-canvas";
@@ -69,6 +70,13 @@ export interface MemoryCanvasBackend extends CanvasBackend {
   readonly openedChats: Array<{ botId: string; threadId?: string }>;
 }
 
+/** A task a bot is on or has queued, with the node its reply becomes when it was written in a text node with text. */
+interface BotTask {
+  task: CanvasTaskRequest;
+  threadId: string;
+  beside?: CanvasReplyPlaceholder;
+}
+
 const failure = (code: GenerationFailureCode, error: string, extra: Partial<GenerationFailure> = {}): Refused => ({ refused: { code, error, errorKey: `serverError.generation.${code}`, ...extra } });
 
 function uniquePath(folder: string, name: string, taken: ReadonlySet<string>): string {
@@ -90,6 +98,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const exchanges = new Map(Object.entries(structuredClone(options.exchanges ?? {})));
   const listeners = new Set<() => void>();
   const botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const botTasks = new Map<string, BotTask[]>();
   const jobTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const jobs = new Map<string, GenerationJob>();
   const delay = options.delayMs ?? 900;
@@ -119,11 +128,36 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     emit();
   };
 
-  const addReplyBeside = (source: CanvasNode, task: CanvasTaskRequest, text: string) => {
-    const made: CanvasNode = { id: newId("node"), type: "text", title: replyTitle(task.text), ...nextOutputFrame(source, "text", snapshot.nodes, snapshot.connections), metadata: { content: text }, createdBy: { kind: "bot", botId: task.botId } };
+  const pendingTasks = (botId: string) => (botTasks.get(botId) ?? []).filter((one) => one.task.targetNodeId && nodeById(one.task.targetNodeId));
+  const showTasks = (botId: string, change: Partial<CanvasBotState>) => {
+    const pending = pendingTasks(botId);
+    const into = pending.flatMap((one) => (!one.beside && one.task.targetNodeId ? [one.task.targetNodeId] : []));
+    const beside = pending.flatMap((one) => (one.beside ? [{ ...one.beside }] : []));
+    setBot(botId, { ...change, writingInto: into.length ? into : undefined, writingBeside: beside.length ? beside : undefined });
+  };
+  const comingReplies = () => [...botTasks.keys()].flatMap((botId) => pendingTasks(botId).flatMap((one) => (one.beside ? [one.beside] : [])));
+  const replyNode = (source: CanvasNode): CanvasReplyPlaceholder => ({ id: newId("node"), nodeId: source.id, ...nextOutputFrame(source, "text", snapshot.nodes, snapshot.connections, comingReplies()) });
+  const addReply = (source: CanvasNode, task: CanvasTaskRequest, text: string, at: CanvasReplyPlaceholder) => {
+    const made: CanvasNode = { id: at.id, type: "text", title: replyTitle(task.text), position: at.position, width: at.width, height: at.height, metadata: { content: text }, createdBy: { kind: "bot", botId: task.botId } };
     const connection: CanvasConnection = { id: newId("connection"), fromNodeId: source.id, toNodeId: made.id, kind: "content" };
     snapshot = { ...snapshot, revision: snapshot.revision + 1, nodes: [...snapshot.nodes, made], connections: [...snapshot.connections, connection] };
     emit();
+  };
+  const finishTask = (botId: string) => {
+    botTimers.delete(botId);
+    const [done, ...rest] = botTasks.get(botId) ?? [];
+    const bot = snapshot.bots[botId];
+    if (!done || !bot) return;
+    botTasks.set(botId, rest);
+    const { task, threadId, beside } = done;
+    const text = options.reply?.(task, bot) ?? `Done: ${task.text}`;
+    const replyId = newId("message");
+    exchanges.set(botId, [...(exchanges.get(botId) ?? []), { id: replyId, role: "bot", text, at: Date.now() }]);
+    const into = task.targetNodeId ? nodeById(task.targetNodeId) : undefined;
+    if (into && (beside || into.metadata?.content?.trim())) addReply(into, task, text, beside ?? replyNode(into));
+    else if (into) commit([{ type: "update_node", id: into.id, metadata: { content: text } }]);
+    if (rest.length) botTimers.set(botId, setTimeout(() => finishTask(botId), delay));
+    showTasks(botId, { ...(rest.length ? {} : { status: "idle" as const, doing: undefined }), output: { text, threadId, messageId: replyId, at: Date.now() } });
   };
 
   const finishJob = (job: GenerationJob, input: StartGenerationInput) => {
@@ -152,7 +186,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         ops.push({ type: "update_node", id: node.id, metadata: media });
         return;
       }
-      const frame = nextOutputFrame(node, job.kind, document.nodes, document.connections);
+      const frame = nextOutputFrame(node, job.kind, document.nodes, document.connections, comingReplies());
       const id = newId("node");
       const steps: CanvasOp[] = [
         { type: "add_node", id, nodeType: job.kind, title: output.file.name, ...frame, metadata: media },
@@ -239,28 +273,18 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ensureWritable();
       const bot = snapshot.bots[task.botId];
       if (!bot) throw new Error("That bot isn't in this project.");
-      if (task.targetNodeId && nodeById(task.targetNodeId)?.type !== "text") throw new Error("A reply goes into a text node of this canvas, and that is not one.");
+      const target = task.targetNodeId ? nodeById(task.targetNodeId) : undefined;
+      if (task.targetNodeId && target?.type !== "text") throw new Error("A reply goes into a text node of this canvas, and that is not one.");
       const threadId = task.threadId ?? bot.output?.threadId ?? `thread-${task.botId}`;
       const messageId = newId("message");
-      const target = task.targetNodeId;
       const references = target
-        ? mentionReferences(target, snapshot.nodes, snapshot.connections).filter((reference) => reference.nodeId !== target).length
+        ? mentionReferences(target.id, snapshot.nodes, snapshot.connections).filter((reference) => reference.nodeId !== target.id).length
         : connectedReferences(botNodeId(task.botId), snapshot.nodes, snapshot.connections).length;
       exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: messageId, role: "person", text: task.text, at: Date.now() }]);
-      setBot(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined, writingInto: task.targetNodeId ? [task.targetNodeId] : undefined });
-      clearTimeout(botTimers.get(task.botId));
-      botTimers.set(task.botId, setTimeout(() => {
-        botTimers.delete(task.botId);
-        const current = snapshot.bots[task.botId];
-        if (!current) return;
-        const text = options.reply?.(task, current) ?? `Done: ${task.text}`;
-        const replyId = newId("message");
-        exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: replyId, role: "bot", text, at: Date.now() }]);
-        const into = target ? nodeById(target) : undefined;
-        if (into?.metadata?.content?.trim()) addReplyBeside(into, task, text);
-        else if (into) commit([{ type: "update_node", id: into.id, metadata: { content: text } }]);
-        setBot(task.botId, { status: "idle", doing: undefined, writingInto: undefined, output: { text, threadId, messageId: replyId, at: Date.now() } });
-      }, delay));
+      const queue = botTasks.get(task.botId) ?? [];
+      botTasks.set(task.botId, [...queue, { task, threadId, ...(target?.metadata?.content?.trim() ? { beside: replyNode(target) } : {}) }]);
+      if (!queue.length) botTimers.set(task.botId, setTimeout(() => finishTask(task.botId), delay));
+      showTasks(task.botId, { status: "working", doing: "Reading what you sent", waiting: undefined });
       return { threadId, messageId, references };
     },
 
@@ -268,7 +292,10 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ensureProject(id);
       clearTimeout(botTimers.get(botId));
       botTimers.delete(botId);
-      setBot(botId, { status: "idle", doing: undefined, writingInto: undefined });
+      const queued = (botTasks.get(botId) ?? []).slice(1);
+      botTasks.set(botId, queued);
+      if (queued.length) botTimers.set(botId, setTimeout(() => finishTask(botId), delay));
+      showTasks(botId, queued.length ? {} : { status: "idle", doing: undefined });
     },
 
     async readExchange(id, botId) {
