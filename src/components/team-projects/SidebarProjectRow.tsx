@@ -1,12 +1,12 @@
-import { ChevronRight, Crown, FolderClosed, MoreHorizontal } from "lucide-react";
+import { Crown, FolderClosed, MoreHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { botShowsUnread } from "@/lib/bot-unread";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { sidebarAttentionLabel, sidebarSectionAttention } from "@/lib/sidebar-attention";
-import { visibleMessages, type Bot, type Group } from "@/state/store";
+import { sidebarAttentionLabel, type SidebarSectionAttention } from "@/lib/sidebar-attention";
+import { visibleMessages, type Bot } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { sidebarBotStatus } from "../SidebarBotActivity";
 import { AvatarActivityDot, RowStatusText, rowSelectedSurface, rowSurface, type RowActivity } from "../SidebarRowMarkers";
@@ -15,22 +15,18 @@ import { SIMPLE_RAIL_BUTTON, SIMPLE_ROW_FOCUS } from "../SidebarSimpleTop";
 
 const HOVER_CONTROL = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-70 touch:opacity-70";
 
-/** One project in the sidebar: a click opens its view, the chevron shows its team below it. */
-export function SidebarProjectRow({ project, team, rooms, simple, open, selected, menuOpen, onOpen, onToggle, onMenu }: {
+/** One project in the sidebar: a click opens its canvas. */
+export function SidebarProjectRow({ project, attention, simple, selected, menuOpen, onOpen, onMenu }: {
   project: TeamProjectWire;
-  team: Bot[];
-  rooms: Group[];
+  /** Over all the project's bots and group chats. */
+  attention: SidebarSectionAttention;
   simple: boolean;
-  open: boolean;
   selected: boolean;
   menuOpen: boolean;
   onOpen: () => void;
-  /** Absent while a search decides what is shown. */
-  onToggle?: () => void;
   /** Absent on a computer this app only drives. */
   onMenu?: (x: number, y: number, returnTo: HTMLElement) => void;
 }) {
-  const attention = sidebarSectionAttention(team, rooms);
   const menuAt = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     onMenu?.(rect.right - 200, rect.bottom + 4, event.currentTarget);
@@ -47,21 +43,15 @@ export function SidebarProjectRow({ project, team, rooms, simple, open, selected
         } : undefined}
         className={cn(
           "relative flex w-full min-w-0 items-center gap-2.5 text-start", SIMPLE_ROW_FOCUS,
-          simple ? "h-11 rounded-[8px] ps-6 pe-9" : "h-9 rounded-md ps-6 pe-9",
+          simple ? "h-11 rounded-[8px] ps-2 pe-9" : "h-9 rounded-md ps-2 pe-9",
           selected ? rowSelectedSurface : "hover:bg-raised/50",
         )}>
         <span aria-hidden="true" className={cn("grid shrink-0 place-items-center bg-raised text-ink-secondary", simple ? "size-8 rounded-[10px]" : "size-7 rounded-lg")}>
           <FolderClosed size={simple ? 16 : 15} strokeWidth={1.75} />
         </span>
         <span className={cn("min-w-0 flex-1 truncate text-ink", simple ? "text-[14px] font-medium leading-5" : "text-[14px] font-semibold leading-5")}>{project.name}</span>
-        {!open && <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />}
+        <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
       </button>
-      {onToggle && (
-        <button type="button" aria-label={t(open ? "sidebar.section.collapse" : "sidebar.section.expand", { name: project.name })} aria-expanded={open} onClick={onToggle}
-          className="absolute start-0.5 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded text-ink-secondary outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent/60">
-          <ChevronRight aria-hidden="true" size={12} className={cn("transition-transform rtl:-scale-x-100", open && "rotate-90")} />
-        </button>
-      )}
       {onMenu && (
         <button type="button" aria-label={t("teamProjects.actions", { name: project.name })} aria-haspopup="menu" aria-expanded={menuOpen} onClick={menuAt}
           className={cn("absolute end-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded text-ink-secondary hover:bg-raised hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-focus",
@@ -74,15 +64,13 @@ export function SidebarProjectRow({ project, team, rooms, simple, open, selected
 }
 
 /** A project in the narrow sidebar: its first letter in a square, with the mark of its team's state. */
-export function SidebarProjectTile({ project, team, rooms, selected, onOpen, onMenu }: {
+export function SidebarProjectTile({ project, attention, selected, onOpen, onMenu }: {
   project: TeamProjectWire;
-  team: Bot[];
-  rooms: Group[];
+  attention: SidebarSectionAttention;
   selected: boolean;
   onOpen: () => void;
   onMenu?: (x: number, y: number, returnTo: HTMLElement) => void;
 }) {
-  const attention = sidebarSectionAttention(team, rooms);
   const label = sidebarAttentionLabel(attention);
   return (
     <button type="button" data-sidebar-project-row={project.id} aria-label={label ? `${project.name}, ${label}` : project.name} title={project.name}
@@ -97,7 +85,7 @@ export function SidebarProjectTile({ project, team, rooms, selected, onOpen, onM
   );
 }
 
-/** A member of an open project: a click opens the project with this bot chosen. */
+/** A project's bot a search found: a click opens the project's canvas with this bot's node chosen. */
 export function SidebarProjectMember({ bot, lead, simple, selected, queued, onOpen }: {
   bot: Bot;
   lead: boolean;
@@ -113,7 +101,7 @@ export function SidebarProjectMember({ bot, lead, simple, selected, queued, onOp
     <button type="button" data-sidebar-bot-row={bot.id} data-sidebar-project-member={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen}
       className={cn(
         "relative flex w-full min-w-0 items-center gap-2 text-start", SIMPLE_ROW_FOCUS, rowSurface(selected),
-        simple ? "h-10 rounded-[8px] ps-9 pe-3" : "h-8 rounded-md ps-9 pe-3",
+        simple ? "h-10 rounded-[8px] ps-5 pe-3" : "h-8 rounded-md ps-5 pe-3",
         selected ? rowSelectedSurface : "hover:bg-raised/50",
       )}>
       <span className="relative flex shrink-0">
