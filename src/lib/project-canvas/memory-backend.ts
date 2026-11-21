@@ -1,6 +1,7 @@
 import {
   CANVAS_NODE_SIZE,
   CANVAS_UPLOAD_FOLDER,
+  botIdOfNode,
   botNodeId,
   canvasFileNodeType,
   replyTitle,
@@ -235,7 +236,9 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         if (op.type === "delete_node" && [...(op.ids ?? []), ...(op.id ? [op.id] : [])].some((nodeId) => nodeById(nodeId)?.type === "bot")) throw new Error("A bot's node can't be deleted.");
         return op;
       });
+      const moved = ops.flatMap((op) => (op.type === "update_node" && op.patch?.position ? [botIdOfNode(op.id)] : [])).filter((botId): botId is string => botId !== null && botId in snapshot.bots);
       commit(ops);
+      for (const botId of moved) snapshot = { ...snapshot, bots: { ...snapshot.bots, [botId]: { ...snapshot.bots[botId]!, placed: true } } };
       return { revision: snapshot.revision, nodeIds, connectionIds };
     },
 

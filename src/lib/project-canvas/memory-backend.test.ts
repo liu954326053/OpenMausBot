@@ -68,12 +68,13 @@ describe("the in-memory canvas backend", () => {
     await expect(backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "bot:kai" })).rejects.toThrow("text node");
   });
 
-  it("queues a bot's tasks, giving two revisions of a node two placeholders that do not overlap, each taken by its own reply", async () => {
+  it("queues a bot's tasks, giving two revisions of a node two placeholders that overlap neither each other nor a node, each taken by its own reply", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
+    const take = backend.current().nodes.find((node) => node.id === "shot-1-take-1")!;
     await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "shorter", targetNodeId: "logline" });
     await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "darker", targetNodeId: "logline" });
     const [first, second] = backend.current().bots.kai!.writingBeside!;
-    expect(second!.position).toEqual({ x: first!.position.x, y: first!.position.y + first!.height + OUTPUT_GAP_Y });
+    expect(second!.position).toEqual({ x: first!.position.x, y: take.position.y + take.height + OUTPUT_GAP_Y });
     await vi.advanceTimersByTimeAsync(100);
     expect(backend.current().bots.kai).toMatchObject({ status: "working", writingBeside: [second] });
     await vi.advanceTimersByTimeAsync(100);

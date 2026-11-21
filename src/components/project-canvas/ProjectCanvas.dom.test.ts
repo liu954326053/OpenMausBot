@@ -4,19 +4,23 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId } from "../../../shared/project-canvas";
 import { loadLocale, setLocale } from "@/lib/i18n";
+import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
+import { PLACEMENT_GAP } from "@/lib/project-canvas/placement";
 import { SAMPLE_PROJECT_ID, sampleCanvasBackend } from "@/testing/project-canvas-sample";
 import { ProjectCanvas } from "./ProjectCanvas";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-class WideObserver {
-  constructor(private readonly callback: ResizeObserverCallback) {}
-  observe(target: Element) {
-    this.callback([{ target, contentRect: { width: 4000, height: 3000 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
+function sizedObserver(width: number, height: number) {
+  return class {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      this.callback([{ target, contentRect: { width, height } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+    }
+    unobserve() {}
+    disconnect() {}
+  };
 }
 
 let root: Root;
@@ -26,6 +30,10 @@ let backend: MemoryCanvasBackend;
 const settle = (ms = 0) => act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 const nodeElement = (id: string) => host.querySelector<HTMLElement>(`[data-canvas-node="${CSS.escape(id)}"]`);
 const stage = () => host.querySelector<HTMLElement>("[data-project-canvas-stage]")!;
+const view = () => {
+  const [, x, y, k] = /translate\((-?[\d.e+-]+)px, (-?[\d.e+-]+)px\) scale\(([\d.e+-]+)\)/.exec(stage().querySelector<HTMLElement>(".origin-top-left")!.style.transform)!;
+  return { x: Number(x), y: Number(y), k: Number(k) };
+};
 const panel = () => host.querySelector<HTMLElement>("[data-node-panel]");
 const buttonByText = (scope: ParentNode, text: string) => [...scope.querySelectorAll("button")].find((button) => button.textContent?.trim() === text);
 const shown = (id: string) => backend.current().nodes.find((node) => node.id === id);
@@ -76,7 +84,7 @@ async function mount(options: Parameters<typeof sampleCanvasBackend>[0] = {}) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", WideObserver);
+  vi.stubGlobal("ResizeObserver", sizedObserver(4000, 3000));
   host = document.createElement("div");
   host.style.height = "900px";
   document.body.append(host);
@@ -461,6 +469,60 @@ describe("the project canvas", () => {
       expect(nodeElement("city-night")!.querySelector('[role="alert"]')!.textContent).toContain("gen 没能生成：没有人脸");
       await fail({ errorKey: "approval.held.outbound", errorParams: null });
       expect(nodeElement("city-night")!.querySelector('[role="alert"]')!.textContent).toContain("gen couldn't make it: no faces");
+    } finally {
+      setLocale("en");
+    }
+  });
+
+  it("opens a canvas nobody set a view on fitted to its nodes without storing that view, and a stored view as it was", async () => {
+    vi.stubGlobal("ResizeObserver", sizedObserver(1200, 800));
+    await mount();
+    const fitted = view();
+    expect(fitted.k).toBeLessThan(1);
+    for (const node of backend.current().nodes) {
+      expect(fitted.x + node.position.x * fitted.k).toBeGreaterThanOrEqual(0);
+      expect(fitted.y + node.position.y * fitted.k).toBeGreaterThanOrEqual(0);
+      expect(fitted.x + (node.position.x + node.width) * fitted.k).toBeLessThanOrEqual(1200);
+      expect(fitted.y + (node.position.y + node.height) * fitted.k).toBeLessThanOrEqual(800);
+    }
+    await settle(VIEWPORT_SAVE_DELAY_MS + 50);
+    expect(backend.current().viewport).toEqual({ x: 0, y: 0, k: 1 });
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    await mount({ snapshot: { ...sampleCanvasBackend().current(), viewport: { x: 40, y: 30, k: 0.5 } } });
+    expect(view()).toEqual({ x: 40, y: 30, k: 0.5 });
+  });
+
+  it("puts nodes added from the toolbar and an upload into free space, and never moves a bot", async () => {
+    await mount();
+    const bots = () => backend.current().nodes.filter((node) => node.type === "bot").map((node) => ({ id: node.id, position: node.position }));
+    const before = new Set(backend.current().nodes.map((node) => node.id));
+    const botsBefore = bots();
+    const addText = host.querySelector<HTMLButtonElement>('button[aria-label="Add text"]')!;
+    for (let count = 0; count < 3; count += 1) await act(async () => addText.click());
+    await settle(20);
+    await paste({ files: [new File(["png"], "board.png", { type: "image/png" })], getData: () => "" });
+    await settle(20);
+    const added = backend.current().nodes.filter((node) => !before.has(node.id));
+    expect(added.map((node) => node.type)).toEqual(["text", "text", "text", "image"]);
+    for (const node of added) {
+      const crowding = backend.current().nodes.filter((other) => other.id !== node.id && !(
+        node.position.x >= other.position.x + other.width + PLACEMENT_GAP || other.position.x >= node.position.x + node.width + PLACEMENT_GAP
+        || node.position.y >= other.position.y + other.height + PLACEMENT_GAP || other.position.y >= node.position.y + node.height + PLACEMENT_GAP));
+      expect(crowding.map((other) => other.id)).toEqual([]);
+    }
+    expect(bots()).toEqual(botsBefore);
+    expect(Object.values(backend.current().bots).every((bot) => bot.placed)).toBe(true);
+  });
+
+  it("says a project's folder is missing in the sidebar's words", async () => {
+    await loadLocale("zh");
+    try {
+      const snapshot = sampleCanvasBackend().current();
+      await mount({ snapshot: { ...snapshot, project: { ...snapshot.project, folderState: "missing" } } });
+      expect(host.querySelector("header")!.textContent).toContain("找不到项目文件夹");
+      expect(host.querySelector("header")!.textContent).not.toContain("文件夹不见了");
     } finally {
       setLocale("en");
     }

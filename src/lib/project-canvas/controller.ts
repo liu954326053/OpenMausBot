@@ -1,4 +1,4 @@
-import type { CanvasBackgroundMode, CanvasOp, CanvasPoint, CanvasReplyPlaceholder, CanvasSnapshot, CanvasTaskRequest, CanvasUploadResponse, CanvasViewport } from "../../../shared/project-canvas";
+import { botIdOfNode, type CanvasBackgroundMode, type CanvasOp, type CanvasPoint, type CanvasReplyPlaceholder, type CanvasSnapshot, type CanvasTaskRequest, type CanvasUploadResponse, type CanvasViewport } from "../../../shared/project-canvas";
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
 import { activeLocale } from "../i18n";
 import { randomUuid } from "../random-uuid";
@@ -104,10 +104,12 @@ export class CanvasController {
     }
   }
 
-  /** Shows a change at once and sends it after the ones before; `record: false` keeps it out of undo. */
+  /** Shows a change at once and sends it after the ones before; `record: false` keeps it out of undo. A change that adds
+   * a node is sent after the bots are pinned. */
   apply(ops: readonly CanvasOp[], { record = true }: { record?: boolean } = {}): CanvasOp[] {
     const shown = this.state.snapshot;
     if (!shown || shown.readOnly || !ops.length) return [];
+    if (ops.some((op) => op.type === "add_node")) this.pinBots();
     const batch: Batch = { ops: withIds(ops), seen: this.server?.revision ?? 0 };
     if (record) this.history = recordHistory(this.history, { forward: batch.ops, inverse: invertCanvasOps(shown, batch.ops) });
     this.pending.push(batch);
@@ -135,8 +137,10 @@ export class CanvasController {
     return this.queue;
   }
 
-  setViewport(viewport: CanvasViewport): void {
+  /** `save: false` shows the view without storing it, so the canvas opens on it only while nobody stores another. */
+  setViewport(viewport: CanvasViewport, { save = true }: { save?: boolean } = {}): void {
     this.set({ viewport });
+    if (!save) return;
     if (this.viewportTimer) clearTimeout(this.viewportTimer);
     this.viewportTimer = setTimeout(() => this.saveViewport(), VIEWPORT_SAVE_DELAY_MS);
   }
@@ -159,6 +163,8 @@ export class CanvasController {
   }
 
   async upload(file: File, at?: CanvasPoint): Promise<CanvasUploadResponse> {
+    this.pinBots();
+    await this.settled();
     const response = await this.backend.uploadFile(this.projectId, file, at);
     await this.refresh();
     const node = this.server?.nodes.find((candidate) => candidate.id === response.nodeId);
@@ -251,21 +257,23 @@ export class CanvasController {
       return this.refreshing;
     }
     this.refreshing = (async () => {
-      do {
-        this.refreshAgain = false;
-        try {
-          const snapshot = await this.backend.readSnapshot(this.projectId);
-          const looks = await this.backend.readBotLooks(this.projectId).catch(() => this.state.looks);
-          if (this.disposed) return;
-          if (!this.server || snapshot.revision >= this.server.revision) this.server = snapshot;
-          this.recompute({ looks });
-        } catch (error) {
-          this.set({ writeError: canvasErrorText(error) });
-        }
-      } while (this.refreshAgain && !this.disposed);
-    })().finally(() => {
-      this.refreshing = null;
-    });
+      try {
+        do {
+          this.refreshAgain = false;
+          try {
+            const snapshot = await this.backend.readSnapshot(this.projectId);
+            const looks = await this.backend.readBotLooks(this.projectId).catch(() => this.state.looks);
+            if (this.disposed) return;
+            if (!this.server || snapshot.revision >= this.server.revision) this.server = snapshot;
+            this.recompute({ looks });
+          } catch (error) {
+            this.set({ writeError: canvasErrorText(error) });
+          }
+        } while (this.refreshAgain && !this.disposed);
+      } finally {
+        this.refreshing = null;
+      }
+    })();
     return this.refreshing;
   }
 
@@ -280,6 +288,18 @@ export class CanvasController {
       this.recompute();
       void this.refresh();
     }
+  }
+
+  /** Stores where each bot node the server still lays out is now, so a node added after it never moves a bot. */
+  private pinBots(): void {
+    const shown = this.state.snapshot;
+    if (!shown) return;
+    const pinning = new Set(this.pending.flatMap((batch) => batch.ops.flatMap((op) => (op.type === "update_node" && op.patch?.position ? [op.id] : []))));
+    const pins = shown.nodes.flatMap((node): CanvasOp[] => {
+      const botId = botIdOfNode(node.id);
+      return botId !== null && shown.bots[botId]?.placed === false && !pinning.has(node.id) ? [{ type: "update_node", id: node.id, patch: { position: { ...node.position } } }] : [];
+    });
+    if (pins.length) this.apply(pins, { record: false });
   }
 
   private saveViewport(): void {
