@@ -54,7 +54,9 @@ async function wheelAt(browserUrl: string, at: { x: number; y: number }, deltaY:
     await new Promise((done, fail) => {
       socket.onmessage = (event) => {
         const reply = JSON.parse(String(event.data)) as { id?: number; error?: { message: string } };
-        if (reply.id === 1) (reply.error ? fail(new Error(reply.error.message)) : done(undefined));
+        if (reply.id !== 1) return;
+        if (reply.error) fail(new Error(reply.error.message));
+        else done(undefined);
       };
       socket.send(JSON.stringify({ id: 1, method: "Input.dispatchMouseEvent", params: { type: "mouseWheel", x: at.x, y: at.y, deltaX: 0, deltaY } }));
     });
