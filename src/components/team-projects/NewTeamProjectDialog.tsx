@@ -2,19 +2,24 @@ import { Check, Crown, Loader2 } from "lucide-react";
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
-import { isTeamProjectName, TEAM_PROJECT_NAME_MAX, type ProjectTeamWire, type TeamProjectRefusal } from "../../../shared/team-projects";
+import { isTeamProjectName, TEAM_PROJECT_NAME_MAX, type ProjectTeamWire, type TeamProjectRefusal, type TeamProjectWire } from "../../../shared/team-projects";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import { imeComposing } from "@/lib/send-key";
 import { refusalKey, refusalPlace, teamProjectFolder, unusableKey, type RefusalPlace } from "@/lib/team-projects";
 import { listProjectTeams } from "@/lib/team-projects-api";
+import { useShowThreads } from "@/lib/thread-preferences";
+import { openProjectChat } from "@/state/project-open";
 import type { SettingsPageId } from "@/state/store";
-import { useStoreDispatch } from "@/state/store-select";
+import { useStoreDispatch, useStoreSelector } from "@/state/store-select";
 import { createProject, refreshTeamProjects, useTeamProjectSide } from "@/state/team-projects";
 import { ChiefPicker } from "../ChiefPicker";
 import { SETTINGS_INPUT } from "../SettingsPrimitives";
 import { dataSettingsPlace } from "./where-in-settings";
+
+/** How long a new project's lead has to reach the app before the project opens on its canvas instead. */
+const LEAD_ARRIVES_MS = 10_000;
 
 interface Refusal {
   place: RefusalPlace;
@@ -77,6 +82,21 @@ export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string;
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [choosingChief, setChoosingChief] = useState<{ team: string; anchor: HTMLElement } | null>(null);
+  const [made, setMade] = useState<{ project: TeamProjectWire; until: number } | null>(null);
+  const bots = useStoreSelector((state) => state.bots);
+  const showThreads = useShowThreads();
+  useEffect(() => {
+    if (!made) return;
+    if (openProjectChat(dispatch, made.project, bots, showThreads)) {
+      onClose();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      dispatch({ type: "showProject", projectId: made.project.id });
+      onClose();
+    }, Math.max(0, made.until - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [made, bots, dispatch, showThreads, onClose]);
   const teamRows = useRef<HTMLDivElement>(null);
   const arriving = useRef<string | null>(null);
   const live = useRef(true);
@@ -148,12 +168,13 @@ export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string;
     }
     setBusy(true);
     setRefusal(null);
+    let made = false;
     try {
       const outcome = await createProject({ name: trimmed, team: teamName });
       if (!live.current) return;
       if ("project" in outcome) {
-        dispatch({ type: "showProject", projectId: outcome.project.id });
-        onClose();
+        made = true;
+        setMade({ project: outcome.project, until: Date.now() + LEAD_ARRIVES_MS });
         return;
       }
       if (outcome.refused === "no_team" || outcome.refused === "team_unusable") loadTeams();
@@ -161,7 +182,7 @@ export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string;
     } catch {
       if (live.current) setRefusal(refusalOf(null, ""));
     } finally {
-      if (live.current) setBusy(false);
+      if (live.current && !made) setBusy(false);
     }
   };
 

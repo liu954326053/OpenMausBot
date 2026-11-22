@@ -129,6 +129,16 @@ describe("the project view", () => {
     expect(q("[data-project-team-changes]")).toBeNull();
   });
 
+  it("switches to the lead's conversation from the top bar, where the canvas is the one chosen", async () => {
+    await draw({ projectId: "p-bride" });
+    const options = [...document.body.querySelectorAll<HTMLElement>("[data-canvas-top-bar] [data-project-mode-option]")];
+    expect(options.map((one) => [one.textContent, one.getAttribute("aria-pressed")])).toEqual([["Chat", "false"], ["Canvas", "true"]]);
+    await act(async () => options[1]!.click());
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+    await act(async () => options[0]!.click());
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead" }]]);
+  });
+
   it("waits for the list of projects", async () => {
     setTeamProjects(null);
     await draw({ projectId: "p-bride" });

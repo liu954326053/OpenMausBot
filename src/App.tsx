@@ -18,7 +18,7 @@ import { cloudAccountBridge, openCloudOnWeb } from "@/lib/cloud-add-web";
 import { parseComputerHelp } from "@/lib/computer-control";
 import { viewerClosedRelease } from "@/components/computer-takeover";
 import { Sidebar } from "@/components/Sidebar";
-import { ChatView } from "@/components/ChatView";
+import { ProjectChat } from "@/components/project-view/ProjectChat";
 import { GroupView } from "@/components/GroupView";
 import { ForkPanel } from "@/components/ForkPanel";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, TWO_SIDE_PANELS_FIT, useMediaQuery } from "@/lib/use-media-query";
@@ -28,6 +28,7 @@ import {
   PluginsPanel, preloadScreens, ProjectView, PublishedAppsPage, RemoteAgentSettingsPanel, RemoteDesktopPanel, RoomPanel, SettingsModal, SkillsLibraryPage, TeamFilesPage, TeamMapPage, TriggersPage,
 } from "@/components/lazy-screens";
 import { useLastProject } from "@/state/project-view";
+import { openProject } from "@/state/project-open";
 import { newBotOnTeamMap } from "@/state/team-map-focus";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useRoomPanelShown } from "@/lib/room-panel";
@@ -228,7 +229,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       } else if (numbered) {
         e.preventDefault();
         if ("bot" in numbered) openBot(dispatch, numbered.bot, showThreads);
-        else dispatch({ type: "showProject", projectId: numbered.project.id });
+        else openProject(dispatch, numbered.project, shownBots, showThreads);
       } else if (step !== null) {
         const next = nextShortcutBot(bots, state.selectedId, step);
         if (next) {
@@ -425,7 +426,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       ) : group ? (
         <GroupView key={group.id} group={group} />
       ) : bot ? (
-        <ChatView bot={bot} />
+        <ProjectChat bot={bot} />
       ) : noEngines ? (
         <NoEngines />
       ) : (

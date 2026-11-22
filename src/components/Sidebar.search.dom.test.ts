@@ -118,7 +118,7 @@ describe.each([["Advanced", true], ["Simple", false]] as const)("the sidebar's s
     expect([...q('[data-sidebar-team-project="work"]')!.children].map((one) => one.querySelector("[data-sidebar-project-row]") !== null)).toEqual([true]);
     expect([botRows(), roomRows(), q("[data-sidebar-inbox]") !== null]).toEqual([["magic"], [], true]);
     q('[data-sidebar-project-row="work"]')!.click();
-    expect(dispatch.mock.calls.at(-1)).toEqual([{ type: "showProject", projectId: "work" }]);
+    expect(dispatch.mock.calls.at(-1)).toEqual([{ type: "select", id: "dodo" }]);
   });
 
   it("finds no project by a bot's name, a group chat's or a message's words, and lists none of them", async () => {

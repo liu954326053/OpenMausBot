@@ -18,6 +18,7 @@ vi.mock("../MenuMotion", () => ({
 }));
 
 import { setLocale } from "@/lib/i18n";
+import { forgetDisclosuresForTests } from "@/lib/remembered-disclosure";
 import { setTeamProjects, useTeamProjectSide } from "@/state/team-projects";
 import { TOAST_CLEAR_OF_COMPOSER } from "../NoticeCard";
 import { SidebarTeamProjects, type SidebarTeamProjectsMode } from "./SidebarTeamProjects";
@@ -66,11 +67,14 @@ const block = (id: string) => q(`[data-sidebar-team-project="${id}"]`);
 const row = (id: string) => q(`[data-sidebar-project-row="${id}"]`);
 const under = (id: string) => [...block(id)!.children].slice(1);
 const listed = () => all("[data-sidebar-team-project]").map((one) => one.dataset.sidebarTeamProject);
-const chevron = (id: string) => block(id)!.querySelector<HTMLElement>("button[aria-expanded]:not([aria-haspopup])");
+const expandedOf = (id: string) => row(id)!.getAttribute("aria-expanded");
+const lead = (id: string) => q(`[data-sidebar-project-lead="${id}"]`);
+const leadsUnder = (id: string) => under(id).map((one) => (one as HTMLElement).dataset.sidebarProjectLead);
 const mark = (id: string) => row(id)!.querySelector<HTMLElement>("[data-section-mark]");
 const noMatch = () => q("[data-sidebar-no-project-match]")?.textContent ?? null;
 const posts = () => calls.filter((call) => call.method === "POST").map((call) => call.path);
 const shown = (id: string) => ({ type: "showProject", projectId: id });
+const opened = (id: string) => ({ type: "select", id });
 
 function Harness() {
   const side = useTeamProjectSide();
@@ -87,6 +91,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   setLocale("en");
   localStorage.clear();
+  forgetDisclosuresForTests();
   calls = [];
   bots = team();
   rooms = teamRooms();
@@ -144,25 +149,61 @@ describe("the projects in the sidebar", () => {
     expect(listed()).toEqual(["The bride", "The heir"]);
   });
 
-  it("is one row per project, with no chevron and no team under it, and a click on one opens the project's canvas", async () => {
+  it("is one row per project with nothing under it, and a click opens the lead's conversation and shows the lead under the row", async () => {
     await draw();
     expect([listed(), under("The bride"), under("The heir")]).toEqual([["The bride", "The heir"], [], []]);
-    expect([chevron("The bride"), chevron("The heir")]).toEqual([null, null]);
+    expect([expandedOf("The bride"), expandedOf("The heir")]).toEqual(["false", "false"]);
     expect(row("The bride")!.textContent).toBe("The bride");
     await click(row("The heir"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
+    expect(fixture.dispatch.mock.calls).toEqual([[opened("heir-lead")]]);
+    expect([expandedOf("The heir"), leadsUnder("The heir"), expandedOf("The bride"), under("The bride")]).toEqual(["true", ["heir-lead"], "false", []]);
+    expect(lead("heir-lead")!.textContent).toBe("heir-lead");
+    await click(lead("heir-lead"));
+    expect(fixture.dispatch.mock.calls).toEqual([[opened("heir-lead")], [opened("heir-lead")]]);
   });
 
-  it("is one row per project in Advanced mode too", async () => {
+  it("marks the lead's row while the lead's conversation is open, folds the project on a click of its row, and marks the row then", async () => {
+    await draw();
+    await click(row("The bride"));
+    fixture.state = { ...fixture.state, activeView: "chat", selectedId: "bride-lead" };
+    await draw();
+    expect([row("The bride")!.getAttribute("aria-current"), lead("bride-lead")!.getAttribute("aria-current")]).toEqual([null, "page"]);
+    fixture.dispatch.mockClear();
+    await click(row("The bride"));
+    expect([fixture.dispatch.mock.calls, under("The bride"), expandedOf("The bride"), row("The bride")!.getAttribute("aria-current")]).toEqual([[], [], "false", "page"]);
+    await click(row("The bride"));
+    expect([fixture.dispatch.mock.calls, leadsUnder("The bride")]).toEqual([[[opened("bride-lead")]], ["bride-lead"]]);
+  });
+
+  it("opens the lead's conversation from the row of a project that is open but not on screen, and keeps it open", async () => {
+    await draw();
+    await click(row("The bride"));
+    fixture.state = { ...fixture.state, activeView: "team-map", selectedId: "bride-lead" };
+    await draw();
+    fixture.dispatch.mockClear();
+    await click(row("The bride"));
+    expect([fixture.dispatch.mock.calls, leadsUnder("The bride")]).toEqual([[[opened("bride-lead")]], ["bride-lead"]]);
+  });
+
+  it("shows no lead under a project whose lead is not listed, and opens its canvas instead", async () => {
+    bots = bots.filter((one) => one.id !== "heir-lead");
+    await draw();
+    await click(row("The heir"));
+    expect([fixture.dispatch.mock.calls, under("The heir"), expandedOf("The heir")]).toEqual([[[shown("The heir")]], [], "false"]);
+  });
+
+  it("is one row per project in Advanced mode too, which opens the same way", async () => {
     mode = { ...mode, advanced: true };
     await draw();
-    expect([listed(), under("The bride"), under("The heir"), chevron("The bride"), chevron("The heir")]).toEqual([["The bride", "The heir"], [], [], null, null]);
+    expect([listed(), under("The bride"), under("The heir"), expandedOf("The bride"), expandedOf("The heir")]).toEqual([["The bride", "The heir"], [], [], "false", "false"]);
+    await click(row("The bride"));
+    expect([fixture.dispatch.mock.calls, leadsUnder("The bride")]).toEqual([[[opened("bride-lead")]], ["bride-lead"]]);
   });
 
-  it("draws a project this device once kept open as one row too", async () => {
+  it("keeps a project the sidebar of an older version kept open folded", async () => {
     localStorage.setItem("openmausbot.sidebarOpenProjects.v1", JSON.stringify(["The bride"]));
     await draw();
-    expect([under("The bride"), chevron("The bride")]).toEqual([[], null]);
+    expect([under("The bride"), expandedOf("The bride")]).toEqual([[], "false"]);
   });
 
   it("marks the project whose canvas is open, whichever of its bots is chosen there", async () => {
@@ -247,14 +288,16 @@ describe("the projects in the sidebar", () => {
 });
 
 describe("a search", () => {
-  it("finds projects by a part of their name in any case, each one row with nothing under it", async () => {
+  it("finds projects by a part of their name in any case, each one row with nothing under it, even one that is open", async () => {
+    await draw();
+    await click(row("The heir"));
     query = "HEIR";
     await draw();
     expect([listed(), under("The heir"), noMatch()]).toEqual([["The heir"], [], null]);
     query = "the";
     await draw();
     expect([listed(), under("The bride"), under("The heir")]).toEqual([["The bride", "The heir"], [], []]);
-    expect([chevron("The bride"), chevron("The heir"), q("[data-sidebar-bot-row], [data-row]")]).toEqual([null, null, null]);
+    expect([expandedOf("The bride"), expandedOf("The heir"), q("[data-sidebar-bot-row], [data-row], [data-sidebar-project-lead]")]).toEqual([null, null, null]);
   });
 
   it("finds no project by a bot's name, a group chat's or a message's text, and says so in one muted line", async () => {
@@ -268,11 +311,11 @@ describe("a search", () => {
     expect(all("[data-sidebar-no-project-match]")).toHaveLength(1);
   });
 
-  it("opens the canvas of a project it found as a click does without a search", async () => {
+  it("opens the lead's conversation of a project it found as a click does without a search", async () => {
     query = "bride";
     await draw();
     await click(row("The bride"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The bride")]]);
+    expect(fixture.dispatch.mock.calls).toEqual([[opened("bride-lead")]]);
   });
 
   it("offers no New project while it runs, and gives the whole list back when it is cleared", async () => {
@@ -473,12 +516,12 @@ describe("a project whose team changed", () => {
 describe("the narrow column of icons", () => {
   beforeEach(() => { mode = { density: "icons", advanced: false, tight: false, remote: false }; });
 
-  it("draws each project as a square named for it that opens its view, with no team under it, and New project as a named button", async () => {
+  it("draws each project as a square named for it that opens its lead's conversation, with no team under it, and New project as a named button", async () => {
     await draw();
     expect(all('[role="group"]').map((group) => group.getAttribute("aria-label"))).toEqual(["The bride", "The heir"]);
     expect([row("The heir")!.getAttribute("aria-label"), row("The heir")!.textContent, under("The heir")]).toEqual(["The heir", "T", []]);
     await click(row("The heir"));
-    expect(fixture.dispatch.mock.calls).toEqual([[shown("The heir")]]);
+    expect([fixture.dispatch.mock.calls, under("The heir")]).toEqual([[[opened("heir-lead")]], []]);
     const add = q("[data-team-project-new]")!;
     expect([add.getAttribute("aria-label"), add.getAttribute("title"), add.textContent]).toEqual(["New project", "New project", ""]);
   });

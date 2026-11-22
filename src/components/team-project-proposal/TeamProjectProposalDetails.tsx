@@ -2,6 +2,8 @@ import { useContext } from "react";
 import { ChevronRight, FolderClosed } from "lucide-react";
 import type { TeamProjectProposal } from "../../../shared/team-project-proposal";
 import { t } from "@/lib/i18n";
+import { useShowThreads } from "@/lib/thread-preferences";
+import { openProject } from "@/state/project-open";
 import { StoreContext } from "@/state/store";
 import { useTeamProjectSide } from "@/state/team-projects";
 
@@ -29,12 +31,14 @@ function teamOf(proposal: TeamProjectProposal): { name: string; members: Member[
 function OpenProject({ projectId }: { projectId: string }) {
   const store = useContext(StoreContext);
   const side = useTeamProjectSide();
-  if (!store || (side.shown && !side.projects.some((project) => project.id === projectId))) return null;
+  const showThreads = useShowThreads();
+  const project = side.projects.find((one) => one.id === projectId);
+  if (!store || (side.shown && !project)) return null;
   return (
     <button
       type="button"
       data-team-project-open={projectId}
-      onClick={() => store.dispatch({ type: "showProject", projectId })}
+      onClick={() => (project ? openProject(store.dispatch, project, store.state.bots, showThreads) : store.dispatch({ type: "showProject", projectId }))}
       className="ui-pill mt-3"
     >
       <FolderClosed size={14} aria-hidden="true" />
@@ -44,7 +48,7 @@ function OpenProject({ projectId }: { projectId: string }) {
   );
 }
 
-/** What a proposed project will be, and once it is made the way into it: its canvas. */
+/** What a proposed project will be, and once it is made the way into it: its lead's conversation. */
 export function TeamProjectProposalDetails({ proposal }: { proposal: TeamProjectProposal }) {
   const { result } = proposal;
   const team = teamOf(proposal);

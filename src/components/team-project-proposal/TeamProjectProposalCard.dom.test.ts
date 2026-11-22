@@ -10,7 +10,7 @@ import type { TeamProjectProposal, TeamProjectProposalResult } from "../../../sh
 import { ApprovalCard } from "../ApprovalCard";
 import { approvalBlocksComposer, PendingApprovalActions, PendingApprovalPanel, pendingApprovals, spokenApprovalPrompt } from "../PendingApproval";
 
-const listed = vi.hoisted(() => ({ side: { shown: false, projects: [] as Array<{ id: string }> } }));
+const listed = vi.hoisted(() => ({ side: { shown: false, projects: [] as Array<{ id: string; leadBotId?: string }> } }));
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 vi.mock("@/lib/cloud-guest", async (original) => ({ ...await original<typeof import("@/lib/cloud-guest")>(), useCloudGuest: () => false }));
 vi.mock("@/state/team-projects", async (original) => ({ ...await original<typeof import("@/state/team-projects")>(), useTeamProjectSide: () => listed.side }));
@@ -153,7 +153,10 @@ describe("a project the main bot proposes", () => {
 });
 
 describe("once the person has answered", () => {
-  it("a project that was made says so and that its lead has the request, and opens on its canvas", async () => {
+  const listLead = () => { listed.side = { shown: true, projects: [{ id: "project-1", leadBotId: "bot-pia" }] }; };
+
+  it("a project that was made says so and that its lead has the request, and opens on its lead's conversation", async () => {
+    listLead();
     const made = projectCard({ answered: "allow" }, CREATED);
     expect(pendingApprovals([made])).toEqual([]);
     await showCard(made);
@@ -162,14 +165,24 @@ describe("once the person has answered", () => {
     expect(openButton()?.textContent).toBe("Open project");
     expect(dimmed()).toBe(false);
     await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }]);
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
   });
 
-  it("opens the canvas, not the lead's thread the main bot handed the request into", async () => {
+  it("opens the lead's own conversation, not the thread the main bot handed the request into", async () => {
+    listLead();
     const handed = { threadId: "pia-drama", title: "The Swapped Bride", createdAt: 2, openedBy: { botId: "magicbot", name: "MagicBot", at: 2 } };
     await showCard(projectCard({ answered: "allow" }, CREATED), [{ ...pia, tasks: [...pia.tasks!, handed] }]);
     await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }]);
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
+  });
+
+  it("opens the project's canvas while the list of projects is not read yet, or while its lead is not listed", async () => {
+    await showCard(projectCard({ answered: "allow" }, CREATED));
+    await act(async () => openButton()!.click());
+    listLead();
+    await showCard(projectCard({ answered: "allow" }, CREATED), []);
+    await act(async () => openButton()!.click());
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }, { type: "showProject", projectId: "project-1" }]);
   });
 
   it("still opens a project whose lead is gone, and offers no way in once the project is gone", async () => {
@@ -182,7 +195,8 @@ describe("once the person has answered", () => {
     expect(openButton()).toBeNull();
   });
 
-  it("a project whose request did not reach its lead says why, and opens on its canvas to tell the lead there", async () => {
+  it("a project whose request did not reach its lead says why, and opens the lead's conversation to tell the lead there", async () => {
+    listLead();
     const why = "The request did not reach Pia. Every bot is paused, so Pia takes no new work. Resume every bot from any bot’s menu in the sidebar. Then open the project and tell Pia what you want.";
     await showCard(projectCard({ answered: "allow", held: why }, CREATED));
     expect(host.textContent).toContain("Project created");
@@ -190,7 +204,7 @@ describe("once the person has answered", () => {
     expect(host.textContent).toContain(why);
     expect(dimmed()).toBe(false);
     await act(async () => openButton()!.click());
-    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "showProject", projectId: "project-1" }]);
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "bot-pia" }]);
   });
 
   it("shows a card that names a team template instead of a team, the template's lead first", async () => {
