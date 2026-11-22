@@ -1,5 +1,5 @@
 import { botOwner, nameFromEmail } from "../shared/bot-owner.ts";
-import { canManage, hasAuthority, inChargeOfEvery, isTeamProjectLead, peerName, renderRoster, reachablePeers, type RosterMember, type TeamPrompt } from "./peer-roster.ts"; import { chiefLevel } from "./chief-level.ts";
+import { canManage, hasAuthority, inChargeOfEvery, isTeamProjectLead, peerName, pipelineTeam, renderRoster, reachablePeers, type RosterMember, type TeamPrompt } from "./peer-roster.ts"; import { chiefLevel } from "./chief-level.ts";
 import type { TaskRecord } from "./store.ts";
 import { pipelinePlaceOf, type PipelinePlace } from "./team-flow/flows.ts";
 
@@ -71,15 +71,15 @@ export function chiefOfStaffPrompt(
   const place = chief ? pipelinePlaceOf(chief.id) : null;
   const member = place !== null && !leads(place);
   const inPipeline = (bot: ChiefTeamMember) => place?.team.includes(bot.id) === true;
-  const team = chief ? reachable.filter((bot) => (place ? inPipeline(bot) : hasAuthority(chief, bot))) : reachable;
+  const team = chief ? (place ? pipelineTeam(bots, chief, also) : reachable.filter((bot) => hasAuthority(chief, bot))) : reachable;
   const supervised = chief && place ? reachable.filter((bot) => !inPipeline(bot) && hasAuthority(chief, bot)) : [];
   const others = chief ? reachable.filter((bot) => !team.includes(bot) && !supervised.includes(bot)) : [];
   const roster = renderRoster(team, {
     max: ROSTER_MAX_BOTS,
-    empty: member ? "- No bot is upstream or downstream of you in the pipeline yet." : place ? "- No bot is downstream of you in the pipeline yet." : "- No other visible bots are available yet.",
+    empty: place ? "- No other bot is in the pipeline yet." : "- No other visible bots are available yet.",
     about: true,
     department: chiefSection,
-    ...(place ? { flow: place } : {}),
+    ...(place ? { flow: place, inOrder: true } : {}),
   });
   const supervisedRoster = supervised.length ? renderRoster(supervised, {
     max: Math.max(ROSTER_MAX_BOTS - team.length, OTHERS_MIN_BOTS),
@@ -135,7 +135,7 @@ export function chiefOfStaffPrompt(
     canDelegate ? `When the user asks you to assemble or configure a team, get the exact authorized teams, bot IDs and model catalog from list_team_setup, then call propose_team_setup once with all named specialists and their profile/model changes${inProject ? ": every bot stays in this project's department, and a plan that names another department or a new team is refused" : ", new teams included: the plan covers their creation and your access"}. Existing thread models and other bots' execution permissions stay unchanged. ${mainBot ? SETUP_ON_A_CARD : SETUP_APPLIES} Report failed or cancelled results honestly; never ask for another yes, poll or repeat the proposal. For explicitly requested bot deletion, use propose_bot_deletion separately and follow its applied or pending result too.` : "",
   ].filter(Boolean).join("\n");
   const listed = [
-    place ? `The bots ${member ? "upstream and downstream of you" : "downstream of you, the ones you hand work to,"} in the ${sectionName} ${inProject ? "project's" : "team's"} pipeline:`
+    place ? `The ${sectionName} ${inProject ? "project's" : "team's"} whole pipeline, in order, so you know every member: ${member ? "you reach only the bots marked upstream or downstream of you" : "you hand work only to the bots marked downstream of you, and the others get their work along the pipeline"}. When the person asks who is on the team, name them all.`
       : person ? `Bots that report to ${person} (your team):` : everywhere ? "Your team, in every department:" : alsoManages ? "Your team, in the departments you are responsible for:" : `Current ${sectionName} department (your team):`,
     roster,
     supervisedRoster && (person ? `Other bots that report to ${person}, outside your pipeline:` : everywhere ? "Your team in every other department, outside your pipeline:" : "Your team in the other departments you are responsible for, outside your pipeline:"),
