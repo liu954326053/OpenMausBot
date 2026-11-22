@@ -319,7 +319,7 @@ describe("a project's canvas", () => {
     const asked = (await messages(writer.threadId)).find((line) => line.id === sent.body.messageId)!;
     const prompt = JSON.stringify(turnOf(writer.id, "task").prompt);
     keep("06-task-with-references.json", { response: sent.body, message: asked, prompt: turnOf(writer.id, "task").prompt });
-    expect(asked.text).toMatch(/^Write the opening scene\n\nConnected to your node on the project's canvas:\n\nText 1 "Brief":\n\n> Episode one: the bride is swapped at the altar\.\n\nImage 1 "reference\.png":\n\n<attached-image path="[^"]+" name="reference\.png"\/>$/);
+    expect(asked.text).toMatch(/^Write the opening scene\n\nConnected to your node on the project's canvas:\n\nText 1 "Brief":\n\n> Episode one: the bride is swapped at the altar\.\n\nImage 1 "reference\.png"\n\n<attached-image path="[^"]+" name="reference\.png"\/>$/);
     expect(prompt).toContain("> Episode one: the bride is swapped at the altar.");
     expect(prompt).toContain(`"data":"${png(90).toString("base64")}"`);
   }, hostTimeout(60_000));

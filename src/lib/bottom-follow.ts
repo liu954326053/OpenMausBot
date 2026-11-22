@@ -7,6 +7,10 @@ interface BottomFollowScroller {
   scrollTo(options?: ScrollToOptions): void;
 }
 
+export function atBottom(scroller: Pick<HTMLElement, "scrollHeight" | "scrollTop" | "clientHeight">): boolean {
+  return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < BOTTOM_FOLLOW_THRESHOLD;
+}
+
 export function followBottomGrowth(scroller: BottomFollowScroller, following: boolean, smooth = false): boolean {
   if (!following) return false;
   scroller.scrollTo(smooth ? { top: scroller.scrollHeight, behavior: "smooth" } : { top: scroller.scrollHeight });

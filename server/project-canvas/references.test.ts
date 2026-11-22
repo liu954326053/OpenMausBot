@@ -49,7 +49,7 @@ function canvas(nodes: CanvasNode[], connections: CanvasConnection[]): CanvasDoc
 
 const file = (path: string, mime: string) => ({ path, mime, bytes: 3, name: path.split("/").at(-1)! });
 const deps = (language?: string) => ({ folder, saveImage, language });
-const headings = (text: string) => text.match(/^[^>\n].*:$/gm);
+const headings = (text: string) => text.match(/^[^>\n<(].*(?:[:"]$|$(?=\n\n<attached-))/gm);
 
 describe("what goes with a task sent from the canvas", () => {
   it("is everything connected into the bot's node: each reference by its label in the numbering's order, then the other nodes", async () => {
@@ -62,7 +62,7 @@ describe("what goes with a task sent from the canvas", () => {
     ], [into("c1", "brief"), into("c2", "shot"), into("c3", "cover"), into("c4", "theme"), into("c5", "other", "bot:boards"), into("c6", "bot:lead")]);
     const references = await taskReferences(document, "bot:writer", deps());
     expect(references.count).toBe(4);
-    expect(headings(references.text)).toEqual(["Connected to your node on the project's canvas:", 'Text 1 "Brief":', 'Image 1 "Cover":', 'Audio 1 "Theme":', 'Shot "Opening":']);
+    expect(headings(references.text)).toEqual(["Connected to your node on the project's canvas:", 'Text 1 "Brief":', 'Image 1 "Cover"', 'Audio 1 "Theme"', 'Shot "Opening":']);
     expect(references.text).toContain('Text 1 "Brief":\n\n> Episode 1: the stand-in bride arrives.\n> She hides the ring.');
     expect(references.text).toContain('Shot "Opening":\n\n> Rain on the church steps\n\naspect: 16:9; seconds: 5');
     expect(references.text).toContain(`<attached-image path="${saved[0]!.split(":").slice(1).join(":")}" name="cover.png"/>`);
@@ -86,7 +86,7 @@ describe("what goes with a task sent from the canvas", () => {
       node("empty", "text", "Empty"),
     ], [into("c1", "brief"), into("c2", "refs"), into("c3", "cover"), into("c4", "shot"), into("c5", "empty")]);
     const references = await taskReferences(document, "bot:writer", deps("zh"));
-    expect(headings(references.text)).toEqual(['文本 1 "Brief":', '图片 1 "Cover":', "图片 2:", '镜头 "shot":']);
+    expect(headings(references.text)).toEqual(['文本 1 "Brief":', '图片 1 "Cover"', "图片 2", '镜头 "shot":']);
     expect(references.count).toBe(4);
     expect(references.text.startsWith("项目画布上连到你的节点的内容：\n\n")).toBe(true);
     expect(taskMessage(" @图片 1 is the bride ", references, "zh")).toBe(`@图片 1 is the bride\n\n${references.text}`);
@@ -104,7 +104,7 @@ describe("what goes with a task sent from the canvas", () => {
     writeFileSync(join(folder, "素材", "script.pdf"), "%PDF-1.4");
     const references = await taskReferences(document, "logline", deps());
     expect(references.source).toBe('Text 1 "Logline":\n\n> Draft line one\n> Draft line two');
-    expect(headings(references.text)).toEqual(["What the text node \"Logline\" on the project's canvas refers to:", 'Text 2 "Scene":', 'Image 1 "Cover":', 'Audio 1 "Theme":', 'File "Script":']);
+    expect(headings(references.text)).toEqual(["What the text node \"Logline\" on the project's canvas refers to:", 'Text 2 "Scene":', 'Image 1 "Cover"', 'Audio 1 "Theme"', 'File "Script"']);
     expect(references.text).toContain(`<attached-file path="${join(folder, "素材", "script.pdf")}" name="script.pdf"/>`);
     expect(references.count).toBe(4);
     expect(references.text).not.toMatch(/Draft|Goes to the bot only/);
@@ -127,12 +127,12 @@ describe("what goes with a task sent from the canvas", () => {
     ], [into("c1", "cover", "logline"), into("c2", "cover", "blank")]);
     const revised = await taskReferences(document, "logline", deps("zh"));
     const message = taskMessage("把 @文本 1 改短", revised, "zh");
-    expect(message.startsWith("请根据要求修改以下文本。\n\n原文：\n文本 1 \"梗概\":\n\n> 新娘在台阶上回头。{prompt}\n\n修改要求：\n把 @文本 1 改短\n\n项目画布上文本节点 \"梗概\" 引用的内容：\n\n图片 1 \"封面\":\n\n<attached-image ")).toBe(true);
+    expect(message.startsWith("请根据要求修改以下文本。\n\n原文：\n文本 1 \"梗概\":\n\n> 新娘在台阶上回头。{prompt}\n\n修改要求：\n把 @文本 1 改短\n\n项目画布上文本节点 \"梗概\" 引用的内容：\n\n图片 1 \"封面\"\n\n<attached-image ")).toBe(true);
     expect(message).toBe(`请根据要求修改以下文本。\n\n原文：\n${revised.source}\n\n修改要求：\n把 @文本 1 改短\n\n${revised.text}`);
     const empty = await taskReferences(document, "blank", deps("zh"));
     expect(empty.source).toBeUndefined();
-    expect(empty.text.startsWith("项目画布上文本节点 \"空白\" 引用的内容：\n\n图片 1 \"封面\":\n\n<attached-image ")).toBe(true);
-    expect(headings(empty.text)).toEqual(['图片 1 "封面":']);
+    expect(empty.text.startsWith("项目画布上文本节点 \"空白\" 引用的内容：\n\n图片 1 \"封面\"\n\n<attached-image ")).toBe(true);
+    expect(headings(empty.text)).toEqual(['图片 1 "封面"']);
     expect(taskMessage("写一句梗概", empty, "zh")).toBe(`写一句梗概\n\n${empty.text}`);
   });
 
@@ -150,7 +150,7 @@ describe("what goes with a task sent from the canvas", () => {
     ]);
     const references = await taskReferences(document, "prompt", deps());
     expect(references.source).toBe("Text 1:\n\n> Draft");
-    expect(headings(references.text)).toEqual(["What the text node \"prompt\" on the project's canvas refers to:", 'Image 1 "Cover":', 'Text 2 "Brief":', 'Shot "Opening":']);
+    expect(headings(references.text)).toEqual(["What the text node \"prompt\" on the project's canvas refers to:", 'Image 1 "Cover"', 'Text 2 "Brief":', 'Shot "Opening":']);
     expect(references.text).not.toMatch(/Theme|Draft/);
   });
 
@@ -159,7 +159,25 @@ describe("what goes with a task sent from the canvas", () => {
     const message = taskMessage("Draw the poster.", await taskReferences(document, "bot:writer", deps()), undefined);
     const turn = extractTurnImages(message, { attachmentsDir: attachments });
     expect(turn.images).toHaveLength(1);
-    expect(message.startsWith("Draw the poster.\n\nConnected to your node on the project's canvas:\n\nImage 1 \"Cover\":\n\n")).toBe(true);
+    expect(message.startsWith("Draw the poster.\n\nConnected to your node on the project's canvas:\n\nImage 1 \"Cover\"\n\n<attached-image ")).toBe(true);
+  });
+
+  it("ends a label with a colon only before words, so a picture's own label reads whole in Chinese and English", async () => {
+    addServerLinePacks({ zh: { "server.projectCanvas.reference.image": "图片", "server.projectCanvas.reference.text": "文本" } });
+    const document = canvas([
+      node("church", "image", "教堂.png", { file: file("素材/cover.png", "image/png") }),
+      node("poster", "image", "Poster", { file: file("素材/cover.png", "image/png"), prompt: "A veil in the rain" }),
+      node("brief", "text", "Brief", { content: "The swap." }),
+    ], [into("c1", "church"), into("c2", "poster"), into("c3", "brief")]);
+    const inChinese = (await taskReferences(document, "bot:writer", deps("zh"))).text;
+    expect(inChinese).toContain('\n\n图片 1 "教堂.png"\n\n<attached-image ');
+    expect(inChinese).toContain('\n\n图片 2 "Poster":\n\n<attached-image ');
+    expect(inChinese).toContain('\n\n文本 1 "Brief":\n\n> The swap.');
+    expect(inChinese).not.toContain('"教堂.png":');
+    const inEnglish = (await taskReferences(document, "bot:writer", deps())).text;
+    expect(inEnglish).toContain('\n\nImage 1 "教堂.png"\n\n<attached-image ');
+    expect(inEnglish).toContain('\n\nImage 2 "Poster":\n\n<attached-image ');
+    expect(inEnglish).not.toContain('"教堂.png":');
   });
 
   it("never turns a tag written in a node's text or title into an attachment", async () => {

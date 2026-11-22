@@ -11,7 +11,7 @@ import {
   type TouchEvent,
   type WheelEvent,
 } from "react";
-import { BOTTOM_FOLLOW_THRESHOLD, followBottomGrowth, useBottomFollowResize } from "@/lib/bottom-follow";
+import { atBottom, followBottomGrowth, useBottomFollowResize } from "@/lib/bottom-follow";
 import { afterPaint } from "@/lib/after-paint";
 import { useFocusMessage } from "@/lib/focus-message";
 import {
@@ -59,7 +59,7 @@ const stepAhead = (el: HTMLElement) => Math.max(AUTO_EXPAND_TOP_THRESHOLD, el.cl
 const WIDGETS_WITH_OWN_ARROW_KEYS = '[role="menu"], [role="menubar"], [role="listbox"], [role="tree"], [role="grid"], [role="tablist"], [role="radiogroup"], [role="slider"], select, [contenteditable="true"]';
 
 const gapBelow = (el: HTMLElement) => el.scrollHeight - el.scrollTop - el.clientHeight;
-const atEndOf = (el: HTMLElement | null) => !el || gapBelow(el) < BOTTOM_FOLLOW_THRESHOLD;
+const atEndOf = (el: HTMLElement | null) => !el || atBottom(el);
 
 interface TranscriptVisit {
   key: string;

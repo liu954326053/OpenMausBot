@@ -621,6 +621,48 @@ describe("the project canvas", () => {
     expect(leaks()).toEqual([]);
   });
 
+  it("opens the panel's conversation at its latest message and follows what comes in while the reader stays at the end, as the chat does", async () => {
+    const resized = new Map<Element, () => void>();
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        const report = () => this.callback([{ target, contentRect: { width: 4000, height: 3000 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+        resized.set(target, report);
+        report();
+      }
+      unobserve() {}
+      disconnect() {}
+    });
+    let tall = 1000;
+    const inConversation = (element: Element) => element.hasAttribute("data-panel-conversation");
+    const scrollHeight = Object.getOwnPropertyDescriptor(Element.prototype, "scrollHeight")!.get!;
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight")!.get!;
+    const spies = [
+      vi.spyOn(Element.prototype, "scrollHeight", "get").mockImplementation(function (this: Element) { return inConversation(this) ? tall : scrollHeight.call(this); }),
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) { return inConversation(this) ? 288 : clientHeight.call(this); }),
+    ];
+    try {
+      await mount();
+      await clickNode(botNodeId("otto"));
+      await act(async () => buttonByText(panel()!, "Conversation")!.click());
+      await settle();
+      const scroller = panel()!.querySelector<HTMLElement>("[data-panel-conversation]")!;
+      expect(scroller.scrollTop).toBe(1000);
+      const grow = (height: number) => act(() => { tall = height; resized.get(scroller.firstElementChild!)!(); });
+      const scrollTo = (top: number) => act(() => { scroller.scrollTop = top; scroller.dispatchEvent(new Event("scroll")); });
+      await grow(1400);
+      expect(scroller.scrollTop).toBe(1400);
+      await scrollTo(200);
+      await grow(1800);
+      expect(scroller.scrollTop).toBe(200);
+      await scrollTo(1800 - 288);
+      await grow(2000);
+      expect(scroller.scrollTop).toBe(2000);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
   it("leaves a left press on the canvas to move the focus, so the text being written in a node is saved", async () => {
     await mount();
     const press = (button: number) => {
