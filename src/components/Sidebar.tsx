@@ -707,6 +707,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const pendingBotUndo = teamFeedback?.restoreBot;
   const botRow = (bot: Bot) => botRowProps(state, dispatch, bot, { density, onMenu: setMenu, renameRequest: renameRequest?.botId === bot.id ? renameRequest.nonce : 0 });
   const inboxRow = <SidebarInboxRow icons={density === "icons"} large={!advanced} flush={!simpleDesk} running={attentionHasRunningWork(attention)} onOpened={phone ? onClose : undefined} />;
+  const topInbox = advanced && density !== "icons" && !phone;
   const railSearch = () => {
     if (collapseToIcons) return openCommandPalette();
     setSearchOpen(true);
@@ -810,6 +811,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
         </div>}
         {density !== "icons" && (simpleDesk ? <div data-sidebar-top-slot className="min-w-0 flex-1" /> : (
           <div data-sidebar-top-slot className={cn("@container/sidebar-top flex min-w-0 flex-1 items-center", simple && "justify-end")}>
+            {topInbox && <SidebarInboxRow top icons={false} large={false} running={attentionHasRunningWork(attention)} style={windowNoDragStyle} />}
             {!simple && <div data-sidebar-top-spacer className="min-w-0 flex-1 @min-[96px]/sidebar-top:min-w-6" />}
             <div data-sidebar-top-switcher className={simple ? "flex min-w-0 items-center" : "flex min-w-0 max-w-[140px] items-center"}>
               <DesktopWorkspaceSwitcher inline pill={simple} cloudHome={state.config?.cloudHome === true} place={state.config?.team?.name} owner={cloudOwner} howTo={state.cloudHowTo} onMenuClosed={endHowTo} />
@@ -867,7 +869,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           ) : (
             <div className="mb-1"><BotListItem {...botRow(shownMain)} /></div>
           ))}
-          {!simpleDesk && inboxRow}
+          {!simpleDesk && !topInbox && inboxRow}
           {!q && <NeedsYouButton compact={rail} />}
           <SidebarTeamProjects side={projectSide} all={sideLists} query={query.trim()}
             mode={{ density, advanced, tight: advanced || simpleDesk, remote: remoteClient }}

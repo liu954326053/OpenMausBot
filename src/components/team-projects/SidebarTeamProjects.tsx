@@ -1,5 +1,5 @@
 import { Archive, FolderX, Plus, UsersRound } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
@@ -66,6 +66,7 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   const [archived, setArchived] = useState<{ project: TeamProjectWire; left: { from: string; to: string } | null } | null>(null);
   const [reviewing, setReviewing] = useState<TeamProjectWire | null>(null);
   const forget = useCallback(() => setArchived(null), []);
+  const labelId = useId();
 
   const listedBots = all.bots.filter((bot) => !bot.hidden);
   const shownProjects = side.projects
@@ -192,37 +193,39 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
 
   return (
     <div data-sidebar-team-projects="" className={cn("flex flex-col", gap)}>
-      {noMatch}
-      {shownProjects.map(({ project, attention }) => {
-        const missing = project.folderState === "missing";
-        return (
-          <div key={project.id} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-            <SidebarProjectRow project={project} attention={attention} simple={simple}
-              selected={selected(project)} menuOpen={menu?.project.id === project.id}
-              onOpen={() => show(project)} onMenu={openMenu?.(project)} />
-            {missing && (
-              <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
-                <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
-              </p>
-            )}
-            {changesOf(project) && (
-              <button type="button" data-team-project-changes="" onClick={() => review(project)}
-                className={cn("flex items-center gap-1.5 rounded-md pb-1 text-start text-[12px] leading-4 text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-focus", simple ? "px-2" : "px-3")}>
-                <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
-              </button>
-            )}
-          </div>
-        );
-      })}
       {mayCreate && (
-        <button type="button" data-team-project-new="" onClick={onNew}
-          className={cn(
-            "flex items-center gap-1.5 text-ink-secondary hover:bg-raised/50 hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
-            simple ? "h-[30px] rounded-lg px-2 text-[13px] leading-[18px]" : "mx-2 rounded-md px-1 py-1 text-[12px] leading-4",
-            advanced && shownProjects.length > 0 && "mt-1",
-          )}>
-          <Plus size={simple ? 14 : 13} aria-hidden="true" className="shrink-0" />{t("teamProjects.new")}
+        <button type="button" data-team-project-new="" onClick={onNew} className="ui-button ui-button-primary mb-1 w-full">
+          <Plus size={16} aria-hidden="true" className="shrink-0" />{t("teamProjects.new")}
         </button>
+      )}
+      {noMatch}
+      {shownProjects.length > 0 && (
+        <>
+          <div id={labelId} data-sidebar-projects-label="" className="px-2 pb-1 pt-2 text-[12px] font-medium leading-4 text-ink-tertiary">{t("teamProjects.list")}</div>
+          <div role="group" aria-labelledby={labelId} data-sidebar-project-list="" className={cn("flex flex-col ps-3", gap)}>
+            {shownProjects.map(({ project, attention }) => {
+              const missing = project.folderState === "missing";
+              return (
+                <div key={project.id} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
+                  <SidebarProjectRow project={project} attention={attention} simple={simple}
+                    selected={selected(project)} menuOpen={menu?.project.id === project.id}
+                    onOpen={() => show(project)} onMenu={openMenu?.(project)} />
+                  {missing && (
+                    <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
+                      <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
+                    </p>
+                  )}
+                  {changesOf(project) && (
+                    <button type="button" data-team-project-changes="" onClick={() => review(project)}
+                      className={cn("flex items-center gap-1.5 rounded-md pb-1 text-start text-[12px] leading-4 text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-focus", simple ? "px-2" : "px-3")}>
+                      <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
       {floating}
     </div>

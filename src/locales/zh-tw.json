@@ -11041,6 +11041,7 @@
   "sidebar.nav.publishedApps": "已發布的 App",
   "sidebar.nav.teamFiles": "團隊檔案",
   "teamProjects.new": "新增專案",
+  "teamProjects.list": "專案列表",
   "teamProjects.actions": "{name} 專案的動作",
   "teamProjects.folderMissing": "找不到專案資料夾",
   "teamProjects.folderMissingNamed": "{name}：找不到專案資料夾",

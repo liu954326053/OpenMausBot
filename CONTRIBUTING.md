@@ -1,4 +1,4 @@
-# Contributing to OpenMausBot
+# Contributing to MagicBot
 
 Thanks for wanting to help — community PRs have already shipped in this repo, and more are welcome.
 This file tells you how to get a working dev setup, what the codebase expects from a change, and what
@@ -60,12 +60,12 @@ fail-closed Wayland CUA smoke,
 and produces one release artifact containing:
 
 - the versioned `.deb` and AppImage;
-- stable `OpenMausBot-amd64.deb` and `OpenMausBot.AppImage` copies used by the latest-download links;
+- stable `MagicBot-amd64.deb` and `MagicBot.AppImage` copies used by the latest-download links;
 - `SHA256SUMS-ubuntu-x64.txt` covering both versioned and stable names.
 
 Before publishing, confirm that `package.json` has the release version and dispatch the workflow against the same
 commit used for the other platforms. Attach all five Ubuntu files to the matching release in the separate
-[OpenMausBot releases](https://github.com/milind-soni/OpenMausBot/releases). Then verify the checksum
+[MagicBot releases](https://github.com/milind-soni/OpenMausBot/releases). Then verify the checksum
 file and install the `.deb` plus launch the AppImage in a clean Ubuntu 24.04 x86_64 GNOME environment. Never combine
 packages built from different commits under one version.
 
@@ -346,7 +346,7 @@ commit used as the comparison base, the head branch, and the checks run after th
 Fork maintainers own the binaries and update channels they publish. Before distributing a fork,
 review the application name and identifiers, signing configuration, update metadata, and every
 `electron-builder` publish target. Never upload fork artifacts or update metadata to the official
-OpenMausBot release repository, and never change the upstream publish target in a feature PR unless
+MagicBot release repository, and never change the upstream publish target in a feature PR unless
 that release migration was explicitly agreed with the maintainer.
 
 An upstream PR should contain only the portable product change. Keep local build paths, account
