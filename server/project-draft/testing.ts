@@ -1,5 +1,13 @@
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { CanvasFileRef } from "../../shared/project-canvas.ts";
+import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import type { DraftShot, FinishedFilm, ProjectDraftCanvas } from "./canvas.ts";
+import { ProjectDrafts } from "./drafts.ts";
+import type { JianyingLookup } from "./jianying.ts";
+import { ProjectTimelines } from "./store.ts";
 
 function box(type: string, ...parts: Buffer[]): Buffer {
   const body = Buffer.concat(parts);
@@ -83,3 +91,60 @@ export class MemoryDraftCanvas implements ProjectDraftCanvas {
 }
 
 export const fileRef = (path: string, bytes = 0): CanvasFileRef => ({ path, mime: "video/mp4", bytes, name: path.split("/").at(-1)! });
+
+export interface DraftsHarnessOptions {
+  name?: string;
+  onPersonsComputer?: boolean;
+  timelineFile?: "draft_info.json" | "draft_content.json";
+}
+
+/** One project in a throwaway folder, a throwaway folder standing for JianYing's drafts, and the drafts over both. */
+export function draftsHarness(options: DraftsHarnessOptions = {}) {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "omb-drafts-")));
+  const folder = join(base, "project");
+  const draftRoot = join(base, "jianying drafts");
+  mkdirSync(join(folder, "产出", "视频"), { recursive: true });
+  mkdirSync(draftRoot);
+  const project: TeamProjectWire = {
+    id: "p1", name: options.name ?? "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "post"], follows: {},
+  };
+  const projects = [project];
+  const canvas = new MemoryDraftCanvas();
+  const state = {
+    lookup: { state: "ready", install: { version: "11.8.0", app: "/Applications/VideoFusion-macOS.app", bundleId: "com.lemon.lvpro", draftRoot, timelineFile: options.timelineFile ?? "draft_info.json" } } as JianyingLookup,
+    launched: [] as string[],
+    launches: true,
+    clock: 1_750_000_000_000,
+    ids: 0,
+  };
+  const lines: string[] = [];
+  const drafts = new ProjectDrafts({
+    projects: { list: () => projects },
+    canvas,
+    store: new ProjectTimelines(join(base, "data", "project-timelines"), (line) => lines.push(line)),
+    onPersonsComputer: options.onPersonsComputer ?? true,
+    jianying: async () => state.lookup,
+    launch: async (install) => {
+      state.launched.push(install.app);
+      return state.launches;
+    },
+    now: () => (state.clock += 1000),
+    newId: () => `ID-${(state.ids += 1)}`,
+    log: (line) => lines.push(line),
+  });
+  /** A take's video in the project's output folder, and the shot that selected it. */
+  const shot = (shotId: string, video: FakeMp4 | null = {}, title = `镜头 ${shotId}`): DraftShot => {
+    if (!video) return { shotId, title };
+    const path = `产出/视频/${shotId}.mp4`;
+    const bytes = fakeMp4(video);
+    writeFileSync(join(folder, ...path.split("/")), bytes);
+    return { shotId, title, take: { nodeId: `take-${shotId}`, title: `${shotId}.mp4`, file: fileRef(path, bytes.length) } };
+  };
+  const draftFolders = () => readdirSync(draftRoot).sort();
+  const timelineOf = (name: string, file = options.timelineFile ?? "draft_info.json") => JSON.parse(readFileSync(join(draftRoot, name, file), "utf8"));
+  const metaOf = (name: string) => JSON.parse(readFileSync(join(draftRoot, name, "draft_meta_info.json"), "utf8"));
+  const paths = (name: string) => (timelineOf(name).materials.videos as Array<{ path: string }>).map((one) => one.path);
+  const cleanup = () => rmSync(base, { recursive: true, force: true });
+  return { cleanup, base, folder, draftRoot, project, projects, canvas, state, lines, drafts, shot, draftFolders, timelineOf, metaOf, paths };
+}
+

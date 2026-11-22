@@ -1,75 +1,28 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { DraftShot } from "./canvas.ts";
-import { ProjectDrafts } from "./drafts.ts";
-import type { JianyingLookup } from "./jianying.ts";
+import type { ProjectDrafts } from "./drafts.ts";
 import { draftRefusalOf } from "./refusal.ts";
-import { ProjectTimelines } from "./store.ts";
-import { fakeMp4, fileRef, MemoryDraftCanvas, type FakeMp4 } from "./testing.ts";
+import { draftsHarness, fakeMp4, fileRef, type DraftsHarnessOptions } from "./testing.ts";
 
 const OWNER = { kind: "loopback", scopes: ["admin"] } as unknown as RequestAuth;
 const BOT_SHELL = { kind: "loopback", scopes: ["admin"], trust: "service" } as unknown as RequestAuth;
 const PAIRED = { kind: "session", scopes: ["admin"] } as unknown as RequestAuth;
 const PHONE = { kind: "loopback", scopes: ["admin"], companionDevice: "phone-1" } as unknown as RequestAuth;
 
-const dirs: string[] = [];
+const made: Array<{ cleanup(): void }> = [];
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const one of made.splice(0)) one.cleanup();
 });
 
-function harness(options: { name?: string; onPersonsComputer?: boolean; timelineFile?: "draft_info.json" | "draft_content.json" } = {}) {
-  const base = realpathSync(mkdtempSync(join(tmpdir(), "omb-drafts-")));
-  dirs.push(base);
-  const folder = join(base, "project");
-  const draftRoot = join(base, "jianying drafts");
-  mkdirSync(join(folder, "产出", "视频"), { recursive: true });
-  mkdirSync(draftRoot);
-  const project: TeamProjectWire = {
-    id: "p1", name: options.name ?? "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "post"], follows: {},
-  };
-  const projects = [project];
-  const canvas = new MemoryDraftCanvas();
-  const state = {
-    lookup: { state: "ready", install: { version: "11.8.0", app: "/Applications/VideoFusion-macOS.app", bundleId: "com.lemon.lvpro", draftRoot, timelineFile: options.timelineFile ?? "draft_info.json" } } as JianyingLookup,
-    launched: [] as string[],
-    launches: true,
-    clock: 1_750_000_000_000,
-    ids: 0,
-  };
-  const lines: string[] = [];
-  const drafts = new ProjectDrafts({
-    projects: { list: () => projects },
-    canvas,
-    store: new ProjectTimelines(join(base, "data", "project-timelines"), (line) => lines.push(line)),
-    onPersonsComputer: options.onPersonsComputer ?? true,
-    jianying: async () => state.lookup,
-    launch: async (install) => {
-      state.launched.push(install.app);
-      return state.launches;
-    },
-    now: () => (state.clock += 1000),
-    newId: () => `ID-${(state.ids += 1)}`,
-    log: (line) => lines.push(line),
-  });
-  /** A take's video in the project's output folder, and the shot that selected it. */
-  const shot = (shotId: string, video: FakeMp4 | null = {}, title = `镜头 ${shotId}`): DraftShot => {
-    if (!video) return { shotId, title };
-    const path = `产出/视频/${shotId}.mp4`;
-    const bytes = fakeMp4(video);
-    writeFileSync(join(folder, ...path.split("/")), bytes);
-    return { shotId, title, take: { nodeId: `take-${shotId}`, title: `${shotId}.mp4`, file: fileRef(path, bytes.length) } };
-  };
-  const draftFolders = () => readdirSync(draftRoot).sort();
-  const timelineOf = (name: string, file = options.timelineFile ?? "draft_info.json") => JSON.parse(readFileSync(join(draftRoot, name, file), "utf8"));
-  const metaOf = (name: string) => JSON.parse(readFileSync(join(draftRoot, name, "draft_meta_info.json"), "utf8"));
-  const paths = (name: string) => (timelineOf(name).materials.videos as Array<{ path: string }>).map((one) => one.path);
-  return { base, folder, draftRoot, project, projects, canvas, state, lines, drafts, shot, draftFolders, timelineOf, metaOf, paths };
+function harness(options: DraftsHarnessOptions = {}) {
+  const one = draftsHarness(options);
+  made.push(one);
+  return one;
 }
 
 async function refusal(run: () => unknown) {
@@ -426,10 +379,10 @@ describe("the finished film appearing in the output folder", () => {
     await drafts.lookForFinals();
   };
   async function written() {
-    const made = harness();
-    made.canvas.set("p1", [made.shot("s1")]);
-    await made.drafts.writeDraftIfReady("p1");
-    return made;
+    const one = harness();
+    one.canvas.set("p1", [one.shot("s1")]);
+    await one.drafts.writeDraftIfReady("p1");
+    return one;
   }
 
   it("is handed to the canvas once its size has stopped changing", async () => {
@@ -481,21 +434,21 @@ describe("the finished film appearing in the output folder", () => {
   });
 
   it("passes over a video that was in the output folder before the first draft was written", async () => {
-    const made = harness();
-    const old = join(made.folder, "产出", "old.mp4");
+    const one = harness();
+    const old = join(one.folder, "产出", "old.mp4");
     writeFileSync(old, fakeMp4());
     utimesSync(old, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
-    made.canvas.set("p1", [made.shot("s1")]);
-    await made.drafts.writeDraftIfReady("p1");
-    await settle(made.drafts);
-    expect(made.canvas.finals).toEqual([]);
+    one.canvas.set("p1", [one.shot("s1")]);
+    await one.drafts.writeDraftIfReady("p1");
+    await settle(one.drafts);
+    expect(one.canvas.finals).toEqual([]);
   });
 
   it("looks at no project without a draft, and at none that is archived", async () => {
-    const made = harness();
-    writeFileSync(join(made.folder, "产出", "film.mp4"), fakeMp4());
-    await settle(made.drafts);
-    expect(made.canvas.finals).toEqual([]);
+    const none = harness();
+    writeFileSync(join(none.folder, "产出", "film.mp4"), fakeMp4());
+    await settle(none.drafts);
+    expect(none.canvas.finals).toEqual([]);
     const { drafts, canvas, folder, project } = await written();
     project.archivedAt = 4;
     writeFileSync(join(folder, "产出", "film.mp4"), fakeMp4());

@@ -139,6 +139,11 @@ export class ProjectDrafts {
     return this.wireOf(this.project(projectId), atThisComputer(auth));
   }
 
+  /** The draft as the person at this computer sees it: what a bot of the project is told. */
+  draftAtThisComputer(projectId: string): ProjectDraftWire {
+    return this.wireOf(this.project(projectId), true);
+  }
+
   async open(projectId: string, auth: RequestAuth): Promise<ProjectDraftOpenResult> {
     this.project(projectId);
     if (!this.deps.onPersonsComputer || !atThisComputer(auth)) throw refuse(409, "serverError.projectDraft.remote");
