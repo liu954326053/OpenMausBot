@@ -6,10 +6,12 @@ import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
 import { t } from "@/lib/i18n";
-import { sidebarSectionAttention } from "@/lib/sidebar-attention";
+import { useRememberedDisclosure } from "@/lib/remembered-disclosure";
+import { sidebarSectionAttention, type SidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
 import { teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
 import { useShowThreads } from "@/lib/thread-preferences";
+import { openProject, projectDisclosure } from "@/state/project-open";
 import type { Bot, Group } from "@/state/store";
 import { useStoreDispatch, useStoreSelector } from "@/state/store-select";
 import { archiveProject, restoreProject, useTeamProjectsLoader } from "@/state/team-projects";
@@ -20,7 +22,7 @@ import { MENU_ITEM, MENU_SHEET } from "../menu-recipe";
 import { useHeldMenuMotion } from "../MenuMotion";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
 import { SIMPLE_RAIL_BUTTON } from "../SidebarSimpleTop";
-import { SidebarProjectRow, SidebarProjectTile } from "./SidebarProjectRow";
+import { SidebarProjectLead, SidebarProjectRow, SidebarProjectTile } from "./SidebarProjectRow";
 import { TeamChangesDialog } from "./TeamChangesDialog";
 import { dataSettingsPlace } from "./where-in-settings";
 
@@ -40,7 +42,11 @@ interface Lists {
 
 const MENU_WIDTH = 200;
 
-/** One row per project; a click opens its canvas. A search lists the projects whose name holds it, nothing under them. */
+/** What of a project is on screen: its canvas, its lead's conversation, another of its conversations, or nothing. */
+type ProjectOnScreen = "canvas" | "lead" | "other" | null;
+
+/** One row per project; a click opens its lead's conversation and shows the lead under the row, and a click on the row of
+ * the project on screen folds it again. A search lists the projects whose name holds it, nothing under them. */
 export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: {
   side: TeamProjectSide;
   /** Every bot and group chat the sidebar lists on this side. */
@@ -95,8 +101,12 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
     all.bots.some((bot) => bot.id === id && side.of(bot)?.id === project.id) || side.teamRooms(project, all.groups).some((group) => group.id === id);
   const inProject = (project: TeamProjectWire, id: string) => latest.current.shownProject?.id === project.id || holds(project, id);
   const hasOwnRow = (id: string) => side.bots(all.bots.filter((bot) => bot.id === id)).length > 0;
-  const selected = (project: TeamProjectWire) =>
-    shownProject?.id === project.id || (openChat !== null && holds(project, openChat) && !hasOwnRow(openChat));
+  const onScreen = (project: TeamProjectWire): ProjectOnScreen => {
+    if (shownProject?.id === project.id) return "canvas";
+    if (openChat === null || !holds(project, openChat) || hasOwnRow(openChat)) return null;
+    return openChat === project.leadBotId ? "lead" : "other";
+  };
+  const leadOf = (project: TeamProjectWire) => all.bots.find((bot) => bot.id === project.leadBotId && !bot.hidden);
   const archive = async (project: TeamProjectWire) => {
     closeMenu();
     const open = latest.current.selectedId;
@@ -120,7 +130,7 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
     await restoreProject(project.id);
     if (left && latest.current.selectedId === left.to) dispatch({ type: "select", id: left.from });
   };
-  const show = (project: TeamProjectWire) => dispatch({ type: "showProject", projectId: project.id });
+  const show = (project: TeamProjectWire) => openProject(dispatch, project, all.bots, showThreads);
   const mayCreate = !remote && !query;
 
   const floating = (
@@ -164,7 +174,7 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
           const changedText = t("teamProjects.changes.noticeNamed", { name: project.name });
           return (
             <div key={project.id} role="group" aria-label={project.name} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-              <SidebarProjectTile project={project} attention={attention} selected={selected(project)}
+              <SidebarProjectTile project={project} attention={attention} selected={onScreen(project) !== null}
                 onOpen={() => show(project)} onMenu={openMenu?.(project)} />
               {missing && (
                 <span role="img" data-team-project-missing="" aria-label={missingText} title={missingText} className="mx-auto flex size-6 shrink-0 items-center justify-center text-warning">
@@ -203,31 +213,60 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
         <>
           <div id={labelId} data-sidebar-projects-label="" className="px-2 pb-1 pt-2 text-[12px] font-medium leading-4 text-ink-tertiary">{t("teamProjects.list")}</div>
           <div role="group" aria-labelledby={labelId} data-sidebar-project-list="" className={cn("flex flex-col ps-3", gap)}>
-            {shownProjects.map(({ project, attention }) => {
-              const missing = project.folderState === "missing";
-              return (
-                <div key={project.id} data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
-                  <SidebarProjectRow project={project} attention={attention} simple={simple}
-                    selected={selected(project)} menuOpen={menu?.project.id === project.id}
-                    onOpen={() => show(project)} onMenu={openMenu?.(project)} />
-                  {missing && (
-                    <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
-                      <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
-                    </p>
-                  )}
-                  {changesOf(project) && (
-                    <button type="button" data-team-project-changes="" onClick={() => review(project)}
-                      className={cn("flex items-center gap-1.5 rounded-md pb-1 text-start text-[12px] leading-4 text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-focus", simple ? "px-2" : "px-3")}>
-                      <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+            {shownProjects.map(({ project, attention }) => (
+              <ProjectBlock key={project.id} project={project} attention={attention} lead={leadOf(project)} simple={simple} gap={gap}
+                listOnly={query !== ""} onScreen={onScreen(project)} menuOpen={menu?.project.id === project.id} onMenu={openMenu?.(project)}
+                onReview={changesOf(project) ? () => review(project) : undefined} onOpen={() => show(project)} />
+            ))}
           </div>
         </>
       )}
       {floating}
+    </div>
+  );
+}
+
+/** A project in the list: its row, its lead under it while it is open, and what to say about its folder and its team. */
+function ProjectBlock({ project, attention, lead, simple, gap, listOnly, onScreen, menuOpen, onMenu, onReview, onOpen }: {
+  project: TeamProjectWire;
+  attention: SidebarSectionAttention;
+  /** Undefined while the lead is not listed. */
+  lead: Bot | undefined;
+  simple: boolean;
+  gap: string;
+  /** A search's result: the row and nothing under it. */
+  listOnly: boolean;
+  onScreen: ProjectOnScreen;
+  menuOpen: boolean;
+  onMenu?: (x: number, y: number, returnTo: HTMLElement) => void;
+  /** Present while the team has changes for the person to review. */
+  onReview?: () => void;
+  /** Opens the lead's conversation and the project with it. */
+  onOpen: () => void;
+}) {
+  const [open, setOpen] = useRememberedDisclosure(projectDisclosure(project.id));
+  const expanded = !listOnly && open && lead !== undefined;
+  const click = () => {
+    if (expanded && onScreen !== null) setOpen(false);
+    else onOpen();
+  };
+  return (
+    <div data-sidebar-team-project={project.id} className={cn("flex flex-col", gap)}>
+      <SidebarProjectRow project={project} attention={attention} simple={simple} expanded={listOnly ? undefined : expanded}
+        selected={onScreen === "canvas" || onScreen === "other" || (onScreen === "lead" && !expanded)} menuOpen={menuOpen}
+        onOpen={click} onMenu={onMenu} />
+      {expanded && <SidebarProjectLead bot={lead} simple={simple} selected={onScreen === "lead"} onOpen={onOpen} />}
+      {project.folderState === "missing" && (
+        <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
+          <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>
+        </p>
+      )}
+      {onReview && (
+        <button type="button" data-team-project-changes="" onClick={onReview}
+          className={cn("flex items-center gap-1.5 rounded-md pb-1 text-start text-[12px] leading-4 text-accent-text hover:underline focus-visible:outline-2 focus-visible:outline-focus", simple ? "px-2" : "px-3")}>
+          <UsersRound size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.changes.notice")}</span>
+        </button>
+      )}
     </div>
   );
 }

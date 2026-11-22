@@ -40,3 +40,9 @@ export function useRememberedDisclosure(key: string): [boolean, (next: SetStateA
   };
   return [open, set];
 }
+
+/** Opens or closes the disclosure `key` for every component that shows it, mounted or not yet. */
+export function rememberDisclosure(key: string, open: boolean): void {
+  chosen.set(key, open);
+  publishDisclosure(key);
+}

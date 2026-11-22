@@ -39,6 +39,7 @@ import { canvasFlow, type CanvasFlow, type ProjectPipeline } from "./flow.ts";
 import { placeAfter, placeForActor } from "./placement.ts";
 import { taskMessage, taskReferences } from "./references.ts";
 import { botFrames, buildSnapshot } from "./snapshot.ts";
+import { shownSoFar } from "./shown-so-far.ts";
 import { replyText, TaskTargets, type TaskTarget } from "./task-targets.ts";
 
 /** A request the canvas does not carry out, and what it is answered with. */
@@ -353,10 +354,11 @@ export class ProjectCanvasService {
     return this.writing(projectId, document.nodes).flatMap((target) => (target.beside ? [target.beside] : []));
   }
 
+  /** What the person sees: the bots the work has reached so far, and what the run and the draft add. */
   snapshot(projectId: string, auth: RequestAuth): CanvasSnapshot {
     const project = this.project(projectId);
     const visible = this.deps.visibleFor(auth);
-    return { ...this.view(project, (threadId) => visible.thread(threadId)), ...this.alsoShown(projectId, auth) };
+    return shownSoFar({ ...this.view(project, (threadId) => visible.thread(threadId)), ...this.alsoShown(projectId, auth) });
   }
 
   /** What a bot reads: the canvas and every bot's status, and nothing taken from a conversation. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasNode } from "../../../shared/project-canvas";
 import {
+  actualSizeViewport,
   applyGroupSelection,
   applyUngroupSelection,
   canGroupSelection,
@@ -15,6 +16,7 @@ import {
   gridBackground,
   groupWrapRect,
   intersects,
+  nodeBounds,
   normalizeConnection,
   panelPlacement,
   resizeFrame,
@@ -26,6 +28,23 @@ import {
 } from "./geometry";
 
 const node = (id: string, x: number, y: number, over: Partial<CanvasNode> = {}): CanvasNode => ({ id, type: "text", title: id, position: { x, y }, width: 100, height: 80, ...over });
+
+describe("the view a canvas opens on", () => {
+  const size = { width: 1200, height: 800 };
+
+  it("is at 100% with what fits in the middle, clear of the toolbar below", () => {
+    const lead = node("lead", 500, 200, { width: 300, height: 180 });
+    const view = actualSizeViewport(nodeBounds([lead]), size);
+    expect(view.k).toBe(1);
+    expect(view.x + lead.position.x).toBe((1200 - 300) / 2);
+    expect(view.y + lead.position.y).toBe(80 + (800 - 80 - 96 - 180) / 2);
+  });
+
+  it("is at 100% from the top left of what does not fit", () => {
+    const wide = [node("a", -50, 10, { width: 300 }), node("b", 2000, 900, { width: 300 })];
+    expect(actualSizeViewport(nodeBounds(wide), size)).toEqual({ x: 80 + 50, y: 80 - 10, k: 1 });
+  });
+});
 
 describe("the viewport", () => {
   it("zooms about the pointer, the world point under it staying put, within 5% and 500%", () => {

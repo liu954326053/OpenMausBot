@@ -9,12 +9,14 @@
 // revision is stopped or fails, an empty text node takes the reply itself, a bot's panel stays wholly on the canvas at
 // its left edge and above the minimap, its conversation showing a sent picture and folding its references as the chat
 // does, in the light skin and the dark, a note's task in English is answered in the same way beside the note, and undo
-// gives a deleted bot node back to its bot. Then in the app itself: the sidebar's
-// project row opens the canvas, its top bar reaches the project's group chats and team changes, a bot who joins is
-// drawn clear of the others, a search for a part of the project's name keeps its one row, which opens the canvas, and a
+// gives a deleted bot node back to its bot. Then in the app itself: a click on the sidebar's project row opens the
+// lead's conversation under the project's top bar with the lead under the row, its switch opens the canvas and goes
+// back, a click on the open project folds it, the top bar reaches the project's group chats and team changes, a bot who
+// joins is drawn clear of the others, a search for a part of the project's name keeps its one row, which opens the
+// lead's conversation, and a
 // search for the writer finds no project, a project archived while open gives way to the main bot, and the project's
 // settings and a picture's preview cover the whole canvas while a terminal's sign-in card stays above them.
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -199,7 +201,17 @@ type Box = { x: number; y: number; w: number; h: number };
 
     try {
       await browser("set", "viewport", "1440", "900");
-      await openPage();
+      await browser("open", pageUrl);
+      await waitFor(`document.querySelector(${JSON.stringify(node(botNodeId(lead.id)))})`, "the lead's node is drawn", 120_000);
+      expect(await drawnIds()).toEqual([botNodeId(lead.id)]);
+      expect(await evaluate<string | null>(`document.querySelector('input[aria-label="Zoom"]')?.value ?? null`)).toBe("100");
+      expect(await evaluate<boolean>(`Boolean(document.querySelector('[data-connection=${JSON.stringify(dispatchConnectionId(lead.id, writer.id))}]'))`)).toBe(false);
+      await shot("00-a-new-project-shows-its-lead-alone-at-100.png");
+      plan([{ key: "hello", match: ["HELLO-WRITER"], reply: "Ready to write." }]);
+      await api("POST", `/api/bots/${writer.id}/messages`, { text: "HELLO-WRITER", threadId: writer.threadId, sendId: randomUUID() });
+      await settled();
+      await waitFor(`document.querySelector(${JSON.stringify(node(botNodeId(writer.id)))})`, "the writer's node once the work reached the writer");
+      await fit();
 
       const leadNode = node(botNodeId(lead.id));
       const writerNode = node(botNodeId(writer.id));
@@ -859,25 +871,51 @@ type Box = { x: number; y: number; w: number; h: number };
       await api("PATCH", `/api/bots/${main.id}`, { welcomed: true });
       const room = (await api("POST", "/api/groups", { name: "Table read", memberIds: [lead.id, writer.id], section: project.section })).group as { id: string };
       await api("PATCH", `/api/groups/${room.id}/setup`, { action: "complete", bulletin: "", defaultResponder: { kind: "member", botId: lead.id } });
-      await member("Colorist", "Grades the picture", "orange");
+      const teamColorist = await member("Colorist", "Grades the picture", "orange");
       await settled();
       await preview.close();
       preview = await mountPreview({ info: { url: fixture.url } }, { entry: "/scripts/testing/threads-preview.tsx", route: "/__threads.html", title: "Projects in the app", logLevel: "warn" });
       await browser("open", preview.previewUrl);
       const projectRow = `[data-sidebar-project-row=${JSON.stringify(project.id)}]`;
+      const leadRow = `[data-sidebar-project-lead=${JSON.stringify(lead.id)}]`;
+      const chatBar = `[data-project-chat=${JSON.stringify(project.id)}]`;
       const view = `[data-project-view=${JSON.stringify(project.id)}]`;
       const slot = `${view} [data-project-canvas-slot]`;
       const mainOpen = `[data-sidebar-bot-row=${JSON.stringify(main.id)}][aria-current="page"]`;
+      const leadChat = async (message: string) => waitFor(`document.querySelector(${JSON.stringify(`${chatBar} [data-project-mode-option="chat"][aria-pressed="true"]`)})
+        && document.querySelector(${JSON.stringify(`${leadRow}[aria-current="page"]`)}) && !document.querySelector(${JSON.stringify(view)})`, message);
       const openProject = async () => {
         await waitFor(`document.querySelector(${JSON.stringify(projectRow)})`, "the project in the sidebar", 120_000);
-        await clickSelector(projectRow);
+        const open = await evaluate<boolean>(`document.querySelector(${JSON.stringify(projectRow)}).getAttribute("aria-expanded") === "true"`);
+        await clickSelector(open ? leadRow : projectRow);
+        await leadChat("the lead's conversation under the project's top bar");
+        await clickSelector(`${chatBar} [data-project-mode-option="canvas"]`);
         await waitFor(`document.querySelector(${JSON.stringify(`${view} ${writerNode}`)})`, "the project's canvas in the app");
       };
       const mainInstead = (message: string) => waitFor(`!document.querySelector(${JSON.stringify(view)}) && document.querySelector(${JSON.stringify(mainOpen)})`, message);
-      await openProject();
+      await waitFor(`document.querySelector(${JSON.stringify(projectRow)})`, "the project in the sidebar", 120_000);
+      expect(await evaluate(`[document.querySelector(${JSON.stringify(projectRow)}).getAttribute("aria-expanded"), Boolean(document.querySelector(${JSON.stringify(leadRow)}))]`)).toEqual(["false", false]);
+      await clickSelector(projectRow);
+      await leadChat("a click on the project opening its lead's conversation");
+      expect(await text(`${chatBar} h1`)).toBe(project.name);
+      expect(await text(`${chatBar} [data-project-folder]`)).toBe(project.folder);
+      expect(await evaluate(`document.querySelector(${JSON.stringify(`${chatBar} main[data-look="chat"]`)}) !== null`)).toBe(true);
+      await shot("25a-project-row-opens-the-lead-conversation.png");
+      await clickSelector(`${chatBar} [data-project-mode-option="canvas"]`);
+      await waitFor(`document.querySelector(${JSON.stringify(`${view} ${writerNode}`)})`, "the canvas from the project's switch");
+      expect(await evaluate(`document.querySelector(${JSON.stringify(`${slot} [data-project-mode-option="canvas"]`)}).getAttribute("aria-pressed")`)).toBe("true");
       expect(await text(`${slot} [data-project-folder]`)).toBe(project.folder);
       await waitFor(`document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the team's change in the top bar");
-      await shot("25-project-row-opens-its-canvas.png");
+      await shot("25b-the-switch-opens-the-canvas.png");
+      await clickSelector(`${slot} [data-project-mode-option="chat"]`);
+      await leadChat("the switch back to the lead's conversation");
+      await clickSelector(projectRow);
+      await waitFor(`!document.querySelector(${JSON.stringify(leadRow)}) && document.querySelector(${JSON.stringify(projectRow)}).getAttribute("aria-current") === "page"`, "the project folded, its row marked");
+      await shot("25c-a-click-on-the-open-project-folds-it.png");
+      await clickSelector(projectRow);
+      await leadChat("the folded project opened again on its lead");
+      await clickSelector(`${chatBar} [data-project-mode-option="canvas"]`);
+      await waitFor(`document.querySelector(${JSON.stringify(`${view} ${writerNode}`)})`, "the canvas again");
 
       await clickSelector(`${slot} button[aria-label="Group chats"]`);
       const roomItem = `[role="menu"] [data-menu-key=${JSON.stringify(room.id)}]`;
@@ -891,7 +929,13 @@ type Box = { x: number; y: number; w: number; h: number };
       await waitFor(`document.querySelector("[data-team-changes] [data-team-changes-apply]")`, "the team's changes to review");
       await clickSelector("[data-team-changes] [data-team-changes-apply]");
       const botNodes = `${view} [data-canvas-node^="bot:"]`;
-      await waitFor(`document.querySelectorAll(${JSON.stringify(botNodes)}).length === 3 && !document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the colorist's copy on the canvas");
+      await waitFor(`!document.querySelector(${JSON.stringify(`${slot} [data-project-team-changes]`)})`, "the team's change made");
+      let joinedBot: Bot | undefined;
+      await expect.poll(async () => (joinedBot = (await bots()).find((one) => one.name === "Colorist" && one.id !== teamColorist.id)) !== undefined, { timeout: 15_000, message: "the colorist's copy in the project" }).toBe(true);
+      expect(await evaluate<number>(`document.querySelectorAll(${JSON.stringify(botNodes)}).length`)).toBe(2);
+      await api("POST", `/api/bots/${joinedBot!.id}/messages`, { text: "Grade the trailer.", threadId: joinedBot!.threadId, sendId: randomUUID() });
+      await settled();
+      await waitFor(`document.querySelectorAll(${JSON.stringify(botNodes)}).length === 3`, "the colorist's copy on the canvas once the work reached it");
       const joined = await snapshot();
       const colorist = joined.nodes.find((one) => one.type === "bot" && one.id !== botNodeId(lead.id) && one.id !== botNodeId(writer.id))!;
       const covers = (a: CanvasNode, b: CanvasNode) => a.position.x < b.position.x + b.width && b.position.x < a.position.x + a.width && a.position.y < b.position.y + b.height && b.position.y < a.position.y + a.height;
@@ -912,12 +956,12 @@ type Box = { x: number; y: number; w: number; h: number };
       await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [[project.id, 1]], bots: [main.id], noMatch: null });
       await shot("28a-search-finds-the-project-by-a-part-of-its-name.png");
       await clickSelector(projectRow);
-      await waitFor(`document.querySelector(${JSON.stringify(projectRow)})?.getAttribute("aria-current") === "page" && document.querySelector(${JSON.stringify(`${view} ${writerNode}`)})`, "the canvas open from the search");
+      await waitFor(`document.querySelector(${JSON.stringify(projectRow)})?.getAttribute("aria-current") === "page" && document.querySelector(${JSON.stringify(`${chatBar} [data-project-mode-option="chat"][aria-pressed="true"]`)})`, "the lead's conversation open from the search");
       await expect.poll(() => evaluate<boolean>(searchSidebar(writer.name)), { timeout: 10_000, interval: 250 }).toBe(true);
       await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [], bots: [main.id], noMatch: `No project matches “${writer.name}”` });
       await shot("28b-search-for-the-writer-finds-no-project.png");
       await evaluate(searchSidebar(""));
-      await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [[project.id, 1]], bots: [main.id], noMatch: null });
+      await expect.poll(() => evaluate<InSidebar>(inSidebar), { timeout: 10_000, interval: 250 }).toEqual({ projects: [[project.id, 2]], bots: [main.id], noMatch: null });
       await clickSelector("[data-sidebar-search-toggle]");
       await waitFor(`!document.querySelector("[data-sidebar] input")`, "the search closed");
       evidence.search = { part, writer: writer.name };

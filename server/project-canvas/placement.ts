@@ -1,4 +1,4 @@
-import { botNodeId, CANVAS_NODE_SIZE, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasPoint } from "../../shared/project-canvas.ts";
+import { botIdOfNode, botNodeId, CANVAS_NODE_SIZE, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasPoint } from "../../shared/project-canvas.ts";
 import { PIPELINE_STAGES, type FlowStage } from "../../shared/team-pipeline.ts";
 import type { CanvasFlow } from "./flow.ts";
 import type { CanvasFrame } from "./ops.ts";
@@ -7,6 +7,8 @@ import type { CanvasFrame } from "./ops.ts";
 export const LANE_GAP = 80;
 /** Between two nodes stacked in a lane. */
 export const NODE_GAP = 40;
+/** Between a column of bots and the next: past the bots and past what they made to their right. */
+export const COLUMN_GAP = 120;
 /** The widest node a lane holds. */
 const LANE_WIDTH = CANVAS_NODE_SIZE.video.width;
 const ROW_GAP = 60;
@@ -16,23 +18,46 @@ const MAX_STEPS = 10_000;
 /** Around the nodes of a group the server makes, as the app wraps a selection it groups. */
 export const GROUP_PADDING = 24;
 export const GROUP_TOP_PADDING = 52;
-/** A character's group: its profile and two pictures beside it. */
-export const CHARACTER_ROOM = CANVAS_NODE_SIZE.text.width + 2 * (NODE_GAP + CANVAS_NODE_SIZE.image.width) + 2 * GROUP_PADDING;
-/** What the bots of each stage make to their right: a character's group, a shot's row of three, else one node. */
-const ROOM: Record<FlowStage, number> = {
-  lead: LANE_WIDTH,
-  other: LANE_WIDTH,
-  script: LANE_WIDTH,
-  character: CHARACTER_ROOM,
-  storyboard: CANVAS_NODE_SIZE.shot.width + LANE_GAP + CANVAS_NODE_SIZE.config.width + LANE_GAP + CANVAS_NODE_SIZE.video.width,
-  post: LANE_WIDTH,
-};
+
+type Lanes = Pick<CanvasDocument, "nodes" | "connections">;
+
+/** Each node's bot, the one whose lane it stands in: the bot that made it, else the bot that made its shot or its group,
+ * else the bot the pipeline links it from. */
+function laneBots({ nodes, connections }: Lanes): Map<string, string> {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const linked = new Map<string, string>();
+  for (const connection of connections) {
+    const botId = connection.pipeline ? botIdOfNode(connection.fromNodeId) : null;
+    if (botId !== null) linked.set(connection.toNodeId, botId);
+  }
+  const botOf = (node: CanvasNode | undefined, depth: number): string | undefined => {
+    if (!node || depth > 3) return undefined;
+    if (node.createdBy?.kind === "bot") return node.createdBy.botId;
+    const shot = node.metadata?.shotId ? byId.get(node.metadata.shotId) : undefined;
+    const group = node.groupId ? byId.get(node.groupId) : undefined;
+    return (shot !== node ? botOf(shot, depth + 1) : undefined) ?? botOf(group, depth + 1) ?? linked.get(node.id);
+  };
+  const bots = new Map<string, string>();
+  for (const node of nodes) {
+    const botId = node.type === "bot" ? undefined : botOf(node, 0);
+    if (botId !== undefined) bots.set(node.id, botId);
+  }
+  return bots;
+}
 
 /** Each bot's node where nobody placed it: a column for the lead with the bots outside the pipeline below it, then one
  * for each stage that has a bot, in pipeline order, a bot with several stages in the column of its first. The bots of
- * a column stand one below the other, and a column is as wide as what its bots make needs. */
-export function defaultBotFrames(flow: CanvasFlow): Map<string, CanvasFrame> {
+ * a column stand one below the other, and the next column starts past them and past what they made, so an empty
+ * project's bots stand close together and a column moves right as the one before it makes things. */
+export function defaultBotFrames(flow: CanvasFlow, lanes: Lanes = { nodes: [], connections: [] }): Map<string, CanvasFrame> {
   const frames = new Map<string, CanvasFrame>();
+  const stored = new Map(lanes.nodes.filter((node) => node.type === "bot").map((node) => [node.id, node]));
+  const reach = new Map<string, number>();
+  const byId = new Map(lanes.nodes.map((node) => [node.id, node]));
+  for (const [nodeId, botId] of laneBots(lanes)) {
+    const node = byId.get(nodeId)!;
+    reach.set(botId, Math.max(reach.get(botId) ?? Number.NEGATIVE_INFINITY, node.position.x + node.width));
+  }
   const first = (botId: string) => flow.stages[botId]?.find((stage) => (PIPELINE_STAGES as readonly FlowStage[]).includes(stage));
   const outside = flow.botIds.filter((botId) => botId !== flow.leadBotId && !first(botId));
   const columns = [
@@ -41,9 +66,14 @@ export function defaultBotFrames(flow: CanvasFlow): Map<string, CanvasFrame> {
   ].filter((column) => column.length);
   let x = 0;
   for (const column of columns) {
-    column.forEach((botId, row) => frames.set(botNodeId(botId), { position: { x, y: row * BAND }, width: BOT.width, height: BOT.height }));
-    const room = Math.max(...column.flatMap((botId) => (flow.stages[botId] ?? ["other"]).map((stage) => ROOM[stage])));
-    x += BOT.width + LANE_GAP + room + LANE_GAP;
+    let right = x + BOT.width;
+    column.forEach((botId, row) => {
+      const frame = { position: { x, y: row * BAND }, width: BOT.width, height: BOT.height };
+      frames.set(botNodeId(botId), frame);
+      const shown = stored.get(botNodeId(botId)) ?? frame;
+      right = Math.max(right, shown.position.x + shown.width, reach.get(botId) ?? Number.NEGATIVE_INFINITY);
+    });
+    x = right + COLUMN_GAP;
   }
   return frames;
 }
@@ -53,11 +83,13 @@ interface Rect { x: number; y: number; width: number; height: number }
 const rectOf = (frame: CanvasFrame): Rect => ({ x: frame.position.x, y: frame.position.y, width: frame.width, height: frame.height });
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-function obstacles(document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[]): Rect[] {
+/** What a node placed with its left edge at `fromX` must stay clear of. A bot nobody placed that reaches past `fromX`
+ * stands in a later column, which moves right past the node, so it is not in the way. */
+function obstacles(document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[], fromX = Number.POSITIVE_INFINITY): Rect[] {
   const stored = new Set(document.nodes.map((one) => one.id));
   return [
     ...document.nodes.filter((one) => one.type !== "group").map(rectOf),
-    ...[...bots].filter(([id]) => !stored.has(id)).map(([, frame]) => rectOf(frame)),
+    ...[...bots].filter(([id, frame]) => !stored.has(id) && frame.position.x + frame.width <= fromX).map(([, frame]) => rectOf(frame)),
     ...reserved.map(rectOf),
   ];
 }
@@ -78,7 +110,7 @@ function freeBelow(x: number, y: number, node: Pick<CanvasFrame, "width" | "heig
  * of `reserved`. */
 export function clearSpot(document: CanvasDocument, at: CanvasPoint, size: Pick<CanvasFrame, "width" | "height">, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[] = [], ignore: ReadonlySet<string> = new Set()): CanvasPoint {
   const others = ignore.size ? { ...document, nodes: document.nodes.filter((one) => !ignore.has(one.id)) } : document;
-  return freeBelow(at.x, at.y, size, obstacles(others, bots, reserved));
+  return freeBelow(at.x, at.y, size, obstacles(others, bots, reserved, at.x));
 }
 
 /** `frame` moved down until it overlaps none of `taken`. */
@@ -91,7 +123,7 @@ function placeInLane(document: CanvasDocument, anchor: CanvasFrame, member: (nod
   const x = anchor.position.x + anchor.width + LANE_GAP;
   const inLane = document.nodes.filter((one) => member(one) && one.position.x < x + LANE_WIDTH && one.position.x + one.width > x);
   const y = inLane.reduce((lowest, one) => Math.max(lowest, one.position.y + one.height + NODE_GAP), anchor.position.y);
-  return freeBelow(x, y, size, obstacles(document, bots, reserved));
+  return freeBelow(x, y, size, obstacles(document, bots, reserved, x));
 }
 
 /** Where a node added without a position goes: a bot's in its lane, below what it made there; the person's at the

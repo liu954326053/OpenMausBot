@@ -8,7 +8,7 @@ vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 import { botNodeId, CANVAS_NODE_SIZE, type CanvasBotState } from "../../../shared/project-canvas";
 import { loadLocale, setLocale } from "@/lib/i18n";
 import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
-import { fitNodeSize } from "@/lib/project-canvas/geometry";
+import { fitNodeSize, nodeBounds } from "@/lib/project-canvas/geometry";
 import type { MemoryCanvasBackend, MemoryWork } from "@/lib/project-canvas/memory-backend";
 import { PLACEMENT_GAP } from "@/lib/project-canvas/placement";
 import { initialState, StoreContext, type AppState, type Bot } from "@/state/store";
@@ -711,17 +711,13 @@ describe("the project canvas", () => {
     }
   });
 
-  it("opens a canvas nobody set a view on fitted to its nodes without storing that view, and a stored view as it was", async () => {
+  it("opens a canvas nobody set a view on at 100%, from the top left of its nodes when they do not fit, without storing that view, and a stored view as it was", async () => {
     vi.stubGlobal("ResizeObserver", sizedObserver(1200, 800));
     await mount();
-    const fitted = view();
-    expect(fitted.k).toBeLessThan(1);
-    for (const node of backend.current().nodes) {
-      expect(fitted.x + node.position.x * fitted.k).toBeGreaterThanOrEqual(0);
-      expect(fitted.y + node.position.y * fitted.k).toBeGreaterThanOrEqual(0);
-      expect(fitted.x + (node.position.x + node.width) * fitted.k).toBeLessThanOrEqual(1200);
-      expect(fitted.y + (node.position.y + node.height) * fitted.k).toBeLessThanOrEqual(800);
-    }
+    const opened = view();
+    const bounds = nodeBounds(backend.current().nodes);
+    expect(bounds.right - bounds.left).toBeGreaterThan(1200);
+    expect(opened).toEqual({ x: 80 - bounds.left, y: 80 - bounds.top, k: 1 });
     await settle(VIEWPORT_SAVE_DELAY_MS + 50);
     expect(backend.current().viewport).toEqual({ x: 0, y: 0, k: 1 });
 

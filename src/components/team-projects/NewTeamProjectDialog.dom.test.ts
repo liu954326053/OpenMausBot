@@ -34,6 +34,7 @@ const made: TeamProjectWire = {
   id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban romance" },
   leadBotId: "lead-1", createdAt: 1, folderState: "ready", botIds: ["lead-1", "writer-1"], follows: { "lead-1": "head", "writer-1": "writer" },
 };
+const LEAD = { id: "lead-1", threadId: "lead-1-thread", name: "Head writer", tasks: [] };
 
 interface Call { path: string; method: string; body: unknown }
 let calls: Call[] = [];
@@ -82,6 +83,7 @@ beforeEach(() => {
   teams = [urban, costume];
   list = { root: "/dramas", projects: [] };
   created = () => [201, { project: made }];
+  fixture.state = { bots: [LEAD] };
   fixture.dispatch.mockClear();
   onClose.mockClear();
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -288,12 +290,37 @@ describe("making the project", () => {
     await click(row("Urban romance"));
   };
 
-  it("sends the trimmed name and the chosen team, then opens the project's canvas and closes", async () => {
+  it("sends the trimmed name and the chosen team, then opens the lead's conversation and closes", async () => {
     await fill();
     await submit();
     expect(posts()).toEqual([{ path: "/api/team-projects", method: "POST", body: { name: "The bride", team: "Urban romance" } }]);
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead-1" }]]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays on Creating… until the lead reaches the app, then opens the lead's conversation", async () => {
+    fixture.state = { bots: [] };
+    await fill();
+    await submit();
+    expect([fixture.dispatch.mock.calls, onClose.mock.calls.length, createButton().textContent, createButton().disabled]).toEqual([[], 0, "Creating…", true]);
+    fixture.state = { bots: [LEAD] };
+    await act(async () => root.render(createElement(NewTeamProjectDialog, { onClose })));
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead-1" }]]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the project's canvas when its lead does not reach the app in time", async () => {
+    fixture.state = { bots: [] };
+    await fill();
+    await submit();
+    const later = Date.now() + 10_001;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    fixture.state = { bots: [] };
+    await act(async () => root.render(createElement(NewTeamProjectDialog, { onClose })));
+    await settle();
     expect(fixture.dispatch.mock.calls).toEqual([[{ type: "showProject", projectId: "p1" }]]);
     expect(onClose).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
   });
 
   it("says Creating… and cannot be closed or sent twice while the project is made", async () => {

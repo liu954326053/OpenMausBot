@@ -19,6 +19,7 @@ import { canvasErrorText, type CanvasBackend } from "@/lib/project-canvas/backen
 import { CanvasController, type CanvasState } from "@/lib/project-canvas/controller";
 import { comingOutputs } from "@/lib/project-canvas/generation";
 import {
+  actualSizeViewport,
   applyGroupSelection,
   applyUngroupSelection,
   canGroupSelection,
@@ -300,8 +301,8 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
     firstView.current = true;
     const opensOnBot = selectedBotId !== undefined && nodeById(snapshot, botNodeId(selectedBotId));
     const viewSet = (["x", "y", "k"] as const).some((key) => snapshot.viewport[key] !== CANVAS_UNSET_VIEWPORT[key]);
-    if (!opensOnBot && !viewSet) fitAll({ save: false });
-  }, [size.width, selectedBotId, snapshot, fitAll]);
+    if (!opensOnBot && !viewSet && snapshot.nodes.length) controller.setViewport(actualSizeViewport(nodeBounds(snapshot.nodes), sizeRef.current), { save: false });
+  }, [size.width, selectedBotId, snapshot, controller]);
 
   const resetView = useCallback(() => controller.setViewport({ x: sizeRef.current.width / 2, y: sizeRef.current.height / 2, k: 1 }), [controller]);
 

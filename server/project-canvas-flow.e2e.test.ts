@@ -67,6 +67,14 @@ describe("a project's canvas drawing its team's pipeline", () => {
     return read.body;
   };
   const projectFlow = async (projectId: string) => (await api("GET", `/api/team-pipelines/projects/${projectId}`)).body as ProjectPipelineWire;
+  /** The person places every bot but the lead, which shows them before the work reaches them. */
+  const place = async (projectId: string) => {
+    const shown = await canvas(projectId);
+    const others = Object.keys(shown.bots).filter((botId) => botId !== shown.project.leadBotId);
+    const ops = others.map((botId, index) => ({ type: "update_node", id: botNodeId(botId), patch: { position: { x: 420 * (index + 1), y: 0 } } }));
+    const placed = await api("POST", `/api/team-projects/${projectId}/canvas/ops`, { baseRevision: shown.revision, ops });
+    expect(placed.status, JSON.stringify(placed.body)).toBe(200);
+  };
   const line = async (from: Bot, to: Bot, present: boolean) => {
     const drawn = await api("PUT", "/api/team-pipelines/line", { from: from.id, to: to.id, present });
     expect(drawn.status, JSON.stringify(drawn.body)).toBe(200);
@@ -125,14 +133,17 @@ describe("a project's canvas drawing its team's pipeline", () => {
     if (root) await removeTempDir(root);
   });
 
-  it("draws the team's flow between the project's copies: the Chief's over the Writer's, the Writer's over the Board's", async () => {
+  it("shows the lead alone while the work reaches no copy, and once the person placed the copies draws the team's flow between them: the Chief's over the Writer's, the Writer's over the Board's", async () => {
+    const before = await canvas(project.id);
+    expect([before.nodes.map((one) => one.id), lines(before)]).toEqual([[botNodeId(project.leadBotId)], []]);
+    await place(project.id);
     const drawn = await canvas(project.id);
     expect(project.leadBotId).toBe(copyOf(chief));
     expect(lines(drawn)).toEqual(["Chief → Writer", "Writer → Board"]);
     expect(drawn.connections.filter((one) => one.kind === "dispatch").map((one) => [one.fromNodeId, one.toNodeId])).toEqual(expect.arrayContaining([
       [botNodeId(copyOf(chief)), botNodeId(copyOf(writer))], [botNodeId(copyOf(writer)), botNodeId(copyOf(board))],
     ]));
-    keep("01-the-team-flow-on-the-canvas.json", { lines: lines(drawn), projectFlow: await projectFlow(project.id), connections: drawn.connections, nodes: drawn.nodes });
+    keep("01-the-team-flow-on-the-canvas.json", { lead: before.nodes, lines: lines(drawn), projectFlow: await projectFlow(project.id), connections: drawn.connections, nodes: drawn.nodes });
   });
 
   it("tells an open canvas when the Board moves under the Chief in the team, and then draws the Chief's copy over the Board's", async () => {
@@ -167,7 +178,8 @@ describe("a project's canvas drawing its team's pipeline", () => {
     });
   });
 
-  it("draws every bot of a project made before projects had a source team under its lead", async () => {
+  it("draws every bot of a project made before projects had a source team under its lead, once the person placed them", async () => {
+    await place(OLD_PROJECT);
     const drawn = await canvas(OLD_PROJECT);
     expect(drawn.project).toMatchObject({ id: OLD_PROJECT, name: OLD_SHOW });
     expect(lines(drawn)).toEqual(["Director → Editor", "Director → Scribe"]);
