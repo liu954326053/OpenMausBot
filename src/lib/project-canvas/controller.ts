@@ -1,8 +1,11 @@
 import { botIdOfNode, type CanvasBackgroundMode, type CanvasNode, type CanvasOp, type CanvasPoint, type CanvasReplyPlaceholder, type CanvasSnapshot, type CanvasTaskRequest, type CanvasUploadResponse, type CanvasViewport } from "../../../shared/project-canvas";
+import type { PipelineVideosInput } from "../../../shared/pipeline-run";
+import type { ProjectDraftOpenResult } from "../../../shared/project-draft";
 import type { GenerationFailure, GenerationKind, GenerationModel, GenerationSettingsWire, ProjectGenerationSettings } from "../../../shared/project-generation";
 import { activeLocale } from "../i18n";
 import { randomUuid } from "../random-uuid";
 import { canvasErrorText, type CanvasBackend } from "./backend";
+import { projectRelativePath } from "./draft";
 import { emptyHistory, recordHistory, redoHistory, undoHistory } from "./history";
 import { addNodeOp, applyCanvasOps, invertCanvasOps } from "./ops";
 import { layoutPipeline } from "./stage-layout";
@@ -196,6 +199,38 @@ export class CanvasController {
   async cancelGeneration(nodeId: string): Promise<void> {
     const jobId = this.state.snapshot?.nodes.find((node) => node.id === nodeId)?.metadata?.jobId;
     if (jobId) await this.backend.cancelGeneration(this.projectId, jobId);
+  }
+
+  /** Makes a take its shot's selected one, after the changes made so far. */
+  async selectTake(nodeId: string): Promise<void> {
+    await this.settled();
+    await this.backend.selectTake(this.projectId, nodeId);
+    await this.refresh();
+  }
+
+  async answerVideos(action: PipelineVideosInput["action"]): Promise<void> {
+    await this.backend.answerVideos(this.projectId, { action });
+    await this.refresh();
+  }
+
+  openDraft(): Promise<ProjectDraftOpenResult> {
+    return this.backend.openDraft(this.projectId);
+  }
+
+  /** Whether the app can know where a file the person picks is, so the finished film can be chosen. */
+  get picksFiles(): boolean {
+    return Boolean(this.backend.localPathOf);
+  }
+
+  /** Makes the file the person picked the finished film. False, with nothing sent, for a file outside the project
+   * folder. */
+  async chooseFilm(file: File): Promise<boolean> {
+    const draft = this.state.snapshot?.draft;
+    const path = draft ? projectRelativePath(draft.exportFolder, this.backend.localPathOf?.(file) ?? "") : null;
+    if (!path) return false;
+    await this.backend.setFinalFilm(this.projectId, { path });
+    await this.refresh();
+    return true;
   }
 
   /** Sends the person's task, the references it mentions named in the page's language. */

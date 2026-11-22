@@ -8,6 +8,7 @@ import type {
   CanvasUploadResponse,
   ProjectCanvasEvent,
 } from "../../../shared/project-canvas";
+import type { ProjectDraftOpenResult } from "../../../shared/project-draft";
 import type { GenerationFailure, GenerationModelsWire, GenerationSettingsWire, Refused } from "../../../shared/project-generation";
 import { api, ApiError } from "../../state/api";
 import type { Bot, Message } from "../../state/store";
@@ -86,6 +87,8 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
   const threadsShown = () => readAdvancedMode() && showThreads();
   const listeners = new Set<() => void>();
   let givenLooks = "";
+  const desktop = typeof window === "undefined" ? undefined : window.ogb;
+  const pathOf = desktop?.remoteClient?.active ? undefined : desktop?.getPathForFile;
 
   return {
     readSnapshot: (projectId) => canvasCall<CanvasSnapshot>(canvasPath(projectId)),
@@ -185,5 +188,19 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
     async cancelGeneration(projectId, jobId) {
       await api(`${generationPath(projectId)}/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
     },
+
+    selectTake: (projectId, nodeId) => canvasCall<{ revision: number }>(`${canvasPath(projectId)}/select-take`, { method: "POST", body: JSON.stringify({ nodeId }) }),
+
+    async answerVideos(projectId, input) {
+      await canvasCall(`${projectPath(projectId)}/pipeline/videos`, { method: "POST", body: JSON.stringify(input) });
+    },
+
+    openDraft: (projectId) => api<ProjectDraftOpenResult>(`${projectPath(projectId)}/draft/open`, { method: "POST" }),
+
+    async setFinalFilm(projectId, input) {
+      await canvasCall(`${projectPath(projectId)}/final`, { method: "POST", body: JSON.stringify(input) });
+    },
+
+    ...(pathOf ? { localPathOf: (file: File) => pathOf(file) } : {}),
   };
 }

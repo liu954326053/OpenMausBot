@@ -59,7 +59,17 @@ const contentNodes: CanvasNode[] = [
     width: 340,
     height: 240,
     createdBy: { kind: "bot", botId: "lena" },
-    metadata: { prompt: "Slow push-in on a neon-lit rooftop in heavy rain, a courier opens a package.", status: "success", settings: { seconds: 10 } },
+    metadata: { prompt: "Slow push-in on a neon-lit rooftop in heavy rain, a courier opens a package." },
+  },
+  {
+    id: "shot-1-creation",
+    type: "config",
+    title: "Shot 1 · Rooftop",
+    position: { x: 0, y: 0 },
+    width: 340,
+    height: 240,
+    createdBy: { kind: "bot", botId: "lena" },
+    metadata: { role: "creation", shotId: "shot-1", generationMode: "video", status: "success", settings: { seconds: 10 } },
   },
   {
     id: "shot-1-take-1",
@@ -69,7 +79,7 @@ const contentNodes: CanvasNode[] = [
     width: 420,
     height: 236,
     createdBy: { kind: "person" },
-    metadata: { file: { path: SAMPLE_VIDEO_PATH, mime: "video/webm", bytes: 182_000, name: "rooftop-1.webm" }, naturalWidth: 1280, naturalHeight: 720, durationMs: 10_000, prompt: "Slow push-in on a neon-lit rooftop in heavy rain, a courier opens a package.", status: "success" },
+    metadata: { role: "take", shotId: "shot-1", selected: true, file: { path: SAMPLE_VIDEO_PATH, mime: "video/webm", bytes: 182_000, name: "rooftop-1.webm" }, naturalWidth: 1280, naturalHeight: 720, durationMs: 10_000, status: "success" },
   },
   {
     id: "city-night",
@@ -88,9 +98,11 @@ const connections: CanvasConnection[] = [
   { id: dispatchConnectionId("kai", "lena"), fromNodeId: botNodeId("kai"), toNodeId: botNodeId("lena"), kind: "dispatch" },
   { id: dispatchConnectionId("lena", "otto"), fromNodeId: botNodeId("lena"), toNodeId: botNodeId("otto"), kind: "dispatch" },
   { id: "c-kai-logline", fromNodeId: botNodeId("kai"), toNodeId: "logline", kind: "content" },
-  { id: "c-lena-shot", fromNodeId: botNodeId("lena"), toNodeId: "shot-1", kind: "content" },
-  { id: "c-city-shot", fromNodeId: "city-night", toNodeId: "shot-1", kind: "content" },
-  { id: "c-shot-take", fromNodeId: "shot-1", toNodeId: "shot-1-take-1", kind: "content" },
+  { id: "c-lena-shot", fromNodeId: botNodeId("lena"), toNodeId: "shot-1", kind: "content", pipeline: true },
+  { id: "c-shot-creation", fromNodeId: "shot-1", toNodeId: "shot-1-creation", kind: "content", pipeline: true },
+  { id: "c-city-creation", fromNodeId: "city-night", toNodeId: "shot-1-creation", kind: "content" },
+  { id: "c-creation-take", fromNodeId: "shot-1-creation", toNodeId: "shot-1-take-1", kind: "content", pipeline: true },
+  { id: "c-take-otto", fromNodeId: "shot-1-take-1", toNodeId: botNodeId("otto"), kind: "content", pipeline: true },
 ];
 
 /** The sample canvas, with bots and what they made where the server's default layout puts them. */
