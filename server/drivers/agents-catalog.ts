@@ -381,7 +381,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "propose_team_setup",
-    description: "Chief of Staff only: create specialists and change bots' profiles, models, Chiefs and teams as the person asked, all in ONE plan, with exact ids from list_team_setup. One operation per bot, at most 40 (8 new). A new team goes in newTeams with a specialist in this plan; teams you are not authorized for cannot be included. Models change defaults for new threads; mcpServers sets an existing bot's MCP servers; no other execution permission changes." + APPLIES_AT_ONCE,
+    description: "Chief of Staff only: create specialists and change bots' profiles, models, Chiefs and teams as the person asked, all in ONE plan, with exact ids from list_team_setup. One operation per bot, at most 40 (8 new). A new team goes in newTeams with a specialist in this plan; teams you are not authorized for cannot be included. Models change defaults for new threads; mcpServers sets an existing bot's MCP servers; no other execution permission changes. For a team that makes short dramas, give every member but the Chief its stages, so the team's pipeline is drawn at once." + APPLIES_AT_ONCE,
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -404,6 +404,7 @@ const TOOL_DEFINITIONS = [
                 instanceId: { type: "string" }, model: { type: "string" }, effort: { type: "string" }, variant: { type: "string" },
               }, required: ["instanceId", "model"] },
               mcpServers: { type: "array", maxItems: 20, items: { type: "string" }, description: "update: the bot's full MCP server list by name." },
+              stages: { type: "array", items: { type: "string", enum: ["script", "character", "storyboard", "post", "other"] }, description: "The member's work in a drama's pipeline, several when it does several: script = writes the screenplay; character = designs the characters and their reference art; storyboard = breaks the script into shots; post = edits the finished film; other = work outside the pipeline." },
             } },
           }, required: ["action", "fields"],
         } },

@@ -7288,6 +7288,8 @@
   "server.teamProjectProposal.refused.teamChanged": "Esta equipe mudou depois que este cartão foi feito. Peça de novo para ver a equipe como ela está agora.",
   "server.teamProjectProposal.handOver.held": "O pedido não chegou a {lead}. {why} Depois, abra o projeto e diga a {lead} o que você quer.",
   "server.teamProjectProposal.handOver.failed": "O pedido não chegou a {lead}. Abra o projeto e diga a {lead} o que você quer.",
+  "server.teamJudge.card.pipeline": "Linha de produção de “{team}”: {line}",
+  "server.teamJudge.card.outside": "Fora da linha de produção, direto com {lead}: {names}",
   "teamProjectProposal.create": "Criar",
   "teamProjectProposal.folder": "Pasta do projeto",
   "teamProjectProposal.team": "Equipe",

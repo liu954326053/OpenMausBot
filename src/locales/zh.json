@@ -7288,6 +7288,8 @@
   "server.teamProjectProposal.refused.teamChanged": "这张卡片出现之后，团队有了改动。请再提一次，看看现在的团队。",
   "server.teamProjectProposal.handOver.held": "需求没能交给{lead}。{why}之后请打开项目，把需求告诉{lead}。",
   "server.teamProjectProposal.handOver.failed": "需求没能交给{lead}。请打开项目，直接把需求告诉{lead}。",
+  "server.teamJudge.card.pipeline": "“{team}”的流水线：{line}",
+  "server.teamJudge.card.outside": "流水线之外，由{lead}直接安排：{names}",
   "teamProjectProposal.create": "创建",
   "teamProjectProposal.folder": "项目文件夹",
   "teamProjectProposal.team": "团队",

@@ -7288,6 +7288,8 @@
   "server.teamProjectProposal.refused.teamChanged": "This team changed after this card was made. Ask again to see the team as it is now.",
   "server.teamProjectProposal.handOver.held": "The request did not reach {lead}. {why} Then open the project and tell {lead} what you want.",
   "server.teamProjectProposal.handOver.failed": "The request did not reach {lead}. Open the project and tell {lead} what you want.",
+  "server.teamJudge.card.pipeline": "Pipeline of “{team}”: {line}",
+  "server.teamJudge.card.outside": "Outside the pipeline, working with {lead} directly: {names}",
   "teamProjectProposal.create": "Create",
   "teamProjectProposal.folder": "Project folder",
   "teamProjectProposal.team": "Team",
