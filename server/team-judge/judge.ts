@@ -18,6 +18,8 @@ export interface TeamJudgeWays {
 export interface TeamJudgement {
   way: JudgeWay;
   stages: Record<string, FlowStage[]>;
+  /** Members the way chosen had no answer for: asked about again the next time their team is judged. */
+  unanswered: string[];
 }
 
 export type TeamJudge = (target: JudgeTarget, options?: { signal?: AbortSignal }) => Promise<TeamJudgement>;
@@ -46,12 +48,13 @@ export function createTeamJudge(ways: TeamJudgeWays): TeamJudge {
     const byKeyword = (): TeamJudgement => ({
       way: "keywords",
       stages: Object.fromEntries(pending.map((memberId) => [memberId, keywordStages(target.members.find((member) => member.id === memberId)!)])),
+      unanswered: [],
     });
     if (!pending.length) return byKeyword();
     const decider = found(ways.decider);
-    if (decider) return { way: "decider", stages: await judgeWithDecider(decider, target, pending, options) };
+    if (decider) return { way: "decider", ...(await judgeWithDecider(decider, target, pending, options)) };
     const model = found(ways.mainBot);
-    if (model) return { way: "model", stages: await judgeWithModel(model, target, pending, options) };
+    if (model) return { way: "model", ...(await judgeWithModel(model, target, pending, options)) };
     return byKeyword();
   };
 }

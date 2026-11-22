@@ -34,7 +34,7 @@ describe("judging a team with the decision model", () => {
     const model = fakeModel();
     const judge = createTeamJudge({ decider: () => decider, mainBot: () => model });
     const judged = await judge(target);
-    expect(judged).toEqual({ way: "decider", stages });
+    expect(judged).toEqual({ way: "decider", stages, unanswered: [] });
     expect(lines(target, judged.stages)).toEqual(expected);
     expect(decider.asked).toHaveLength(target.pending.length);
     expect(model.prompts).toEqual([]);
@@ -83,6 +83,7 @@ describe("judging a team with the decision model", () => {
     const decider = fakeDecider((title) => (title === "分镜与美术设计" ? "malformed" : null));
     const judged = await createTeamJudge({ decider: () => decider, mainBot: () => null })(SCREENSHOT_TEAM);
     expect(judged.stages).toEqual({ yanqing: ["script"], mobai: ["other"], qinghe: ["post"] });
+    expect(judged.unanswered).toEqual(["mobai"]);
   });
 
   it.each(["timeout", "unreachable", "rate_limited", "overloaded", "rejected", "disabled"] as const)(
@@ -90,7 +91,7 @@ describe("judging a team with the decision model", () => {
     async (reason) => {
       const decider = fakeDecider((title) => (title === "编剧" ? null : reason));
       const judged = await createTeamJudge({ decider: () => decider, mainBot: () => fakeModel() })(SCREENSHOT_TEAM);
-      expect(judged).toEqual({ way: "decider", stages: { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] } });
+      expect(judged).toEqual({ way: "decider", stages: { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] }, unanswered: ["mobai", "qinghe"] });
       expect(decider.asked).toHaveLength(2);
     },
   );
@@ -99,6 +100,7 @@ describe("judging a team with the decision model", () => {
     const decider = fakeDecider(() => "throw");
     const judged = await createTeamJudge({ decider: () => decider, mainBot: () => null })(SCREENSHOT_TEAM);
     expect(judged.stages).toEqual({ yanqing: ["other"], mobai: ["other"], qinghe: ["other"] });
+    expect(judged.unanswered).toEqual(["yanqing", "mobai", "qinghe"]);
   });
 
   it("stops asking once the judgement is called off", async () => {
@@ -107,6 +109,7 @@ describe("judging a team with the decision model", () => {
     stop.abort();
     const judged = await createTeamJudge({ decider: () => decider, mainBot: () => null })(SCREENSHOT_TEAM, { signal: stop.signal });
     expect(judged.stages).toEqual({ yanqing: ["other"], mobai: ["other"], qinghe: ["other"] });
+    expect(judged.unanswered).toEqual(["yanqing", "mobai", "qinghe"]);
     expect(decider.asked).toEqual([]);
   });
 });
@@ -115,7 +118,7 @@ describe("judging a team with the main bot's model", () => {
   it.each(TEAMS)("gives %s its stages and lines in one call", async (_name, target, stages, expected) => {
     const model = fakeModel();
     const judged = await createTeamJudge({ decider: () => null, mainBot: () => model })(target);
-    expect(judged).toEqual({ way: "model", stages });
+    expect(judged).toEqual({ way: "model", stages, unanswered: [] });
     expect(lines(target, judged.stages)).toEqual(expected);
     expect(model.prompts).toHaveLength(1);
   });
@@ -138,10 +141,16 @@ describe("judging a team with the main bot's model", () => {
     });
   });
 
-  it("reads the answer out of a fenced or chatty reply, and makes a member it left out or answered wrongly other", async () => {
+  it("reads the answer out of a fenced or chatty reply, and makes a member it gave no stage of the pipeline other", async () => {
     const model = fakeModel(() => "Here you go:\n```json\n{\"m2\": [\"script\"], \"m3\": \"storyboard\", \"m4\": [\"director\"], \"m9\": [\"post\"]}\n```");
     const judged = await createTeamJudge({ decider: () => null, mainBot: () => model })(SCREENSHOT_TEAM);
-    expect(judged.stages).toEqual({ yanqing: ["script"], mobai: ["storyboard"], qinghe: ["other"] });
+    expect(judged).toEqual({ way: "model", stages: { yanqing: ["script"], mobai: ["storyboard"], qinghe: ["other"] }, unanswered: [] });
+  });
+
+  it("counts a member the reply leaves out as not answered for", async () => {
+    const model = fakeModel(() => "{\"m3\": [\"character\", \"storyboard\"]}");
+    const judged = await createTeamJudge({ decider: () => null, mainBot: () => model })(SCREENSHOT_TEAM);
+    expect(judged).toEqual({ way: "model", stages: { yanqing: ["other"], mobai: ["character", "storyboard"], qinghe: ["other"] }, unanswered: ["yanqing", "qinghe"] });
   });
 
   it.each([
@@ -151,7 +160,7 @@ describe("judging a team with the main bot's model", () => {
   ])("makes every member other when the model %s", async (_name, reply) => {
     const model = fakeModel(reply);
     const judged = await createTeamJudge({ decider: () => null, mainBot: () => model })(SCREENSHOT_TEAM);
-    expect(judged).toEqual({ way: "model", stages: { yanqing: ["other"], mobai: ["other"], qinghe: ["other"] } });
+    expect(judged).toEqual({ way: "model", stages: { yanqing: ["other"], mobai: ["other"], qinghe: ["other"] }, unanswered: ["yanqing", "mobai", "qinghe"] });
   });
 
   it("makes every member other when the model does not answer in time", async () => {
@@ -164,7 +173,7 @@ describe("judging a team with the main bot's model", () => {
     };
     const judging = createTeamJudge({ decider: () => null, mainBot: () => ({ generateText }) })(SCREENSHOT_TEAM);
     await vi.advanceTimersByTimeAsync(TEAM_JUDGE_MODEL_TIMEOUT_MS);
-    await expect(judging).resolves.toEqual({ way: "model", stages: { yanqing: ["other"], mobai: ["other"], qinghe: ["other"] } });
+    await expect(judging).resolves.toEqual({ way: "model", stages: { yanqing: ["other"], mobai: ["other"], qinghe: ["other"] }, unanswered: ["yanqing", "mobai", "qinghe"] });
     expect(signals[0]?.aborted).toBe(true);
   });
 });
@@ -172,16 +181,16 @@ describe("judging a team with the main bot's model", () => {
 describe("judging a team with no model at hand", () => {
   it.each(TEAMS)("gives %s its stages and lines by keyword", async (_name, target, stages, expected) => {
     const judged = await createTeamJudge({ decider: () => null, mainBot: () => null })(target);
-    expect(judged).toEqual({ way: "keywords", stages });
+    expect(judged).toEqual({ way: "keywords", stages, unanswered: [] });
     expect(lines(target, judged.stages)).toEqual(expected);
   });
 
   it("uses keywords when looking for a model fails", async () => {
     const judge = createTeamJudge({ decider: () => { throw new Error("config unreadable"); }, mainBot: () => { throw new Error("no main bot"); } });
-    await expect(judge(SCREENSHOT_TEAM)).resolves.toEqual({ way: "keywords", stages: SCREENSHOT_STAGES });
+    await expect(judge(SCREENSHOT_TEAM)).resolves.toEqual({ way: "keywords", stages: SCREENSHOT_STAGES, unanswered: [] });
   });
 
   it("answers nothing for a team with nobody to judge", async () => {
-    await expect(createTeamJudge({ decider: () => fakeDecider(), mainBot: () => null })({ ...SCREENSHOT_TEAM, pending: [] })).resolves.toEqual({ way: "keywords", stages: {} });
+    await expect(createTeamJudge({ decider: () => fakeDecider(), mainBot: () => null })({ ...SCREENSHOT_TEAM, pending: [] })).resolves.toEqual({ way: "keywords", stages: {}, unanswered: [] });
   });
 });

@@ -47,6 +47,9 @@ export function startTeamJudgeScheduler(deps: TeamJudgeSchedulerDeps): () => voi
   const queue: string[] = [];
   /** Teams whose members stayed pending after their stages were recorded → what was asked: not asked again as it is. */
   const answered = new Map<string, string>();
+  /** Teams → members a judgement had no answer for: asked about again, after the pending ones, the next time the team
+   * is judged, and not recorded `other` once more meanwhile. */
+  const missed = new Map<string, Set<string>>();
   const modelStarts: number[] = [];
   let judging: { section: string; stop: AbortController } | null = null;
   let recording = false;
@@ -63,6 +66,11 @@ export function startTeamJudgeScheduler(deps: TeamJudgeSchedulerDeps): () => voi
     }
   };
   const targetOf = (section: string) => targets().find((target) => target.section === section);
+  const withMissed = (target: JudgeTarget): JudgeTarget => {
+    const members = new Set(target.members.map((member) => member.id));
+    const again = [...(missed.get(target.section) ?? [])].filter((memberId) => members.has(memberId) && !target.pending.includes(memberId));
+    return again.length ? { ...target, pending: [...target.pending, ...again] } : target;
+  };
 
   const settle = (section: string, ask: string) => {
     const waiting = settling.get(section);
@@ -131,15 +139,24 @@ export function startTeamJudgeScheduler(deps: TeamJudgeSchedulerDeps): () => voi
     }
   };
 
-  /** Records what holds for the team as it is now: a member that changed or left meanwhile is not recorded. */
-  const record = (judged: JudgeTarget, stages: Readonly<Record<string, FlowStage[]>>) => {
+  /** Records what holds for the team as it is now: a member that changed or left meanwhile is not recorded, nor one
+   * asked about again that once more has no answer. */
+  const record = (judged: JudgeTarget, stages: Readonly<Record<string, FlowStage[]>>, unanswered: readonly string[]) => {
     const { section } = judged;
     const asked = new Map(judged.members.map((member) => [member.id, profileOf(member)]));
     const unchanged = (target: JudgeTarget, memberId: string) =>
       Object.hasOwn(stages, memberId) && asked.get(memberId) === profileOf(target.members.find((member) => member.id === memberId)!);
     const before = targetOf(section);
     if (!before) return;
-    const settled = judgeable(before).filter((memberId) => unchanged(before, memberId));
+    const settled = judgeable(withMissed(before))
+      .filter((memberId) => unchanged(before, memberId) && (before.pending.includes(memberId) || !unanswered.includes(memberId)));
+    const still = missed.get(section) ?? new Set<string>();
+    for (const memberId of judgeable(judged)) {
+      if (unanswered.includes(memberId)) still.add(memberId);
+      else still.delete(memberId);
+    }
+    if (still.size) missed.set(section, still);
+    else missed.delete(section);
     if (settled.length) {
       recording = true;
       try {
@@ -164,13 +181,15 @@ export function startTeamJudgeScheduler(deps: TeamJudgeSchedulerDeps): () => voi
       while (queue.length && !stopped) {
         await modelSlot();
         const section = queue.shift();
-        const target = section === undefined || stopped ? undefined : targetOf(section);
-        if (!target) continue;
+        const waiting = section === undefined || stopped ? undefined : targetOf(section);
+        if (!waiting) continue;
+        const target = withMissed(waiting);
         const started = now();
         const judged = await judgement(target);
         if (stopped) return;
         if (judged?.way !== "keywords") modelStarts.push(started);
-        record(target, Object.fromEntries(judgeable(target).map((memberId) => [memberId, judgedStages(judged?.stages[memberId])])));
+        const stages = Object.fromEntries(judgeable(target).map((memberId) => [memberId, judgedStages(judged?.stages[memberId])]));
+        record(target, stages, judged?.unanswered ?? judgeable(target));
       }
     } finally {
       running = false;

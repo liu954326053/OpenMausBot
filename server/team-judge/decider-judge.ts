@@ -8,7 +8,7 @@ import { RELAY_MAX_STATE_BYTES } from "../decider/relay.ts";
 import type { DeciderFailure, YesNoQuestion } from "../decider/types.ts";
 import { clean } from "../records-block.ts";
 import type { JudgeTarget } from "../team-flow/flows.ts";
-import { judgedStages, STAGE_WORK } from "./stages.ts";
+import { judgedStages, STAGE_WORK, type MembersJudged } from "./stages.ts";
 
 export const TEAM_JUDGE_DECIDER_TIMEOUT_MS = 8_000;
 /** A stage is the member's from this probability up. */
@@ -58,29 +58,36 @@ export function teamJudgeRequest(target: JudgeTarget, memberId: string) {
   return { state: state(), questions: QUESTIONS };
 }
 
-/** Every member of `pending` → its stages; `["other"]` for one the model failed on or gave no stage. Never throws. */
+/** Every member of `pending` → its stages; `["other"]` for one the model gave no stage, or failed on or was not asked
+ * about, which are unanswered. Never throws. */
 export async function judgeWithDecider(
   decider: Pick<Decider, "ask">,
   target: JudgeTarget,
   pending: readonly string[],
   options: { signal?: AbortSignal } = {},
-): Promise<Record<string, FlowStage[]>> {
+): Promise<MembersJudged> {
   const stages: Record<string, FlowStage[]> = {};
+  const unanswered: string[] = [];
   let answering = true;
   for (const memberId of pending) {
     stages[memberId] = ["other"];
-    if (!answering || options.signal?.aborted) continue;
+    if (!answering || options.signal?.aborted) {
+      unanswered.push(memberId);
+      continue;
+    }
     try {
       const { state, questions } = teamJudgeRequest(target, memberId);
       const result = await decider.ask("botDecide", state, questions, { timeoutMs: TEAM_JUDGE_DECIDER_TIMEOUT_MS, signal: options.signal });
       if (!result.ok) {
         answering = !NOT_ANSWERING.has(result.reason);
+        unanswered.push(memberId);
         continue;
       }
       stages[memberId] = judgedStages(PIPELINE_STAGES.filter((stage) => result.answers[stage]?.p >= TEAM_JUDGE_YES));
     } catch {
       answering = false;
+      unanswered.push(memberId);
     }
   }
-  return stages;
+  return { stages, unanswered };
 }

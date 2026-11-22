@@ -12,7 +12,7 @@ const byKeyword = createTeamJudge({ decider: () => null, mainBot: () => null });
 
 /** A judge whose every judgement waits to be answered by the test. */
 function heldJudge(way: TeamJudgement["way"] = "model") {
-  const calls: Array<{ target: JudgeTarget; signal?: AbortSignal; answer(stages: Record<string, FlowStage[]>): void; fail(): void }> = [];
+  const calls: Array<{ target: JudgeTarget; signal?: AbortSignal; answer(stages: Record<string, FlowStage[]>, unanswered?: string[]): void; fail(): void }> = [];
   let open = 0;
   let most = 0;
   const judge: TeamJudge = (target, options) => new Promise<TeamJudgement>((resolve, reject) => {
@@ -20,7 +20,7 @@ function heldJudge(way: TeamJudgement["way"] = "model") {
     most = Math.max(most, open);
     calls.push({
       target, signal: options?.signal,
-      answer: (stages) => { open -= 1; resolve({ way, stages }); },
+      answer: (stages, unanswered = []) => { open -= 1; resolve({ way, stages, unanswered }); },
       fail: () => { open -= 1; reject(new Error("the judge broke")); },
     });
   });
@@ -198,7 +198,7 @@ describe("a judgement that fails", () => {
   it("keeps what the judge had found out when it is called off", async () => {
     const flows = fakeFlows();
     const judge: TeamJudge = (_target, options) => new Promise((resolve) => {
-      options!.signal!.addEventListener("abort", () => resolve({ way: "decider", stages: { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] } }));
+      options!.signal!.addEventListener("abort", () => resolve({ way: "decider", stages: { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] }, unanswered: ["mobai", "qinghe"] }));
     });
     start(flows, judge);
     flows.put(SCREENSHOT_TEAM);
@@ -234,6 +234,45 @@ describe("a judgement that fails", () => {
     flows.put({ ...SCREENSHOT_TEAM, pending: ["yanqing"] });
     await settle();
     expect(held.calls).toHaveLength(2);
+  });
+
+  it("is tried again for the members it gave no answer for when their team is next judged", async () => {
+    const flows = fakeFlows();
+    const held = heldJudge();
+    start(flows, held.judge);
+    flows.put(SCREENSHOT_TEAM);
+    await settle();
+    held.calls[0]!.answer({ yanqing: ["script"], mobai: ["other"], qinghe: ["other"] }, ["mobai", "qinghe"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flows.recorded).toEqual([["漫剧工作室", { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] }]]);
+
+    const joined = { id: "voice", name: "阿音", title: "配音", description: "", soul: "" };
+    flows.put({ ...SCREENSHOT_TEAM, members: [...SCREENSHOT_TEAM.members.filter((member) => member.id !== "qinghe"), joined], pending: ["voice"] });
+    await settle();
+    expect(held.calls[1]!.target.pending).toEqual(["voice", "mobai"]);
+    held.calls[1]!.answer({ voice: ["other"], mobai: ["character", "storyboard"] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flows.recorded[1]).toEqual(["漫剧工作室", { voice: ["other"], mobai: ["character", "storyboard"] }]);
+
+    flows.put({ ...SCREENSHOT_TEAM, members: [...SCREENSHOT_TEAM.members, joined], pending: ["qinghe"] });
+    await settle();
+    expect(held.calls[2]!.target.pending).toEqual(["qinghe"]);
+  });
+
+  it("does not record other again for a member it once more has no answer for", async () => {
+    const flows = fakeFlows();
+    const held = heldJudge();
+    start(flows, held.judge);
+    flows.put(SCREENSHOT_TEAM);
+    await settle();
+    held.calls[0]!.fail();
+    await vi.advanceTimersByTimeAsync(0);
+    flows.put({ ...SCREENSHOT_TEAM, pending: ["yanqing"], members: SCREENSHOT_TEAM.members.map((member) => (member.id === "yanqing" ? { ...member, title: "剧本" } : member)) });
+    await settle();
+    expect(held.calls[1]!.target.pending).toEqual(["yanqing", "mobai", "qinghe"]);
+    held.calls[1]!.answer({ yanqing: ["script"], mobai: ["other"], qinghe: ["post"] }, ["mobai"]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flows.recorded[1]).toEqual(["漫剧工作室", { yanqing: ["script"], qinghe: ["post"] }]);
   });
 
   it("survives flows that cannot be read or written", async () => {
@@ -292,7 +331,7 @@ describe("what keeps the judge from running away", () => {
     const asked: string[] = [];
     const judge: TeamJudge = async (target) => {
       asked.push(target.section);
-      return { way: "model", stages: {} };
+      return { way: "model", stages: {}, unanswered: [] };
     };
     start(flows, judge);
     const teams = Array.from({ length: TEAM_JUDGE_MODEL_LIMIT.count + 2 }, (_, index) => teamTarget(`Team ${index}`, [

@@ -8,6 +8,12 @@ export const STAGE_WORK: Record<PipelineStage, string> = {
   post: "does post-production: editing the shots' videos into the finished film",
 };
 
+/** What a judgement found: each member asked about → its stages, and the members it had no answer for. */
+export interface MembersJudged {
+  stages: Record<string, FlowStage[]>;
+  unanswered: string[];
+}
+
 /** The pipeline stages `given` names, once each and in pipeline order; `["other"]` when it names none. */
 export function judgedStages(given: unknown): FlowStage[] {
   const named = new Set(Array.isArray(given) ? given : []);

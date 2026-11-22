@@ -3,7 +3,7 @@
 import { PIPELINE_STAGES, type FlowStage } from "../../shared/team-pipeline.ts";
 import { clean } from "../records-block.ts";
 import type { JudgeTarget } from "../team-flow/flows.ts";
-import { judgedStages, STAGE_WORK } from "./stages.ts";
+import { judgedStages, STAGE_WORK, type MembersJudged } from "./stages.ts";
 
 export const TEAM_JUDGE_MODEL_TIMEOUT_MS = 30_000;
 const NAME_MAX = 80;
@@ -44,9 +44,9 @@ export function teamJudgePrompt(target: JudgeTarget, pending: readonly string[])
   return { prompt, keys };
 }
 
-/** Each member the prompt asked about → its stages, `["other"]` for one the reply left out; null when the reply holds no
- * JSON object. */
-export function parseTeamJudgeReply(reply: string, keys: ReadonlyMap<string, string>): Record<string, FlowStage[]> | null {
+/** Each member the prompt asked about → its stages, `["other"]` for one the reply left out, which is unanswered; null
+ * when the reply holds no JSON object. */
+function readTeamJudgeReply(reply: string, keys: ReadonlyMap<string, string>): MembersJudged | null {
   const from = reply.indexOf("{");
   const to = reply.lastIndexOf("}");
   if (from < 0 || to < from) return null;
@@ -59,22 +59,33 @@ export function parseTeamJudgeReply(reply: string, keys: ReadonlyMap<string, str
   if (!answer || typeof answer !== "object" || Array.isArray(answer)) return null;
   const given = answer as Record<string, unknown>;
   const stages: Record<string, FlowStage[]> = {};
+  const unanswered: string[] = [];
   for (const [key, memberId] of keys) {
     const own = Object.hasOwn(given, key) ? given[key] : undefined;
+    if (own === undefined) unanswered.push(memberId);
     stages[memberId] = judgedStages(typeof own === "string" ? [own] : own);
   }
-  return stages;
+  return { stages, unanswered };
 }
 
-/** Every member of `pending` → its stages; all `["other"]` when the model fails, is late or answers nothing readable.
- * Never throws. */
+/** Each member the prompt asked about → its stages, `["other"]` for one the reply left out; null when the reply holds no
+ * JSON object. */
+export function parseTeamJudgeReply(reply: string, keys: ReadonlyMap<string, string>): Record<string, FlowStage[]> | null {
+  return readTeamJudgeReply(reply, keys)?.stages ?? null;
+}
+
+/** Every member of `pending` → its stages; all `["other"]` and unanswered when the model fails, is late or answers
+ * nothing readable. Never throws. */
 export async function judgeWithModel(
   model: JudgeModel,
   target: JudgeTarget,
   pending: readonly string[],
   options: { signal?: AbortSignal } = {},
-): Promise<Record<string, FlowStage[]>> {
-  const unjudged = Object.fromEntries(pending.map((memberId): [string, FlowStage[]] => [memberId, ["other"]]));
+): Promise<MembersJudged> {
+  const unjudged: MembersJudged = {
+    stages: Object.fromEntries(pending.map((memberId): [string, FlowStage[]] => [memberId, ["other"]])),
+    unanswered: [...pending],
+  };
   if (options.signal?.aborted) return unjudged;
   const expiry = new AbortController();
   const timer = setTimeout(() => expiry.abort(), TEAM_JUDGE_MODEL_TIMEOUT_MS);
@@ -88,7 +99,7 @@ export async function judgeWithModel(
       signal.addEventListener("abort", abort, { once: true });
       Promise.resolve().then(() => model.generateText(prompt, { signal, timeoutMs: TEAM_JUDGE_MODEL_TIMEOUT_MS })).then(resolve, reject);
     });
-    return parseTeamJudgeReply(reply, keys) ?? unjudged;
+    return readTeamJudgeReply(reply, keys) ?? unjudged;
   } catch {
     return unjudged;
   } finally {
