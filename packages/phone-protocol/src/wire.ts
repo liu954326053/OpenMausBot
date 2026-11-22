@@ -435,7 +435,9 @@ export const EXCERPT_SUMMARY_HEADER = "Historical excerpts in chronological orde
 
 /** One transcript line, serialized as stored. */
 export interface WireMessage extends ServerTextLine, HelperIntroField, SetupCardFields, WaitLineField, CheckBackLineField, HandoffStatusField, BugReportField {
-  roomRequest?: { id: string; phase: "request" | "result" };
+  /** A teammate hand-off's line: `request` where the work starts, naming in `botIds` the bots it went to; `result` where
+   * it comes back. */
+  roomRequest?: { id: string; phase: "request" | "result"; botIds?: string[] };
   id: string;
   role: "bot" | "user";
   kind: "text" | "options" | "activity" | "screen" | "connector" | "secret" | "signin" | "routine.run" | "goal.run" | "burst" | "digest" | "compaction" | "call" | "widget" | "app";

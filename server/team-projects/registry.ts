@@ -19,6 +19,7 @@ const projectSchema = z.object({
   team: z.object({ key: z.string().min(1), name: z.string() }).optional(),
   template: z.object({ id: z.string(), name: z.string(), version: z.number().finite() }).optional(),
   leadBotId: z.string(),
+  roomId: z.string().min(1).optional(),
   createdAt: z.number().finite(),
   archivedAt: z.number().finite().optional(),
   pausedRoutineIds: z.array(z.string()).optional(),

@@ -3,11 +3,14 @@ import { join } from "node:path";
 
 import type { TeamProjectsApi } from "../../shared/team-projects.ts";
 import { DATA_DIR } from "../config.ts";
+import type { DirectSendReceipt } from "../direct-send.ts";
 import { openCardRows } from "../message-db.ts";
 import type { ProjectCanvasHost } from "../project-canvas/host.ts";
 import type { ProjectDraftHost } from "../project-draft/host.ts";
 import type { RouteHandler } from "../routes/table.ts";
 import type { Store } from "../store.ts";
+import { projectOfRoomThread, projectRoom } from "../team-projects/project-rooms.ts";
+import type { RoomMessage } from "../team-projects/room-send.ts";
 import { createPipelineRunRoutes } from "./routes.ts";
 import { PipelineRuns, type PipelineRunsDeps } from "./runs.ts";
 import { PipelineRunFiles } from "./store.ts";
@@ -18,6 +21,8 @@ export interface PipelineRunHostDeps {
   canvas: Pick<ProjectCanvasHost, "service" | "pipeline">;
   draft: Pick<ProjectDraftHost, "drafts" | "connectCanvas" | "draftWire" | "writeDraftIfReady" | "onTimelineChange" | "onDraftChange">;
   deliver: PipelineRunsDeps["deliver"];
+  /** A line into a room, for the bots it names, from the lead. */
+  sendToRoom(message: RoomMessage): DirectSendReceipt;
   mainThread(botId: string): string | undefined;
   /** The language the server writes its own lines in. */
   language(): string | undefined;
@@ -62,9 +67,17 @@ export function startPipelineRuns(deps: PipelineRunHostDeps): { routes: RouteHan
       },
     },
     deliver: deps.deliver,
+    room: (project) => projectRoom(deps.store, project),
+    projectOfRoom: (threadId) => projectOfRoomThread(deps.store, () => deps.projects.list(), threadId),
+    deliverToRoom: async ({ room, to, leadBotId }) => deps.sendToRoom({
+      groupId: room.groupId,
+      threadId: room.threadId,
+      to: to.map(({ botId, text }) => ({ botId, name: deps.store.bot(botId)?.name ?? botId, text })),
+      trigger: { kind: "bot", botId: leadBotId },
+    }),
     mainThread: deps.mainThread,
     waitingOnPerson: (botId, threadId, since) => deps.store.taskByThread(botId, threadId)?.activity === "waiting-on-you"
-      || openCardRows().some((row) => row.threadId === threadId && row.at >= since),
+      || openCardRows().some((row) => row.threadId === threadId && row.at >= since && (row.fromBotId ?? botId) === botId),
     language: deps.language,
     files: new PipelineRunFiles(join(deps.dataDir ?? DATA_DIR, "pipeline-runs"), log),
     changed: (projectId) => service.refresh(projectId),

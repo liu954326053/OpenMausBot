@@ -10,11 +10,12 @@ import type { RouteHandler } from "../routes/table.ts";
 import type { Routine, RoutineManager } from "../routines.ts";
 import { SECTION_CONTEXTS_FILE, ensureSectionMemoryKey, readSectionContext, sectionOfMemoryKey, writeSectionContext } from "../section-context.ts";
 import type { ShareTarget } from "../share.ts";
-import type { BotRecord, Store } from "../store.ts";
+import type { BotRecord, GroupRecord, Store } from "../store.ts";
 import type { TeamMemory } from "../team-memory.ts";
 import { ensureWorkspace } from "../workspace.ts";
 import type { ExportedTeam } from "./create.ts";
 import { onTeamProjectFolderChange, watchProjectFolders } from "./folder-watch.ts";
+import { ProjectRooms } from "./project-rooms.ts";
 import { TeamProjectRegistry } from "./registry.ts";
 import { TeamProjects } from "./service.ts";
 
@@ -33,6 +34,10 @@ export interface TeamProjectsHostDeps {
   language(): string | undefined;
   /** Reaches the open apps of the owner and admins. */
   broadcast(event: TeamProjectsEvent): void;
+  /** Changes a room as the person would, with the same refusals; throws when it may not change now. */
+  updateRoom(groupId: string, patch: { memberIds: string[] }): GroupRecord;
+  /** Tells the open apps about a room made or changed here. */
+  publishedRoom(group: GroupRecord): void;
 }
 
 export interface TeamProjectsHost {
@@ -51,12 +56,22 @@ export interface TeamProjectsHost {
 
 const COPIES_SETTLE_MS = 1000;
 const SOURCE_POLL_MS = 2000;
+const ROOM_RETRY_MS = 30_000;
 const TEAM_MEMORY_FILE = join(DATA_DIR, "team-memory.json");
 
 /** Projects for this installation: the list in `<data dir>/projects.json`, followed from the moment this returns. */
 export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjectsHost {
   let timer: NodeJS.Timeout | undefined;
   const registry = new TeamProjectRegistry(join(DATA_DIR, "projects.json"));
+  const rooms = new ProjectRooms({
+    registry,
+    store: deps.store,
+    updateRoom: deps.updateRoom,
+    published: deps.publishedRoom,
+    language: deps.language,
+    later: (retry) => { setTimeout(retry, ROOM_RETRY_MS).unref(); },
+    log: (line) => console.error(line),
+  });
   const projects = new TeamProjects({
     registry,
     store: deps.store,
@@ -76,9 +91,11 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
       timer ??= setTimeout(() => { timer = undefined; flush(); }, COPIES_SETTLE_MS);
       timer.unref();
     },
+    rooms,
     newId: randomUUID,
   });
   projects.start();
+  setImmediate(() => rooms.start());
   // fs.watch follows the file it opened, and both files are replaced by a rename on every save, so only polling by
   // path keeps seeing them (Node.js docs, fs.watch caveats, "Inodes").
   watchFile(SECTION_CONTEXTS_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.contextsChanged());
