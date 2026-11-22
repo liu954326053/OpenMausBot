@@ -168,12 +168,12 @@ export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string;
     }
     setBusy(true);
     setRefusal(null);
-    let made = false;
+    let opening = false;
     try {
       const outcome = await createProject({ name: trimmed, team: teamName });
       if (!live.current) return;
       if ("project" in outcome) {
-        made = true;
+        opening = true;
         setMade({ project: outcome.project, until: Date.now() + LEAD_ARRIVES_MS });
         return;
       }
@@ -182,7 +182,7 @@ export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string;
     } catch {
       if (live.current) setRefusal(refusalOf(null, ""));
     } finally {
-      if (live.current && !made) setBusy(false);
+      if (live.current && !opening) setBusy(false);
     }
   };
 
