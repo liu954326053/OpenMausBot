@@ -108,12 +108,14 @@ export async function taskReferences(document: CanvasDocument, nodeId: string, d
     const { node } = entry;
     const meta = node.metadata ?? {};
     const [name, title] = entry.reference ? [referenceLabel(entry.reference, word), node.title] : [word(NODE_WORD[entry.node.type]), node.title || node.id];
-    const lines = [title ? `${name} ${JSON.stringify(title)}:` : `${name}:`];
-    if (entry.reference?.text) lines.push(quoted(entry.reference.text));
-    if (meta.file) lines.push(await fileLine(node.type, meta.file) ?? serverLine(deps.language, "server.projectCanvas.task.fileGone", { path: JSON.stringify(meta.file.path) }));
-    if (node.type !== "text" && meta.prompt) lines.push(quoted(meta.prompt));
-    const settings = settingsLine(meta.settings);
-    if (settings) lines.push(settings);
+    const label = title ? `${name} ${JSON.stringify(title)}` : name;
+    const text = entry.reference?.text ? quoted(entry.reference.text) : null;
+    const attached = meta.file ? await fileLine(node.type, meta.file) : null;
+    const gone = meta.file && !attached ? serverLine(deps.language, "server.projectCanvas.task.fileGone", { path: JSON.stringify(meta.file.path) }) : null;
+    const prompt = node.type !== "text" && meta.prompt ? quoted(meta.prompt) : null;
+    const settings = settingsLine(meta.settings) || null;
+    const words = text ?? gone ?? prompt ?? settings;
+    const lines = [words ? `${label}:` : label, text, attached ?? gone, prompt, settings].filter((line) => line !== null);
     if (node.id === nodeId) source = lines.join("\n\n");
     else parts.push(lines.join("\n\n"));
   }
