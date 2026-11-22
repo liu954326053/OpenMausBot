@@ -38,10 +38,10 @@ it("carries a Chief's level down every hop it hands out, in threads and in a roo
   try {
     const chief = (await cli("new-bot", "--name", "Clive", "--section", "Operations")).bot;
     await api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true });
-    const ada = (await cli("new-bot", "--name", "Ada", "--section", "Operations")).bot;
-    const bea = (await cli("new-bot", "--name", "Bea", "--section", "Operations")).bot;
+    // Field has no Chief, so its bots are in no pipeline and hand work on to each other.
+    const ada = (await cli("new-bot", "--name", "Ada", "--section", "Field")).bot;
+    const bea = (await cli("new-bot", "--name", "Bea", "--section", "Field")).bot;
     const ola = (await cli("new-bot", "--name", "Ola", "--section", "Field")).bot;
-    await api("PUT", "/api/team-flows/line", { botId: bea.id, superiorId: ada.id });
     // The person put Clive, and Ola, an ordinary bot, on Approve for me; Ada and Bea on Ask, below the Full default.
     for (const auto of [chief, ola]) await api("PATCH", `/api/bots/${auto.id}`, { approvalMode: "auto", acknowledgeLocalAuto: true, applyToAllThreads: true });
     for (const teammate of [ada, bea]) await api("PATCH", `/api/bots/${teammate.id}`, { approvalMode: "ask" });

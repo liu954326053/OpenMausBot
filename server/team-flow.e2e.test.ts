@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { ProjectFlowWire, TeamFlowsWire, TeamFlowWire } from "../shared/team-flow.ts";
+import type { ProjectFlowWire, TeamFlowsWire } from "../shared/team-flow.ts";
+import type { FlowLineWire, FlowStage, ProjectPipelineWire, TeamPipelineRejudgeResult, TeamPipelinesWire, TeamPipelineWire } from "../shared/team-pipeline.ts";
 import type { TeamProjectMembership, TeamProjectRecord, TeamProjectsListWire, TeamProjectWire } from "../shared/team-projects.ts";
 import { launchVerificationServer, runControlOmb, verificationServerArgs, verificationServerEnvironment, type VerificationServer } from "../scripts/control-omb.ts";
 import { waitForExit } from "./testing/cleanup.ts";
@@ -25,7 +26,10 @@ const said = (response: unknown): string =>
 const answers = (turn: Turn): string[] => turn.evidence.filter((entry) => entry.step).map((entry) => said(entry.response));
 const told = (turn: Turn): string => `${turn.system}\n${JSON.stringify(turn.prompt)}`;
 
-describe("a team's flow on the real server", () => {
+interface StoredTeam { stages: Record<string, FlowStage[]>; judged: Record<string, string>; manual: string[]; added: FlowLineWire[]; removed: FlowLineWire[] }
+interface StoredFile { version: number; teams: Record<string, StoredTeam> }
+
+describe("a team's pipeline on the real server", () => {
   let session: VerificationServer;
   let second: ChildProcess | undefined;
   let url = "";
@@ -50,10 +54,20 @@ describe("a team's flow on the real server", () => {
     ? readFileSync(`${planPath()}.evidence.jsonl`, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Turn)
     : [];
   const stored = (): StoredBot[] => JSON.parse(readFileSync(join(session.info.dataDir, "bots.json"), "utf8")) as StoredBot[];
-  const flows = async (): Promise<TeamFlowsWire> => (await call("GET", "/api/team-flows")).body as TeamFlowsWire;
-  const studio = async (): Promise<TeamFlowWire> => (await flows()).teams.find((team) => team.section === STUDIO)!;
-  const projectFlow = async (id: string): Promise<ProjectFlowWire> => (await call("GET", `/api/team-flows/projects/${id}`)).body as ProjectFlowWire;
-  const line = (bot: FixtureBot, superior: FixtureBot | null) => call("PUT", "/api/team-flows/line", { botId: bot.id, superiorId: superior?.id ?? null });
+  const pipelines = async (): Promise<TeamPipelinesWire> => (await call("GET", "/api/team-pipelines")).body as TeamPipelinesWire;
+  const studio = async (): Promise<TeamPipelineWire> => (await pipelines()).teams.find((team) => team.section === STUDIO)!;
+  const projectPipeline = async (id: string): Promise<ProjectPipelineWire> => (await call("GET", `/api/team-pipelines/projects/${id}`)).body as ProjectPipelineWire;
+  const line = (from: FixtureBot, to: FixtureBot, present: boolean) => call("PUT", "/api/team-pipelines/line", { from: from.id, to: to.id, present });
+  const oldFlows = async (): Promise<TeamFlowsWire> => (await call("GET", "/api/team-flows")).body as TeamFlowsWire;
+  const oldLine = (bot: FixtureBot, superior: FixtureBot | null) => call("PUT", "/api/team-flows/line", { botId: bot.id, superiorId: superior?.id ?? null });
+  const fileNow = (): StoredFile => JSON.parse(readFileSync(flowFile(), "utf8")) as StoredFile;
+  /** The key team-flows.json files Studio under, which a rename of the department keeps. */
+  const studioKey = (): string => {
+    const departments = JSON.parse(readFileSync(join(session.info.dataDir, "section-contexts.json"), "utf8")) as { memoryKeys?: Record<string, string> };
+    return departments.memoryKeys?.[STUDIO] ?? STUDIO;
+  };
+  const arrows = (lines: readonly FlowLineWire[]): string[] => lines.map(({ from, to }) => `${nameOf(from)}>${nameOf(to)}`);
+  const DRAMA = ["Sol>Story", "Story>Board", "Board>Video"];
   /** The copy of a team member in a project, as the project's own bot. */
   const copyIn = (project: TeamProjectWire, source: FixtureBot): string => stored().find((bot) => bot.teamProject?.id === project.id && bot.teamProject.source === source.id)!.id;
 
@@ -148,6 +162,7 @@ describe("a team's flow on the real server", () => {
       onDisk.find((one) => one.id === bot.id)!.teamProject = { id: old.id, role };
     }
     writeFileSync(botsFile, JSON.stringify(onDisk, null, 2));
+    writeFileSync(flowFile(), JSON.stringify({ version: 1, teams: { [studioKey()]: { [made.video.id]: made.board.id } } }, null, 2));
     await startAgain();
 
     expect((await call("PUT", "/api/team-projects/root", { path: projectsRoot })).status).toBe(200);
@@ -169,119 +184,210 @@ describe("a team's flow on the real server", () => {
     if (second) await waitForExit(second, { signal: "SIGTERM" });
     rmSync(projectsRoot, { recursive: true, force: true });
     if (!session) return;
-    const evidencePath = `${session.info.logPath}.team-flow.json`;
+    const evidencePath = `${session.info.logPath}.team-pipeline.json`;
     writeFileSync(evidencePath, JSON.stringify(record, null, 2));
     console.info(JSON.stringify({ evidencePath }));
     await session.close();
   });
 
-  it("starts every member of a team under its Chief, and gives a team without a Chief, and a project, no team flow", async () => {
-    const all = await flows();
-    record.firstFlows = all;
+  it("upgrades a version 1 file: a member placed under a superior keeps that line as one drawn by hand and is manual", async () => {
+    const all = await pipelines();
+    record.afterUpgrade = { pipelines: all, file: fileNow() };
     expect(all.readable).toBe(true);
     expect(all.teams.map((team) => team.section)).toEqual([STUDIO]);
-    expect(all.teams[0]).toEqual({ section: STUDIO, chiefId: sol.id, parents: { [story.id]: sol.id, [board.id]: sol.id, [video.id]: sol.id }, placed: [] });
+    const team = all.teams[0]!;
+    expect(team.chiefId).toBe(sol.id);
+    expect(team.manual).toEqual([video.id]);
+    expect(team.stages[sol.id]).toEqual(["lead"]);
+    expect(team.stages[video.id]).toEqual(["other"]);
+    expect(arrows(team.lines)).toEqual(expect.arrayContaining(["Sol>Video", "Board>Video"]));
+    expect(team.lines.every((drawn) => drawn.to !== sol.id)).toBe(true);
+    const file = fileNow();
+    expect(file.version).toBe(2);
+    expect(file.teams[studioKey()]).toMatchObject({ manual: [video.id], added: [{ from: board.id, to: video.id }], removed: [] });
   });
 
-  it("gives a member a second superior in place of the first, and refuses a loop, the Chief and the main bot with the reason", async () => {
-    expect((await line(video, story)).status).toBe(200);
-    const replaced = await line(video, board);
-    expect(replaced.status, JSON.stringify(replaced.body)).toBe(200);
-    expect(replaced.body.teams[0].parents).toEqual({ [story.id]: sol.id, [board.id]: sol.id, [video.id]: board.id });
-    expect(replaced.body.teams[0].placed).toEqual([video.id]);
+  it("judges a team again: what was set by hand is forgotten, and the undo puts it back", async () => {
+    const again = await call("POST", "/api/team-pipelines/rejudge", { section: STUDIO });
+    expect(again.status, JSON.stringify(again.body)).toBe(200);
+    const { pipelines: meanwhile, undo } = again.body as TeamPipelineRejudgeResult;
+    const cleared = meanwhile.teams.find((team) => team.section === STUDIO)!;
+    expect(cleared.manual).toEqual([]);
+    expect(arrows(cleared.lines)).not.toContain("Board>Video");
+    expect(undo.section).toBe(STUDIO);
+
+    const undone = await call("PUT", "/api/team-pipelines/restore", undo);
+    expect(undone.status, JSON.stringify(undone.body)).toBe(200);
+    const restored = (undone.body as TeamPipelinesWire).teams.find((team) => team.section === STUDIO)!;
+    expect(restored.manual).toEqual([video.id]);
+    expect(arrows(restored.lines)).toContain("Board>Video");
 
     const refusals = {
-      loop: await line(board, video),
-      chief: await line(sol, board),
-      mainBot: await line(main, sol),
-      noChief: await line(scout, sol),
-      otherTeam: await line(story, scout),
-      self: await line(story, story),
+      noTeam: await call("POST", "/api/team-pipelines/rejudge", { section: "Nowhere" }),
+      noChief: await call("POST", "/api/team-pipelines/rejudge", { section: "Sales" }),
+      project: await call("POST", "/api/team-pipelines/rejudge", { section: seasons[0]!.section }),
+      noSection: await call("POST", "/api/team-pipelines/rejudge", {}),
+      strangeState: await call("PUT", "/api/team-pipelines/restore", { section: STUDIO, state: { stages: { [story.id]: ["director"] } } }),
     };
-    record.refusals = Object.fromEntries(Object.entries(refusals).map(([key, { status, body }]) => [key, { status, body }]));
-    expect(refusals.loop).toEqual({ status: 409, body: { error: "Video is already below Board, so Board can't go under Video: that would make a loop.", errorKey: "serverError.teamFlow.loop", errorParams: { superior: "Video", bot: "Board" } } });
-    expect(refusals.chief.body).toMatchObject({ errorKey: "serverError.teamFlow.chief", error: "Sol is the Chief of Staff of Studio, at the top of its flow, so it can't be anyone's subordinate." });
-    expect(refusals.mainBot.body).toMatchObject({ errorKey: "serverError.teamFlow.mainBot" });
-    expect(refusals.noChief.body).toMatchObject({ errorKey: "serverError.teamFlow.noChief", errorParams: { team: "Sales" } });
-    expect(refusals.otherTeam.body).toMatchObject({ errorKey: "serverError.teamFlow.otherTeam", errorParams: { superior: "Scout", team: STUDIO } });
-    expect(refusals.self.body).toMatchObject({ errorKey: "serverError.teamFlow.self" });
-    for (const { status } of Object.values(refusals)) expect(status).toBe(409);
-    expect((await studio()).parents[video.id]).toBe(board.id);
-
-    const file = JSON.parse(readFileSync(flowFile(), "utf8")) as { version: number; teams: Record<string, Record<string, string>> };
-    record.fileAfterLines = file;
-    expect(file.version).toBe(1);
-    expect(Object.values(file.teams)).toEqual([{ [video.id]: board.id }]);
+    record.rejudge = { meanwhile, undo, restored, refusals };
+    expect(refusals.noTeam).toMatchObject({ status: 404, body: { errorKey: "serverError.teamFlow.noTeam" } });
+    expect(refusals.noChief).toMatchObject({ status: 409, body: { errorKey: "serverError.teamFlow.noChief", errorParams: { team: "Sales" } } });
+    expect(refusals.project).toMatchObject({ status: 404, body: { errorKey: "serverError.teamFlow.noTeam" } });
+    expect(refusals.noSection.status).toBe(422);
+    expect(refusals.strangeState.status).toBe(422);
   });
 
-  it("hands work only to a direct subordinate, says whom the bot can hand it to instead, and returns the result to the superior", async () => {
-    const seen = await personAsks("the Chief hands work down", sol, "Make a trailer storyboard.", {
+  it("runs the team in one line once its members have stages, in the team and in both projects made from it", async () => {
+    const stages: Record<string, FlowStage[]> = { [story.id]: ["script"], [board.id]: ["character", "storyboard"], [video.id]: ["post"] };
+    const set: StoredFile = { version: 2, teams: { [studioKey()]: { stages, judged: {}, manual: [story.id, board.id, video.id], added: [], removed: [] } } };
+    writeFileSync(flowFile(), JSON.stringify(set, null, 2));
+    const deadline = Date.now() + 15_000;
+    while ((await studio()).stages[video.id]?.[0] !== "post" && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const team = await studio();
+    record.staged = team;
+    expect(team.stages).toEqual({ [sol.id]: ["lead"], ...stages });
+    expect(arrows(team.lines)).toEqual(DRAMA);
+    expect(team.pending).toEqual([]);
+
+    const mapped = await Promise.all(seasons.map((project) => projectPipeline(project.id)));
+    record.projectPipelines = mapped;
+    expect(seasons.map((project) => copyIn(project, sol))).toEqual(seasons.map((project) => project.leadBotId));
+    expect(mapped).toEqual(seasons.map((project) => ({
+      projectId: project.id, leadId: project.leadBotId,
+      stages: { [project.leadBotId]: ["lead"], [copyIn(project, story)]: ["script"], [copyIn(project, board)]: ["character", "storyboard"], [copyIn(project, video)]: ["post"] },
+      lines: [
+        { from: project.leadBotId, to: copyIn(project, story) },
+        { from: copyIn(project, story), to: copyIn(project, board) },
+        { from: copyIn(project, board), to: copyIn(project, video) },
+      ],
+    })));
+    expect((await call("GET", "/api/team-pipelines/projects/no-such-project")).body).toEqual({ projectId: "no-such-project", leadId: null, stages: {}, lines: [] });
+  });
+
+  it("draws a line and takes it away, marks both ends manual, shows it in both projects at once, and refuses a loop, the Chief and the main bot with the reason", async () => {
+    const drawn = await line(sol, video, true);
+    expect(drawn.status, JSON.stringify(drawn.body)).toBe(200);
+    const team = (drawn.body as TeamPipelinesWire).teams.find((one) => one.section === STUDIO)!;
+    expect(arrows(team.lines)).toEqual([...DRAMA, "Sol>Video"]);
+    expect([...team.manual].sort()).toEqual([story.id, board.id, video.id].sort());
+    for (const project of seasons) {
+      expect((await projectPipeline(project.id)).lines).toContainEqual({ from: project.leadBotId, to: copyIn(project, video) });
+    }
+
+    const refusals = {
+      loop: await line(video, story, true),
+      chief: await line(story, sol, true),
+      mainBot: await line(main, story, true),
+      noChief: await line(sol, scout, true),
+      otherTeam: await line(scout, story, true),
+      self: await line(story, story, true),
+      project: await call("PUT", "/api/team-pipelines/line", { from: copyIn(seasons[0]!, story), to: copyIn(seasons[0]!, video), present: true }),
+    };
+    const incomplete = await call("PUT", "/api/team-pipelines/line", { from: story.id, to: video.id });
+    record.refusals = Object.fromEntries(Object.entries({ ...refusals, incomplete }).map(([key, { status, body }]) => [key, { status, body }]));
+    expect(refusals.loop).toEqual({ status: 409, body: { error: "Story's work already reaches Video, so a line from Video to Story would make a loop.", errorKey: "serverError.teamFlow.loop", errorParams: { from: "Video", to: "Story" } } });
+    expect(refusals.chief.body).toMatchObject({ errorKey: "serverError.teamFlow.chief", error: "Sol is the Chief of Staff of Studio and leads its pipeline, so no line can go into it." });
+    expect(refusals.mainBot.body).toMatchObject({ errorKey: "serverError.teamFlow.mainBot" });
+    expect(refusals.noChief.body).toMatchObject({ errorKey: "serverError.teamFlow.noChief", errorParams: { team: "Sales" } });
+    expect(refusals.otherTeam.body).toMatchObject({ errorKey: "serverError.teamFlow.otherTeam", errorParams: { bot: "Scout", team: STUDIO } });
+    expect(refusals.self.body).toMatchObject({ errorKey: "serverError.teamFlow.self" });
+    expect(refusals.project.body).toMatchObject({ errorKey: "serverError.teamFlow.project", errorParams: { bot: "Video", team: STUDIO } });
+    for (const { status } of Object.values(refusals)) expect(status).toBe(409);
+    expect(incomplete.status).toBe(422);
+    expect(arrows((await studio()).lines)).toEqual([...DRAMA, "Sol>Video"]);
+
+    const file = fileNow();
+    record.fileAfterLines = file;
+    expect(file.version).toBe(2);
+    expect(Object.values(file.teams)).toMatchObject([{ added: [{ from: sol.id, to: video.id }], removed: [] }]);
+
+    const gone = await line(sol, video, false);
+    expect(gone.status, JSON.stringify(gone.body)).toBe(200);
+    expect(arrows((await studio()).lines)).toEqual(DRAMA);
+    for (const project of seasons) {
+      expect((await projectPipeline(project.id)).lines).not.toContainEqual({ from: project.leadBotId, to: copyIn(project, video) });
+    }
+  });
+
+  it("lets the lead hand work only to its downstream, and a member only ask the bots upstream and downstream of it, with the result back to the lead", async () => {
+    const seen = await personAsks("the lead hands work to its downstream", sol, "Make a trailer.", {
       [sol.id]: {
         steps: [
           { tool: "list_bots", arguments: {} },
           { arguments: { bot_ids: [video.id], message: "Cut the trailer." }, expectError: true },
-          { arguments: { bot_ids: [board.id], message: "Draw the storyboard for the trailer." } },
+          { arguments: { bot_ids: [story.id], message: "Write the trailer's script." } },
         ],
-        reply: "Board is drawing it",
-        resumeReply: "Board drew the storyboard",
+        reply: "Story is writing it",
+        resumeReply: "Story wrote the script",
       },
-      [board.id]: {
+      [story.id]: {
         steps: [
-          { arguments: { bot_ids: [sol.id], message: "Here is my storyboard." }, expectError: true },
-          { arguments: { bot_ids: [story.id], message: "Which story is it?", consult: true }, expectError: true },
+          { tool: "list_bots", arguments: {} },
+          { arguments: { bot_ids: [board.id], message: "Draw my script." }, expectError: true },
+          { arguments: { bot_ids: [sol.id], message: "Here is my script." }, expectError: true },
+          { arguments: { bot_ids: [video.id], message: "How long is the cut?", consult: true }, expectError: true },
           { arguments: { bot_ids: [scout.id], message: "Who buys trailers?", consult: true }, expectError: true },
           { arguments: { bot_ids: ["MagicBot"], message: "What do you think?", consult: true }, expectError: true },
+          { arguments: { bot_ids: [board.id], message: "How many shots can you draw?", consult: true } },
         ],
-        reply: "Storyboard: twelve frames",
+        reply: "Asked Board",
+        resumeReply: "Script: three scenes",
       },
+      [board.id]: { reply: "Twelve shots" },
     });
 
-    const chiefTurn = firstTurn(seen, sol);
-    const chiefHeard = told(chiefTurn);
-    expect(chiefHeard).toContain([
-      "Your direct subordinates in the Studio team's flow, in the order to hand work down to them:",
-      `- Board — Storyboard artist [your subordinate]: Draws every shot. [id: ${board.id}]`,
-      `- Story — Story editor [your subordinate]: Picks the stories worth telling. [id: ${story.id}]`,
+    const leadTurn = firstTurn(seen, sol);
+    const leadHeard = told(leadTurn);
+    expect(leadHeard).toContain([
+      "The bots downstream of you, the ones you hand work to, in the Studio team's pipeline:",
+      `- Story — Story editor [downstream of you]: Picks the stories worth telling. [id: ${story.id}]`,
     ].join("\n"));
-    expect(chiefHeard).toContain("In the Studio team's flow you are at the top: inside the team you reach only your direct subordinates");
-    expect(chiefHeard).toContain("Outside the Studio team, every other bot, in any department, is reachable too");
-    expect(chiefHeard).toContain("Other bots you can reach, in other departments:");
-    expect(chiefHeard).toContain(`- Scout — Researcher (Sales) [id: ${scout.id}]`);
-    expect(chiefHeard).not.toContain(video.id);
+    expect(leadHeard).toContain("In the Studio team's pipeline you are the lead: inside the team you reach only the bots downstream of you");
+    expect(leadHeard).toContain("Outside the Studio team, every other bot, in any department, is reachable too");
+    expect(leadHeard).toContain("Other bots you can reach, in other departments:");
+    expect(leadHeard).toContain(`- Scout — Researcher (Sales) [id: ${scout.id}]`);
+    for (const further of [board.id, video.id]) expect(leadHeard, nameOf(further)).not.toContain(further);
 
-    const [listed, further, handed] = answers(chiefTurn);
-    expect(listed).toContain("Bots you can reach: in your own team only your direct subordinates, marked so, and every other bot listed outside your team:");
+    const [listed, further, handed] = answers(leadTurn);
+    expect(listed).toContain("Bots you can reach: in your own team only the bots downstream of you, marked so, and every other bot listed outside your team:");
     expect(listed).toContain(`[id: ${story.id}, model:`);
-    expect(listed).toContain(`[id: ${board.id}, model:`);
-    expect(listed).toContain("your subordinate");
+    expect(listed).toContain("downstream of you");
     for (const outside of [scout.id, main.id]) expect(listed, nameOf(outside)).toContain(`[id: ${outside}, model:`);
-    expect(listed).not.toContain(video.id);
-    const reachable = `You can hand work to your direct subordinates: Board (id ${board.id}), Story (id ${story.id}). Nothing was sent.`;
-    expect(further).toBe(`Video is not your direct subordinate: it works under Board. Hand the work to Board, who can pass it on. ${reachable}`);
-    expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: board.id, botName: "Board" }]);
+    for (const beyond of [board.id, video.id]) expect(listed, nameOf(beyond)).not.toContain(beyond);
+    expect(further).toBe(`Video is not directly downstream of you: work comes to it along the pipeline from Board. Hand work only to the bots downstream of you. You can hand work to your downstream: Story (id ${story.id}). Nothing was sent.`);
+    expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: story.id, botName: "Story" }]);
 
-    const memberTurn = firstTurn(seen, board);
+    const memberTurn = firstTurn(seen, story);
     const memberHeard = told(memberTurn);
-    expect(memberHeard).toContain("Hand work only to your direct subordinates");
+    expect(memberHeard).toContain("Do your stage's work yourself: you cannot hand it, or any part of it, to another bot.");
     expect(memberHeard).toContain("attach every file you made for it with attach_file");
-    expect(memberHeard).toContain(`- Sol — Showrunner [Chief of Staff] [your superior] [id: ${sol.id}]`);
-    expect(memberHeard).toContain(`- Video — Video editor [your subordinate]: Cuts the boards into a video. [id: ${video.id}]`);
-    expect(memberHeard).toContain("Draw the storyboard for the trailer.");
-    expect(memberHeard).not.toContain(scout.id);
-    const [up, sideways, otherTeam, mainBot] = answers(memberTurn);
-    expect(up).toContain("Sol is your superior in your team's flow, and work goes only down it");
-    expect(up).toContain("Ask it a question with consult: true");
-    expect(sideways).toContain("Story is not on your lines in your team's flow");
-    const memberReach = `You can hand work to your direct subordinates: Video (id ${video.id}). You can ask your superior, Sol (id ${sol.id}), a question with consult: true. Nothing was sent.`;
-    expect(otherTeam).toBe(`Scout is not on your lines in your team's flow, so it cannot be reached from here. ${memberReach}`);
-    expect(mainBot).toBe(`MagicBot is not on your lines in your team's flow, so it cannot be reached from here. ${memberReach}`);
+    expect(memberHeard).toContain(`- Sol — Showrunner [Chief of Staff] [upstream of you]: Runs the studio. [id: ${sol.id}]`);
+    expect(memberHeard).toContain(`- Board — Storyboard artist [downstream of you]: Draws every shot. [id: ${board.id}]`);
+    expect(memberHeard).toContain("Write the trailer's script.");
+    for (const beyond of [video.id, scout.id]) expect(memberHeard, nameOf(beyond)).not.toContain(beyond);
+    const [reach, down, up, twoDown, otherTeam, mainBot, asked] = answers(memberTurn);
+    expect(reach).toContain("Bots you can reach in your team's pipeline (the ones upstream and downstream of you, and no other bot):");
+    expect(reach).toContain("upstream of you");
+    expect(reach).toContain("You cannot hand your work to another bot.");
+    for (const next of [sol.id, board.id]) expect(reach, nameOf(next)).toContain(`[id: ${next}, model:`);
+    for (const beyond of [video.id, scout.id, main.id]) expect(reach, nameOf(beyond)).not.toContain(beyond);
+    const memberReach = `You can ask a question with consult: true: upstream of you, Sol (id ${sol.id}); downstream of you, Board (id ${board.id}). Nothing was sent.`;
+    expect(down).toBe(`Board is downstream of you in your team's pipeline, and you cannot hand your work to another bot: do it yourself. Ask Board a question with consult: true instead. ${memberReach}`);
+    expect(up).toBe(`Sol is upstream of you in your team's pipeline, and you cannot hand your work to another bot: do it yourself. Ask Sol a question with consult: true instead. ${memberReach}`);
+    expect(twoDown).toBe(`Video is not upstream or downstream of you in your team's pipeline, so it cannot be reached from here. ${memberReach}`);
+    expect(otherTeam).toBe(`Scout is not upstream or downstream of you in your team's pipeline, so it cannot be reached from here. ${memberReach}`);
+    expect(mainBot).toBe(`MagicBot is not upstream or downstream of you in your team's pipeline, so it cannot be reached from here. ${memberReach}`);
+    expect(JSON.parse(asked!).receipts).toMatchObject([{ botId: board.id, botName: "Board" }]);
 
-    expect(told(resumedTurn(seen, sol))).toContain("Storyboard: twelve frames");
-    expect([...new Set(seen.map((turn) => nameOf(turn.botId)))].sort()).toEqual(["Board", "Sol"]);
+    expect(told(firstTurn(seen, board))).toContain("How many shots can you draw?");
+    expect(told(resumedTurn(seen, story))).toContain("Twelve shots");
+    expect(seen.filter((turn) => turn.botId === sol.id && turn.resumed).map(told).join("\n")).toContain("Script: three scenes");
+    expect([...new Set(seen.map((turn) => nameOf(turn.botId)))].sort()).toEqual(["Board", "Sol", "Story"]);
   }, 120_000);
 
-  it("lets the Chief reach outside its team as before: it consults the main bot and hands work to a bot in no flow", async () => {
-    const seen = await personAsks("the Chief reaches outside its team", sol, "Find buyers for the trailer.", {
+  it("lets the lead reach outside its team as before: it consults the main bot and hands work to a bot in no pipeline", async () => {
+    const seen = await personAsks("the lead reaches outside its team", sol, "Find buyers for the trailer.", {
       [sol.id]: {
         steps: [
           { arguments: { bot_ids: ["MagicBot"], message: "Which buyers did we pitch last year?", consult: true } },
@@ -303,42 +409,30 @@ describe("a team's flow on the real server", () => {
     expect(resumed).toContain("Buyers: Northwind, Contoso, Fabrikam");
   }, 120_000);
 
-  it("lets a subordinate hand work on to its own subordinate, and the result comes back up to it", async () => {
-    const seen = await personAsks("a member hands work down", board, "Turn the storyboard into a trailer.", {
-      [board.id]: {
-        steps: [{ arguments: { bot_ids: [video.id], message: "Cut a trailer from the twelve frames." } }],
-        reply: "Video is cutting it",
-        resumeReply: "Video cut the trailer",
+  it("lets the member at the end of the line, asked by the person, ask its upstream a question and hand it nothing", async () => {
+    const seen = await personAsks("a member asks upstream", video, "Cut the film.", {
+      [video.id]: {
+        steps: [
+          { arguments: { bot_ids: [board.id], message: "Redraw shot four." }, expectError: true },
+          { arguments: { bot_ids: ["Board"], message: "Which shot opens the film?", consult: true } },
+        ],
+        reply: "Asked Board",
+        resumeReply: "The film opens on shot one",
       },
-      [video.id]: { reply: "Trailer cut: thirty seconds" },
+      [board.id]: { reply: "Shot one" },
     });
-    const [handed] = answers(firstTurn(seen, board));
-    expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: video.id, botName: "Video" }]);
-    const lowest = told(firstTurn(seen, video));
-    expect(lowest).toContain("You have no subordinates in the flow: do the work yourself.");
-    expect(lowest).toContain(`- Board — Storyboard artist [your superior] [id: ${board.id}]`);
-    expect(told(resumedTurn(seen, board))).toContain("Trailer cut: thirty seconds");
+    const turn = firstTurn(seen, video);
+    const heard = told(turn);
+    expect(heard).toContain(`[TEAM ROSTER]\n- Board — Storyboard artist [upstream of you]: Draws every shot. [id: ${board.id}]\n[/TEAM ROSTER]`);
+    const [refused, asked] = answers(turn);
+    expect(refused).toBe(`Board is upstream of you in your team's pipeline, and you cannot hand your work to another bot: do it yourself. Ask Board a question with consult: true instead. You can ask a question with consult: true: upstream of you, Board (id ${board.id}). Nothing was sent.`);
+    expect(JSON.parse(asked!).receipts).toMatchObject([{ botId: board.id, botName: "Board" }]);
+    expect(told(firstTurn(seen, board))).toContain("Which shot opens the film?");
+    expect(told(resumedTurn(seen, video))).toContain("Shot one");
+    expect([...new Set(seen.map((one) => nameOf(one.botId)))].sort()).toEqual(["Board", "Video"]);
   }, 120_000);
 
-  it("maps the team's flow onto both projects made from it, and a change to it shows in both at once", async () => {
-    const mapped = async () => Promise.all(seasons.map((project) => projectFlow(project.id)));
-    const expected = (project: TeamProjectWire, videoUnder: FixtureBot) => ({
-      projectId: project.id,
-      leadId: project.leadBotId,
-      parents: { [copyIn(project, story)]: project.leadBotId, [copyIn(project, board)]: project.leadBotId, [copyIn(project, video)]: copyIn(project, videoUnder) },
-    });
-    expect(seasons.map((project) => copyIn(project, sol))).toEqual(seasons.map((project) => project.leadBotId));
-    const before = await mapped();
-    expect(before).toEqual(seasons.map((project) => expected(project, board)));
-
-    expect((await line(video, story)).status).toBe(200);
-    const after = await mapped();
-    record.projectFlows = { before, after };
-    expect(after).toEqual(seasons.map((project) => expected(project, story)));
-    expect((await call("GET", "/api/team-flows/projects/no-such-project")).body).toEqual({ projectId: "no-such-project", leadId: null, parents: {} });
-  });
-
-  it("holds a project's bots to the team's flow mapped onto their copies", async () => {
+  it("holds a project's bots to the team's pipeline mapped onto their copies", async () => {
     const [season] = seasons;
     const lead = (await call("GET", "/api/bots?messages=0")).body.bots.find((bot: FixtureBot) => bot.id === season!.leadBotId) as FixtureBot;
     const storyCopy = copyIn(season!, story);
@@ -349,70 +443,104 @@ describe("a team's flow on the real server", () => {
           { arguments: { bot_ids: [copyIn(season!, video)], message: "Cut a teaser." }, expectError: true },
           { arguments: { bot_ids: [video.id], message: "Cut a teaser." }, expectError: true },
           { arguments: { bot_ids: ["MagicBot"], message: "How long should a teaser run?", consult: true } },
-          { arguments: { bot_ids: [storyCopy], message: "Pick the teaser's story beats." } },
+          { arguments: { bot_ids: [storyCopy], message: "Write the teaser's script." } },
         ],
         reply: "Asked the right bots",
-        resumeReply: "Story picked the beats",
+        resumeReply: "Story wrote the script",
       },
       [main.id]: { reply: "Fifteen seconds" },
       [storyCopy]: {
         steps: [{ arguments: { bot_ids: ["MagicBot"], message: "Which beats sell?", consult: true }, expectError: true }],
-        reply: "Beats: hook, twist, title",
+        reply: "Script: hook, twist, title",
       },
     });
     const [listed, further, team, consulted, handed] = answers(firstTurn(seen, lead));
     expect(listed).toContain(storyCopy);
-    expect(listed).toContain(copyIn(season!, board));
     expect(listed).toContain(`[id: ${main.id}, model:`);
-    for (const beyond of [copyIn(season!, video), sol.id, story.id, board.id, video.id]) expect(listed, beyond).not.toContain(beyond);
-    expect(further).toContain("Video is not your direct subordinate: it works under Story. Hand the work to Story, who can pass it on. You can hand work to your direct subordinates: ");
-    for (const subordinate of [`Story (id ${storyCopy})`, `Board (id ${copyIn(season!, board)})`]) expect(further).toContain(subordinate);
+    for (const beyond of [copyIn(season!, board), copyIn(season!, video), sol.id, story.id, board.id, video.id]) expect(listed, beyond).not.toContain(beyond);
+    expect(further).toBe(`Video is not directly downstream of you: work comes to it along the pipeline from Board. Hand work only to the bots downstream of you. You can hand work to your downstream: Story (id ${storyCopy}). Nothing was sent.`);
     expect(team).toContain(`No bot with id or name "${video.id}"`);
-    expect(team).toContain("In your team project you are at the top of its flow: there you can reach only your direct subordinates");
+    expect(team).toContain("In your team project you lead its pipeline: there you can reach only the bots downstream of you");
     expect(JSON.parse(consulted!).receipts).toMatchObject([{ botId: main.id }]);
     expect(JSON.parse(handed!).receipts).toMatchObject([{ botId: storyCopy }]);
     const [memberAsked] = answers(firstTurn(seen, { id: storyCopy }));
-    expect(memberAsked).toContain("MagicBot is not on your lines in your team's flow, so it cannot be reached from here.");
+    expect(memberAsked).toContain("MagicBot is not upstream or downstream of you in your team's pipeline, so it cannot be reached from here.");
     const resumed = seen.filter((turn) => turn.botId === lead.id && turn.resumed).map(told).join("\n");
     expect(resumed).toContain("Fifteen seconds");
-    expect(resumed).toContain("Beats: hook, twist, title");
+    expect(resumed).toContain("Script: hook, twist, title");
   }, 120_000);
 
-  it("puts every bot of a project made before projects had a source team under its lead", async () => {
-    const old = await projectFlow("project-old");
-    record.oldProjectFlow = old;
-    expect(old).toEqual({ projectId: "project-old", leadId: oldLead.id, parents: { [oldWriter.id]: oldLead.id, [oldEditor.id]: oldLead.id } });
+  it("puts every bot of a project made before projects had a source team under its lead as other", async () => {
+    const old = await projectPipeline("project-old");
+    record.oldProjectPipeline = old;
+    expect(old).toEqual({
+      projectId: "project-old", leadId: oldLead.id,
+      stages: { [oldLead.id]: ["lead"], [oldWriter.id]: ["other"], [oldEditor.id]: ["other"] },
+      lines: expect.arrayContaining([{ from: oldLead.id, to: oldWriter.id }, { from: oldLead.id, to: oldEditor.id }]),
+    });
+    expect(old.lines).toHaveLength(2);
   });
 
-  it("moves a deleted member's subordinates up to its superior", async () => {
-    expect((await line(video, board)).status).toBe(200);
+  it("still answers the old tree's routes from the pipeline: a member's first upstream is its superior", async () => {
+    const tree = await oldFlows();
+    expect(tree.teams).toEqual([{
+      section: STUDIO, chiefId: sol.id,
+      parents: { [story.id]: sol.id, [board.id]: story.id, [video.id]: board.id },
+      placed: expect.arrayContaining([board.id, video.id]),
+    }]);
+    const [season] = seasons;
+    const projectTree = (await call("GET", `/api/team-flows/projects/${season!.id}`)).body as ProjectFlowWire;
+    expect(projectTree).toEqual({
+      projectId: season!.id, leadId: season!.leadBotId,
+      parents: { [copyIn(season!, story)]: season!.leadBotId, [copyIn(season!, board)]: copyIn(season!, story), [copyIn(season!, video)]: copyIn(season!, board) },
+    });
+
+    const moved = await oldLine(video, story);
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    expect((moved.body as TeamFlowsWire).teams[0]!.parents[video.id]).toBe(story.id);
+    expect(arrows((await studio()).lines)).toEqual(["Sol>Story", "Story>Board", "Story>Video"]);
+    const looped = await oldLine(story, video);
+    expect(looped).toMatchObject({ status: 409, body: { errorKey: "serverError.teamFlow.loop", errorParams: { from: "Video", to: "Story" } } });
+
+    const back = await oldLine(video, null);
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
+    record.oldRoutes = { tree, projectTree, moved: moved.body, looped: looped.body, back: back.body };
+    expect(arrows((await studio()).lines)).toEqual(DRAMA);
+  });
+
+  it("joins the stages on either side of a deleted member, which takes its stages and lines with it", async () => {
+    expect((await line(sol, board, true)).status).toBe(200);
     expect((await call("DELETE", `/api/bots/${board.id}`)).status).toBe(200);
     const after = await studio();
-    record.afterDeletingBoard = { flow: after, file: JSON.parse(readFileSync(flowFile(), "utf8")) };
-    expect(after.parents).toEqual({ [story.id]: sol.id, [video.id]: sol.id });
+    record.afterDeletingBoard = { pipeline: after, file: fileNow() };
+    expect(arrows(after.lines)).toEqual(["Sol>Story", "Story>Video"]);
+    expect(after.stages).toEqual({ [sol.id]: ["lead"], [story.id]: ["script"], [video.id]: ["post"] });
     expect(readFileSync(flowFile(), "utf8")).not.toContain(board.id);
   });
 
   it("keeps the server up and the file as it was when team-flows.json cannot be read, and takes it back once it can", async () => {
-    expect((await line(video, story)).status).toBe(200);
+    expect((await line(sol, video, true)).status).toBe(200);
     const good = readFileSync(flowFile(), "utf8");
     const broken = `${good.slice(0, 20)} <- cut short`;
     writeFileSync(flowFile(), broken);
 
-    const refused = await line(video, null);
+    const refused = await line(sol, video, false);
     expect(refused).toMatchObject({ status: 503, body: { errorKey: "serverError.teamFlow.unreadable" } });
-    const unreadable = await flows();
+    expect(await call("POST", "/api/team-pipelines/rejudge", { section: STUDIO })).toMatchObject({ status: 503, body: { errorKey: "serverError.teamFlow.unreadable" } });
+    const unreadable = await pipelines();
     expect(unreadable.readable).toBe(false);
-    expect(unreadable.teams.find((team) => team.section === STUDIO)!.parents).toEqual({ [story.id]: sol.id, [video.id]: sol.id });
+    const meanwhile = unreadable.teams.find((team) => team.section === STUDIO)!;
+    expect(meanwhile).toMatchObject({ pending: [], manual: [], stages: { [sol.id]: ["lead"], [story.id]: ["other"], [video.id]: ["other"] } });
+    expect(arrows(meanwhile.lines).sort()).toEqual(["Sol>Story", "Sol>Video"]);
     expect(readFileSync(flowFile(), "utf8")).toBe(broken);
     expect(readFileSync(session.info.logPath, "utf8")).toContain("team flows: team-flows.json cannot be read");
 
     writeFileSync(flowFile(), good);
     const deadline = Date.now() + 15_000;
-    while (!(await flows()).readable && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
-    const restored = await flows();
+    while (!(await pipelines()).readable && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 250));
+    const restored = await pipelines();
     record.unreadable = { refused: refused.body, whileUnreadable: unreadable, restored };
     expect(restored.readable).toBe(true);
-    expect(restored.teams.find((team) => team.section === STUDIO)!.parents[video.id]).toBe(story.id);
+    expect(arrows(restored.teams.find((team) => team.section === STUDIO)!.lines)).toEqual(["Sol>Story", "Story>Video", "Sol>Video"]);
   }, 30_000);
 });
