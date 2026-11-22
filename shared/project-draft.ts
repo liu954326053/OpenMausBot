@@ -18,6 +18,8 @@ export interface ProjectTimelineWire {
   projectId: string;
   clips: TimelineClip[];
   missingShots: string[];
+  /** The shots someone left out of the film; absent when there is none. Naming one in the order brings it back. */
+  leftOut?: string[];
 }
 
 /** `PUT /api/team-projects/:id/timeline`: the shots in the order the film plays; a shot left out is left out of the
@@ -52,4 +54,9 @@ export interface ProjectDraftOpenResult {
 export interface ProjectFinalInput {
   /** Relative to the project folder. */
   path: string;
+}
+
+/** What `POST /api/team-projects/:id/final` answers: the finished film's node. */
+export interface ProjectFinalResult {
+  nodeId: string;
 }
