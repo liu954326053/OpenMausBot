@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FlowStage } from "../../shared/team-pipeline.ts";
 import type { JudgeTarget } from "../team-flow/flows.ts";
 import { createTeamJudge, type TeamJudge, type TeamJudgement } from "./judge.ts";
-import { startTeamJudgeScheduler, TEAM_JUDGE_MODEL_LIMIT, TEAM_JUDGE_SETTLE_MS, TEAM_JUDGE_START_DELAY_MS, TEAM_JUDGE_TIMEOUT_MS } from "./scheduler.ts";
+import {
+  startTeamJudgeScheduler, TEAM_JUDGE_GRACE_MS, TEAM_JUDGE_MODEL_LIMIT, TEAM_JUDGE_SETTLE_MS, TEAM_JUDGE_START_DELAY_MS, TEAM_JUDGE_TIMEOUT_MS,
+} from "./scheduler.ts";
 import { fakeFlows, FIVE_MEMBER_STAGES, FIVE_MEMBER_TEAM, OFFICE_STAGES, OFFICE_TEAM, SCREENSHOT_STAGES, SCREENSHOT_TEAM, teamTarget } from "./testing.ts";
 
 const byKeyword = createTeamJudge({ decider: () => null, mainBot: () => null });
@@ -183,11 +185,26 @@ describe("a judgement that fails", () => {
     expect(held.calls[0]!.signal!.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     expect(held.calls[0]!.signal!.aborted).toBe(true);
+    await vi.advanceTimersByTimeAsync(TEAM_JUDGE_GRACE_MS - 1);
+    expect(flows.recorded).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
     expect(flows.recorded).toEqual([["漫剧工作室", allOther(SCREENSHOT_TEAM)]]);
     expect(held.calls.map((call) => call.target.section)).toEqual(["漫剧工作室", "Drama Studio"]);
     held.calls[0]!.answer(SCREENSHOT_STAGES);
     await vi.advanceTimersByTimeAsync(0);
     expect(flows.recorded).toHaveLength(1);
+  });
+
+  it("keeps what the judge had found out when it is called off", async () => {
+    const flows = fakeFlows();
+    const judge: TeamJudge = (_target, options) => new Promise((resolve) => {
+      options!.signal!.addEventListener("abort", () => resolve({ way: "decider", stages: { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] } }));
+    });
+    start(flows, judge);
+    flows.put(SCREENSHOT_TEAM);
+    await settle();
+    await vi.advanceTimersByTimeAsync(TEAM_JUDGE_TIMEOUT_MS);
+    expect(flows.recorded).toEqual([["漫剧工作室", { yanqing: ["script"], mobai: ["other"], qinghe: ["other"] }]]);
   });
 
   it("leaves its members other when the judge throws, and keeps judging", async () => {

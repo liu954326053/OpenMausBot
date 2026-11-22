@@ -10,8 +10,10 @@ import { judgedStages } from "./stages.ts";
 export const TEAM_JUDGE_SETTLE_MS = 1_500;
 /** How long after the start the teams already waiting are taken up: the engines are still starting before that. */
 export const TEAM_JUDGE_START_DELAY_MS = 10_000;
-/** A judgement that has not answered by then is called off, and its members are `other`. */
+/** A judgement that has not answered by then is called off. */
 export const TEAM_JUDGE_TIMEOUT_MS = 60_000;
+/** How long a judgement called off has to say what it found out so far; the members it does not answer for are `other`. */
+export const TEAM_JUDGE_GRACE_MS = 2_000;
 /** Judgements that ask a model: at most `count` start within `perMs`. */
 export const TEAM_JUDGE_MODEL_LIMIT = { count: 12, perMs: 60_000 } as const;
 
@@ -111,18 +113,24 @@ export function startTeamJudgeScheduler(deps: TeamJudgeSchedulerDeps): () => voi
   const judgement = async (target: JudgeTarget): Promise<TeamJudgement | null> => {
     const stop = new AbortController();
     judging = { section: target.section, stop };
+    const unanswered = (why: unknown) => {
+      if (!stopped) log(`"${target.section}" could not be judged (${reasonOf(why)}); its members are "other" until it changes`);
+      return null;
+    };
+    const answer = Promise.resolve().then(() => deps.judge(target, { signal: stop.signal })).catch(unanswered);
+    let grace: Timer | undefined;
+    // Raced as well as cancelled: a judge that ignores the signal must not hold every other team.
+    const calledOff = new Promise<null>((resolve) => {
+      stop.signal.addEventListener("abort", () => {
+        grace = after(TEAM_JUDGE_GRACE_MS, () => resolve(unanswered(stop.signal.reason)));
+      }, { once: true });
+    });
     const expiry = after(TEAM_JUDGE_TIMEOUT_MS, () => stop.abort(new Error(`no answer after ${TEAM_JUDGE_TIMEOUT_MS / 1000} s`)));
     try {
-      // Raced as well as cancelled: a judge that ignores the signal must not hold every other team.
-      return await new Promise<TeamJudgement>((resolve, reject) => {
-        stop.signal.addEventListener("abort", () => reject(stop.signal.reason), { once: true });
-        Promise.resolve().then(() => deps.judge(target, { signal: stop.signal })).then(resolve, reject);
-      });
-    } catch (error) {
-      if (!stopped) log(`"${target.section}" could not be judged (${reasonOf(error)}); its members are "other" until it changes`);
-      return null;
+      return await Promise.race([answer, calledOff]);
     } finally {
       expiry.cancel();
+      grace?.cancel();
       judging = null;
     }
   };
