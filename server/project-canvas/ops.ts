@@ -47,6 +47,8 @@ import {
   type CanvasPoint,
 } from "../../shared/project-canvas.ts";
 import { IMAGE_COUNT_MAX } from "../../shared/project-generation.ts";
+import type { FlowStage } from "../../shared/team-pipeline.ts";
+import type { RemovedNode } from "./document-store.ts";
 import { cleanProjectPath } from "./paths.ts";
 
 export type CanvasOpCode = "invalid_op" | "not_found" | "not_yours" | "not_allowed" | "limit";
@@ -88,8 +90,11 @@ export interface OpsContext {
   newId(): string;
   /** Where a node added without a position goes. */
   place(document: CanvasDocument, node: CanvasNode): CanvasPoint;
-  /** A content node deleted lately, by its id: the person adding it back, as undo does, gives it back to its maker. */
-  removed?(id: string): { type: CanvasNodeType; createdBy: CanvasNodeCreator } | undefined;
+  /** A content node deleted lately, by its id: the person adding it back, as undo does, gives it back to its maker
+   * and to what it was in the pipeline. */
+  removed?(id: string): Pick<RemovedNode, "type" | "createdBy" | "pipeline"> | undefined;
+  /** The acting bot's stages in the project's pipeline. */
+  stages?: readonly FlowStage[];
 }
 
 export interface OpsResult {
@@ -142,6 +147,10 @@ const METADATA_FIELDS = {
   jobId: short(200),
   settings,
   generationMode: z.enum(["image", "video"]),
+  role: z.enum(["script", "character", "creation", "take", "final"]),
+  shotId: short(200),
+  selected: z.boolean(),
+  stale: z.boolean(),
 } satisfies { [Key in keyof CanvasNodeMetadata]-?: z.ZodType };
 
 type MetadataKey = keyof typeof METADATA_FIELDS;
@@ -202,6 +211,9 @@ const IMAGE_SETTINGS = new Set(["model", "aspect", "quality", "count"]);
 const VIDEO_SETTINGS = new Set(["model", "resolution", "aspect", "seconds"]);
 const SETTINGS_OF: Partial<Record<CanvasNodeType, ReadonlySet<string>>> = { image: IMAGE_SETTINGS, video: VIDEO_SETTINGS, shot: VIDEO_SETTINGS };
 const BOT_ADDS: ReadonlySet<CanvasNodeType> = new Set(["text", "shot"]);
+/** What a node is in the pipeline: the server's to set. */
+const PIPELINE_KEYS = ["role", "shotId", "selected", "stale"] as const satisfies readonly MetadataKey[];
+const PIPELINE_IS_THE_SERVERS = "role, shotId, selected and stale are set by the server";
 
 function checkMetadata(type: CanvasNodeType, values: { settings?: unknown }, index: number): void {
   for (const key of Object.keys(values)) {
@@ -263,11 +275,28 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
   const exists = (id: string) => context.bots.has(id) || nodeAt(id) >= 0;
   const isBotNode = (id: string) => botIdOfNode(id) !== null;
   const madeByActor = (node: CanvasNode) => actor.kind === "bot" && node.createdBy?.kind === "bot" && node.createdBy.botId === actor.botId;
-  const makerOf = (id: string | undefined, type: CanvasNodeType): CanvasNodeCreator => {
-    if (actor.kind === "bot") return { kind: "bot", botId: actor.botId };
-    const removed = id ? context.removed?.(id) : undefined;
-    return removed?.type === type ? removed.createdBy : { kind: "person" };
+  const restored = (id: string | undefined, type: CanvasNodeType) => {
+    const removed = actor.kind === "person" && id ? context.removed?.(id) : undefined;
+    return removed?.type === type ? removed : undefined;
   };
+  const makerOf = (id: string | undefined, type: CanvasNodeType): CanvasNodeCreator =>
+    (actor.kind === "bot" ? { kind: "bot", botId: actor.botId } : restored(id, type)?.createdBy ?? { kind: "person" });
+
+  /** What an added node is in the pipeline. It is never taken from the person's operation, which a paste or an undo
+   * fills with a copy, and from a bot's only a character's profile. */
+  function addedRole(op: Extract<CanvasOp, { type: "add_node" }>, index: number): CanvasNodeMetadata {
+    if (actor.kind === "person") return restored(op.id, op.nodeType)?.pipeline ?? {};
+    const { role, shotId, selected, stale } = op.metadata ?? {};
+    if (shotId !== undefined || selected !== undefined || stale !== undefined || (role !== undefined && role !== "character")) {
+      throw new CanvasOpRefusal("not_allowed", `${PIPELINE_IS_THE_SERVERS}; the one role you can give is character, to a text node you add`, index);
+    }
+    if (role === undefined) return {};
+    if (op.nodeType !== "text" || !context.stages?.includes("character")) {
+      throw new CanvasOpRefusal("not_allowed", "only a bot of the character stage adds a character, as a text node", index);
+    }
+    return { role };
+  }
+
   const actorOwnsEnd = (id: string) => {
     if (actor.kind === "person") return true;
     if (id === ownBotNode) return true;
@@ -317,11 +346,15 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
 
   ops.forEach((op, index) => {
     if (op.type === "add_node") {
-      if (actor.kind === "bot" && !BOT_ADDS.has(op.nodeType)) throw new CanvasOpRefusal("not_allowed", "you can add text and shot nodes; files you attach become nodes on their own", index);
+      if (actor.kind === "bot" && !BOT_ADDS.has(op.nodeType) && !(op.nodeType === "image" && context.stages?.includes("character"))) {
+        throw new CanvasOpRefusal("not_allowed", "you can add text and shot nodes, and in the character stage image nodes; files you attach become nodes on their own", index);
+      }
       if (actor.kind === "bot" && op.groupId) throw new CanvasOpRefusal("not_allowed", "grouping is the person's", index);
       if (op.id && (exists(op.id) || isBotNode(op.id))) throw new CanvasOpRefusal("invalid_op", `node ${op.id} is already there`, index, op.id);
       if (document.nodes.length >= CANVAS_MAX_NODES) throw new CanvasOpRefusal("limit", `a canvas holds at most ${CANVAS_MAX_NODES} nodes`, index);
-      if (op.metadata) checkMetadata(op.nodeType, op.metadata, index);
+      const { role: _role, shotId: _shotId, selected: _selected, stale: _stale, ...own } = op.metadata ?? {};
+      checkMetadata(op.nodeType, own, index);
+      const added: CanvasNodeMetadata = { ...own, ...addedRole(op, index) };
       if (op.groupId) {
         if (op.nodeType === "group") throw new CanvasOpRefusal("invalid_op", "a group can't sit in a group", index);
         groupFor(op.groupId, index);
@@ -334,7 +367,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         position: { x: 0, y: 0 },
         width: op.width ?? spec.width,
         height: op.height ?? spec.height,
-        ...(op.metadata && Object.keys(op.metadata).length ? { metadata: op.metadata } : {}),
+        ...(Object.keys(added).length ? { metadata: added } : {}),
         createdBy: makerOf(op.id, op.nodeType),
         ...(op.groupId ? { groupId: op.groupId } : {}),
       };
@@ -359,6 +392,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         return;
       }
       const current = document.nodes[at]!;
+      if (op.metadata && PIPELINE_KEYS.some((key) => op.metadata![key] !== undefined)) throw new CanvasOpRefusal("not_allowed", PIPELINE_IS_THE_SERVERS, index, op.id);
       if (op.metadata) checkMetadata(current.type, Object.fromEntries(Object.entries(op.metadata).filter(([, value]) => value !== null)), index);
       const { groupId, ...frame } = op.patch ?? {};
       const next: CanvasNode = { ...current, ...frame };
@@ -407,6 +441,9 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         if (!connection) throw new CanvasOpRefusal("not_found", `no connection ${id} to delete; connections between bots come from the team's flow`, index);
         if (!actorOwnsEnd(connection.fromNodeId) && !actorOwnsEnd(connection.toNodeId)) {
           throw new CanvasOpRefusal("not_yours", `connection ${id} is not to or from a node of yours`, index);
+        }
+        if (actor.kind === "bot" && connection.pipeline) {
+          throw new CanvasOpRefusal("not_allowed", `connection ${id} was made by the pipeline; it changes when what it joins does`, index);
         }
       }
       const gone = new Set(ids);

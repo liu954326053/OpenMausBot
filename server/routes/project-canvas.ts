@@ -1,18 +1,19 @@
-import type { CanvasGenerateResponse } from "../../shared/project-canvas.ts";
+import type { CanvasGenerateResponse, CanvasSelectTakeResponse } from "../../shared/project-canvas.ts";
 import { serveCanvasFile, uploadToCanvas } from "../project-canvas/files.ts";
-import { canvasRefusalOf, type ProjectCanvasService } from "../project-canvas/service.ts";
+import type { CanvasPipelineApi } from "../project-canvas/pipeline-api.ts";
+import { canvasRefusalOf, CanvasRefusal, type ProjectCanvasService } from "../project-canvas/service.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
 import { userError } from "../user-errors.ts";
 import { statusOf } from "./project-generation.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
-const CANVAS = /^\/api\/team-projects\/([\w-]+)\/canvas(?:\/(ops|files|tasks|generate))?$/;
+const CANVAS = /^\/api\/team-projects\/([\w-]+)\/canvas(?:\/(ops|files|tasks|generate|select-take))?$/;
 const OPS_BODY_BYTES = 8_000_000;
 
 const record = (body: unknown): Record<string, unknown> => (body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {});
 
 /** A project's canvas, for the owner and admins as the rest of a project is. */
-export function createProjectCanvasRoutes(service: ProjectCanvasService): RouteHandler {
+export function createProjectCanvasRoutes(service: ProjectCanvasService, pipeline: Pick<CanvasPipelineApi, "selectTake">): RouteHandler {
   return async ({ req, res, url, path, method, auth, json, readBody }) => {
     const match = CANVAS.exec(path);
     if (!match) return PASS;
@@ -36,6 +37,11 @@ export function createProjectCanvasRoutes(service: ProjectCanvasService): RouteH
         const body = record(await readBody(req));
         const outcome = await service.generate(project, { kind: "person" }, body.nodeId, body.language);
         return "refused" in outcome ? json(res, statusOf(outcome.refused), outcome.refused) : json(res, 202, { jobId: outcome.job.id } satisfies CanvasGenerateResponse);
+      }
+      if (part === "select-take" && method === "POST") {
+        const { nodeId } = record(await readBody(req));
+        if (typeof nodeId !== "string") throw new CanvasRefusal(400, { error: "nodeId is required" });
+        return json(res, 200, pipeline.selectTake(projectId, nodeId) satisfies CanvasSelectTakeResponse);
       }
       req.resume();
       return json(res, 405, { error: `${method} is not answered at ${path}` });

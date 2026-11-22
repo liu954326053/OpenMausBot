@@ -1,18 +1,19 @@
 import { botNodeId, dispatchConnectionId, type CanvasBotState, type CanvasConnection, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationModel, type ProjectGenerationSettings } from "../../shared/project-generation";
 import { createMemoryCanvasBackend, type MemoryCanvasOptions } from "../lib/project-canvas/memory-backend";
-import { layoutBotTree } from "../lib/project-canvas/tree-layout";
+import { layoutPipeline } from "../lib/project-canvas/stage-layout";
 import type { CanvasBotLook, CanvasExchangeMessage } from "../lib/project-canvas/types";
 
 export const SAMPLE_PROJECT_ID = "rain-city";
 export const SAMPLE_IMAGE_PATH = "素材/city-night.png";
 export const SAMPLE_VIDEO_PATH = "产出/视频/rooftop-1.webm";
 
-const bot = (botId: string, name: string, title: string, extra: Partial<CanvasBotState> = {}): CanvasBotState => ({ botId, name, title, lead: false, status: "idle", placed: false, ...extra });
+const bot = (botId: string, name: string, title: string, extra: Partial<CanvasBotState> = {}): CanvasBotState => ({ botId, name, title, lead: false, stages: ["other"], status: "idle", placed: false, ...extra });
 
 export const SAMPLE_BOTS: Record<string, CanvasBotState> = {
   mira: bot("mira", "Mira", "Director", {
     lead: true,
+    stages: ["lead"],
     output: {
       text: "**Episode 1 plan**\n\n- Kai writes the logline and the rooftop scene.\n- Lena boards shot 1 and generates it.\n- Otto cuts the teaser once shot 1 is in.",
       threadId: "thread-mira",
@@ -20,13 +21,14 @@ export const SAMPLE_BOTS: Record<string, CanvasBotState> = {
       at: Date.UTC(2026, 10, 21, 9, 30),
     },
   }),
-  kai: bot("kai", "Kai", "Screenwriter", { status: "working", doing: "Writing the rooftop scene" }),
+  kai: bot("kai", "Kai", "Screenwriter", { stages: ["script"], status: "working", doing: "Writing the rooftop scene" }),
   lena: bot("lena", "Lena", "Storyboard artist", {
+    stages: ["storyboard"],
     status: "waiting",
     output: { text: "Shot 1 is boarded: a slow push-in on the rooftop, rain in the neon light.", threadId: "thread-lena", messageId: "l-2", at: Date.UTC(2026, 10, 21, 9, 40) },
     waiting: { threadId: "thread-lena", messageId: "l-3", card: { title: "Generate shot 1 again at 1080p?", subtitle: "The first take is 720p; 1080p takes longer.", options: ["Generate at 1080p", "Keep 720p"] } },
   }),
-  otto: bot("otto", "Otto", "Editor"),
+  otto: bot("otto", "Otto", "Editor", { stages: ["post"] }),
 };
 
 export const SAMPLE_LOOKS: Record<string, CanvasBotLook> = {
@@ -57,7 +59,17 @@ const contentNodes: CanvasNode[] = [
     width: 340,
     height: 240,
     createdBy: { kind: "bot", botId: "lena" },
-    metadata: { prompt: "Slow push-in on a neon-lit rooftop in heavy rain, a courier opens a package.", status: "success", settings: { seconds: 10 } },
+    metadata: { prompt: "Slow push-in on a neon-lit rooftop in heavy rain, a courier opens a package." },
+  },
+  {
+    id: "shot-1-creation",
+    type: "config",
+    title: "Shot 1 · Rooftop",
+    position: { x: 0, y: 0 },
+    width: 340,
+    height: 240,
+    createdBy: { kind: "bot", botId: "lena" },
+    metadata: { role: "creation", shotId: "shot-1", generationMode: "video", status: "success", settings: { seconds: 10 } },
   },
   {
     id: "shot-1-take-1",
@@ -67,7 +79,7 @@ const contentNodes: CanvasNode[] = [
     width: 420,
     height: 236,
     createdBy: { kind: "person" },
-    metadata: { file: { path: SAMPLE_VIDEO_PATH, mime: "video/webm", bytes: 182_000, name: "rooftop-1.webm" }, naturalWidth: 1280, naturalHeight: 720, durationMs: 10_000, prompt: "Slow push-in on a neon-lit rooftop in heavy rain, a courier opens a package.", status: "success" },
+    metadata: { role: "take", shotId: "shot-1", selected: true, file: { path: SAMPLE_VIDEO_PATH, mime: "video/webm", bytes: 182_000, name: "rooftop-1.webm" }, naturalWidth: 1280, naturalHeight: 720, durationMs: 10_000, status: "success" },
   },
   {
     id: "city-night",
@@ -83,12 +95,14 @@ const contentNodes: CanvasNode[] = [
 
 const connections: CanvasConnection[] = [
   { id: dispatchConnectionId("mira", "kai"), fromNodeId: botNodeId("mira"), toNodeId: botNodeId("kai"), kind: "dispatch" },
-  { id: dispatchConnectionId("mira", "lena"), fromNodeId: botNodeId("mira"), toNodeId: botNodeId("lena"), kind: "dispatch" },
-  { id: dispatchConnectionId("mira", "otto"), fromNodeId: botNodeId("mira"), toNodeId: botNodeId("otto"), kind: "dispatch" },
+  { id: dispatchConnectionId("kai", "lena"), fromNodeId: botNodeId("kai"), toNodeId: botNodeId("lena"), kind: "dispatch" },
+  { id: dispatchConnectionId("lena", "otto"), fromNodeId: botNodeId("lena"), toNodeId: botNodeId("otto"), kind: "dispatch" },
   { id: "c-kai-logline", fromNodeId: botNodeId("kai"), toNodeId: "logline", kind: "content" },
-  { id: "c-lena-shot", fromNodeId: botNodeId("lena"), toNodeId: "shot-1", kind: "content" },
-  { id: "c-city-shot", fromNodeId: "city-night", toNodeId: "shot-1", kind: "content" },
-  { id: "c-shot-take", fromNodeId: "shot-1", toNodeId: "shot-1-take-1", kind: "content" },
+  { id: "c-lena-shot", fromNodeId: botNodeId("lena"), toNodeId: "shot-1", kind: "content", pipeline: true },
+  { id: "c-shot-creation", fromNodeId: "shot-1", toNodeId: "shot-1-creation", kind: "content", pipeline: true },
+  { id: "c-city-creation", fromNodeId: "city-night", toNodeId: "shot-1-creation", kind: "content" },
+  { id: "c-creation-take", fromNodeId: "shot-1-creation", toNodeId: "shot-1-take-1", kind: "content", pipeline: true },
+  { id: "c-take-otto", fromNodeId: "shot-1-take-1", toNodeId: botNodeId("otto"), kind: "content", pipeline: true },
 ];
 
 /** The sample canvas, with bots and what they made where the server's default layout puts them. */
@@ -103,7 +117,7 @@ export function sampleCanvasSnapshot(): CanvasSnapshot {
     project: { id: SAMPLE_PROJECT_ID, name: "Rain City", leadBotId: "mira", archived: false, folderState: "ready" },
     bots: SAMPLE_BOTS,
   };
-  const positions = layoutBotTree(base);
+  const positions = layoutPipeline(base);
   return structuredClone({ ...base, nodes: base.nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position })) });
 }
 

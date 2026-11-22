@@ -1,6 +1,8 @@
 import { PAIRING_INPUT_PROBLEM_TEXT } from "../shared/pairing-code.ts";
 import { redactParams } from "../shared/redact.ts";
 import { formatServerText, type ServerErrorBody, type ServerTextParams } from "../shared/server-text.ts";
+import { PIPELINE_RUN_ERRORS } from "./pipeline-run/error-text.ts";
+import { PROJECT_DRAFT_ERRORS } from "./project-draft/error-text.ts";
 import { PROJECT_GENERATION_ERRORS } from "./project-generation/error-text.ts";
 
 /** The client translates by key and falls back to this English, which the server keeps sending for older clients. */
@@ -274,20 +276,23 @@ export const USER_ERROR = {
   "serverError.teamProject.contextFollows": "{department} takes its shared instructions from {team}. Change them in {team} instead.",
   "serverError.mainBot.noDepartment": "{bot} belongs to no department, so it can't be moved into one.",
   "serverError.teamProject.teamChangesInvalid": "Choose which of the team's changes to make, then try again.",
-  "serverError.teamFlow.unreadable": "The team flows couldn't be read, so nothing was changed. Restore team-flows.json in MagicBot's data folder from a backup, then try again.",
-  "serverError.teamFlow.saveFailed": "The flow couldn't be saved, so nothing was changed. ({detail})",
+  "serverError.teamFlow.unreadable": "The team pipelines couldn't be read, so nothing was changed. Restore team-flows.json in MagicBot's data folder from a backup, then try again.",
+  "serverError.teamFlow.saveFailed": "The pipeline couldn't be saved, so nothing was changed. ({detail})",
   "serverError.teamFlow.noBot": "That bot is no longer there.",
-  "serverError.teamFlow.mainBot": "MagicBot belongs to no team, so it has no place in a flow.",
-  "serverError.teamFlow.archived": "{bot} is archived. Restore it before giving it a place in the flow.",
-  "serverError.teamFlow.general": "{bot} isn't in a team, so it has no place in a flow. Move it into a team first.",
-  "serverError.teamFlow.noChief": "{team} has no Chief of Staff yet, so it has no flow. Make one of its bots the Chief of Staff first.",
-  "serverError.teamFlow.project": "{bot} is in a project, and a project's flow comes from the team it was made from. Change the lines in {team} instead.",
-  "serverError.teamFlow.projectNoTeam": "{bot} is in a project with no team to follow, so every bot in it answers to the project's Chief of Staff.",
-  "serverError.teamFlow.otherTeam": "{superior} isn't in {team}. A bot's superior has to be in its own team.",
-  "serverError.teamFlow.self": "A bot can't be its own superior.",
-  "serverError.teamFlow.chief": "{bot} is the Chief of Staff of {team}, at the top of its flow, so it can't be anyone's subordinate.",
-  "serverError.teamFlow.loop": "{superior} is already below {bot}, so {bot} can't go under {superior}: that would make a loop.",
+  "serverError.teamFlow.noTeam": "That team is no longer there.",
+  "serverError.teamFlow.mainBot": "MagicBot belongs to no team, so it has no place in a pipeline.",
+  "serverError.teamFlow.archived": "{bot} is archived. Restore it before giving it a place in the pipeline.",
+  "serverError.teamFlow.general": "{bot} isn't in a team, so it has no place in a pipeline. Move it into a team first.",
+  "serverError.teamFlow.noChief": "{team} has no Chief of Staff yet, so it has no pipeline. Make one of its bots the Chief of Staff first.",
+  "serverError.teamFlow.project": "{bot} is in a project, and a project's pipeline comes from the team it was made from. Change the lines in {team} instead.",
+  "serverError.teamFlow.projectNoTeam": "{bot} is in a project with no team to follow, so every bot in it works under the project's Chief of Staff.",
+  "serverError.teamFlow.otherTeam": "{bot} isn't in {team}. Both ends of a line have to be in the same team.",
+  "serverError.teamFlow.self": "A bot's work can't go to itself.",
+  "serverError.teamFlow.chief": "{bot} is the Chief of Staff of {team} and leads its pipeline, so no line can go into it.",
+  "serverError.teamFlow.loop": "{to}'s work already reaches {from}, so a line from {from} to {to} would make a loop.",
   ...PROJECT_GENERATION_ERRORS,
+  ...PROJECT_DRAFT_ERRORS,
+  ...PIPELINE_RUN_ERRORS,
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;

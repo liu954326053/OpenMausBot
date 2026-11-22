@@ -336,6 +336,7 @@ describe("CI outputs", () => {
       "server/skill-switch.test.ts",
       "server/host/team-project-stops.test.ts",
       "server/routines-team-project.test.ts",
+      "server/team-judge/proposal.test.ts",
       "server/team-project-proposal.test.ts",
     ]);
     expect(out.vitest_matrix.include).toEqual([1, 2].map((shard) => ({

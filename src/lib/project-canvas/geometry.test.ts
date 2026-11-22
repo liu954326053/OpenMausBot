@@ -8,6 +8,8 @@ import {
   connectionCurve,
   connectionDropTarget,
   curveInView,
+  DISPATCH_CLEARANCE,
+  dispatchCurve,
   fitNodeSize,
   focusViewportForNode,
   gridBackground,
@@ -232,3 +234,40 @@ describe("a node's panel", () => {
     expect(outside).toEqual([]);
   });
 });
+
+describe("the line between two bots", () => {
+  const bot = (id: string, x: number, y: number): CanvasNode => ({ id, type: "bot", title: id, position: { x, y }, width: 300, height: 180 });
+
+  it("is the plain curve to a bot on the right with nothing in between", () => {
+    const from = bot("a", 0, 0);
+    const to = bot("b", 420, 0);
+    expect(dispatchCurve(from, to, [bot("below", 320, 400)])).toEqual(connectionCurve(from, to));
+  });
+
+  it("goes over the nodes that stand between the two bots, clear of their labels, and is in view where only its top is", () => {
+    const from = bot("writer", 0, 0);
+    const to = bot("boarder", 1600, 0);
+    const made = node("script", 348, 0);
+    const between = bot("designer", 800, -40);
+    const curve = dispatchCurve(from, to, [made, between, bot("elsewhere", 800, 600)]);
+    const top = -40 - DISPATCH_CLEARANCE;
+    expect(curve.start).toEqual({ x: 300, y: 90 });
+    expect(curve.end).toEqual({ x: 1600, y: 90 });
+    expect(curve.box).toEqual({ left: 300, top, right: 1600, bottom: 90 });
+    expect(curve.path).toBe(`M 300 90 C 324 90, 324 ${top}, 348 ${top} L 1552 ${top} C 1576 ${top}, 1576 90, 1600 90`);
+    expect(curveInView(curve, { left: 600, top: top - 10, right: 700, bottom: top + 10 })).toBe(true);
+    expect(curveInView(curve, { left: 600, top: top - 200, right: 700, bottom: top - 100 })).toBe(false);
+  });
+
+  it("leaves a bot by its left side for a bot that is not to its right, as the bots outside the pipeline stand below the lead", () => {
+    const from = bot("lead", 100, 0);
+    const to = bot("voice", 100, 244);
+    const curve = dispatchCurve(from, to, []);
+    expect(curve.start).toEqual({ x: 100, y: 90 });
+    expect(curve.end).toEqual({ x: 100, y: 334 });
+    expect(curve.path).toBe("M 100 90 C 39 90, 39 334, 100 334");
+    expect(curveInView(curve, { left: 50, top: 150, right: 90, bottom: 250 })).toBe(true);
+    expect(curveInView(curve, { left: 120, top: 150, right: 400, bottom: 250 })).toBe(false);
+  });
+});
+

@@ -15,8 +15,8 @@ function snapshot(): CanvasSnapshot {
     projectId: "p1", revision: 7, viewport: { x: 0, y: 0, k: 1 }, backgroundMode: "dots",
     project: { id: "p1", name: "Stand-in bride", leadBotId: "lead", archived: false, folderState: "ready" },
     bots: {
-      lead: { botId: "lead", name: "Lead", title: "Producer", lead: true, status: "working", placed: false },
-      writer: { botId: "writer", name: "Writer", title: "Writes", lead: false, status: "idle", placed: true },
+      lead: { botId: "lead", name: "Lead", title: "Producer", lead: true, stages: ["lead"], status: "working", placed: false },
+      writer: { botId: "writer", name: "Writer", title: "Writes", lead: false, stages: ["other"], status: "idle", placed: true },
     },
     nodes: [
       node(botNodeId("lead"), { type: "bot", title: "Lead" }),
@@ -39,8 +39,8 @@ describe("what a bot reads of its project's canvas", () => {
     expect(read.project).toEqual({ id: "p1", name: "Stand-in bride", revision: 7 });
     expect(read.you).toBe(botNodeId("writer"));
     expect(read.bots).toEqual([
-      { id: botNodeId("lead"), name: "Lead", title: "Producer", lead: true, status: "working" },
-      { id: botNodeId("writer"), name: "Writer", title: "Writes", status: "idle" },
+      { id: botNodeId("lead"), name: "Lead", title: "Producer", lead: true, stages: ["lead"], status: "working" },
+      { id: botNodeId("writer"), name: "Writer", title: "Writes", stages: ["other"], status: "idle" },
     ]);
     expect(read.nodes.map((one: { id: string; createdBy: string }) => [one.id, one.createdBy])).toEqual([["brief", "person"], ["outline", "you"], ["shot", botNodeId("lead")]]);
     expect(read.nodes[0].metadata.content).toBe(`${"x".repeat(120)}...`);
@@ -57,6 +57,19 @@ describe("what a bot reads of its project's canvas", () => {
     expect(mine.nodes.map((entry: { id: string }) => entry.id)).toEqual(["brief", "outline"]);
     expect(mine.nodes[0].metadata.content).toBe("x".repeat(300));
     expect(() => canvasStateText(snapshot(), "writer", { node_id: "gone" })).toThrow(CanvasRefusal);
+  });
+
+  it("says what each node is in the pipeline and which connections the pipeline made", () => {
+    const base = snapshot();
+    const read = JSON.parse(canvasStateText({
+      ...base,
+      nodes: [...base.nodes, node("make", { type: "config", metadata: { role: "creation", shotId: "shot", generationMode: "video" } }), node("take", { type: "video", metadata: { role: "take", shotId: "shot", selected: true, stale: true } })],
+      connections: [...base.connections, { id: "c3", fromNodeId: "shot", toNodeId: "make", kind: "content", pipeline: true }],
+    }, "writer", {}));
+    expect(read.nodes.at(-2).metadata).toEqual({ role: "creation", shotId: "shot", generationMode: "video" });
+    expect(read.nodes.at(-1).metadata).toEqual({ role: "take", shotId: "shot", selected: true, stale: true });
+    expect(read.connections.at(-1)).toEqual({ id: "c3", from: "shot", to: "make", kind: "content", pipeline: true });
+    expect(read.connections[1]).toEqual({ id: "c1", from: "brief", to: botNodeId("writer"), kind: "content" });
   });
 
   it("says when the project is archived", () => {
@@ -87,9 +100,12 @@ describe("the bots' canvas routes", () => {
   const failure = (code: GenerationFailure["code"]): GenerationFailure => ({ code, error: `Refused: ${code}.`, errorKey: `serverError.projectGeneration.${code}` });
 
   it("start a bot's generation, answer a refusal with generation's words and status, and put one past the ceiling on a card", async () => {
-    const started = call(PROJECT_CANVAS_TOOL_PATHS.generate, false, { job: { id: "job-1" } as GenerationJob });
+    const started = call(PROJECT_CANVAS_TOOL_PATHS.generate, false, { job: { id: "job-1", nodeId: "shot" } as GenerationJob });
     await started.run();
-    expect(started.answers).toEqual([{ status: 202, body: { text: expect.stringContaining("started (job job-1)") } }]);
+    expect(started.answers).toEqual([{ status: 202, body: { text: "Generation of shot started (job job-1). Its node shows how it goes; what it makes lands to its right, connected from it." } }]);
+    const throughCreation = call(PROJECT_CANVAS_TOOL_PATHS.generate, false, { job: { id: "job-2", nodeId: "make" } as GenerationJob });
+    await throughCreation.run();
+    expect(throughCreation.answers).toEqual([{ status: 202, body: { text: "Generation of shot started through its creation node make (job job-2). That node shows how it goes; the video lands to its right as the shot's newest take, which becomes its selected take." } }]);
     const refused = call(PROJECT_CANVAS_TOOL_PATHS.generate, false);
     await refused.run();
     expect(refused.answers).toEqual([{ status: 422, body: { error: "Refused: no_server." } }]);

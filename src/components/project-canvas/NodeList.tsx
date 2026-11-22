@@ -6,7 +6,7 @@ import { MENU_ITEM } from "@/components/menu-recipe";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { useCanvasUi } from "./canvas-ui";
-import { NODE_ICONS, nodeLabel, nodeTypeLabel } from "./node-kinds";
+import { NODE_ICONS, nodeLabel, nodeTypeLabel, pipelineLabel } from "./node-kinds";
 
 const TYPE_ORDER: CanvasNode["type"][] = ["bot", "shot", "text", "image", "video", "audio", "file", "config", "group"];
 
@@ -14,8 +14,9 @@ export function NodeList({ aboveMinimap, onClose, onFocus }: { aboveMinimap: boo
   const ui = useCanvasUi();
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
+  const kindOf = (node: CanvasNode) => pipelineLabel(node, ui.snapshot) ?? nodeTypeLabel(node.type);
   const nodes = ui.snapshot.nodes
-    .filter((node) => !needle || nodeLabel(node).toLowerCase().includes(needle) || nodeTypeLabel(node.type).toLowerCase().includes(needle))
+    .filter((node) => !needle || nodeLabel(node).toLowerCase().includes(needle) || nodeTypeLabel(node.type).toLowerCase().includes(needle) || kindOf(node).toLowerCase().includes(needle))
     .sort((a, b) => {
       const lead = (node: CanvasNode) => Number(ui.snapshot.bots[botIdOfNode(node.id) ?? ""]?.lead === true);
       return TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type) || lead(b) - lead(a) || nodeLabel(a).localeCompare(nodeLabel(b));
@@ -48,7 +49,7 @@ export function NodeList({ aboveMinimap, onClose, onFocus }: { aboveMinimap: boo
               <button type="button" className={cn(MENU_ITEM, "hover:bg-menu-hover", ui.selection.has(node.id) && "bg-menu-active")} aria-current={ui.selection.has(node.id) || undefined} onClick={() => onFocus(node.id)}>
                 <Icon size={16} aria-hidden="true" className="shrink-0 text-ink-secondary" />
                 <span className="min-w-0 flex-1 truncate">{nodeLabel(node)}</span>
-                <span className="shrink-0 text-[12px] leading-4 text-ink-tertiary">{nodeTypeLabel(node.type)}</span>
+                <span className="max-w-[45%] shrink-0 truncate text-[12px] leading-4 text-ink-tertiary">{kindOf(node)}</span>
               </button>
             </li>
           );

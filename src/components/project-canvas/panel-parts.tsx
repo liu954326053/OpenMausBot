@@ -51,10 +51,10 @@ function ReferenceThumb({ reference, onRemove }: { reference: CanvasReference; o
 }
 
 /** The references the panel's prompt names, labelled as it names them, with the "+" that picks more on the canvas. What
- * is picked, or taken off, is connected into the node whose inputs the list holds. */
-export function ReferenceBar({ node, references }: { node: CanvasNode; references: readonly CanvasReference[] }) {
+ * is picked, or taken off, is connected into the node whose inputs the list holds: `into`, when the panel names one. */
+export function ReferenceBar({ node, references, into }: { node: CanvasNode; references: readonly CanvasReference[]; into?: string }) {
   const ui = useCanvasUi();
-  const holder = mentionHolder(node.id, ui.snapshot.nodes, ui.snapshot.connections);
+  const holder = into ?? mentionHolder(node.id, ui.snapshot.nodes, ui.snapshot.connections);
   const picking = ui.pickingFor === holder;
   const connected = (reference: CanvasReference) => reference.sourceNodeId !== node.id
     && ui.snapshot.connections.some((connection) => connection.kind === "content" && connection.fromNodeId === reference.sourceNodeId && connection.toNodeId === holder);

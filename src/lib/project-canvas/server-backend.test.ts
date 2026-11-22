@@ -159,6 +159,38 @@ describe("the project canvas on the app's server", () => {
     expect(JSON.parse(String(sent[0]!.body))).toEqual({ nodeId: "shot-1", language: "zh" });
   });
 
+  it("selects a take, answers the run, opens the draft and names the finished film on the pipeline's routes, and leaves a refusal to the caller", async () => {
+    const { backend } = backendWith();
+    const archived = { code: "canvas_read_only", error: "Archived.", errorKey: "serverError.projectCanvas.archived", reason: "archived" };
+    answers.push({ body: { revision: 9 } }, { status: 409, body: archived }, { status: 202, body: {} }, { status: 404, body: { error: "Not found" } }, { body: { opened: "app" } }, { body: { revision: 10 } }, { status: 400, body: { error: "That file is not a video." } });
+    expect(await backend.selectTake("p 1", "take-2")).toEqual({ revision: 9 });
+    await expect(backend.selectTake("p 1", "take-2")).rejects.toMatchObject({ name: "CanvasBackendError", body: { reason: "archived" } });
+    await backend.answerVideos("p 1", { action: "start" });
+    await expect(backend.answerVideos("p 1", { action: "retry" })).rejects.toMatchObject({ status: 404 });
+    expect(await backend.openDraft("p 1")).toEqual({ opened: "app" });
+    await backend.setFinalFilm("p 1", { path: "产出/film.mp4" });
+    await expect(backend.setFinalFilm("p 1", { path: "产出/notes.txt" })).rejects.toThrow("That file is not a video.");
+    expect(sent.map(({ path, method }) => `${method} ${path}`)).toEqual([
+      "POST /api/team-projects/p%201/canvas/select-take",
+      "POST /api/team-projects/p%201/canvas/select-take",
+      "POST /api/team-projects/p%201/pipeline/videos",
+      "POST /api/team-projects/p%201/pipeline/videos",
+      "POST /api/team-projects/p%201/draft/open",
+      "POST /api/team-projects/p%201/final",
+      "POST /api/team-projects/p%201/final",
+    ]);
+    expect([0, 2, 3, 5].map((index) => JSON.parse(String(sent[index]!.body)))).toEqual([{ nodeId: "take-2" }, { action: "start" }, { action: "retry" }, { path: "产出/film.mp4" }]);
+  });
+
+  it("knows where a picked file is only in the desktop app on its own computer", () => {
+    const file = new File(["x"], "film.mp4");
+    expect(backendWith().backend.localPathOf).toBeUndefined();
+    vi.stubGlobal("ogb", { getPathForFile: (picked: File) => `/dramas/${picked.name}` });
+    expect(backendWith().backend.localPathOf!(file)).toBe("/dramas/film.mp4");
+    vi.stubGlobal("ogb", { getPathForFile: () => "/elsewhere", remoteClient: { active: true } });
+    expect(backendWith().backend.localPathOf).toBeUndefined();
+  });
+
   it("names why a call failed in the person's words when its body gives a serverError key, else by its message", () => {
     const named = new ApiError("That bot is gone.", 404, { error: "That bot is gone.", errorKey: "serverError.projectCanvas.notMember" });
     const folder = new ApiError("No folder.", 409, { errorKey: "serverError.projectCanvas.folderMissing", errorParams: { folder: "/tmp/drama" } });

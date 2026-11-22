@@ -144,8 +144,8 @@ describe("the wall between two projects that the project code itself made from o
     });
     const turn = firstTurn(seen, writerA);
     const heard = told(turn);
-    expect(heard).toContain("You work in your team's flow");
-    expect(heard).toContain(`[your superior] [id: ${directorA.id}]`);
+    expect(heard).toContain("You work in your team's pipeline");
+    expect(heard).toContain(`[upstream of you] [id: ${directorA.id}]`);
     for (const beyond of [main.id, directorB.id, writerB.id, crewLead.id, crewWriter.id, oswald.id, PAPER, CREW, "Oswald", "Studio"]) expect(heard, beyond).not.toContain(beyond);
     const [listed, nobody, otherWriter, otherLead, sourceWriter, outside, ownLead] = answers(turn);
     expect(listed).toContain(directorA.id);

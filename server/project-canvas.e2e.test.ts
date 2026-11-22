@@ -152,11 +152,12 @@ describe("a project's canvas", () => {
     keep("01-snapshot-of-a-new-project.json", snapshot);
     expect(snapshot.project).toEqual({ id: project.id, name: "Canvas drama", leadBotId: lead.id, archived: false, folderState: "ready" });
     expect(snapshot.nodes.map((node) => node.id)).toEqual(project.botIds.map(botNodeId));
-    expect(snapshot.bots[lead.id]).toMatchObject({ botId: lead.id, name: lead.name, lead: true, status: "idle", placed: false });
-    expect(snapshot.bots[writer.id]).toMatchObject({ botId: writer.id, name: writer.name, title: "Writes the episodes", lead: false, status: "idle", placed: false });
+    expect(snapshot.bots[lead.id]).toMatchObject({ botId: lead.id, name: lead.name, lead: true, stages: ["lead"], status: "idle", placed: false });
+    expect(snapshot.bots[writer.id]).toMatchObject({ botId: writer.id, name: writer.name, title: "Writes the episodes", lead: false, stages: ["other"], status: "idle", placed: false });
     expect(snapshot.connections).toEqual([{ id: dispatchConnectionId(lead.id, writer.id), fromNodeId: botNodeId(lead.id), toNodeId: botNodeId(writer.id), kind: "dispatch" }]);
     const [leadNode, writerNode] = snapshot.nodes;
-    expect(writerNode!.position.x).toBeGreaterThan(leadNode!.position.x);
+    expect(writerNode!.position.x).toBe(leadNode!.position.x);
+    expect(writerNode!.position.y).toBeGreaterThan(leadNode!.position.y);
   });
 
   it("shows a bot at work, then its reply as its node's output with the secret in it redacted, and tells open apps", async () => {

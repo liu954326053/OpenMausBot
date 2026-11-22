@@ -1,64 +1,50 @@
 import { botNodeId, CANVAS_NODE_SIZE, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasPoint } from "../../shared/project-canvas.ts";
+import { PIPELINE_STAGES, type FlowStage } from "../../shared/team-pipeline.ts";
+import type { CanvasFlow } from "./flow.ts";
 import type { CanvasFrame } from "./ops.ts";
 
 /** Between a node and the lane of nodes to its right. */
 export const LANE_GAP = 80;
 /** Between two nodes stacked in a lane. */
 export const NODE_GAP = 40;
-/** The widest node a lane holds, so a bot's subordinates sit clear of its lane. */
+/** The widest node a lane holds. */
 const LANE_WIDTH = CANVAS_NODE_SIZE.video.width;
 const ROW_GAP = 60;
 const BOT = CANVAS_NODE_SIZE.bot;
-const COLUMN = BOT.width + LANE_GAP + LANE_WIDTH + LANE_GAP;
 const BAND = BOT.height + ROW_GAP;
 const MAX_STEPS = 10_000;
+/** Around the nodes of a group the server makes, as the app wraps a selection it groups. */
+export const GROUP_PADDING = 24;
+export const GROUP_TOP_PADDING = 52;
+/** A character's group: its profile and two pictures beside it. */
+export const CHARACTER_ROOM = CANVAS_NODE_SIZE.text.width + 2 * (NODE_GAP + CANVAS_NODE_SIZE.image.width) + 2 * GROUP_PADDING;
+/** What the bots of each stage make to their right: a character's group, a shot's row of three, else one node. */
+const ROOM: Record<FlowStage, number> = {
+  lead: LANE_WIDTH,
+  other: LANE_WIDTH,
+  script: LANE_WIDTH,
+  character: CHARACTER_ROOM,
+  storyboard: CANVAS_NODE_SIZE.shot.width + LANE_GAP + CANVAS_NODE_SIZE.config.width + LANE_GAP + CANVAS_NODE_SIZE.video.width,
+  post: LANE_WIDTH,
+};
 
-export interface BotTree {
-  /** In the order the project lists them. */
-  botIds: readonly string[];
-  leadBotId: string;
-  parentOf(botId: string): string | undefined;
-}
-
-/** Each bot's superior on the canvas, the root (the lead, or the first bot when the lead is gone) having none. A bot
- * whose superior is not in the project, or that the tree does not reach from the root, has the root. */
-export function treeParents(tree: BotTree): { root: string | undefined; parents: Map<string, string> } {
-  const parents = new Map<string, string>();
-  const root = tree.botIds.includes(tree.leadBotId) ? tree.leadBotId : tree.botIds[0];
-  if (root === undefined) return { root, parents };
-  const members = new Set(tree.botIds);
-  for (const id of tree.botIds) {
-    if (id === root) continue;
-    const parent = tree.parentOf(id);
-    parents.set(id, parent !== undefined && parent !== id && members.has(parent) ? parent : root);
-  }
-  const reached = new Set([root]);
-  for (const queue = [root]; queue.length;) {
-    const parent = queue.shift()!;
-    for (const child of tree.botIds) {
-      if (parents.get(child) !== parent || reached.has(child)) continue;
-      reached.add(child);
-      queue.push(child);
-    }
-  }
-  for (const id of tree.botIds) if (!reached.has(id)) parents.set(id, root);
-  return { root, parents };
-}
-
-/** Each bot's node where nobody placed it: the tree of `treeParents` from left to right, the root at the left, each
- * bot at the top of the band its subtree takes, with room for its lane before its subordinates' column. */
-export function defaultBotFrames(tree: BotTree): Map<string, CanvasFrame> {
+/** Each bot's node where nobody placed it: a column for the lead with the bots outside the pipeline below it, then one
+ * for each stage that has a bot, in pipeline order, a bot with several stages in the column of its first. The bots of
+ * a column stand one below the other, and a column is as wide as what its bots make needs. */
+export function defaultBotFrames(flow: CanvasFlow): Map<string, CanvasFrame> {
   const frames = new Map<string, CanvasFrame>();
-  const { root, parents } = treeParents(tree);
-  if (root === undefined) return frames;
-  const childrenOf = (id: string) => tree.botIds.filter((one) => parents.get(one) === id);
-  const place = (id: string, depth: number, top: number): number => {
-    frames.set(botNodeId(id), { position: { x: depth * COLUMN, y: top }, width: BOT.width, height: BOT.height });
-    let next = top;
-    for (const child of childrenOf(id)) next += place(child, depth + 1, next);
-    return Math.max(BAND, next - top);
-  };
-  place(root, 0, 0);
+  const first = (botId: string) => flow.stages[botId]?.find((stage) => (PIPELINE_STAGES as readonly FlowStage[]).includes(stage));
+  const outside = flow.botIds.filter((botId) => botId !== flow.leadBotId && !first(botId));
+  const columns = [
+    [...flow.botIds.filter((botId) => botId === flow.leadBotId), ...outside],
+    ...PIPELINE_STAGES.map((stage) => flow.botIds.filter((botId) => botId !== flow.leadBotId && first(botId) === stage)),
+  ].filter((column) => column.length);
+  let x = 0;
+  for (const column of columns) {
+    column.forEach((botId, row) => frames.set(botNodeId(botId), { position: { x, y: row * BAND }, width: BOT.width, height: BOT.height }));
+    const room = Math.max(...column.flatMap((botId) => (flow.stages[botId] ?? ["other"]).map((stage) => ROOM[stage])));
+    x += BOT.width + LANE_GAP + room + LANE_GAP;
+  }
   return frames;
 }
 
@@ -86,6 +72,13 @@ function freeBelow(x: number, y: number, node: Pick<CanvasFrame, "width" | "heig
     top = hit.y + hit.height + NODE_GAP;
   }
   return { x, y: top };
+}
+
+/** The first spot at `at.x` from `at.y` down that is clear of every node but the groups and `ignore`, of the bots and
+ * of `reserved`. */
+export function clearSpot(document: CanvasDocument, at: CanvasPoint, size: Pick<CanvasFrame, "width" | "height">, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[] = [], ignore: ReadonlySet<string> = new Set()): CanvasPoint {
+  const others = ignore.size ? { ...document, nodes: document.nodes.filter((one) => !ignore.has(one.id)) } : document;
+  return freeBelow(at.x, at.y, size, obstacles(others, bots, reserved));
 }
 
 /** `frame` moved down until it overlaps none of `taken`. */

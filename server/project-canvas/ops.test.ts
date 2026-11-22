@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CANVAS_MAX_NODES, CANVAS_MAX_OPS, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasOp } from "../../shared/project-canvas.ts";
+import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type OpsContext } from "./ops.ts";
 
 const PERSON: CanvasNodeCreator = { kind: "person" };
@@ -211,6 +212,87 @@ describe("connections", () => {
 
   it("finds no stored dispatch connection to delete", () => {
     expect(refused(() => applyCanvasOps(canvas(), [{ type: "delete_connections", id: "dispatch:lead:writer" }], context())).code).toBe("not_found");
+  });
+});
+
+describe("what a node is in the pipeline", () => {
+  const FACES: CanvasNodeCreator = { kind: "bot", botId: "writer" };
+  const withStages = (...stages: FlowStage[]): OpsContext => ({ ...context(FACES), stages });
+  const character: CanvasOp = { type: "add_node", nodeType: "text", title: "Mei", metadata: { content: "The bride", role: "character" } };
+
+  it("is a character for a text node a bot of the character stage adds, and for no other bot or node", () => {
+    const result = applyCanvasOps(canvas(), [character], withStages("character", "storyboard"));
+    expect(find(result.document, "new-1")?.metadata).toEqual({ content: "The bride", role: "character" });
+    expect(refused(() => applyCanvasOps(canvas(), [character], withStages("storyboard"))).code).toBe("not_allowed");
+    expect(refused(() => applyCanvasOps(canvas(), [character], context(FACES))).code).toBe("not_allowed");
+    expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "shot", metadata: { prompt: "Mei", role: "character" } }], withStages("character"))).code).toBe("not_allowed");
+  });
+
+  it("lets a bot of the character stage add the image node a character's picture is generated in, and no other bot", () => {
+    const picture: CanvasOp = { type: "add_node", nodeType: "image", title: "Mei, front", metadata: { prompt: "Front view, white dress", settings: { aspect: "3:4" } } };
+    const result = applyCanvasOps(canvas(), [picture], withStages("character"));
+    expect(find(result.document, "new-1")).toMatchObject({ type: "image", createdBy: FACES, metadata: { prompt: "Front view, white dress", settings: { aspect: "3:4" } } });
+    expect(refused(() => applyCanvasOps(canvas(), [picture], withStages("storyboard", "post"))).code).toBe("not_allowed");
+    expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "video" }], withStages("character"))).code).toBe("not_allowed");
+  });
+
+  it.each(["script", "creation", "take", "final"] as const)("is never %s because a bot says so", (role) => {
+    const refusal = refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "text", metadata: { role } }], withStages("script", "character", "storyboard", "post")));
+    expect(refusal).toMatchObject({ code: "not_allowed", index: 0 });
+  });
+
+  it("is not a bot's to say with a shot, a selection or a stale mark either", () => {
+    for (const metadata of [{ shotId: "shot-1" }, { selected: true }, { stale: true }]) {
+      expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "text", metadata }], withStages("character"))).code).toBe("not_allowed");
+    }
+  });
+
+  it("is left out of a node the person adds, as a pasted copy of a take is a plain video", () => {
+    const file = { path: "产出/视频/take.mp4", mime: "video/mp4", bytes: 3, name: "take.mp4" };
+    const result = applyCanvasOps(canvas(), [{ type: "add_node", id: "copy", nodeType: "video", metadata: { file, role: "take", shotId: "shot-1", selected: true, stale: true } }], context());
+    expect(find(result.document, "copy")?.metadata).toEqual({ file });
+    const plain = applyCanvasOps(canvas(), [{ type: "add_node", id: "note", nodeType: "text", metadata: { role: "character" } }], context());
+    expect(find(plain.document, "note")).not.toHaveProperty("metadata");
+  });
+
+  it("comes back with a deleted node the person adds back, as undo does, and not with a node of another type", () => {
+    const removed = (id: string) => (id === "take-9" ? { type: "video" as const, createdBy: WRITER, pipeline: { role: "take" as const, shotId: "shot-1", selected: true as const } } : undefined);
+    const back = applyCanvasOps(canvas(), [{ type: "add_node", id: "take-9", nodeType: "video", metadata: { durationMs: 5000, role: "final" } }], { ...context(), removed });
+    expect(find(back.document, "take-9")).toMatchObject({ createdBy: WRITER, metadata: { durationMs: 5000, role: "take", shotId: "shot-1", selected: true } });
+    const other = applyCanvasOps(canvas(), [{ type: "add_node", id: "take-9", nodeType: "text" }], { ...context(), removed });
+    expect(find(other.document, "take-9")).not.toHaveProperty("metadata");
+  });
+
+  it("is never changed by an operation on the node, the person's included", () => {
+    for (const metadata of [{ role: "script" as const }, { role: null }, { shotId: "shot-1" }, { selected: true }, { stale: null }]) {
+      expect(refused(() => applyCanvasOps(canvas(), [{ type: "update_node", id: "brief", metadata }], context())).code).toBe("not_allowed");
+      expect(refused(() => applyCanvasOps(canvas(), [{ type: "update_node", id: "shot-1", metadata }], withStages("character"))).code).toBe("not_allowed");
+    }
+  });
+});
+
+describe("a connection the server made for the pipeline", () => {
+  const linked = (): CanvasDocument => {
+    const document = canvas();
+    document.connections.push({ id: "c-flow", fromNodeId: "shot-1", toNodeId: "brief", kind: "content", pipeline: true });
+    return document;
+  };
+
+  it("is not a bot's to delete, though one end is its own", () => {
+    const refusal = refused(() => applyCanvasOps(linked(), [{ type: "delete_connections", ids: ["c-writer", "c-flow"] }], context(WRITER)));
+    expect(refusal).toMatchObject({ code: "not_allowed", index: 0 });
+    expect(refusal.message).toMatch(/c-flow.*pipeline/);
+  });
+
+  it("is the person's to delete, and goes with a node a bot deletes", () => {
+    expect(applyCanvasOps(linked(), [{ type: "delete_connections", id: "c-flow" }], context()).document.connections.map((one) => one.id)).toEqual(["c-brief", "c-writer"]);
+    expect(applyCanvasOps(linked(), [{ type: "delete_node", id: "shot-1" }], context(WRITER)).document.connections).toEqual([]);
+  });
+
+  it("stays one when a bot connects the same two nodes again", () => {
+    const result = applyCanvasOps(linked(), [{ type: "connect_nodes", fromNodeId: "shot-1", toNodeId: "brief" }], context(WRITER));
+    expect(result.connectionIds).toEqual(["c-flow"]);
+    expect(result.document.connections.at(-1)).toMatchObject({ id: "c-flow", pipeline: true });
   });
 });
 

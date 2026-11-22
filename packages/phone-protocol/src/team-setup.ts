@@ -14,12 +14,18 @@ export interface TeamSetupFields {
   mcpServers?: string[];
 }
 
+/** A member's place in its team's drama pipeline, as a plan gives it. The Chief leads and is given none. */
+export type TeamSetupStage = "script" | "character" | "storyboard" | "post" | "other";
+
 export interface TeamSetupOperation {
   action: "create" | "update";
   botId: string;
   threadId?: string;
   fields: TeamSetupFields;
   expectedRevision?: string;
+  /** The bot's stages in its team's pipeline, in pipeline order, or `["other"]`: recorded with the team once the plan
+   * is applied. Absent leaves the bot to be judged. */
+  stages?: TeamSetupStage[];
 }
 
 export interface TeamSetupResult {

@@ -79,6 +79,8 @@ describe("generating on a project's canvas", () => {
     return read.body;
   };
   const node = async (id: string) => (await canvas()).nodes.find((one) => one.id === id)!;
+  /** The node that generates a shot's video. */
+  const creationOf = async (shotId: string) => (await canvas()).nodes.find((one) => one.metadata?.role === "creation" && one.metadata.shotId === shotId)!;
   const applyOps = async (...ops: unknown[]) => {
     const added = await api("POST", `${canvasPath()}/ops`, { baseRevision: (await canvas()).revision, ops });
     expect(added.status, JSON.stringify(added.body)).toBe(200);
@@ -173,7 +175,7 @@ describe("generating on a project's canvas", () => {
     if (root) await removeTempDir(root);
   });
 
-  it("fills an empty image node with the first picture a person's generate makes and puts the rest to its right, connected from it, with its files in 产出/图片 and 产出/视频", async () => {
+  it("fills an empty image node with the first picture a person's generate makes and puts the rest to its right, connected from it, and makes a shot's video its selected take behind its creation node, with the files in 产出/图片 and 产出/视频", async () => {
     await applyOps(
       { type: "add_node", id: "poster", nodeType: "image", title: "海报", metadata: { prompt: "A lighthouse at dusk", settings: { count: 2 } } },
       { type: "add_node", id: "opening", nodeType: "shot", title: "开场", metadata: { prompt: "Waves against the lighthouse" } },
@@ -183,22 +185,31 @@ describe("generating on a project's canvas", () => {
     const opening = await generateNode("opening");
     expect(opening.status).toBe(202);
 
+    const creation = await creationOf("opening");
+    expect(creation).toMatchObject({ type: "config", title: "开场", createdBy: { kind: "person" }, metadata: { generationMode: "video", role: "creation", shotId: "opening" } });
     const image = await settledNode("poster");
-    const video = await settledNode("opening");
+    const video = await settledNode(creation.id);
     expect(image).toMatchObject({ type: "image", title: "海报", metadata: { status: "success", jobId: poster.body.jobId, file: { path: expect.stringMatching(/^产出\/图片\/海报-.+-1\.png$/), mime: "image/png" } } });
     expect(video.metadata).toMatchObject({ status: "success", jobId: opening.body.jobId });
+    expect((await node("opening")).metadata).toEqual({ prompt: "Waves against the lighthouse" });
     const pictures = await results("poster");
     expect(pictures.map((one) => [one.type, one.metadata?.file?.path])).toEqual([["image", expect.stringMatching(/^产出\/图片\/海报-.+-2\.png$/)]]);
     expect(pictures.map((one) => one.position.x)).toEqual([image.position.x + image.width + 80]);
-    const films = await results("opening");
+    expect((await results("opening")).map((one) => one.id)).toEqual([creation.id]);
+    const films = await results(creation.id);
     expect(films.map((one) => [one.type, one.metadata?.file?.path])).toEqual([["video", expect.stringMatching(/^产出\/视频\/开场-.+\.mp4$/)]]);
+    expect(films[0]).toMatchObject({ position: { x: creation.position.x + creation.width + 80, y: creation.position.y }, metadata: { role: "take", shotId: "opening", selected: true } });
+    expect((await canvas()).connections.filter((one) => one.pipeline).map((one) => [one.fromNodeId, one.toNodeId])).toEqual(expect.arrayContaining([["opening", creation.id], [creation.id, films[0]!.id]]));
     for (const one of [image, ...pictures, ...films]) {
       expect(onDisk(one.metadata!.file!.path), one.metadata!.file!.path).toBe(true);
       expect(one.createdBy).toEqual({ kind: "person" });
     }
-    const started = (await jobs()).filter((job) => job.nodeId === "poster" || job.nodeId === "opening");
-    expect(started.map((job) => [job.nodeId, job.kind, job.requester])).toEqual(expect.arrayContaining([["poster", "image", { kind: "person" }], ["opening", "video", { kind: "person" }]]));
-    keep("01-person-generates.json", { poster: poster.body, opening: opening.body, nodes: { image, video }, pictures, films, jobs: started });
+    const started = (await jobs()).filter((job) => job.nodeId === "poster" || job.nodeId === creation.id);
+    expect(started.map((job) => [job.nodeId, job.kind, job.requester])).toEqual(expect.arrayContaining([["poster", "image", { kind: "person" }], [creation.id, "video", { kind: "person" }]]));
+    const selected = await api("POST", `${canvasPath()}/select-take`, { nodeId: films[0]!.id });
+    expect(selected).toEqual({ status: 200, body: { revision: (await canvas()).revision } });
+    expect(await api("POST", `${canvasPath()}/select-take`, { nodeId: "opening" })).toMatchObject({ status: 400, body: { code: "not_a_take" } });
+    keep("01-person-generates.json", { poster: poster.body, opening: opening.body, nodes: { image, creation: video }, pictures, films, jobs: started, selectTake: selected });
   }, hostTimeout(90_000));
 
   it("answers generation's refusal in its own words and keys, and shows a failed job on its node", async () => {
@@ -213,12 +224,13 @@ describe("generating on a project's canvas", () => {
     expect((await node("wide")).metadata).toEqual({ prompt: "A wide sea", settings: { aspect: "21:9" } });
 
     expect((await generateNode("storm")).status).toBe(202);
-    const failed = await settledNode("storm");
+    const stormCreation = await creationOf("storm");
+    const failed = await settledNode(stormCreation.id);
     expect(failed.metadata).toMatchObject({
       status: "error", errorDetails: "gen couldn't make it: the model is overloaded",
       errorKey: "serverError.projectGeneration.taskFailed", errorParams: { server: "gen", reason: "the model is overloaded" },
     });
-    expect(await results("storm")).toEqual([]);
+    expect(await results(stormCreation.id)).toEqual([]);
     keep("02-refused-and-failed.json", { refused, failed });
   }, hostTimeout(90_000));
 
@@ -227,19 +239,21 @@ describe("generating on a project's canvas", () => {
     const started = await generateNode("held");
     expect(started.status).toBe(202);
     await expect.poll(async () => (await jobs()).find((job) => job.id === started.body.jobId)?.taskId, { timeout: 30_000 }).toBeTruthy();
-    const before = await node("held");
-    expect(before.metadata).toEqual({ prompt: "A storm over the sea [hold]", status: "loading", jobId: started.body.jobId });
+    const held = (await creationOf("held")).id;
+    const before = await node(held);
+    expect(before.metadata).toEqual({ generationMode: "video", role: "creation", shotId: "held", status: "loading", jobId: started.body.jobId });
     await server.stop();
     await server.start();
-    const after = await node("held");
+    const after = await node(held);
     expect(after.metadata).toMatchObject({ status: "loading", jobId: started.body.jobId });
 
     fake.release();
-    const finished = await settledNode("held");
+    const finished = await settledNode(held);
     expect(finished.metadata).toMatchObject({ status: "success", jobId: started.body.jobId });
-    const made = await results("held");
+    const made = await results(held);
     expect(made.map((one) => [one.type, one.metadata?.file?.path])).toEqual([["video", expect.stringMatching(/^产出\/视频\/镜头 H-.+\.mp4$/)]]);
     expect(onDisk(made[0]!.metadata!.file!.path)).toBe(true);
+    expect(made[0]!.metadata).toMatchObject({ role: "take", shotId: "held", selected: true });
     keep("03-across-a-restart.json", { started: started.body, before, afterRestart: after, finished, made });
   }, hostTimeout(120_000));
 
@@ -305,7 +319,7 @@ describe("generating on a project's canvas", () => {
   it("tells a person who reads Chinese why in Chinese: a failure on its node, and a refusal where they press generate and on the card", async () => {
     expect((await api("PUT", "/api/config", { language: "zh" })).status).toBe(200);
 
-    const storm = (await node("storm")).metadata!;
+    const storm = (await creationOf("storm")).metadata!;
     expect(inChinese(storm.errorKey, storm.errorParams)).toBe("gen 没能生成：the model is overloaded");
 
     await applyOps({ type: "add_node", id: "blank", nodeType: "shot", title: "空镜", metadata: { prompt: " " } });

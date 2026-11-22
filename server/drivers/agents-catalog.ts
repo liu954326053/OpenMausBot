@@ -19,6 +19,7 @@ import { MEETING_TOOL_DEFINITIONS, MEETING_TOOL_NAMES } from "./agents-meeting-t
 import { MAUSBOT_TOOL_DEFINITIONS } from "./agents-mausbot-tools.ts";
 import { TEAM_PROJECT_TOOL_DEFINITIONS } from "./agents-team-project-tools.ts";
 import { PROJECT_CANVAS_TOOL_DEFINITIONS } from "./agents-project-canvas-tools.ts";
+import { PROJECT_TIMELINE_TOOL_DEFINITIONS } from "./agents-project-timeline-tools.ts";
 import { PERSON_TOOL_DEFINITIONS } from "./agents-person-tools.ts";
 import { RESEARCH_TOOL_DEFINITIONS, RESEARCH_TOOL_NAMES, X_TOOL_NAMES } from "./agents-research-tools.ts";
 import { SHARE_TOOL_DEFINITIONS } from "./agents-share-tool.ts";
@@ -381,7 +382,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: "propose_team_setup",
-    description: "Chief of Staff only: create specialists and change bots' profiles, models, Chiefs and teams as the person asked, all in ONE plan, with exact ids from list_team_setup. One operation per bot, at most 40 (8 new). A new team goes in newTeams with a specialist in this plan; teams you are not authorized for cannot be included. Models change defaults for new threads; mcpServers sets an existing bot's MCP servers; no other execution permission changes." + APPLIES_AT_ONCE,
+    description: "Chief of Staff only: create specialists and change bots' profiles, models, Chiefs and teams as the person asked, all in ONE plan, with exact ids from list_team_setup. One operation per bot, at most 40 (8 new). A new team goes in newTeams with a specialist in this plan; teams you are not authorized for cannot be included. Models change defaults for new threads; mcpServers sets an existing bot's MCP servers; no other execution permission changes. For a team that makes short dramas, give every member but the Chief its stages, so the team's pipeline is drawn at once." + APPLIES_AT_ONCE,
     inputSchema: {
       type: "object", additionalProperties: false,
       properties: {
@@ -404,6 +405,7 @@ const TOOL_DEFINITIONS = [
                 instanceId: { type: "string" }, model: { type: "string" }, effort: { type: "string" }, variant: { type: "string" },
               }, required: ["instanceId", "model"] },
               mcpServers: { type: "array", maxItems: 20, items: { type: "string" }, description: "update: the bot's full MCP server list by name." },
+              stages: { type: "array", items: { type: "string", enum: ["script", "character", "storyboard", "post", "other"] }, description: "The member's work in a drama's pipeline, several when it does several: script = writes the screenplay; character = designs the characters and their reference art; storyboard = breaks the script into shots; post = edits the finished film; other = work outside the pipeline." },
             } },
           }, required: ["action", "fields"],
         } },
@@ -844,7 +846,7 @@ export function availableTools(profile: CatalogProfile) {
   return placed.map((tool) => ({ ...tool, inputSchema: advertisedSchema(tool.inputSchema, tool.description) }));
 }
 
-const FULL_INPUT_SCHEMAS = new Map<string, unknown>([...TOOL_DEFINITIONS, ...MAUSBOT_TOOL_DEFINITIONS, ...TEAM_PROJECT_TOOL_DEFINITIONS, ...PROJECT_CANVAS_TOOL_DEFINITIONS].map((tool) => [tool.name, tool.inputSchema]));
+const FULL_INPUT_SCHEMAS = new Map<string, unknown>([...TOOL_DEFINITIONS, ...MAUSBOT_TOOL_DEFINITIONS, ...TEAM_PROJECT_TOOL_DEFINITIONS, ...PROJECT_CANVAS_TOOL_DEFINITIONS, ...PROJECT_TIMELINE_TOOL_DEFINITIONS].map((tool) => [tool.name, tool.inputSchema]));
 
 /** A tool's input schema as the catalog writes it, before tools/list leaves anything out: what every call is held to. */
 export function fullInputSchema(name: string): unknown {
@@ -885,5 +887,5 @@ function catalogTools(profile: CatalogProfile) {
       return { ...tool, description: tool.description.replace(CHIEF_PROFILE_TARGET, ""), inputSchema: { ...tool.inputSchema, properties } };
     });
   return [...ROLE_TOOLS, ...(profile.mausbot === true ? MAUSBOT_TOOL_DEFINITIONS : []), ...(profile.teamProjects === true ? TEAM_PROJECT_TOOL_DEFINITIONS : []),
-    ...(profile.projectCanvas === true ? PROJECT_CANVAS_TOOL_DEFINITIONS : [])];
+    ...(profile.projectCanvas === true ? PROJECT_CANVAS_TOOL_DEFINITIONS : []), ...(profile.projectTimeline === true ? PROJECT_TIMELINE_TOOL_DEFINITIONS : [])];
 }
