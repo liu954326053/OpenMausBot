@@ -78,6 +78,21 @@ export function visibleBounds(viewport: CanvasViewport, size: CanvasSize, paddin
   return { left, top, right: left + size.width / viewport.k + padding * 2, bottom: top + size.height / viewport.k + padding * 2 };
 }
 
+const ACTUAL_SIZE_MARGIN = 80;
+/** Under the canvas's toolbar, which floats over its bottom edge. */
+const TOOLBAR_ROOM = 96;
+
+/** The view at 100% that shows `bounds` in the middle of the canvas, or from its top left where it does not fit, clear of
+ * the toolbar. */
+export function actualSizeViewport(bounds: CanvasBounds, size: CanvasSize): CanvasViewport {
+  const at = (room: number, extent: number, start: number) => (extent <= room ? ACTUAL_SIZE_MARGIN + (room - extent) / 2 : ACTUAL_SIZE_MARGIN) - start;
+  return {
+    x: at(size.width - 2 * ACTUAL_SIZE_MARGIN, bounds.right - bounds.left, bounds.left),
+    y: at(size.height - ACTUAL_SIZE_MARGIN - TOOLBAR_ROOM, bounds.bottom - bounds.top, bounds.top),
+    k: 1,
+  };
+}
+
 export function intersects(node: Pick<CanvasNode, "position" | "width" | "height">, bounds: CanvasBounds): boolean {
   return node.position.x + node.width > bounds.left && node.position.x < bounds.right && node.position.y + node.height > bounds.top && node.position.y < bounds.bottom;
 }
