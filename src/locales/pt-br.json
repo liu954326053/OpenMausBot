@@ -7159,6 +7159,7 @@
   "sidebar.nav.publishedApps": "Apps publicados",
   "sidebar.nav.teamFiles": "Arquivos da equipe",
   "teamProjects.new": "Novo projeto",
+  "teamProjects.list": "Projetos",
   "teamProjects.actions": "Ações do projeto {name}",
   "teamProjects.folderMissing": "Pasta do projeto não encontrada",
   "teamProjects.folderMissingNamed": "{name}: pasta do projeto não encontrada",
