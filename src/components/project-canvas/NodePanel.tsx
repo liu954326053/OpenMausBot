@@ -1,5 +1,5 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node-prompt-panel.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
 import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, mentionReferences, referenceCounts, referenceFiles } from "../../../shared/project-canvas-references";
@@ -10,6 +10,7 @@ import { CitationBadge } from "@/components/CitationUI";
 import { Select } from "@/components/Select";
 import { Segmented } from "@/components/SettingsPrimitives";
 import { ThreadRefText } from "@/components/ThreadRefs";
+import { atBottom, followBottomGrowth, useBottomFollowResize } from "@/lib/bottom-follow";
 import { splitTranscriptCitations } from "@/lib/citations";
 import { cn } from "@/lib/cn";
 import { splitTranscriptAttachments } from "@/lib/composer-attachments";
@@ -153,6 +154,25 @@ function useReadsConversation(botId: string) {
   }, [botId, unread, ui.controller]);
 }
 
+/** Keeps a conversation at its latest message as the chat keeps its transcript: it opens there, follows what comes in
+ * while the reader stays at the end, and leaves a reader who has scrolled up where they are. */
+function useFollowsLatest(openKey: string | null) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  useLayoutEffect(() => {
+    following.current = true;
+  }, [openKey]);
+  const follow = useCallback(() => {
+    if (scrollRef.current) followBottomGrowth(scrollRef.current, following.current);
+  }, []);
+  useBottomFollowResize(scrollRef, listRef, openKey, follow);
+  const onScroll = useCallback(() => {
+    if (scrollRef.current) following.current = atBottom(scrollRef.current);
+  }, []);
+  return { scrollRef, listRef, onScroll };
+}
+
 function BotPanel({ node }: { node: CanvasNode }) {
   const ui = useCanvasUi();
   const botId = botIdOfNode(node.id) ?? "";
@@ -163,6 +183,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   const [exchangeOpen, setExchangeOpen] = useState(false);
   const [exchange, setExchange] = useState<CanvasExchangeMessage[] | null>(null);
   const outputId = bot?.output?.messageId;
+  const latest = useFollowsLatest(exchangeOpen ? botId : null);
   useReadsConversation(botId);
   useEffect(() => {
     if (!exchangeOpen) return;
@@ -222,15 +243,17 @@ function BotPanel({ node }: { node: CanvasNode }) {
       </div>
       {exchangeOpen ? (
         <div className="flex flex-col gap-3 border-t border-hairline pt-3">
-          <div className="flex max-h-72 flex-col gap-3 overflow-y-auto">
-            {exchange === null ? <LoaderCircle size={16} aria-label={t("projectCanvas.loading")} className="animate-spin text-ink-tertiary motion-reduce:animate-none" /> : null}
-            {exchange?.length === 0 ? <p className="text-[12px] leading-4 text-ink-tertiary">{t("projectCanvas.bot.noExchange")}</p> : null}
-            {exchange?.map((message) => (
-              <div key={message.id} className="flex flex-col gap-1">
-                <span className="text-[12px] font-medium leading-4 text-ink-secondary">{message.role === "person" ? t("projectCanvas.bot.you") : bot.name}</span>
-                <div dir="auto" className="text-[13px] leading-[18px] text-ink">{message.role === "person" ? <SentMessage text={message.text} /> : <ChatMarkdown text={message.text} />}</div>
-              </div>
-            ))}
+          <div ref={latest.scrollRef} data-panel-conversation="" className="max-h-72 overflow-y-auto" onScroll={latest.onScroll}>
+            <div ref={latest.listRef} className="flex flex-col gap-3">
+              {exchange === null ? <LoaderCircle size={16} aria-label={t("projectCanvas.loading")} className="animate-spin text-ink-tertiary motion-reduce:animate-none" /> : null}
+              {exchange?.length === 0 ? <p className="text-[12px] leading-4 text-ink-tertiary">{t("projectCanvas.bot.noExchange")}</p> : null}
+              {exchange?.map((message) => (
+                <div key={message.id} className="flex flex-col gap-1">
+                  <span className="text-[12px] font-medium leading-4 text-ink-secondary">{message.role === "person" ? t("projectCanvas.bot.you") : bot.name}</span>
+                  <div dir="auto" className="text-[13px] leading-[18px] text-ink">{message.role === "person" ? <SentMessage text={message.text} /> : <ChatMarkdown text={message.text} />}</div>
+                </div>
+              ))}
+            </div>
           </div>
           <button type="button" className="ui-button ui-button-sm self-start" onClick={() => ui.controller.openChat(botId, bot.output?.threadId)}>
             <ExternalLink size={14} aria-hidden="true" />
