@@ -6,9 +6,10 @@ import { activeLocale, t } from "@/lib/i18n";
 import { detectSetupWithin, localSetupImport, setupImportApi } from "@/lib/setup-import";
 import { api, useStore, type Bot, type InstanceInfo, type Message } from "@/state/store";
 import { useTeamPeople, type TeamPeople } from "@/state/team-people";
+import { useTeamProjectSide } from "@/state/team-projects";
 import { freeFallback } from "../../shared/ai-ranking";
 import { greetingName } from "../../shared/greeting-name";
-import { followupText, type HelperFollowupFacts } from "../../shared/helper-followup";
+import { followupText, joinSentences, type HelperFollowupFacts } from "../../shared/helper-followup";
 import { BotAvatar } from "./Avatar";
 import { joinedCorners, SIMPLE_BOT_BUBBLE, SIMPLE_BUBBLE_MAX } from "./chat-bubble";
 import { loadAppCards } from "./bot-settings/useBotApps";
@@ -32,7 +33,7 @@ export function introLines(input: { name: string; chief: boolean; person?: strin
   const lead = input.chief ? t("helperIntro.lead.chiefOfStaff") : input.team ? t("helperIntro.lead.member") : t("helperIntro.lead.helper");
   const hello = input.chief ? t("helperIntro.hello", { name: input.name })
     : input.person ? t("helperIntro.hi.helperNamed", { name: input.name, person: input.person }) : t("helperIntro.hi.helper", { name: input.name });
-  return [hello, [lead, team].filter(Boolean).join(" "), t("helperIntro.lookingAround")];
+  return [hello, joinSentences([lead, team].filter(Boolean)), t("helperIntro.lookingAround")];
 }
 
 /** The follow-up in the viewer's language. */
@@ -126,6 +127,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
   const look = useLookAround(!answered);
   const ai = thinksWith(bot, state.instances);
   const connects = whoConnectsAi(useTeamPeople());
+  const projects = useTeamProjectSide();
 
   // A first run's intro plays once: it asks for the follow-up, which then stays in the conversation.
   const [first, setFirst] = useState(false);
@@ -149,7 +151,7 @@ export function SimpleHelperIntro({ botId, threadId, message, answered, followup
 
   // An intro from before follow-ups were written says what it sees, without saving it.
   const local: HelperFollowupFacts | null = look.settled && (unsaved || !(first || due))
-    ? { ai, apps: look.apps ?? [], bots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot).length, routines: 0 }
+    ? { ai, apps: look.apps ?? [], bots: state.bots.filter((candidate) => !candidate.hidden && !candidate.defaultBot && !projects.of(candidate)).length, routines: 0 }
     : null;
   const said = followup?.helperFollowup ?? posted ?? local;
   const facts = said && connects !== undefined ? { connects, ...said } : said;

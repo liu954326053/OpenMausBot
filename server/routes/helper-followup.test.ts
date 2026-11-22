@@ -108,6 +108,16 @@ describe("MagicBot's follow-up", () => {
     expect((await solo.post({ ai: "none" })).body.message?.text).toBe(FOLLOWUP_ENGLISH["helperIntro.followup.noAi"]);
   });
 
+  it("counts the team's bots, not their copies inside projects", async () => {
+    const { store, post } = await fixture();
+    const writer = store.createBot({ name: "Writer", section: "Story" });
+    store.createBot({ name: "Editor", section: "Story" });
+    store.createBot({ name: "Writer", section: "Film" }, { settle: (bot) => { bot.teamProject = { id: "film", role: "writer", source: writer.id }; } });
+    const first = await post({ ai: "own" });
+    expect(first.body.message?.helperFollowup).toEqual({ ai: "own", apps: [], bots: 2, routines: 1 });
+    expect(first.body.message?.text).toContain("You have 2 other bots and 1 routine, and no apps are connected so far.");
+  });
+
   it("refuses another bot, a conversation without the intro, and a body it cannot read", async () => {
     const { store, maus, post } = await fixture();
     const scout = store.createBot({ name: "Scout" });
