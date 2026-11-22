@@ -132,6 +132,28 @@ describe("sidebar top row", () => {
     expect(html.match(/Switch server:/g)).toHaveLength(1);
   });
 
+  it("starts with the Inbox in Advanced mode, before the space and the server switcher, and the list below holds no second one", () => {
+    fixture.windowChrome = "mac-inset";
+    desktop();
+    const html = render();
+    const row = topRow(html);
+    const inbox = row.indexOf("data-sidebar-inbox-top");
+    expect(inbox).toBeGreaterThan(row.indexOf("data-sidebar-top-slot"));
+    expect(inbox).toBeLessThan(row.indexOf("data-sidebar-top-spacer"));
+    expect(row, "a button in the window's drag region").toMatch(/data-sidebar-inbox-top=""[^>]*aria-label="Inbox"[^>]*style="-webkit-app-region:no-drag"/);
+    expect(html.match(/data-sidebar-inbox=/g)).toHaveLength(1);
+  });
+
+  it.each([[true, "icons"], [false, "comfortable"], [false, "icons"]] as const)("keeps the Inbox in the list when Advanced is %s at %s density", (advanced, density) => {
+    fixture.advanced = advanced;
+    fixture.density = density;
+    fixture.windowChrome = "mac-inset";
+    desktop();
+    const html = render();
+    expect(html).not.toContain("data-sidebar-inbox-top");
+    expect(html.match(/data-sidebar-inbox=/g)).toHaveLength(1);
+  });
+
   it.each(["mac-inset", "win-caption"] as const)("in Simple mode on %s keeps only the top corner: plain search and + at its right end, no drag region, no server pill, nothing on the edge", (windowChrome) => {
     fixture.advanced = false;
     fixture.windowChrome = windowChrome;

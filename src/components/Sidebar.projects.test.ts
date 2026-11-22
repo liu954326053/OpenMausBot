@@ -140,12 +140,14 @@ afterEach(() => {
 });
 
 describe("the sidebar from top to bottom", () => {
-  it("lists the main bot, the inbox, then the projects, and no department, bot list or group chat list", () => {
+  it("lists the inbox in the top row, the main bot, then the projects, and no department, bot list or group chat list", () => {
     fixture.advanced = true;
     withProject();
     expect(listed()).toEqual(["magic"]);
-    expect(at(BotListItem)).toBeLessThan(at(SidebarInboxRow));
-    expect(at(SidebarInboxRow)).toBeLessThan(at(SidebarTeamProjects));
+    const inboxes = render().filter((node) => node.type === SidebarInboxRow);
+    expect(inboxes.map((node) => node.props.top)).toEqual([true]);
+    expect(at(SidebarInboxRow)).toBeLessThan(at(BotListItem));
+    expect(at(BotListItem)).toBeLessThan(at(SidebarTeamProjects));
     expect(render().filter((node) => node.props["data-sidebar-section-id"])).toEqual([]);
     expect(render().some((node) => node.type === SidebarSectionHeader)).toBe(false);
   });

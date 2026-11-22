@@ -104,6 +104,20 @@ describe("the Inbox row", () => {
     expect(document.querySelector("[data-inbox-running]")).toBeNull();
   });
 
+  it("is one button in the sidebar's top row, with its name, the same count and the dot, and no plate round its icon", async () => {
+    setInboxView(placeView([approval]));
+    await mount(row({ top: true, running: true }));
+    const button = inboxButton()!;
+    expect([button.tagName, button.dataset.sidebarInboxTop, button.textContent]).toEqual(["BUTTON", "", "Inbox1"]);
+    expect(button.getAttribute("aria-label")).toBe("Inbox, 1 waiting");
+    expect(button.querySelector("[data-inbox-running]")).not.toBeNull();
+    expect(button.querySelector("svg")!.parentElement!.className).not.toMatch(/\bbg-/);
+    await click("[data-sidebar-inbox]");
+    expect([currentInboxPanel().open, inboxButton()!.getAttribute("aria-pressed")]).toEqual([true, "true"]);
+    await click("[data-sidebar-inbox]");
+    expect(currentInboxPanel().open).toBe(false);
+  });
+
   it("is a tile with the same count among the avatars", async () => {
     setInboxView(placeView([approval]));
     await mount(row({ icons: true }));

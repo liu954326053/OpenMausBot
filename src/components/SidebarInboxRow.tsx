@@ -1,6 +1,7 @@
 // The one Inbox row at the top of the sidebar, on every plan and with no account: shaped like a bot's row, with what waits
 // on the person as its count and a dot while any bot is at work. It stays when nothing waits, with no count.
 import { Inbox } from "lucide-react";
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { closeInbox, openInbox, useInboxPanel, useInboxSupport, useInboxView } from "@/state/inbox";
@@ -9,13 +10,17 @@ import { useTeamPeople } from "@/state/team-people";
 import { inboxFixes, waitingCount } from "./inbox/inbox-view";
 import { inboxAttentionEntries, unreadConversations } from "./inbox/InboxActive";
 
-export function SidebarInboxRow({ icons, large, flush = false, running, onOpened }: {
+export function SidebarInboxRow({ icons, large, flush = false, top = false, running, style, onOpened }: {
   icons: boolean;
   /** Simple's row, sized as its bots' rows are. */
   large: boolean;
   /** Inside a list that has its own side padding. */
   flush?: boolean;
+  /** A button at the start of the sidebar's top row, not a row of the list. */
+  top?: boolean;
   running: boolean;
+  /** The top row is the window's drag region: its buttons opt out. */
+  style?: CSSProperties;
   onOpened?: () => void;
 }) {
   const support = useInboxSupport();
@@ -32,6 +37,19 @@ export function SidebarInboxRow({ icons, large, flush = false, running, onOpened
     else { openInbox(); onOpened?.(); }
   };
   const dot = running && <span data-inbox-running="" aria-hidden="true" className={cn("absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-panel bg-success", icons ? "size-3" : "size-2.5")} />;
+  if (top) {
+    return (
+      <button type="button" data-sidebar-inbox={count} data-sidebar-inbox-top="" aria-label={label} title={label} aria-pressed={open} onClick={toggle} style={style}
+        className="-ms-1.5 flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-1.5 text-[13px] font-medium leading-[18px] text-ink transition-colors hover:bg-ink/[0.06] aria-pressed:bg-ink/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus motion-reduce:transition-none">
+        <span className="relative flex shrink-0 text-ink-secondary">
+          <Inbox size={16} aria-hidden="true" />
+          {running && <span data-inbox-running="" aria-hidden="true" className="absolute -bottom-1 -end-1 size-2.5 rounded-full border-2 border-panel bg-success" />}
+        </span>
+        <span className="@max-[224px]/sidebar-top:hidden">{t("inbox.panel.title")}</span>
+        {count > 0 && <span aria-hidden="true" data-inbox-count className="shrink-0 rounded-full bg-warning px-1.5 text-[11px] font-semibold leading-4 tabular-nums text-panel">{shown}</span>}
+      </button>
+    );
+  }
   if (icons) {
     return (
       <button type="button" data-sidebar-inbox={count} aria-label={label} title={label} aria-pressed={open} onClick={toggle}
