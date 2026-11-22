@@ -139,6 +139,15 @@ describe("the project view", () => {
     expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead" }]]);
   });
 
+  it("switches to the project's group chat from the top bar when the project has one", async () => {
+    setTeamProjects({ root: "/dramas", projects: [{ ...bride, roomId: "bride-room" }] });
+    fixture.state = { ...fixture.state, groups: [{ id: "bride-room", threadId: "bride-room-thread", name: "The bride team chat", section: "The bride" }] };
+    await draw({ projectId: "p-bride" });
+    const chat = document.body.querySelector<HTMLElement>("[data-canvas-top-bar] [data-project-mode-option='chat']")!;
+    await act(async () => chat.click());
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "bride-room" }]]);
+  });
+
   it("waits for the list of projects", async () => {
     setTeamProjects(null);
     await draw({ projectId: "p-bride" });

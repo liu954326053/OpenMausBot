@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasSnapshot } from "../../../shared/project-canvas";
 import type { ServerFrame } from "../../../shared/wire";
 import { ApiError } from "../../state/api";
-import type { AppState, Bot } from "../../state/store";
+import type { AppState, Bot, Group } from "../../state/store";
+import { setTeamProjects } from "../../state/team-projects";
 import { t } from "../i18n";
 import { publishLiveFrame, publishMissedFrames } from "../live-events";
 import { CanvasBackendError, canvasErrorText } from "./backend";
@@ -32,14 +33,14 @@ afterEach(() => {
 
 const bot = (fields: Partial<Bot> & Pick<Bot, "id">): Bot => ({ name: fields.id, threadId: `${fields.id}-open`, color: "blue", tasks: [], ...fields }) as Bot;
 
-function storeWith(bots: Bot[]) {
+function storeWith(bots: Bot[], groups: Group[] = []) {
   const dispatch = vi.fn();
-  const state = { bots, groups: [], activeView: "chat", selectedId: null } as unknown as AppState;
+  const state = { bots, groups, activeView: "chat", selectedId: null } as unknown as AppState;
   return { dispatch, store: { dispatch, state: () => state } };
 }
 
-const backendWith = (bots: Bot[] = []) => {
-  const { dispatch, store } = storeWith(bots);
+const backendWith = (bots: Bot[] = [], groups: Group[] = []) => {
+  const { dispatch, store } = storeWith(bots, groups);
   return { dispatch, backend: createServerCanvasBackend(store) };
 };
 
@@ -270,6 +271,34 @@ describe("the project canvas on the app's server", () => {
     ]);
     expect(sent[0]!.path).toBe("/api/threads/t-main/messages?limit=40");
     expect(await backend.readExchange("p1", "nobody")).toEqual([]);
+  });
+
+  it("reads a bot's part of the project's group chat when it is newer, opens a reply there in the group chat, and leaves it unread", async () => {
+    setTeamProjects({ root: "/dramas", projects: [{
+      id: "p1", name: "p1", folder: "/dramas/p1", section: "p1", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {}, roomId: "room",
+    }] });
+    const room = { id: "room", threadId: "room-thread", name: "p1 team chat", memberIds: ["lead", "writer"], unread: true, tasks: [] } as unknown as Group;
+    const { backend, dispatch } = backendWith([bot({ id: "writer", name: "Ink", threadId: "t-open", mainThreadId: "t-main" })], [room]);
+    answers.push(
+      { body: { messages: [{ id: "d1", role: "user", kind: "text", text: "A direct ask", at: 1 }, { id: "d2", role: "bot", kind: "text", text: "A direct answer", at: 2 }] } },
+      { body: { messages: [
+        { id: "r1", role: "user", kind: "text", text: "@Ink write the opening", at: 3 },
+        { id: "r2", role: "bot", kind: "text", text: "The lead's aside", at: 4, from: { botId: "lead" } },
+        { id: "r3", role: "user", kind: "text", text: "@Jade design her", at: 5 },
+        { id: "r4", role: "bot", kind: "text", text: "The bride runs.", at: 6, from: { botId: "writer" } },
+      ] } },
+    );
+    expect(await backend.readExchange("p1", "writer")).toEqual([
+      { id: "r1", role: "person", text: "@Ink write the opening", at: 3 },
+      { id: "r4", role: "bot", text: "The bride runs.", at: 6 },
+    ]);
+    expect(sent.map((one) => one.path)).toEqual(["/api/threads/t-main/messages?limit=40", "/api/threads/room-thread/messages?limit=120"]);
+    backend.openChat("p1", "writer", "room-thread");
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([{ type: "select", id: "room" }]);
+    backend.readConversation("p1", "writer", "room-thread");
+    await new Promise((done) => setTimeout(done, 0));
+    expect(sent).toHaveLength(2);
+    setTeamProjects(null);
   });
 
   it("opens the bot's conversation, or the one named, with the app's navigation", () => {

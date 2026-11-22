@@ -323,6 +323,32 @@ describe("making the project", () => {
     vi.restoreAllMocks();
   });
 
+  it("waits for the project's group chat to reach the app, though its lead is there first, and opens it", async () => {
+    created = () => [201, { project: { ...made, roomId: "room-1" } }];
+    fixture.state = { bots: [LEAD], groups: [] };
+    await fill();
+    await submit();
+    expect([fixture.dispatch.mock.calls, onClose.mock.calls.length, createButton().textContent]).toEqual([[], 0, "Creating…"]);
+    fixture.state = { bots: [LEAD], groups: [{ id: "room-1", threadId: "room-1-thread", name: "The bride team chat" }] };
+    await act(async () => root.render(createElement(NewTeamProjectDialog, { onClose })));
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "room-1" }]]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the lead's conversation when the project's group chat does not reach the app in time", async () => {
+    created = () => [201, { project: { ...made, roomId: "room-1" } }];
+    fixture.state = { bots: [LEAD], groups: [] };
+    await fill();
+    await submit();
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 10_001);
+    fixture.state = { bots: [LEAD], groups: [] };
+    await act(async () => root.render(createElement(NewTeamProjectDialog, { onClose })));
+    await settle();
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "lead-1" }]]);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+
   it("says Creating… and cannot be closed or sent twice while the project is made", async () => {
     let finish: (answer: [number, unknown]) => void = () => {};
     created = () => new Promise((resolve) => { finish = resolve; });

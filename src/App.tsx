@@ -18,8 +18,7 @@ import { cloudAccountBridge, openCloudOnWeb } from "@/lib/cloud-add-web";
 import { parseComputerHelp } from "@/lib/computer-control";
 import { viewerClosedRelease } from "@/components/computer-takeover";
 import { Sidebar } from "@/components/Sidebar";
-import { ProjectChat } from "@/components/project-view/ProjectChat";
-import { GroupView } from "@/components/GroupView";
+import { ProjectChat, ProjectGroup } from "@/components/project-view/ProjectChat";
 import { ForkPanel } from "@/components/ForkPanel";
 import { SIDEBAR_AND_PANEL_FIT, SIDEBAR_INLINE, TWO_SIDE_PANELS_FIT, useMediaQuery } from "@/lib/use-media-query";
 import { preloadConnectedApps } from "@/lib/connected-apps";
@@ -229,7 +228,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       } else if (numbered) {
         e.preventDefault();
         if ("bot" in numbered) openBot(dispatch, numbered.bot, showThreads);
-        else openProject(dispatch, numbered.project, shownBots, showThreads);
+        else openProject(dispatch, numbered.project, { bots: shownBots, groups: state.groups }, showThreads);
       } else if (step !== null) {
         const next = nextShortcutBot(bots, state.selectedId, step);
         if (next) {
@@ -424,7 +423,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       ) : chiefStep ? (
         <EmptyChatShell />
       ) : group ? (
-        <GroupView key={group.id} group={group} />
+        <ProjectGroup key={group.id} group={group} />
       ) : bot ? (
         <ProjectChat bot={bot} />
       ) : noEngines ? (

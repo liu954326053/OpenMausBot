@@ -18,7 +18,7 @@ import { ChiefPicker } from "../ChiefPicker";
 import { SETTINGS_INPUT } from "../SettingsPrimitives";
 import { dataSettingsPlace } from "./where-in-settings";
 
-/** How long a new project's lead has to reach the app before the project opens on its canvas instead. */
+/** How long a new project's group chat, or its lead, has to reach the app before the project opens on what it has then. */
 const LEAD_ARRIVES_MS = 10_000;
 
 interface Refusal {
@@ -84,19 +84,21 @@ export function NewTeamProjectDialog({ team: preset, onClose }: { team?: string;
   const [choosingChief, setChoosingChief] = useState<{ team: string; anchor: HTMLElement } | null>(null);
   const [made, setMade] = useState<{ project: TeamProjectWire; until: number } | null>(null);
   const bots = useStoreSelector((state) => state.bots);
+  const groups = useStoreSelector((state) => state.groups);
   const showThreads = useShowThreads();
   useEffect(() => {
     if (!made) return;
-    if (openProjectChat(dispatch, made.project, bots, showThreads)) {
+    const roomListed = made.project.roomId === undefined || groups.some((group) => group.id === made.project.roomId);
+    if (roomListed && openProjectChat(dispatch, made.project, { bots, groups }, showThreads)) {
       onClose();
       return;
     }
     const timer = window.setTimeout(() => {
-      dispatch({ type: "showProject", projectId: made.project.id });
+      if (!openProjectChat(dispatch, made.project, { bots, groups }, showThreads)) dispatch({ type: "showProject", projectId: made.project.id });
       onClose();
     }, Math.max(0, made.until - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [made, bots, dispatch, showThreads, onClose]);
+  }, [made, bots, groups, dispatch, showThreads, onClose]);
   const teamRows = useRef<HTMLDivElement>(null);
   const arriving = useRef<string | null>(null);
   const live = useRef(true);

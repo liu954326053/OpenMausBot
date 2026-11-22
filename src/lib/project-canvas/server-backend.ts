@@ -11,8 +11,9 @@ import type {
 import type { ProjectDraftOpenResult } from "../../../shared/project-draft";
 import type { GenerationFailure, GenerationModelsWire, GenerationSettingsWire, Refused } from "../../../shared/project-generation";
 import { api, ApiError } from "../../state/api";
-import type { Bot, Message } from "../../state/store";
+import type { Bot, Group, Message } from "../../state/store";
 import type { StoreRef } from "../../state/store-ref-context";
+import { currentTeamProjectSide } from "../../state/team-projects";
 import { openBot, openThread } from "../../state/thread-navigation";
 import { botShowsUnread } from "../bot-unread";
 import { readAdvancedMode } from "../interface-mode";
@@ -23,6 +24,8 @@ import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 /** How many of the newest messages of a bot's conversation are read for its latest exchange. */
 const EXCHANGE_READ = 40;
+/** A group chat holds every member's lines: a bot's part is read from this many of its newest. */
+const ROOM_EXCHANGE_READ = 120;
 const CANVAS_REFUSALS = new Set(["canvas_conflict", "canvas_stale", "canvas_read_only"]);
 
 const projectPath = (projectId: string) => `/api/team-projects/${encodeURIComponent(projectId)}`;
@@ -73,6 +76,22 @@ function exchangeOf(messages: readonly Message[]): CanvasExchangeMessage[] {
     : []));
   const lastAsk = said.findLastIndex((message) => message.role === "person");
   return lastAsk < 0 ? said.slice(-1) : said.slice(lastAsk);
+}
+
+/** A bot's part of a group chat: what it said, and what the person said to it by name. */
+function roomExchange(messages: readonly Message[], bot: Pick<Bot, "id" | "name">): Message[] {
+  return messages.filter((message) => message.from?.botId === bot.id || (message.role === "user" && Boolean(message.text?.includes(`@${bot.name}`))));
+}
+
+const roomOfThread = (groups: readonly Group[], threadId: string) =>
+  groups.find((group) => group.threadId === threadId || group.tasks?.some((task) => task.threadId === threadId));
+
+/** The project's group chat while the bot is in it. */
+function roomWith(projectId: string, botId: string, groups: readonly Group[]): Group | undefined {
+  const side = currentTeamProjectSide();
+  const roomId = [...side.projects, ...side.archived].find((project) => project.id === projectId)?.roomId;
+  const room = roomId ? groups.find((group) => group.id === roomId) : undefined;
+  return room?.memberIds.includes(botId) ? room : undefined;
 }
 
 export interface ServerCanvasBackend extends CanvasBackend {
@@ -142,16 +161,25 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
       for (const threadId of busy) store.dispatch({ type: "interrupt", botId, threadId });
     },
 
-    async readExchange(_projectId, botId) {
+    async readExchange(projectId, botId) {
       const bot = botOf(botId);
       const threadId = bot?.mainThreadId ?? bot?.threadId;
-      if (!threadId) return [];
-      const { messages } = await api<{ messages: Message[] }>(`/api/threads/${encodeURIComponent(threadId)}/messages?limit=${EXCHANGE_READ}`);
-      return exchangeOf(messages);
+      const room = bot ? roomWith(projectId, botId, store.state().groups) : undefined;
+      const read = (thread: string, limit: number) => api<{ messages: Message[] }>(`/api/threads/${encodeURIComponent(thread)}/messages?limit=${limit}`);
+      const [own, inRoom] = await Promise.all([
+        threadId ? read(threadId, EXCHANGE_READ).then(({ messages }) => exchangeOf(messages)) : [],
+        room && bot ? read(room.threadId, ROOM_EXCHANGE_READ).then(({ messages }) => exchangeOf(roomExchange(messages, bot))) : [],
+      ]);
+      return (inRoom.at(-1)?.at ?? -1) > (own.at(-1)?.at ?? -1) ? inRoom : own;
     },
 
     openChat(_projectId, botId, threadId) {
       const state = store.state();
+      const room = threadId ? roomOfThread(state.groups, threadId) : undefined;
+      if (room) {
+        store.dispatch({ type: "select", id: room.id });
+        return;
+      }
       const bot = state.bots.find((candidate) => candidate.id === botId);
       if (!bot) return;
       if (threadId) openThread(store.dispatch, { botId, threadId }, state, threadsShown());
@@ -161,7 +189,7 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
     readConversation(_projectId, botId, threadId) {
       const bot = botOf(botId);
       const thread = threadId ?? bot?.mainThreadId ?? bot?.threadId;
-      if (!bot || !thread) return;
+      if (!bot || !thread || roomOfThread(store.state().groups, thread)) return;
       const task = bot.tasks?.find((one) => one.threadId === thread);
       if (!(task ? task.unread : bot.unread)) return;
       void api(`/api/bots/${encodeURIComponent(botId)}/read`, { method: "POST", body: JSON.stringify({ threadId: thread }) }).catch(() => {});

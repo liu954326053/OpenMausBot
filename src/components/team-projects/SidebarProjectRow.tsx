@@ -1,4 +1,4 @@
-import { FolderClosed, FolderOpen, MoreHorizontal } from "lucide-react";
+import { FolderClosed, FolderOpen, MessagesSquare, MoreHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
@@ -6,15 +6,16 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { stateForBot } from "@/lib/mascot";
 import { sidebarAttentionLabel, sidebarSectionAttention, type SidebarSectionAttention } from "@/lib/sidebar-attention";
-import type { Bot } from "@/state/store";
+import type { Bot, Group } from "@/state/store";
 import { BotAvatar } from "../Avatar";
 import { rowSelectedSurface } from "../SidebarRowMarkers";
 import { SectionAttention } from "../SidebarSectionHeader";
 import { SIMPLE_RAIL_BUTTON, SIMPLE_ROW_FOCUS } from "../SidebarSimpleTop";
 
 const HOVER_CONTROL = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-70 touch:opacity-70";
+const UNDER_PROJECT = cn("relative flex w-full min-w-0 items-center gap-2 text-start", SIMPLE_ROW_FOCUS);
 
-/** One project in the sidebar. `expanded`: its lead shows under it. */
+/** One project in the sidebar. `expanded`: its group chat and its bots show under it. */
 export function SidebarProjectRow({ project, attention, simple, selected, expanded, menuOpen, onOpen, onMenu }: {
   project: TeamProjectWire;
   /** Over all the project's bots and group chats. */
@@ -65,18 +66,29 @@ export function SidebarProjectRow({ project, attention, simple, selected, expand
   );
 }
 
-/** A project's lead under its open row, set in to the project's name: a click opens the lead's conversation. */
-export function SidebarProjectLead({ bot, simple, selected, onOpen }: { bot: Bot; simple: boolean; selected: boolean; onOpen: () => void }) {
+/** A project's bot under its open row, set in to the project's name: a click opens the bot's conversation. */
+export function SidebarProjectBot({ bot, simple, selected, onOpen }: { bot: Bot; simple: boolean; selected: boolean; onOpen: () => void }) {
   const attention = sidebarSectionAttention([bot], []);
   return (
-    <button type="button" data-sidebar-project-lead={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={bot.name}
-      className={cn(
-        "relative flex w-full min-w-0 items-center gap-2 text-start", SIMPLE_ROW_FOCUS,
-        simple ? "h-10 rounded-[8px] ps-[50px] pe-2" : "h-8 rounded-md ps-[46px] pe-2",
-        selected ? rowSelectedSurface : "hover:bg-raised/50",
-      )}>
+    <button type="button" data-sidebar-project-bot={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={bot.name}
+      className={cn(UNDER_PROJECT, simple ? "h-10 rounded-[8px] ps-[50px] pe-2" : "h-8 rounded-md ps-[46px] pe-2", selected ? rowSelectedSurface : "hover:bg-raised/50")}>
       <BotAvatar bot={bot} state={stateForBot(bot)} size={simple ? 22 : 20} />
       <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-ink">{bot.name}</span>
+      <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
+    </button>
+  );
+}
+
+/** A project's group chat, first under its open row: a click opens the group chat. */
+export function SidebarProjectRoom({ room, simple, selected, onOpen }: { room: Group; simple: boolean; selected: boolean; onOpen: () => void }) {
+  const attention = sidebarSectionAttention([], [room]);
+  return (
+    <button type="button" data-sidebar-project-room={room.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={room.name}
+      className={cn(UNDER_PROJECT, simple ? "h-10 rounded-[8px] ps-[50px] pe-2" : "h-8 rounded-md ps-[46px] pe-2", selected ? rowSelectedSurface : "hover:bg-raised/50")}>
+      <span aria-hidden="true" className={cn("grid shrink-0 place-items-center text-ink-secondary", simple ? "size-[22px]" : "size-5")}>
+        <MessagesSquare size={14} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-ink">{room.name}</span>
       <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
     </button>
   );
