@@ -181,17 +181,16 @@ describe("judging", () => {
     expect(studio().pending).toEqual([]);
   });
 
-  it("keeps a member waiting when its words changed after the judge read them", async () => {
+  it("takes stages as judged from a member's words as they are when they are recorded, however often the teams to judge were read before", async () => {
     const { app, id, judge, studio } = await drama();
     expect(app.flows.judgeTargets()[0]!.pending).toContain(id("砚青"));
     app.store.patchBot(id("砚青"), { description: "现在负责后期。" });
 
     judge();
-
-    expect(studio().pending).toEqual([id("砚青")]);
-    app.flows.judgeTargets();
-    app.flows.setJudged("漫剧组", { [id("砚青")]: ["post"] });
     expect(studio().pending).toEqual([]);
+
+    app.store.patchBot(id("砚青"), { description: "又回去写剧本了。" });
+    expect(studio().pending).toEqual([id("砚青")]);
   });
 });
 

@@ -98,15 +98,15 @@ export function pipelinePlaceOf(botId: string): PipelinePlace | null {
   return { stages: line.superior ? ["other"] : ["lead"], upstream: line.superior ? [line.superior] : [], downstream: line.subordinates, team: line.team };
 }
 
-/** The teams with members waiting for a judge. What a member's words were when this was read is remembered: stages
- * recorded for it afterwards count as judged from those words, so a member edited meanwhile is listed again. */
+/** The teams with members waiting for a judge. */
 export function judgeTargets(): JudgeTarget[] {
   return installed.judgeTargets?.() ?? [];
 }
 
 /** Records the stages a judge gave members of the team: the pipeline's stages once each and in its order, `other` for
- * a member given none of them. A member the person set by hand, the Chief, or one that left, is left as it is. Tells
- * `onTeamFlowsChange` listeners when anything changed. */
+ * a member given none of them. A member the person set by hand, the Chief, or one that left, is left as it is. The
+ * stages count as judged from each member's name, title, description and soul as they are now, so a judge records
+ * only for a member whose words are still the ones it read. Tells `onTeamFlowsChange` listeners when anything changed. */
 export function setJudgedStages(section: string, stages: Readonly<Record<string, readonly FlowStage[]>>): void {
   installed.setJudged?.(section, stages);
 }

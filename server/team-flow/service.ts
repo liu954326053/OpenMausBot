@@ -82,8 +82,6 @@ export class TeamFlows implements InstalledFlows {
   private readonly keys = new Map<string, string | null>();
   private readonly cache = new Map<string, TeamPipeline | null>();
   private readonly prints = new Map<string, { words: readonly string[]; print: string }>();
-  /** Member → the fingerprint of the words a judge was last given of it. */
-  private readonly read = new Map<string, string>();
   private shape = "";
 
   constructor(deps: TeamFlowsDeps) {
@@ -162,7 +160,6 @@ export class TeamFlows implements InstalledFlows {
       const pipeline = this.pipelineOf(section);
       const team = this.team(section);
       if (!team || !pipeline?.pending.length) return [];
-      for (const member of team.members) if (pipeline.pending.includes(member.id)) this.read.set(member.id, this.fingerprint(member));
       return [{
         section, chiefId: team.chief.id, pending: [...pipeline.pending],
         members: team.members.map((member) => ({ id: member.id, name: member.name, title: member.title ?? "", description: member.description ?? "", soul: member.soul ?? "" })),
@@ -180,8 +177,7 @@ export class TeamFlows implements InstalledFlows {
     for (const member of team.members) {
       if (member.id === team.chief.id || stored.manual.includes(member.id) || !Object.hasOwn(stages, member.id)) continue;
       given[member.id] = memberStages(stages[member.id]!);
-      judged[member.id] = this.read.get(member.id) ?? this.fingerprint(member);
-      this.read.delete(member.id);
+      judged[member.id] = this.fingerprint(member);
     }
     const refused = this.put(team, { ...stored, stages: given, judged });
     if (refused) this.deps.log(`team flows: the stages judged for ${team.section} were not kept: ${refused.error.error}`);
