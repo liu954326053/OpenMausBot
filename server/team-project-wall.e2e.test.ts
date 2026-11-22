@@ -232,7 +232,7 @@ describe("two team projects made from one team, on the real server", () => {
     const turn = firstTurn(seen, writerA);
     const heard = told(turn);
     expect(heard).toContain("You work in your team's pipeline");
-    expect(heard).toContain(`- Director — Showrunner [Project lead] [upstream of you] [id: ${directorA.id}]`);
+    expect(heard).toContain(`- Director — Showrunner [Project lead] [leads the pipeline] [upstream of you] [id: ${directorA.id}]`);
     expect(heard, "the main bot is not on a project member's lines").not.toContain(main.id);
     for (const own of MIDNIGHT_ONLY) expect(heard, own).toContain(own);
     for (const beyond of [directorB.id, writerB.id, oswald.id, PAPER, "Oswald", "Studio", ELSEWHERE.place, ...PAPER_ONLY]) expect(heard, beyond).not.toContain(beyond);

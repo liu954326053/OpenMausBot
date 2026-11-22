@@ -9489,7 +9489,7 @@ describe("harness HTTP API", () => {
         chiefOfStaff: true,
         modelSelection: { instanceId: "claude", model: "claude-sonnet-5" },
       })).status).toBe(200);
-      const roster = "The bots downstream of you, the ones you hand work to, in the Roster end team's pipeline:\n- No bot is downstream of you in the pipeline yet.";
+      const roster = "The Roster end team's whole pipeline, in order, so you know every member: you hand work only to the bots marked downstream of you, and the others get their work along the pipeline. When the person asks who is on the team, name them all.\n- No other bot is in the pipeline yet.";
 
       const sections = (await api("GET", `/api/bots/${bot.id}/system-prompt`)).body.sections as Array<{ id: string; text: string }>;
       const team = sections.find((section) => section.id === "coordination")?.text ?? "";

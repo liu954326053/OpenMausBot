@@ -8,6 +8,7 @@ import {
   flowRelation,
   peerAccessHelp,
   peerRosterPrompt,
+  pipelineRosterWire,
   reachablePeers,
   reachesOnlyHere,
   resolveTeammate,
@@ -186,7 +187,7 @@ describe("handing work in a pipeline", () => {
 });
 
 describe("what a bot in a pipeline is told", () => {
-  it("tells a member the bots upstream and downstream of it with what each does, that it only asks them questions, and to attach its files when it finishes", () => {
+  it("tells a member the bots upstream and downstream of it with their stages and what each does, that it only asks them questions, and to attach its files when it finishes", () => {
     const { rules, roster } = peerRosterPrompt(reachablePeers(everyone, board), board);
     expect(rules).toContain("work comes to you from the bots upstream of you, and yours goes on to the bots downstream of you");
     expect(rules).toContain("Do your stage's work yourself: you cannot hand it, or any part of it, to another bot.");
@@ -196,14 +197,33 @@ describe("what a bot in a pipeline is told", () => {
     expect(rules).not.toMatch(/superior|subordinate/);
     expect(roster.split("\n")).toEqual([
       "[TEAM ROSTER]",
-      `- Story — Screenwriter [upstream of you]: Writes every episode. [id: ${story.id}]`,
-      `- Video — Video editor [downstream of you]: Cuts the shots into a film. [id: ${video.id}]`,
+      `- Story — Screenwriter [stage: script] [upstream of you]: Writes every episode. [id: ${story.id}]`,
+      `- Video — Video editor [stage: post-production] [downstream of you]: Cuts the shots into a film. [id: ${video.id}]`,
       "[/TEAM ROSTER]",
     ]);
   });
 
-  it("tells a member no line reaches that nobody is next to it", () => {
+  it("tells a member its whole pipeline in order, the bots it cannot reach without their ids", () => {
+    const { rules, roster } = peerRosterPrompt(reachablePeers(everyone, board), board, everyone);
+    expect(rules).toContain("The roster below lists your team's whole pipeline in order, each bot with its stage and what it does, so you know who is on the team: only the bots marked upstream or downstream of you can be reached");
+    expect(roster.split("\n")).toEqual([
+      "[TEAM ROSTER]",
+      "- Sol — Showrunner [Chief of Staff] [leads the pipeline] [not reachable from you]",
+      `- Story — Screenwriter [stage: script] [upstream of you]: Writes every episode. [id: ${story.id}]`,
+      `- Video — Video editor [stage: post-production] [downstream of you]: Cuts the shots into a film. [id: ${video.id}]`,
+      "- Ops — Publisher [outside the pipeline's stages] [not reachable from you: its work comes along the pipeline from Sol]: Posts the film.",
+      "- Drift — Intern [outside the pipeline's stages] [not reachable from you]",
+      "[/TEAM ROSTER]",
+    ]);
+    expect(roster).not.toContain(chief.id);
+    expect(roster).not.toContain(scout.id);
+  });
+
+  it("tells a member no line reaches that nobody is next to it, and still who is on its team", () => {
     expect(peerRosterPrompt(reachablePeers(everyone, drift), drift).roster).toBe("[TEAM ROSTER]\n- Nobody: no bot is upstream or downstream of you in the pipeline yet.\n[/TEAM ROSTER]");
+    const { roster } = peerRosterPrompt(reachablePeers(everyone, drift), drift, everyone);
+    expect(roster.split("\n").slice(1, -1).map((line) => line.split(" — ")[0])).toEqual(["- Sol", "- Story", "- Board", "- Video", "- Ops"]);
+    expect(roster).not.toMatch(/\[id: /);
   });
 
   it("keeps one set of rules for every member of a pipeline, so moving a line does not change them", () => {
@@ -211,7 +231,7 @@ describe("what a bot in a pipeline is told", () => {
     expect(peerRosterPrompt([], video).rules).not.toBe(peerRosterPrompt([], scout).rules);
   });
 
-  it("tells the lead its downstream with what each does, that the bots further down cannot be handed work, and that it reaches outside its team as before", () => {
+  it("tells the lead its whole pipeline in order, that it hands work only downstream, and that it reaches outside its team as before", () => {
     const { rules, roster } = chiefOfStaffPrompt(chief.id, everyone, true);
     expect(rules).toContain("In the Studio team's pipeline you are the lead: inside the team you reach only the bots downstream of you, marked so in your roster, and hand work only to them; never reach past them to a bot further down the pipeline.");
     expect(rules).toContain("Hand each part of a job to the downstream bot whose role fits it");
@@ -219,13 +239,16 @@ describe("what a bot in a pipeline is told", () => {
     expect(rules).not.toContain("Leads can coordinate their own specialists");
     expect(rules).not.toMatch(/superior|subordinate/);
     const lines = roster.split("\n");
-    expect(lines.slice(0, 3)).toEqual([
-      "The bots downstream of you, the ones you hand work to, in the Studio team's pipeline:",
-      `- Story — Screenwriter [downstream of you]: Writes every episode. [id: ${story.id}]`,
-      `- Ops — Publisher [downstream of you]: Posts the film. [id: ${ops.id}]`,
+    expect(lines.slice(0, 7)).toEqual([
+      "The Studio team's whole pipeline, in order, so you know every member: you hand work only to the bots marked downstream of you, and the others get their work along the pipeline. When the person asks who is on the team, name them all.",
+      `- Story — Screenwriter [stage: script] [downstream of you]: Writes every episode. [id: ${story.id}]`,
+      "- Board — Storyboard artist [stage: storyboard] [not reachable from you: its work comes along the pipeline from Story]: Draws every shot.",
+      "- Video — Video editor [stage: post-production] [not reachable from you: its work comes along the pipeline from Board]: Cuts the shots into a film.",
+      `- Ops — Publisher [outside the pipeline's stages] [downstream of you]: Posts the film. [id: ${ops.id}]`,
+      "- Drift — Intern [outside the pipeline's stages] [not reachable from you]",
+      "Other bots you can reach, in other departments:",
     ]);
-    expect(lines[3]).toBe("Other bots you can reach, in other departments:");
-    expect(lines.slice(4).map((line) => line.match(/\[id: (.+)\]$/)?.[1]).sort()).toEqual(ids([main, scout, loner]));
+    expect(lines.slice(7).map((line) => line.match(/\[id: (.+)\]$/)?.[1]).sort()).toEqual(ids([main, scout, loner]));
   });
 
   it("keeps telling a Chief in no pipeline that leads coordinate their own specialists", () => {
@@ -237,10 +260,11 @@ describe("what a bot in a pipeline is told", () => {
     const { rules, roster } = chiefOfStaffPrompt(board.id, everyone.map((bot) => (bot.id === board.id ? deputy : bot)), true);
     expect(rules).toContain("In the Studio team's pipeline you are a member, not the lead: you can reach only the bots upstream and downstream of you, marked so in your roster, and only to ask a question with consult: true.");
     expect(rules).not.toContain("Outside the Studio team");
-    expect(roster.split("\n").slice(0, 3)).toEqual([
-      "The bots upstream and downstream of you in the Studio team's pipeline:",
-      `- Story — Screenwriter [upstream of you]: Writes every episode. [id: ${story.id}]`,
-      `- Video — Video editor [downstream of you]: Cuts the shots into a film. [id: ${video.id}]`,
+    expect(roster.split("\n").slice(0, 4)).toEqual([
+      "The Studio team's whole pipeline, in order, so you know every member: you reach only the bots marked upstream or downstream of you. When the person asks who is on the team, name them all.",
+      "- Sol — Showrunner [Chief of Staff] [leads the pipeline] [not reachable from you]",
+      `- Story — Screenwriter [stage: script] [upstream of you]: Writes every episode. [id: ${story.id}]`,
+      `- Video — Video editor [stage: post-production] [downstream of you]: Cuts the shots into a film. [id: ${video.id}]`,
     ]);
   });
 
@@ -250,11 +274,12 @@ describe("what a bot in a pipeline is told", () => {
     expect(roster).not.toContain(video.id);
   });
 
-  it("tells a project's lead that past its lines only the main bot can be reached", () => {
+  it("tells a project's lead that past its lines only the main bot can be reached, and names the member it does not reach without its id", () => {
     const { rules, roster } = chiefOfStaffPrompt(lead.id, [main, chief, scout, lead, writer, editor], true);
     expect(rules).toContain("In the Launch project's pipeline you are the lead: inside the project you reach only the bots downstream of you");
     expect(rules).toContain("Outside the project only the main bot, which belongs to no project, can be reached: consult it, or hand it what crosses projects, with coordinate_bots.");
-    expect(roster).toContain(`- Writer — Copywriter [downstream of you] [id: ${writer.id}]`);
+    expect(roster).toContain(`- Writer — Copywriter [stage: script] [downstream of you] [id: ${writer.id}]`);
+    expect(roster).toContain("- Editor — Editor [stage: post-production] [not reachable from you: its work comes along the pipeline from Writer]");
     expect(roster).toContain(main.id);
     expect(roster).not.toContain(scout.id);
     expect(roster).not.toContain(editor.id);
@@ -276,5 +301,21 @@ describe("what a bot in a pipeline is told", () => {
     expect(peerAccessHelp(chief, everyone)).toContain("Outside your team you can reach every other bot, in any department");
     expect(peerAccessHelp(lead, [lead, writer])).toContain("Outside the project you can reach the main bot, which belongs to no project");
     expect(peerAccessHelp(scout, everyone)).toContain("Every bot can reach every other bot");
+  });
+});
+
+describe("what list_bots says of a pipeline", () => {
+  it("gives a pipeline's member its whole team in order, the id only of the bots it reaches, and nothing to a bot in none", () => {
+    expect(pipelineRosterWire(board, everyone)).toEqual({ pipeline: [
+      { name: "Sol", title: "Showrunner", stages: ["lead"], reach: "none" },
+      { name: "Story", title: "Screenwriter", stages: ["script"], reach: "upstream", id: story.id },
+      { name: "Video", title: "Video editor", stages: ["post"], reach: "downstream", id: video.id },
+      { name: "Ops", title: "Publisher", stages: ["other"], reach: "none", from: ["Sol"] },
+      { name: "Drift", title: "Intern", stages: ["other"], reach: "none" },
+    ] });
+    expect(pipelineRosterWire(chief, everyone).pipeline?.map(({ name, reach }) => [name, reach])).toEqual([
+      ["Story", "downstream"], ["Board", "none"], ["Video", "none"], ["Ops", "downstream"], ["Drift", "none"],
+    ]);
+    expect(pipelineRosterWire(scout, everyone)).toEqual({});
   });
 });

@@ -341,8 +341,10 @@ describe("a team's pipeline on the real server", () => {
     const leadTurn = firstTurn(seen, sol);
     const leadHeard = told(leadTurn);
     expect(leadHeard).toContain([
-      "The bots downstream of you, the ones you hand work to, in the Studio team's pipeline:",
-      `- Story — Story editor [downstream of you]: Picks the stories worth telling. [id: ${story.id}]`,
+      "The Studio team's whole pipeline, in order, so you know every member: you hand work only to the bots marked downstream of you, and the others get their work along the pipeline. When the person asks who is on the team, name them all.",
+      `- Story — Story editor [stage: script] [downstream of you]: Picks the stories worth telling. [id: ${story.id}]`,
+      "- Board — Storyboard artist [stages: character design, storyboard] [not reachable from you: its work comes along the pipeline from Story]: Draws every shot.",
+      "- Video — Video editor [stage: post-production] [not reachable from you: its work comes along the pipeline from Board]: Cuts the boards into a video.",
     ].join("\n"));
     expect(leadHeard).toContain("In the Studio team's pipeline you are the lead: inside the team you reach only the bots downstream of you");
     expect(leadHeard).toContain("Outside the Studio team, every other bot, in any department, is reachable too");
@@ -363,8 +365,8 @@ describe("a team's pipeline on the real server", () => {
     const memberHeard = told(memberTurn);
     expect(memberHeard).toContain("Do your stage's work yourself: you cannot hand it, or any part of it, to another bot.");
     expect(memberHeard).toContain("attach every file you made for it with attach_file");
-    expect(memberHeard).toContain(`- Sol — Showrunner [Chief of Staff] [upstream of you]: Runs the studio. [id: ${sol.id}]`);
-    expect(memberHeard).toContain(`- Board — Storyboard artist [downstream of you]: Draws every shot. [id: ${board.id}]`);
+    expect(memberHeard).toContain(`- Sol — Showrunner [Chief of Staff] [leads the pipeline] [upstream of you]: Runs the studio. [id: ${sol.id}]`);
+    expect(memberHeard).toContain(`- Board — Storyboard artist [stages: character design, storyboard] [downstream of you]: Draws every shot. [id: ${board.id}]`);
     expect(memberHeard).toContain("Write the trailer's script.");
     for (const beyond of [video.id, scout.id]) expect(memberHeard, nameOf(beyond)).not.toContain(beyond);
     const [reach, down, up, twoDown, otherTeam, mainBot, asked] = answers(memberTurn);
@@ -424,7 +426,13 @@ describe("a team's pipeline on the real server", () => {
     });
     const turn = firstTurn(seen, video);
     const heard = told(turn);
-    expect(heard).toContain(`[TEAM ROSTER]\n- Board — Storyboard artist [upstream of you]: Draws every shot. [id: ${board.id}]\n[/TEAM ROSTER]`);
+    expect(heard).toContain([
+      "[TEAM ROSTER]",
+      "- Sol — Showrunner [Chief of Staff] [leads the pipeline] [not reachable from you]: Runs the studio.",
+      "- Story — Story editor [stage: script] [not reachable from you: its work comes along the pipeline from Sol]: Picks the stories worth telling.",
+      `- Board — Storyboard artist [stages: character design, storyboard] [upstream of you]: Draws every shot. [id: ${board.id}]`,
+      "[/TEAM ROSTER]",
+    ].join("\n"));
     const [refused, asked] = answers(turn);
     expect(refused).toBe(`Board is upstream of you in your team's pipeline, and you cannot hand your work to another bot: do it yourself. Ask Board a question with consult: true instead. You can ask a question with consult: true: upstream of you, Board (id ${board.id}). Nothing was sent.`);
     expect(JSON.parse(asked!).receipts).toMatchObject([{ botId: board.id, botName: "Board" }]);
