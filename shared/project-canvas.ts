@@ -140,14 +140,16 @@ export interface CanvasNode {
   groupId?: string;
 }
 
-/** `content`: the upstream node is reference material for the downstream one. `dispatch`: from a bot to its direct
- * subordinate, derived from the project's flow on every read, never stored and never changed by an operation. */
+/** `content`: the upstream node is reference material for the downstream one. `dispatch`: a line of the project's
+ * pipeline, from a bot to a bot its work goes to, derived on every read, never stored and never changed by an
+ * operation; several may run into one bot. */
 export interface CanvasConnection {
   id: string;
   fromNodeId: string;
   toNodeId: string;
   kind: "content" | "dispatch";
-  /** A content connection the server made because the pipeline says so. A bot cannot delete it. */
+  /** A content connection the server made because the pipeline says so. A bot cannot delete it; the person can, and
+   * it then stays away until what it joined changes. */
   pipeline?: true;
 }
 
@@ -288,8 +290,8 @@ export interface CanvasSnapshot extends CanvasDocument {
 }
 
 /** On `/api/events`, to the owner and admins, when a project's canvas changes. `document`: the stored canvas has a new
- * revision. `bots`: what the snapshot derives changed (a status, an output, a member, a line of the team's flow). Read
- * the snapshot again. */
+ * revision. `bots`: what the snapshot derives changed (a status, an output, a member, a line or a stage of the
+ * pipeline). Read the snapshot again. */
 export interface ProjectCanvasEvent {
   kind: "project-canvas";
   projectId: string;
@@ -361,6 +363,18 @@ export interface CanvasGenerateResponse {
   jobId: string;
 }
 
+/** `POST /api/team-projects/:id/canvas/select-take`: a take of the project, a video generated for a shot, becomes its
+ * shot's selected take, and the shot's other takes lose the mark. Refused for a node that is no take with
+ * `code: "not_a_take"`, and for an archived project with `CanvasReadOnly`. */
+export interface CanvasSelectTakeRequest {
+  nodeId: string;
+}
+
+/** The canvas's revision once the take is selected; the one it had when the take was selected already. */
+export interface CanvasSelectTakeResponse {
+  revision: number;
+}
+
 /** Uploads go here, in the project folder. */
 export const CANVAS_UPLOAD_FOLDER = "素材";
 /** Generated images and videos, and files a bot hands over from outside the project folder, go here. */
@@ -393,7 +407,7 @@ export const botNodeId = (botId: string): string => `${BOT_NODE_PREFIX}${botId}`
 export const botIdOfNode = (nodeId: string): string | null =>
   nodeId.startsWith(BOT_NODE_PREFIX) && nodeId.length > BOT_NODE_PREFIX.length ? nodeId.slice(BOT_NODE_PREFIX.length) : null;
 
-export const dispatchConnectionId = (parentBotId: string, childBotId: string): string => `dispatch:${parentBotId}:${childBotId}`;
+export const dispatchConnectionId = (fromBotId: string, toBotId: string): string => `dispatch:${fromBotId}:${toBotId}`;
 
 export function canvasFileNodeType(mime: string): CanvasFileNodeType {
   const type = mime.split(";")[0]!.trim().toLowerCase();

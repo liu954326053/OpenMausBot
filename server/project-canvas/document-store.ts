@@ -2,7 +2,8 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { CANVAS_MAX_NODES, CANVAS_UNSET_VIEWPORT, type CanvasConflict, type CanvasDocument, type CanvasNodeCreator, type CanvasNodeType } from "../../shared/project-canvas.ts";
+import { CANVAS_MAX_NODES, CANVAS_UNSET_VIEWPORT, type CanvasConflict, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasNodeRole, type CanvasNodeType } from "../../shared/project-canvas.ts";
+import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { userError } from "../user-errors.ts";
 import type { CanvasChangeSet, OpsResult } from "./ops.ts";
@@ -10,13 +11,18 @@ import type { CanvasChangeSet, OpsResult } from "./ops.ts";
 /** How many revisions back a change can still be merged, and a deleted node still comes back as its maker's. */
 export const CANVAS_HISTORY = 200;
 
-/** A content node deleted within the history kept, and who made it. */
+/** A content node deleted within the history kept, who made it, and what it was in the pipeline when it was one of
+ * its nodes. */
 export interface RemovedNode {
   revision: number;
   id: string;
   type: CanvasNodeType;
   createdBy: CanvasNodeCreator;
+  pipeline?: { role: CanvasNodeRole; shotId?: string; selected?: true };
 }
+
+/** Each bot's stages when the pipeline's links of a canvas were last made. */
+export type SettledStages = Record<string, FlowStage[]>;
 
 const SAFE_ID = /^[\w-]{1,128}$/;
 const point = z.object({ x: z.number(), y: z.number() });
@@ -33,8 +39,13 @@ const nodeSchema = z.object({
   createdBy: creator.optional(),
   groupId: z.string().optional(),
 });
-const removedSchema = z.object({ revision: z.number().int().min(1), id: z.string().min(1), type: nodeType, createdBy: creator });
-const connectionSchema = z.object({ id: z.string().min(1), fromNodeId: z.string().min(1), toNodeId: z.string().min(1), kind: z.literal("content") });
+const role = z.enum(["script", "character", "creation", "take", "final"]);
+const removedSchema = z.object({
+  revision: z.number().int().min(1), id: z.string().min(1), type: nodeType, createdBy: creator,
+  pipeline: z.object({ role, shotId: z.string().optional(), selected: z.literal(true).optional() }).optional(),
+});
+const connectionSchema = z.object({ id: z.string().min(1), fromNodeId: z.string().min(1), toNodeId: z.string().min(1), kind: z.literal("content"), pipeline: z.literal(true).optional() });
+const stagesSchema = z.record(z.string(), z.array(z.enum(["lead", "script", "character", "storyboard", "post", "other"])));
 const changeSchema = z.object({
   revision: z.number().int().min(1), nodes: z.array(z.string()), connections: z.array(z.string()), viewport: z.literal(true).optional(), backgroundMode: z.literal(true).optional(),
 });
@@ -50,9 +61,11 @@ const fileSchema = z.object({
   }),
   history: z.array(changeSchema),
   removed: z.array(removedSchema).optional(),
+  stages: stagesSchema.optional(),
 });
 
-type Stored = { document: CanvasDocument; history: Array<CanvasChangeSet & { revision: number }>; removed: RemovedNode[] };
+/** `stages` is absent on a canvas stored before the pipeline. */
+type Stored = { document: CanvasDocument; history: Array<CanvasChangeSet & { revision: number }>; removed: RemovedNode[]; stages?: SettledStages };
 type FileRead = { state: "ok"; data: Stored } | { state: "unreadable"; reason: string };
 
 const empty = (projectId: string): Stored => ({
@@ -61,9 +74,14 @@ const empty = (projectId: string): Stored => ({
   removed: [],
 });
 
+function pipelineOf(node: CanvasNode): Pick<RemovedNode, "pipeline"> {
+  const { role, shotId, selected } = node.metadata ?? {};
+  return role ? { pipeline: { role, ...(shotId ? { shotId } : {}), ...(selected ? { selected: true } : {}) } } : {};
+}
+
 function removedSince(before: readonly RemovedNode[], current: CanvasDocument, next: CanvasDocument, revision: number): RemovedNode[] {
   const present = new Set(next.nodes.map((node) => node.id));
-  const gone = current.nodes.flatMap((node) => (present.has(node.id) || node.type === "bot" || !node.createdBy ? [] : [{ revision, id: node.id, type: node.type, createdBy: node.createdBy }]));
+  const gone = current.nodes.flatMap((node): RemovedNode[] => (present.has(node.id) || node.type === "bot" || !node.createdBy ? [] : [{ revision, id: node.id, type: node.type, createdBy: node.createdBy, ...pipelineOf(node) }]));
   return [...before.filter((one) => !present.has(one.id) && one.revision > revision - CANVAS_HISTORY), ...gone].slice(-CANVAS_MAX_NODES);
 }
 
@@ -83,7 +101,8 @@ function readCanvasFile(file: string, projectId: string): FileRead {
   }
   const checked = fileSchema.safeParse(parsed);
   if (!checked.success || checked.data.document.projectId !== projectId) return { state: "unreadable", reason: "not a canvas" };
-  return { state: "ok", data: { document: checked.data.document as CanvasDocument, history: checked.data.history, removed: checked.data.removed ?? [] } };
+  const { document, history, removed, stages } = checked.data;
+  return { state: "ok", data: { document: document as CanvasDocument, history, removed: removed ?? [], ...(stages ? { stages } : {}) } };
 }
 
 export class CanvasUnreadableError extends Error {
@@ -115,8 +134,9 @@ export interface CanvasChangeRequest {
   baseRevision?: number;
   /** What the change touches, compared with what changed since `baseRevision`. */
   targets: CanvasChangeSet;
-  /** `removed` finds a content node deleted within the history kept, by its id. */
-  apply(document: CanvasDocument, removed: (id: string) => RemovedNode | undefined): OpsResult;
+  /** `removed` finds a content node deleted within the history kept, by its id. `stages` in the answer are kept as the
+   * ones the canvas's pipeline links are made for; a change of them alone is stored without a new revision. */
+  apply(document: CanvasDocument, removed: (id: string) => RemovedNode | undefined): OpsResult & { stages?: SettledStages };
 }
 
 export interface CanvasChangeOutcome {
@@ -128,6 +148,7 @@ export interface CanvasChangeOutcome {
 }
 
 const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.length && !set.viewport && !set.backgroundMode;
+const sameStages = (a: SettledStages | undefined, b: SettledStages) => a !== undefined && JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
 /**
  * `<data dir>/project-canvases/<project id>.json`: one project's canvas, and what each of its last changes touched. Only
@@ -173,6 +194,16 @@ export class CanvasDocuments {
     return structuredClone(this.load(projectId).document);
   }
 
+  /** Undefined for a canvas stored before the pipeline, or not stored yet. */
+  stagesOf(projectId: string): SettledStages | undefined {
+    const { stages } = this.load(projectId);
+    return stages && structuredClone(stages);
+  }
+
+  hasNodes(projectId: string): boolean {
+    return this.load(projectId).document.nodes.length > 0;
+  }
+
   /** Null while the canvas cannot be read. */
   revisionOf(projectId: string): number | null {
     try {
@@ -193,17 +224,26 @@ export class CanvasDocuments {
     }
     const removed = new Map(stored.removed.map((one) => [one.id, one]));
     const result = request.apply(structuredClone(current), (id) => removed.get(id));
-    if (isEmpty(result.changed)) return { document: structuredClone(current), revision: current.revision, changed: result.changed, nodeIds: result.nodeIds, connectionIds: result.connectionIds };
+    const stages = result.stages && !sameStages(stored.stages, result.stages) ? { stages: result.stages } : stored.stages ? { stages: stored.stages } : {};
+    if (isEmpty(result.changed)) {
+      if (stages.stages !== stored.stages) this.keep(projectId, { ...stored, ...stages });
+      return { document: structuredClone(current), revision: current.revision, changed: result.changed, nodeIds: result.nodeIds, connectionIds: result.connectionIds };
+    }
     const revision = current.revision + 1;
     const next: Stored = {
       document: { ...result.document, projectId, revision },
       history: [...stored.history, { revision, ...result.changed }].slice(-CANVAS_HISTORY),
       removed: removedSince(stored.removed, current, result.document, revision),
+      ...stages,
     };
+    this.keep(projectId, next);
+    return { document: structuredClone(next.document), revision, changed: result.changed, nodeIds: result.nodeIds, connectionIds: result.connectionIds };
+  }
+
+  private keep(projectId: string, next: Stored): void {
     mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     writeFileAtomic(this.file(projectId), `${JSON.stringify({ version: 1, ...next })}\n`, { mode: 0o600 });
     this.kept.set(projectId, next);
-    return { document: structuredClone(next.document), revision, changed: result.changed, nodeIds: result.nodeIds, connectionIds: result.connectionIds };
   }
 
   private checkSince(stored: Stored, base: number, targets: CanvasChangeSet): void {

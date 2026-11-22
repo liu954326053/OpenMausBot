@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { CanvasDocument, CanvasNodeCreator, CanvasOp } from "../../shared/project-canvas.ts";
+import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { CanvasConflictError, CanvasDocuments, CanvasUnreadableError, CANVAS_HISTORY, type RemovedNode } from "./document-store.ts";
 import { applyCanvasOps, opTargets } from "./ops.ts";
 
@@ -146,6 +147,66 @@ describe("a deleted node", () => {
     expect(documents.read("p1").revision).toBe(3);
     change(documents, [shot]);
     expect(makerOf(documents)).toEqual({ kind: "person" });
+  });
+});
+
+describe("what the pipeline keeps with a canvas", () => {
+  const serverChange = (documents: CanvasDocuments, make: (document: CanvasDocument) => { nodes?: string[]; connections?: string[] }, stages?: Record<string, FlowStage[]>) =>
+    documents.change("p1", {
+      targets: { nodes: [], connections: [] },
+      apply: (document) => {
+        const changed = make(document);
+        return { document, changed: { nodes: changed.nodes ?? [], connections: changed.connections ?? [] }, nodeIds: [], connectionIds: [], ...(stages ? { stages } : {}) };
+      },
+    });
+
+  it("keeps a connection the server made for the pipeline as one across a restart", () => {
+    const documents = store();
+    change(documents, [{ type: "add_node", id: "shot-1", nodeType: "shot" }, { type: "add_node", id: "make-1", nodeType: "config" }]);
+    serverChange(documents, (document) => {
+      document.connections.push({ id: "link", fromNodeId: "shot-1", toNodeId: "make-1", kind: "content", pipeline: true });
+      return { connections: ["link"] };
+    });
+    expect(store().read("p1").connections).toEqual([{ id: "link", fromNodeId: "shot-1", toNodeId: "make-1", kind: "content", pipeline: true }]);
+  });
+
+  it("has no stages on a canvas stored before the pipeline, and keeps the ones its links were made for", () => {
+    const documents = store();
+    change(documents, [{ type: "add_node", id: "brief", nodeType: "text" }]);
+    expect(documents.stagesOf("p1")).toBeUndefined();
+    const stages: Record<string, FlowStage[]> = { lead: ["lead"], boards: ["character", "storyboard"] };
+    expect(serverChange(documents, () => ({}), stages).revision).toBe(1);
+    expect(documents.stagesOf("p1")).toEqual(stages);
+    expect(store().stagesOf("p1")).toEqual(stages);
+    expect(store().read("p1").revision).toBe(1);
+  });
+
+  it("writes nothing when neither the canvas nor the stages changed", () => {
+    const documents = store();
+    serverChange(documents, () => ({}), { lead: ["lead"] });
+    rmSync(file());
+    serverChange(documents, () => ({}), { lead: ["lead"] });
+    expect(existsSync(file())).toBe(false);
+  });
+
+  it("keeps what a deleted node was in the pipeline, for the person adding it back", () => {
+    const documents = store();
+    change(documents, [{ type: "add_node", id: "take-1", nodeType: "video" }, { type: "add_node", id: "clip", nodeType: "video" }]);
+    serverChange(documents, (document) => {
+      document.nodes[0]!.metadata = { role: "take", shotId: "shot-1", selected: true, stale: true };
+      return { nodes: ["take-1"] };
+    });
+    let kept: RemovedNode | undefined;
+    documents.change("p1", {
+      targets: { nodes: ["take-1", "clip"], connections: [] },
+      apply: (document) => ({ document: { ...document, nodes: [] }, changed: { nodes: ["take-1", "clip"], connections: [] }, nodeIds: [], connectionIds: [] }),
+    });
+    store().change("p1", { targets: { nodes: [], connections: [] }, apply: (document, removed) => {
+      kept = removed("take-1");
+      expect(removed("clip")).not.toHaveProperty("pipeline");
+      return { document, changed: { nodes: [], connections: [] }, nodeIds: [], connectionIds: [] };
+    } });
+    expect(kept).toEqual({ revision: 3, id: "take-1", type: "video", createdBy: { kind: "person" }, pipeline: { role: "take", shotId: "shot-1", selected: true } });
   });
 });
 

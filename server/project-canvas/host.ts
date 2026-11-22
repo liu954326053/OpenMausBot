@@ -13,10 +13,12 @@ import { createProjectCanvasRoutes } from "../routes/project-canvas.ts";
 import type { RouteHandler } from "../routes/table.ts";
 import { isSteeredMessageQueued, onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
 import type { Store } from "../store.ts";
-import { onTeamFlowsChange, projectParents } from "../team-flow/flows.ts";
+import { onTeamFlowsChange, projectPipeline } from "../team-flow/flows.ts";
 import { onTeamProjectFolderChange } from "../team-projects/folder-watch.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
+import type { ProjectPipeline } from "./flow.ts";
+import { createCanvasPipeline, type CanvasPipelineApi } from "./pipeline-api.ts";
 import { setCanvasGenerationCardAnswer } from "./card-route.ts";
 import { CanvasGenerationCards } from "./generation-card.ts";
 import { ProjectCanvasService } from "./service.ts";
@@ -31,8 +33,8 @@ export interface ProjectCanvasHostDeps {
   threadBusy(botId: string, threadId: string): boolean;
   mainThread(botId: string): string | undefined;
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
-  /** A bot's superior in its project's flow; by default the one its team's flow gives it. */
-  parentOf?(projectId: string, botId: string): string | undefined;
+  /** A project's pipeline; by default the one its team's pipeline gives its copies. */
+  pipelineOf?(projectId: string, leadBotId: string): ProjectPipeline;
   generation: ProjectGenerationApi;
   /** Hands a card's decision to the turn parked on it; false when none took it. */
   answerCard(threadId: string, messageId: string, text: string): boolean;
@@ -44,6 +46,8 @@ export interface ProjectCanvasHostDeps {
 export interface ProjectCanvasHost {
   routes: RouteHandler;
   service: ProjectCanvasService;
+  /** The pipeline's nodes on the canvases, for the parts of the server that relay work and write the draft. */
+  pipeline: CanvasPipelineApi;
 }
 
 const BOTS_SETTLE_MS = 500;
@@ -64,7 +68,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     threadBusy: deps.threadBusy,
     mainThread: deps.mainThread,
     send: deps.send,
-    parentOf: deps.parentOf ?? ((projectId, botId) => projectParents(projectId)[botId]),
+    pipelineOf: deps.pipelineOf ?? projectPipeline,
     generation: deps.generation,
     openCards: openCardRows,
     queuedThreads,
@@ -141,5 +145,6 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
   const cards = new CanvasGenerationCards({ store: deps.store, service, answer: deps.answerCard });
   setCanvasGenerationCardAnswer((threadId, requestId, behavior) => cards.answer(threadId, requestId, behavior));
   setProjectCanvasToolRoutes(createProjectCanvasToolRoutes(service, cards));
-  return { routes: createProjectCanvasRoutes(service), service };
+  const pipeline = createCanvasPipeline(service);
+  return { routes: createProjectCanvasRoutes(service, pipeline), service, pipeline };
 }

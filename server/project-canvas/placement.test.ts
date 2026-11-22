@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { CanvasDocument, CanvasNode, CanvasNodeCreator } from "../../shared/project-canvas.ts";
-import { defaultBotFrames, LANE_GAP, NODE_GAP, placeAfter, placeForActor } from "./placement.ts";
+import type { FlowStage } from "../../shared/team-pipeline.ts";
+import type { CanvasFlow } from "./flow.ts";
+import type { CanvasFrame } from "./ops.ts";
+import { defaultBotFrames, CHARACTER_ROOM, LANE_GAP, NODE_GAP, placeAfter, placeForActor } from "./placement.ts";
 
 const WRITER: CanvasNodeCreator = { kind: "bot", botId: "writer" };
 
@@ -14,24 +17,46 @@ function canvas(nodes: CanvasNode[] = [], connections: CanvasDocument["connectio
 }
 
 describe("where bots sit when nobody placed them", () => {
-  it("is the flow's tree from left to right, the lead first and each subtree in its own band", () => {
-    const parents: Record<string, string> = { writer: "lead", boards: "lead", editor: "boards" };
-    const frames = defaultBotFrames({ botIds: ["lead", "writer", "boards", "editor"], leadBotId: "lead", parentOf: (id) => parents[id] });
-    const at = (id: string) => frames.get(`bot:${id}`)!.position;
-    expect(at("lead")).toEqual({ x: 0, y: 0 });
-    expect(at("writer").x).toBeGreaterThan(300 + LANE_GAP);
-    expect(at("writer").y).toBe(0);
-    expect(at("boards").x).toBe(at("writer").x);
-    expect(at("boards").y).toBeGreaterThanOrEqual(180);
-    expect(at("editor")).toEqual({ x: 2 * at("writer").x, y: at("boards").y });
+  const flow = (stages: Record<string, FlowStage[]>, leadBotId = "lead"): CanvasFlow => ({ botIds: Object.keys(stages), leadBotId, stages, lines: [] });
+  const at = (frames: Map<string, CanvasFrame>, id: string) => frames.get(`bot:${id}`)!.position;
+
+  it("is a column for each stage that has a bot, from the lead to post, the bots of one stage one below the other", () => {
+    const frames = defaultBotFrames(flow({ lead: ["lead"], editor: ["post"], writer: ["script"], faces: ["character"], boards: ["storyboard"], frames: ["storyboard"] }));
+    expect(at(frames, "lead")).toEqual({ x: 0, y: 0 });
+    const columns = ["lead", "writer", "faces", "boards", "editor"].map((id) => at(frames, id).x);
+    expect(columns).toEqual([...columns].sort((a, b) => a - b));
+    expect(new Set(columns).size).toBe(5);
+    expect(["writer", "faces", "boards", "editor"].map((id) => at(frames, id).y)).toEqual([0, 0, 0, 0]);
+    expect(at(frames, "frames")).toEqual({ x: at(frames, "boards").x, y: 180 + 60 });
     expect(frames.get("bot:lead")).toMatchObject({ width: 300, height: 180 });
   });
 
-  it("puts a bot whose superior is not in the project, or that sits in a loop, under the lead", () => {
-    const parents: Record<string, string> = { a: "b", b: "a", stray: "elsewhere" };
-    const frames = defaultBotFrames({ botIds: ["lead", "a", "b", "stray"], leadBotId: "lead", parentOf: (id) => parents[id] });
-    expect(new Set([...frames.values()].map((frame) => frame.position.x))).toEqual(new Set([0, frames.get("bot:a")!.position.x]));
-    expect(frames.size).toBe(4);
+  it("leaves room to the right of each bot for what its stage makes: a text, a character's group, a shot's row of three", () => {
+    const frames = defaultBotFrames(flow({ lead: ["lead"], writer: ["script"], faces: ["character"], boards: ["storyboard"], editor: ["post"] }));
+    const room = (from: string, to: string) => at(frames, to).x - at(frames, from).x - 300 - 2 * LANE_GAP;
+    expect(room("lead", "writer")).toBe(420);
+    expect(room("writer", "faces")).toBe(420);
+    expect(room("faces", "boards")).toBe(CHARACTER_ROOM);
+    expect(room("boards", "editor")).toBe(340 + LANE_GAP + 340 + LANE_GAP + 420);
+  });
+
+  it("puts a bot with several stages in the column of its first, with the room of the widest, and skips a stage nobody has", () => {
+    const frames = defaultBotFrames(flow({ lead: ["lead"], boards: ["character", "storyboard"], editor: ["post"] }));
+    expect(at(frames, "boards")).toEqual({ x: 300 + LANE_GAP + 420 + LANE_GAP, y: 0 });
+    expect(at(frames, "editor").x - at(frames, "boards").x).toBe(300 + LANE_GAP + 340 + LANE_GAP + 340 + LANE_GAP + 420 + LANE_GAP);
+  });
+
+  it("puts the bots outside the pipeline in the lead's column, below it", () => {
+    const frames = defaultBotFrames(flow({ lead: ["lead"], writer: ["script"], voice: ["other"], ops: ["other"] }));
+    expect(at(frames, "voice")).toEqual({ x: 0, y: 240 });
+    expect(at(frames, "ops")).toEqual({ x: 0, y: 480 });
+    expect(at(frames, "writer").y).toBe(0);
+  });
+
+  it("starts the first column at the top when the lead left", () => {
+    const frames = defaultBotFrames(flow({ writer: ["other"], boards: ["other"] }, "gone"));
+    expect(at(frames, "writer")).toEqual({ x: 0, y: 0 });
+    expect(at(frames, "boards")).toEqual({ x: 0, y: 240 });
   });
 });
 
