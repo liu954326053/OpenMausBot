@@ -99,11 +99,11 @@ describe("the project's settings", () => {
     expect(tab()).toBe("Image");
   });
 
-  it("open on a shot's tab from the shot's own way to them when its kind has no server", async () => {
+  it("open on a creation node's tab from the node's own way to them when its kind has no server", async () => {
     const settings = sampleGenerationSettings();
     settings.video.server = null;
     await mount(settings);
-    await clickNode("shot-1");
+    await clickNode("shot-1-creation");
     await click(buttonByText(host.querySelector("[data-node-panel]")!, "Project settings"));
     expect(tab()).toBe("Video");
   });

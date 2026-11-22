@@ -1,3 +1,4 @@
+import type { PipelineVideosInput } from "../../../shared/pipeline-run";
 import {
   CANVAS_NODE_SIZE,
   CANVAS_UPLOAD_FOLDER,
@@ -61,6 +62,10 @@ export interface MemoryCanvasOptions {
   output?: (input: StartGenerationInput, index: number) => MemoryGenerationOutput;
   /** A reason to fail a generation, if it should. */
   fail?: (input: StartGenerationInput) => string | undefined;
+  /** What opening the draft in JianYing brings up: the draft itself unless told otherwise. */
+  draftOpens?: "draft" | "app";
+  /** Where on this computer a picked file is; without it the canvas offers no file to pick. */
+  localPathOf?: (file: File) => string;
   /** How long a bot or a generation takes, in milliseconds. */
   delayMs?: number;
   /** Calls `finish` when the work is done and returns what calls it off; by default `ms` later, on a timer. */
@@ -75,6 +80,8 @@ export interface MemoryCanvasBackend extends CanvasBackend {
   updateBots(change: (snapshot: CanvasSnapshot) => void): void;
   readonly openedChats: Array<{ botId: string; threadId?: string }>;
   readonly readConversations: Array<{ botId: string; threadId?: string }>;
+  /** The person's answers to the run, in order. */
+  readonly videoAnswers: Array<PipelineVideosInput["action"]>;
 }
 
 /** A task a bot is on or has queued, with the node its reply becomes when it was written in a text node with text. */
@@ -83,6 +90,8 @@ interface BotTask {
   threadId: string;
   beside?: CanvasReplyPlaceholder;
 }
+
+const VIDEO_TYPES: Record<string, string> = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska" };
 
 const failure = (code: GenerationFailureCode, error: string, extra: Partial<GenerationFailure> = {}): Refused => ({ refused: { code, error, errorKey: `serverError.generation.${code}`, ...extra } });
 
@@ -117,14 +126,17 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const scheduleTask = (botId: string) => cancelTask.set(botId, schedule(() => finishTask(botId), delay, { kind: "task", botId }));
   const openedChats: Array<{ botId: string; threadId?: string }> = [];
   const readConversations: Array<{ botId: string; threadId?: string }> = [];
+  const videoAnswers: Array<PipelineVideosInput["action"]> = [];
   let counter = 0;
   const newId = (prefix: string) => `${prefix}-${++counter}`;
 
   const emit = () => {
     queueMicrotask(() => listeners.forEach((listener) => listener()));
   };
-  const commit = (ops: CanvasOp[]) => {
+  /** `settle` changes what an operation cannot: the marks and lines only the server sets. */
+  const commit = (ops: CanvasOp[], settle?: () => void) => {
     snapshot = { ...applyCanvasOps(snapshot, ops), revision: snapshot.revision + 1 };
+    settle?.();
     emit();
   };
   const ensureProject = (id: string) => {
@@ -134,6 +146,28 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     if (snapshot.readOnly) throw new CanvasBackendError("This project is archived, so its canvas can't change.", { code: "canvas_read_only", error: "This project is archived.", reason: "archived" });
   };
   const nodeById = (id: string) => snapshot.nodes.find((node) => node.id === id);
+  const shotOf = (node: CanvasNode) => snapshot.nodes.find((candidate) => candidate.type === "shot" && candidate.id === node.metadata?.shotId);
+  const postBots = () => Object.values(snapshot.bots).filter((bot) => bot.stages.includes("post")).map((bot) => botNodeId(bot.botId));
+  const pipelineLink = (fromNodeId: string, toNodeId: string): CanvasConnection => ({ id: newId("connection"), fromNodeId, toNodeId, kind: "content", pipeline: true });
+  /** The take becomes its shot's selected one, alone, and the shot's line into the post stage comes from it. */
+  const markSelected = (takeId: string, shotId: string) => {
+    const takes = new Set(snapshot.nodes.filter((node) => node.metadata?.role === "take" && node.metadata.shotId === shotId).map((node) => node.id));
+    const posts = postBots();
+    const nodes = snapshot.nodes.map((node) => {
+      if (!takes.has(node.id)) return node;
+      const { selected: _was, ...metadata } = node.metadata ?? {};
+      return { ...node, metadata: node.id === takeId ? { ...metadata, selected: true as const } : metadata };
+    });
+    const kept = snapshot.connections.filter((connection) => !(connection.pipeline && takes.has(connection.fromNodeId) && posts.includes(connection.toNodeId)));
+    snapshot = { ...snapshot, nodes, connections: [...kept, ...posts.map((post) => pipelineLink(takeId, post))] };
+  };
+  /** A shot that is added gets the node its video is generated from, as the server gives it one. */
+  const addCreation = (shotId: string) => {
+    const shot = nodeById(shotId);
+    if (shot?.type !== "shot" || snapshot.nodes.some((node) => node.metadata?.role === "creation" && node.metadata.shotId === shotId)) return;
+    const creation: CanvasNode = { id: newId("node"), type: "config", title: shot.title, ...nextOutputFrame(shot, "config", snapshot.nodes, snapshot.connections, comingReplies()), createdBy: { kind: "person" }, metadata: { role: "creation", shotId, generationMode: "video" } };
+    snapshot = { ...snapshot, nodes: [...snapshot.nodes, creation], connections: [...snapshot.connections, pipelineLink(shotId, creation.id)] };
+  };
   const rightEdge = () => Math.max(0, ...snapshot.nodes.map((node) => node.position.x + node.width)) + 96;
   const setBot = (botId: string, change: Partial<CanvasBotState>) => {
     const bot = snapshot.bots[botId];
@@ -191,6 +225,8 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       url: "",
     });
     const ops: CanvasOp[] = [];
+    const shot = node.metadata?.role === "creation" ? shotOf(node) : undefined;
+    const takeIds: string[] = [];
     let document = snapshot;
     let inPlace = takesResultInPlace(node);
     outputs.forEach((output) => {
@@ -203,8 +239,9 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       }
       const frame = nextOutputFrame(node, job.kind, document.nodes, document.connections, comingReplies());
       const id = newId("node");
+      if (shot) takeIds.push(id);
       const steps: CanvasOp[] = [
-        { type: "add_node", id, nodeType: job.kind, title: output.file.name, ...frame, metadata: media },
+        { type: "add_node", id, nodeType: job.kind, title: shot ? node.title : output.file.name, ...frame, metadata: shot ? { ...media, role: "take", shotId: shot.id } : media },
         { type: "connect_nodes", id: newId("connection"), fromNodeId: node.id, toNodeId: id },
       ];
       ops.push(...steps);
@@ -212,12 +249,18 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     });
     ops.push({ type: "update_node", id: node.id, metadata: { status: "success", errorDetails: null, errorKey: null, errorParams: null, jobId: null } });
     jobs.set(job.id, { ...job, status: "done", updatedAt: Date.now(), files: outputs.map((output) => output.file) });
-    commit(ops);
+    commit(ops, () => {
+      if (!shot || !takeIds.length) return;
+      snapshot = { ...snapshot, connections: snapshot.connections.map((connection) => (connection.fromNodeId === node.id && takeIds.includes(connection.toNodeId) ? { ...connection, pipeline: true as const } : connection)) };
+      markSelected(takeIds.at(-1)!, shot.id);
+    });
   };
 
   const backend: MemoryCanvasBackend = {
     openedChats,
     readConversations,
+    videoAnswers,
+    ...(options.localPathOf ? { localPathOf: options.localPathOf } : {}),
     current: () => structuredClone(snapshot),
     updateBots(change) {
       const next = structuredClone(snapshot);
@@ -252,7 +295,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         return op;
       });
       const moved = ops.flatMap((op) => (op.type === "update_node" && op.patch?.position ? [botIdOfNode(op.id)] : [])).filter((botId): botId is string => botId !== null && botId in snapshot.bots);
-      commit(ops);
+      commit(ops, () => nodeIds.forEach(addCreation));
       for (const botId of moved) snapshot = { ...snapshot, bots: { ...snapshot.bots, [botId]: { ...snapshot.bots[botId]!, placed: true } } };
       return { revision: snapshot.revision, nodeIds, connectionIds };
     },
@@ -371,7 +414,9 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       ensureWritable();
       const node = nodeById(nodeId);
       if (!node) throw new Error(`No node ${nodeId} on this canvas.`);
-      const input = generationInput(node, snapshot.nodes, snapshot.connections, node.metadata?.prompt?.trim() ?? "");
+      const own = node.metadata?.prompt?.trim();
+      const prompt = own || (node.metadata?.role === "creation" ? shotOf(node)?.metadata?.prompt?.trim() : undefined) || "";
+      const input = generationInput(node, snapshot.nodes, snapshot.connections, prompt);
       if (!input) throw new Error("Only shot, image, video and config nodes are generated.");
       if (node.metadata?.status === "loading") throw new Error(`${nodeId} is being generated already.`);
       if (!input.prompt) throw new Error(`${nodeId} has no prompt; give it one first.`);
@@ -403,6 +448,54 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       jobs.set(jobId, { ...job, status: "cancelled", updatedAt: Date.now() });
       const node = nodeById(job.nodeId);
       if (node?.metadata?.jobId === jobId) commit([{ type: "update_node", id: node.id, metadata: { status: node.metadata.file ? "success" : "idle", jobId: null } }]);
+    },
+
+    async selectTake(id, nodeId) {
+      ensureProject(id);
+      ensureWritable();
+      const take = nodeById(nodeId);
+      const shotId = take?.metadata?.role === "take" ? take.metadata.shotId : undefined;
+      if (!take || !shotId) throw new Error(`${nodeId} is not a take of a shot.`);
+      commit([], () => markSelected(take.id, shotId));
+      return { revision: snapshot.revision };
+    },
+
+    async answerVideos(id, { action }) {
+      ensureProject(id);
+      ensureWritable();
+      const run = snapshot.run;
+      if (!run) throw new Error("This project has no run.");
+      if (run.videos.status !== (action === "start" ? "confirm" : "failed")) throw new Error("The run isn't waiting for that answer.");
+      videoAnswers.push(action);
+      const videos = action === "skip" ? { ...run.videos, status: "done" as const } : { ...run.videos, status: "working" as const, failed: 0 };
+      snapshot = { ...snapshot, run: { ...run, videos } };
+      emit();
+    },
+
+    async openDraft(id) {
+      ensureProject(id);
+      const state = snapshot.draft?.state;
+      if (state !== "written" && state !== "kept") throw new Error("There is no draft to open yet.");
+      return { opened: options.draftOpens ?? "draft" };
+    },
+
+    async setFinalFilm(id, { path }) {
+      ensureProject(id);
+      ensureWritable();
+      const parts = path.split("/");
+      const name = parts.at(-1);
+      if (!name || path.startsWith("/") || parts.includes("..")) throw new Error("The finished film has to be a file in the project folder.");
+      const mime = VIDEO_TYPES[name.slice(name.lastIndexOf(".") + 1).toLowerCase()];
+      if (!mime) throw new Error(`${name} is not a video.`);
+      const file: CanvasFileRef = { path, mime, bytes: 0, name };
+      const film = snapshot.nodes.find((node) => node.metadata?.role === "final");
+      if (film) return commit([{ type: "update_node", id: film.id, patch: { title: name }, metadata: { file } }]);
+      const post = postBots().map(nodeById).find((node) => node !== undefined);
+      const frame = post ? nextOutputFrame(post, "video", snapshot.nodes, snapshot.connections, comingReplies()) : { position: { x: rightEdge(), y: 0 }, ...CANVAS_NODE_SIZE.video };
+      const nodeId = newId("node");
+      commit([{ type: "add_node", id: nodeId, nodeType: "video", title: name, ...frame, metadata: { role: "final", file } }], () => {
+        if (post) snapshot = { ...snapshot, connections: [...snapshot.connections, pipelineLink(post.id, nodeId)] };
+      });
     },
   };
   return backend;

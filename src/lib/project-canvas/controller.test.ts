@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId, type CanvasGenerateRequest, type CanvasOpsRequest, type CanvasTaskRequest } from "../../../shared/project-canvas";
-import { SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
+import { SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "../../testing/project-canvas-sample";
 import { loadLocale, setLocale, t } from "../i18n";
 import { CanvasBackendError } from "./backend";
 import { CanvasController, VIEWPORT_SAVE_DELAY_MS } from "./controller";
@@ -129,7 +129,7 @@ describe("the canvas controller", () => {
     expect(node(controller, "city-night")).toBeUndefined();
     controller.undo();
     expect(node(controller, "city-night")).toBeDefined();
-    expect(controller.getState().snapshot!.connections.some((connection) => connection.id === "c-city-shot")).toBe(true);
+    expect(controller.getState().snapshot!.connections.some((connection) => connection.id === "c-city-creation")).toBe(true);
     expect(controller.getState().canRedo).toBe(true);
     controller.redo();
     expect(node(controller, "city-night")).toBeUndefined();
@@ -171,7 +171,7 @@ describe("the canvas controller", () => {
     expect(controller.getState().canUndo).toBe(false);
   });
 
-  it("tidies the bots into their tree as one undoable change", async () => {
+  it("tidies the bots into their stages' columns as one undoable change", async () => {
     const { controller } = await started();
     controller.apply([{ type: "update_node", id: botNodeId("otto"), patch: { position: { x: 2000, y: 2000 } } }], { record: false });
     controller.tidy();
@@ -249,6 +249,41 @@ describe("the canvas controller", () => {
     await controller.refresh();
     expect(controller.getState().writing.blank).toBeUndefined();
     expect(node(controller, "blank")!.metadata!.content).toBe("Rain never stops in this city.");
+  });
+
+  it("selects a take after the changes before it, and shows the canvas the backend then has", async () => {
+    const { backend, controller } = await started({ delayMs: 50 });
+    await controller.generate("shot-1-creation", "");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(node(controller, "shot-1-take-1")!.metadata!.selected).toBeUndefined();
+    controller.apply([{ type: "update_node", id: "shot-1", patch: { title: "Rooftop" } }]);
+    await controller.selectTake("shot-1-take-1");
+    expect(backend.current().nodes.find((one) => one.id === "shot-1")!.title).toBe("Rooftop");
+    expect(node(controller, "shot-1-take-1")!.metadata!.selected).toBe(true);
+    expect(controller.getState().snapshot!.nodes.filter((one) => one.metadata?.selected)).toHaveLength(1);
+  });
+
+  it("answers the run and shows where it then stands, and hands on a refusal", async () => {
+    const run = { id: "r", startedAt: 1, stages: [], videos: { status: "confirm" as const, shots: 2, ready: 0, failed: 0 } };
+    const { controller } = await started({ snapshot: { ...sampleCanvasSnapshot(), run } });
+    await controller.answerVideos("start");
+    expect(controller.getState().snapshot!.run!.videos.status).toBe("working");
+    await expect(controller.answerVideos("start")).rejects.toThrow("isn't waiting");
+  });
+
+  it("names the finished film by its path in the project folder, and refuses a file outside it or one it can't place without asking the backend", async () => {
+    const draft = { state: "written" as const, name: "Rain City", exportFolder: "/dramas/Rain City/产出" };
+    const paths: Record<string, string> = { "inside.mp4": "/dramas/Rain City/产出/成片/inside.mp4", "outside.mp4": "/Users/me/Movies/outside.mp4", "nowhere.mp4": "" };
+    const { backend, controller } = await started({ snapshot: { ...sampleCanvasSnapshot(), draft }, localPathOf: (file) => paths[file.name]! });
+    const setFinalFilm = vi.spyOn(backend, "setFinalFilm");
+    expect(controller.picksFiles).toBe(true);
+    expect(await controller.chooseFilm(new File(["x"], "outside.mp4"))).toBe(false);
+    expect(await controller.chooseFilm(new File(["x"], "nowhere.mp4"))).toBe(false);
+    expect(setFinalFilm).not.toHaveBeenCalled();
+    expect(await controller.chooseFilm(new File(["x"], "inside.mp4"))).toBe(true);
+    expect(setFinalFilm).toHaveBeenCalledWith(SAMPLE_PROJECT_ID, { path: "产出/成片/inside.mp4" });
+    expect(controller.getState().snapshot!.nodes.some((one) => one.metadata?.role === "final")).toBe(true);
+    expect((await started()).controller.picksFiles).toBe(false);
   });
 
   it("records an upload so undo removes the node", async () => {

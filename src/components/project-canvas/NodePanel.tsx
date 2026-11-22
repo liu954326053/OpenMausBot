@@ -1,8 +1,9 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/components/canvas/canvas-node-prompt-panel.tsx, MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowUp, ExternalLink, LoaderCircle, Maximize2, MessagesSquare, Minimize2, Settings, Square } from "lucide-react";
 import { botIdOfNode, generationKindOf, type CanvasNode } from "../../../shared/project-canvas";
 import { connectedReferences, mentionReferences, referenceCounts, referenceFiles } from "../../../shared/project-canvas-references";
+import type { GenerationKind } from "../../../shared/project-generation";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FOLDED_SENT_TEXT, foldsSentText } from "@/components/chat-bubble";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
@@ -20,6 +21,8 @@ import { referenceProblems } from "@/lib/project-canvas/settings";
 import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
+import { DraftSection } from "./DraftSection";
+import { shotOf } from "./node-kinds";
 import { ModelPicker, PANEL_SURFACE, PanelLabel, problemText, PromptInput, ReferenceBar, SettingsPopover } from "./panel-parts";
 import { WaitingCard } from "./WaitingCard";
 
@@ -27,10 +30,10 @@ export function NodePanel({ node }: { node: CanvasNode }) {
   switch (node.type) {
     case "bot": return <BotPanel node={node} />;
     case "text": return <TextPanel node={node} />;
+    case "shot": return <ShotPanel node={node} />;
+    case "config": return node.metadata?.role === "creation" ? <CreationPanel node={node} /> : <PromptPanel node={node} />;
     case "image":
-    case "video":
-    case "config":
-    case "shot": return <PromptPanel node={node} />;
+    case "video": return <PromptPanel node={node} />;
     default: return null;
   }
 }
@@ -46,28 +49,16 @@ function useDraft(nodeId: string, initial: string): [string, (value: string) => 
   return [value, update];
 }
 
-function PromptPanel({ node }: { node: CanvasNode }) {
+/** Starting and stopping a node's generation from its panel, with the refusal to show beside the button. */
+function useGenerating(node: CanvasNode) {
   const ui = useCanvasUi();
-  const kind = generationKindOf(node) ?? "image";
-  const project = ui.state.generation?.settings;
-  const [prompt, setPrompt] = useDraft(node.id, node.metadata?.prompt ?? "");
-  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
-  const loading = node.metadata?.status === "loading";
-  const models = ui.state.models[kind];
-  const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
-  const counts = referenceCounts(referenceFiles(mentions));
-  const problems = project ? referenceProblems(kind, project, node, models ?? [], counts) : [];
-  const noServer = !project?.[kind].server;
-  const keepPrompt = () => {
-    if (prompt !== (node.metadata?.prompt ?? "")) ui.updateMetadata(node.id, { prompt });
-  };
-  const generate = async () => {
+  const start = async (prompt: string) => {
     setBusy(true);
     setRefusal(null);
     try {
-      const refused = await ui.controller.generate(node.id, prompt.trim());
+      const refused = await ui.controller.generate(node.id, prompt);
       if (refused) setRefusal(serverErrorText(refused, refused.error));
       else ui.drafts.delete(node.id);
     } catch (error) {
@@ -84,7 +75,76 @@ function PromptPanel({ node }: { node: CanvasNode }) {
       setRefusal(canvasErrorText(error));
     }
   };
-  const isShot = node.type === "shot";
+  return { busy, refusal, start, stop, loading: node.metadata?.status === "loading" };
+}
+
+/** What stands in the way of generating: what the model doesn't take, the server's refusal, and no server chosen. */
+function GenerationNotes({ node, kind, refusal }: { node: CanvasNode; kind: GenerationKind; refusal: string | null }) {
+  const ui = useCanvasUi();
+  const project = ui.state.generation?.settings;
+  const models = ui.state.models[kind];
+  const counts = referenceCounts(referenceFiles(mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections)));
+  const problems = project ? referenceProblems(kind, project, node, models ?? [], counts) : [];
+  return (
+    <>
+      {problems.map((problem) => <p key={problem.key} role="alert" className="text-[12px] leading-4 text-danger">{problemText(problem, models)}</p>)}
+      {refusal ? <p role="alert" className="text-[12px] leading-4 text-danger">{refusal}</p> : null}
+      {project?.[kind].server ? null : (
+        <div className="flex items-center gap-2 text-[12px] leading-4 text-ink-secondary">
+          <span className="flex-1">{t("projectCanvas.generate.noServer")}</span>
+          <button type="button" className="ui-button ui-button-sm" onClick={() => ui.openSettings()}>
+            <Settings size={14} aria-hidden="true" />
+            {t("projectCanvas.settings.open")}
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The panel's last row: the node's model and settings, then Generate, or Stop while its generation runs. */
+function GenerationRow({ node, kind, generating, canStart, onStart, children }: {
+  node: CanvasNode;
+  kind: GenerationKind;
+  generating: ReturnType<typeof useGenerating>;
+  canStart: boolean;
+  onStart: () => void;
+  children?: ReactNode;
+}) {
+  const ui = useCanvasUi();
+  const project = ui.state.generation?.settings;
+  return (
+    <div className="flex items-center gap-2">
+      {children}
+      {project ? <ModelPicker node={node} kind={kind} project={project} /> : null}
+      {project ? <SettingsPopover node={node} kind={kind} project={project} /> : null}
+      <span className="flex-1" />
+      {generating.loading ? (
+        <button type="button" className="ui-button ui-button-md" disabled={ui.readOnly} onClick={() => void generating.stop()}>
+          <Square size={14} aria-hidden="true" />
+          {t("projectCanvas.generate.stop")}
+        </button>
+      ) : (
+        <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={ui.readOnly || generating.busy || !canStart} onClick={onStart}>
+          {generating.busy ? <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={14} aria-hidden="true" />}
+          {t("projectCanvas.generate.start")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PromptPanel({ node }: { node: CanvasNode }) {
+  const ui = useCanvasUi();
+  const kind = generationKindOf(node) ?? "image";
+  const [prompt, setPrompt] = useDraft(node.id, node.metadata?.prompt ?? "");
+  const [expanded, setExpanded] = useState(false);
+  const generating = useGenerating(node);
+  const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
+  const keepPrompt = () => {
+    if (prompt !== (node.metadata?.prompt ?? "")) ui.updateMetadata(node.id, { prompt });
+  };
+  const generate = () => void generating.start(prompt.trim());
   return (
     <div className={PANEL_SURFACE}>
       {node.type === "config" ? (
@@ -102,42 +162,64 @@ function PromptPanel({ node }: { node: CanvasNode }) {
           value={prompt}
           onChange={setPrompt}
           references={mentions}
-          label={isShot ? t("projectCanvas.shot.prompt") : t("projectCanvas.generate.prompt")}
-          placeholder={isShot ? t("projectCanvas.shot.promptPlaceholder") : kind === "image" ? t("projectCanvas.generate.imagePlaceholder") : t("projectCanvas.generate.videoPlaceholder")}
+          label={t("projectCanvas.generate.prompt")}
+          placeholder={kind === "image" ? t("projectCanvas.generate.imagePlaceholder") : t("projectCanvas.generate.videoPlaceholder")}
           disabled={ui.readOnly}
-          onSubmit={() => void generate()}
+          onSubmit={generate}
         />
       </div>
-      {problems.map((problem) => <p key={problem.key} role="alert" className="text-[12px] leading-4 text-danger">{problemText(problem, models)}</p>)}
-      {refusal ? <p role="alert" className="text-[12px] leading-4 text-danger">{refusal}</p> : null}
-      {noServer ? (
-        <div className="flex items-center gap-2 text-[12px] leading-4 text-ink-secondary">
-          <span className="flex-1">{t("projectCanvas.generate.noServer")}</span>
-          <button type="button" className="ui-button ui-button-sm" onClick={() => ui.openSettings()}>
-            <Settings size={14} aria-hidden="true" />
-            {t("projectCanvas.settings.open")}
-          </button>
-        </div>
-      ) : null}
-      <div className="flex items-center gap-2">
+      <GenerationNotes node={node} kind={kind} refusal={generating.refusal} />
+      <GenerationRow node={node} kind={kind} generating={generating} canStart={Boolean(prompt.trim())} onStart={generate}>
         <button type="button" className="ui-icon-button" aria-label={expanded ? t("projectCanvas.generate.collapse") : t("projectCanvas.generate.expand")} title={expanded ? t("projectCanvas.generate.collapse") : t("projectCanvas.generate.expand")} onClick={() => setExpanded((value) => !value)}>
           {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
         </button>
-        {project ? <ModelPicker node={node} kind={kind} project={project} /> : null}
-        {project ? <SettingsPopover node={node} kind={kind} project={project} /> : null}
-        <span className="flex-1" />
-        {loading ? (
-          <button type="button" className="ui-button ui-button-md" disabled={ui.readOnly} onClick={() => void stop()}>
-            <Square size={14} aria-hidden="true" />
-            {t("projectCanvas.generate.stop")}
-          </button>
-        ) : (
-          <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={ui.readOnly || busy || !prompt.trim()} onClick={() => void generate()}>
-            {busy ? <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={14} aria-hidden="true" />}
-            {isShot ? t("projectCanvas.shot.generate") : t("projectCanvas.generate.start")}
-          </button>
-        )}
+      </GenerationRow>
+    </div>
+  );
+}
+
+/** A shot holds its description. Its video is generated from its creation node, which also holds its references. */
+function ShotPanel({ node }: { node: CanvasNode }) {
+  const ui = useCanvasUi();
+  const [prompt, setPrompt] = useDraft(node.id, node.metadata?.prompt ?? "");
+  const mentions = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections);
+  const creation = ui.snapshot.nodes.find((candidate) => candidate.metadata?.role === "creation" && candidate.metadata.shotId === node.id);
+  const keepPrompt = () => {
+    if (prompt !== (node.metadata?.prompt ?? "")) ui.updateMetadata(node.id, { prompt });
+    ui.drafts.delete(node.id);
+  };
+  return (
+    <div className={PANEL_SURFACE}>
+      <ReferenceBar node={node} references={mentions} into={creation?.id} />
+      <div className="flex flex-col" onBlur={keepPrompt}>
+        <PromptInput
+          value={prompt}
+          onChange={setPrompt}
+          references={mentions}
+          label={t("projectCanvas.shot.prompt")}
+          placeholder={t("projectCanvas.shot.promptPlaceholder")}
+          disabled={ui.readOnly}
+          onSubmit={keepPrompt}
+        />
       </div>
+    </div>
+  );
+}
+
+/** A shot's creation node generates the shot's video from the shot's description, with its own references, model and
+ * settings. */
+function CreationPanel({ node }: { node: CanvasNode }) {
+  const ui = useCanvasUi();
+  const generating = useGenerating(node);
+  const shot = shotOf(node, ui.snapshot.nodes);
+  const own = node.metadata?.prompt ?? "";
+  const described = Boolean(own.trim() || shot?.metadata?.prompt?.trim());
+  return (
+    <div className={PANEL_SURFACE}>
+      <ReferenceBar node={node} references={mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections)} />
+      {described ? null : <p className="text-[12px] leading-4 text-ink-secondary">{shot ? t("projectCanvas.creation.noShotPrompt") : t("projectCanvas.creation.noShot")}</p>}
+      <GenerationNotes node={node} kind="video" refusal={generating.refusal} />
+      <GenerationRow node={node} kind="video" generating={generating} canStart={described} onStart={() => void generating.start(own)} />
     </div>
   );
 }
@@ -212,6 +294,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   };
   return (
     <div className={PANEL_SURFACE}>
+      {ui.snapshot.draft && bot.stages.includes("post") ? <DraftSection draft={ui.snapshot.draft} /> : null}
       <ReferenceBar node={node} references={references} />
       {bot.waiting ? <WaitingCard bot={bot} waiting={bot.waiting} onOpenChat={() => ui.controller.openChat(botId, bot.waiting?.threadId)} /> : null}
       <PromptInput

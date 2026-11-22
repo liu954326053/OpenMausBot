@@ -42,6 +42,7 @@ import { CanvasStage, type StageMenuRequest } from "./CanvasStage";
 import { CanvasToolbar, Minimap, ZoomDock } from "./docks";
 import { CanvasContextMenu, CreateMenu, NodeContextMenu } from "./menus";
 import { NodeList } from "./NodeList";
+import { PipelineRunBar } from "./PipelineRunBar";
 import { ProjectSettingsDialog } from "./ProjectSettingsDialog";
 import { useCanvasShortcuts } from "./use-canvas-shortcuts";
 
@@ -425,6 +426,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
             <Settings size={16} aria-hidden="true" />
           </button>
         </header>
+        <PipelineRunBar />
         <div className="relative isolate min-h-0 flex-1 overflow-hidden">
           <CanvasStage
             tool={tool}

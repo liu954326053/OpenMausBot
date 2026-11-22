@@ -1,3 +1,4 @@
+import type { PipelineVideosInput } from "../../../shared/pipeline-run";
 import type {
   CanvasConflict,
   CanvasFileRef,
@@ -12,6 +13,7 @@ import type {
   CanvasTaskResponse,
   CanvasUploadResponse,
 } from "../../../shared/project-canvas";
+import type { ProjectDraftOpenResult, ProjectFinalInput } from "../../../shared/project-draft";
 import type {
   GenerationKind,
   GenerationModelsWire,
@@ -78,4 +80,16 @@ export interface CanvasBackend {
   startGeneration(projectId: string, request: CanvasGenerateRequest): Promise<CanvasGenerateResponse | Refused>;
   /** `POST /api/team-projects/:id/generation/jobs/:jobId/cancel`. */
   cancelGeneration(projectId: string, jobId: string): Promise<void>;
+
+  /** `POST /api/team-projects/:id/canvas/select-take`: the take becomes the one of its shot that goes to post. */
+  selectTake(projectId: string, nodeId: string): Promise<{ revision: number }>;
+  /** `POST /api/team-projects/:id/pipeline/videos`: the person's answer to a run that waits before or after its videos. */
+  answerVideos(projectId: string, input: PipelineVideosInput): Promise<void>;
+  /** `POST /api/team-projects/:id/draft/open`: JianYing comes to the front, on the draft or only as the app. */
+  openDraft(projectId: string): Promise<ProjectDraftOpenResult>;
+  /** `POST /api/team-projects/:id/final`: a video file in the project folder becomes the finished film's node. */
+  setFinalFilm(projectId: string, input: ProjectFinalInput): Promise<void>;
+  /** Where on this computer a file the person picked is, or "" when that is not known. Present only where the app can
+   * know it and the server is on this computer: the desktop app, not driving another computer. */
+  localPathOf?(file: File): string;
 }

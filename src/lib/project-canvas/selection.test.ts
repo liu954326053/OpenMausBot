@@ -56,6 +56,14 @@ describe("copy and paste", () => {
     expect(pasted.connections).toEqual([link("n3", "n1", "n2"), link("n4", "bot:b1", "n1")]);
   });
 
+  it("copies a node of the pipeline as a plain node, leaving the marks only the server sets", () => {
+    counter = 0;
+    const take: CanvasNode = { ...nodes[1]!, id: "take", metadata: { role: "take", shotId: "s", selected: true, stale: true, durationMs: 5000 } };
+    const pasted = pasteClipboard({ nodes: [take], connections: [{ id: "c", fromNodeId: "a", toNodeId: "take", kind: "content", pipeline: true }] }, { ...options, center: { x: 0, y: 0 } });
+    expect(pasted.nodes[0]!.metadata).toEqual({ durationMs: 5000 });
+    expect(pasted.connections).toEqual([link("n2", "a", "n1")]);
+  });
+
   it("keeps a member in its group when the group is pasted too", () => {
     counter = 0;
     const pasted = pasteClipboard(copySelection(new Set(["g", "a"]), nodes, connections)!, { ...options, center: { x: 0, y: 0 } });
