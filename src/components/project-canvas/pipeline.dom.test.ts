@@ -149,6 +149,30 @@ describe("the pipeline on the project canvas", () => {
     expect(panel()!.textContent).toContain("This node's shot was deleted, so there is nothing to generate.");
   });
 
+  it("says on the creation node why its video failed, and tries again from there", async () => {
+    let fails = true;
+    await mount({ fail: () => (fails ? "the faces don't match" : undefined) });
+    await act(async () => { await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "shot-1-creation" }); });
+    await settle(40);
+    const failed = nodeElement("shot-1-creation").querySelector<HTMLElement>('[role="alert"]')!;
+    expect(failed.textContent).toContain("studio-video couldn't make it: the faces don't match");
+    fails = false;
+    await act(async () => buttonByText(failed, "Retry")!.click());
+    await settle(40);
+    expect(nodeElement("shot-1-creation").querySelector('[role="alert"]')).toBeNull();
+    expect(takes()).toHaveLength(2);
+  });
+
+  it("names a node in the list of nodes by what it is in the pipeline", async () => {
+    await mount();
+    await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Nodes"]')!.click());
+    const rows = [...host.querySelectorAll<HTMLElement>('aside[aria-label="Nodes"] li')].map((row) => row.textContent);
+    expect(rows).toContain("KaiScript");
+    expect(rows).toContain("Shot 1 · RooftopVideo creation");
+    expect(rows).toContain("Shot 1 · RooftopShot");
+    expect(rows).toContain("city-night.pngImage");
+  });
+
   it("marks the take a shot uses, and Use this take on another makes that one the shot's", async () => {
     await mount();
     expect(nodeElement("shot-1-take-1").querySelector("[data-take-selected]")!.textContent).toBe("In the film");

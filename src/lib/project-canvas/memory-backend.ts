@@ -161,6 +161,13 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
     const kept = snapshot.connections.filter((connection) => !(connection.pipeline && takes.has(connection.fromNodeId) && posts.includes(connection.toNodeId)));
     snapshot = { ...snapshot, nodes, connections: [...kept, ...posts.map((post) => pipelineLink(takeId, post))] };
   };
+  /** A shot that is added gets the node its video is generated from, as the server gives it one. */
+  const addCreation = (shotId: string) => {
+    const shot = nodeById(shotId);
+    if (shot?.type !== "shot" || snapshot.nodes.some((node) => node.metadata?.role === "creation" && node.metadata.shotId === shotId)) return;
+    const creation: CanvasNode = { id: newId("node"), type: "config", title: shot.title, ...nextOutputFrame(shot, "config", snapshot.nodes, snapshot.connections, comingReplies()), createdBy: { kind: "person" }, metadata: { role: "creation", shotId, generationMode: "video" } };
+    snapshot = { ...snapshot, nodes: [...snapshot.nodes, creation], connections: [...snapshot.connections, pipelineLink(shotId, creation.id)] };
+  };
   const rightEdge = () => Math.max(0, ...snapshot.nodes.map((node) => node.position.x + node.width)) + 96;
   const setBot = (botId: string, change: Partial<CanvasBotState>) => {
     const bot = snapshot.bots[botId];
@@ -288,7 +295,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         return op;
       });
       const moved = ops.flatMap((op) => (op.type === "update_node" && op.patch?.position ? [botIdOfNode(op.id)] : [])).filter((botId): botId is string => botId !== null && botId in snapshot.bots);
-      commit(ops);
+      commit(ops, () => nodeIds.forEach(addCreation));
       for (const botId of moved) snapshot = { ...snapshot, bots: { ...snapshot.bots, [botId]: { ...snapshot.bots[botId]!, placed: true } } };
       return { revision: snapshot.revision, nodeIds, connectionIds };
     },

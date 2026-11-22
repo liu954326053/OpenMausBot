@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { botNodeId, type CanvasNode } from "../../shared/project-canvas";
-import { layoutPipeline } from "../lib/project-canvas/stage-layout";
+import { BOT_GAP_Y, layoutPipeline } from "../lib/project-canvas/stage-layout";
 import { dramaCanvasSnapshot } from "./project-canvas-drama-sample";
 
 const overlap = (a: CanvasNode, b: CanvasNode) => a.position.x < b.position.x + b.width && b.position.x < a.position.x + a.width && a.position.y < b.position.y + b.height && b.position.y < a.position.y + a.height;
@@ -40,7 +40,7 @@ describe("the drama sample", () => {
     const columns = ["yunzhou", "yanqing", "mobai", "xiaoman", "qinghe"].map((botId) => at(botId).x);
     expect([...columns].sort((a, b) => a - b)).toEqual(columns);
     expect(new Set(columns).size).toBe(5);
-    expect(at("ache")).toEqual({ x: at("yunzhou").x, y: at("yunzhou").y + 180 + 64 });
+    expect(at("ache")).toEqual({ x: at("yunzhou").x, y: at("yunzhou").y + 180 + BOT_GAP_Y });
   });
 
   it("waits before the videos with no take yet, and after a failure has the two shots without one", () => {

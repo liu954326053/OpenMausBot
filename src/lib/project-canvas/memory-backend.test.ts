@@ -271,6 +271,16 @@ describe("the in-memory canvas backend", () => {
     expect(await backend.listModels(SAMPLE_PROJECT_ID, "video")).toMatchObject({ models: [{ id: "kling-2" }, { id: "veo-lite" }] });
   });
 
+  it("gives a shot that is added its creation node, to its right and linked from it, once", async () => {
+    const backend = sampleCanvasBackend();
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "shot-2", nodeType: "shot", title: "Shot 2", position: { x: 0, y: 3000 } }] });
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "update_node", id: "shot-2", metadata: { prompt: "A door opens." } }] });
+    const creations = backend.current().nodes.filter((one) => one.metadata?.role === "creation" && one.metadata.shotId === "shot-2");
+    expect(creations).toMatchObject([{ type: "config", title: "Shot 2", position: { x: 340 + OUTPUT_OFFSET_X, y: 3000 }, metadata: { generationMode: "video" } }]);
+    expect(backend.current().connections.filter((connection) => connection.toNodeId === creations[0]!.id)).toMatchObject([{ fromNodeId: "shot-2", kind: "content", pipeline: true }]);
+    expect(backend.current().nodes.filter((one) => one.metadata?.role === "creation")).toHaveLength(2);
+  });
+
   it("makes the take the person picks its shot's selected one, alone, with the line to the post bot, and refuses a node that is no take", async () => {
     const backend = sampleCanvasBackend({ delayMs: 50 });
     await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "shot-1-creation" });

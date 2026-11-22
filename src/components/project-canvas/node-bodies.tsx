@@ -39,6 +39,10 @@ function Placeholder({ node, text }: { node: CanvasNode; text: string }) {
   );
 }
 
+/** Whether there is a description to generate the node from: its own prompt, or for a shot's creation node the shot's. */
+const describedIn = (node: CanvasNode, nodes: readonly CanvasNode[]): boolean =>
+  Boolean(node.metadata?.prompt?.trim() || (node.metadata?.role === "creation" && shotOf(node, nodes)?.metadata?.prompt?.trim()));
+
 /** What a node shows while its generation runs or after it failed, over or instead of its content. */
 function GenerationState({ node, children }: { node: CanvasNode; children: ReactNode }) {
   const ui = useCanvasUi();
@@ -60,7 +64,7 @@ function GenerationState({ node, children }: { node: CanvasNode; children: React
       <div role="alert" className="flex size-full flex-col items-center justify-center gap-2 p-4 text-center">
         <AlertCircle size={16} aria-hidden="true" className="text-danger" />
         <span className="line-clamp-3 text-[12px] leading-4 text-ink-secondary">{serverErrorText(node.metadata, node.metadata?.errorDetails || t("projectCanvas.node.failed"))}</span>
-        {!ui.readOnly && node.metadata?.prompt ? (
+        {!ui.readOnly && describedIn(node, ui.snapshot.nodes) ? (
           <button type="button" className="ui-button ui-button-sm" onClick={() => void retry()}>
             <RotateCcw size={14} aria-hidden="true" />
             {t("projectCanvas.node.retry")}

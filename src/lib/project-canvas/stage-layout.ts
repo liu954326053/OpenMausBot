@@ -1,12 +1,14 @@
 import { botIdOfNode, type CanvasBotState, type CanvasConnection, type CanvasNode, type CanvasPoint, type CanvasSnapshot } from "../../../shared/project-canvas";
 import { PIPELINE_STAGES, type FlowStage } from "../../../shared/team-pipeline";
+import { OUTPUT_GAP_Y, OUTPUT_OFFSET_X } from "./generation";
 
-/** Between a column's widest row and the next column. */
-export const COLUMN_GAP_X = 120;
+/** Between a node and what stands to its right, as the server leaves between a node and its results: a bot and what it
+ * made, the cells of a row, and a column's widest row and the next column. */
+export const LANE_GAP_X = OUTPUT_OFFSET_X;
+/** Between the nodes that stand one below the other beside a bot, as the server leaves under a result. */
+export const LANE_GAP_Y = OUTPUT_GAP_Y;
 /** Between two bots of a column. */
-export const BOT_GAP_Y = 64;
-/** Between a bot and what it made, and between the nodes it made. */
-export const LANE_GAP = 48;
+export const BOT_GAP_Y = 60;
 
 const COLUMN_STAGES: readonly FlowStage[] = ["lead", ...PIPELINE_STAGES];
 
@@ -23,9 +25,9 @@ interface Lane {
   widths: number[];
 }
 
-const rowHeight = (row: Row): number => Math.max(row.node.height, row.next.reduce((sum, next, index) => sum + rowHeight(next) + (index ? LANE_GAP : 0), 0));
-const rowsHeight = (rows: readonly Row[]) => rows.reduce((sum, row, index) => sum + rowHeight(row) + (index ? LANE_GAP : 0), 0);
-const laneWidth = (lane: Lane) => lane.widths.reduce((sum, width) => sum + LANE_GAP + width, 0);
+const rowHeight = (row: Row): number => Math.max(row.node.height, row.next.reduce((sum, next, index) => sum + rowHeight(next) + (index ? LANE_GAP_Y : 0), 0));
+const rowsHeight = (rows: readonly Row[]) => rows.reduce((sum, row, index) => sum + rowHeight(row) + (index ? LANE_GAP_Y : 0), 0);
+const laneWidth = (lane: Lane) => lane.widths.reduce((sum, width) => sum + LANE_GAP_X + width, 0);
 
 function cellWidths(rows: readonly Row[], depth = 0, widths: number[] = []): number[] {
   for (const row of rows) {
@@ -127,8 +129,8 @@ export function layoutPipeline(snapshot: Pick<CanvasSnapshot, "nodes" | "connect
     for (const member of row.members) positions.set(member.id, { x: member.position.x + dx, y: member.position.y + dy });
     let top = y;
     for (const next of row.next) {
-      place(next, x + widths[depth]! + LANE_GAP, top, widths, depth + 1);
-      top += rowHeight(next) + LANE_GAP;
+      place(next, x + widths[depth]! + LANE_GAP_X, top, widths, depth + 1);
+      top += rowHeight(next) + LANE_GAP_Y;
     }
   };
 
@@ -159,12 +161,12 @@ export function layoutPipeline(snapshot: Pick<CanvasSnapshot, "nodes" | "connect
         positions.set(bot.id, { x, y });
         let top = y;
         for (const row of lane.rows) {
-          place(row, x + bot.width + LANE_GAP, top, lane.widths, 0);
-          top += rowHeight(row) + LANE_GAP;
+          place(row, x + bot.width + LANE_GAP_X, top, lane.widths, 0);
+          top += rowHeight(row) + LANE_GAP_Y;
         }
         y += Math.max(bot.height, rowsHeight(lane.rows)) + BOT_GAP_Y;
       }
-      x += Math.max(...column.map((bot) => bot.width + laneWidth(lanes.get(bot.id)!))) + COLUMN_GAP_X;
+      x += Math.max(...column.map((bot) => bot.width + laneWidth(lanes.get(bot.id)!))) + LANE_GAP_X;
     }
   }
 

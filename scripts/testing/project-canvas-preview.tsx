@@ -109,6 +109,9 @@ function draftOf(state: string | null): Omit<ProjectDraftWire, "exportFolder"> |
   }
 }
 
+/** The file a page picks as the finished film, which the page can then play. */
+const FILM_NAME = "雨城 · 第一集.mp4";
+
 function viewed(snapshot: CanvasSnapshot): CanvasSnapshot {
   const [x, y, k] = (params.get("view") ?? "").split(",").map(Number);
   return x !== undefined && y !== undefined && k ? { ...snapshot, viewport: { x, y, k } } : snapshot;
@@ -119,7 +122,7 @@ function dramaBackend() {
   const snapshot = viewed(dramaCanvasSnapshot(sample));
   const files = snapshot.nodes.flatMap((node) => (node.metadata?.file ? [node.metadata.file] : []));
   const fileUrls = Object.fromEntries(files.map((file, index) => [file.path, file.mime.startsWith("image/") ? paintImage(768, 512, 200 + index * 47) : index % 2 ? secondTake : firstTake]));
-  const options: Partial<MemoryCanvasOptions> = { snapshot, fileUrls, output, delayMs: 1500 };
+  const options: Partial<MemoryCanvasOptions> = { snapshot, fileUrls: { [`产出/${FILM_NAME}`]: firstTake, ...fileUrls }, output, delayMs: 1500 };
   if (params.get("opens") === "app") options.draftOpens = "app";
   if (params.has("pick")) options.localPathOf = (file) => `${file.name.startsWith("out-") ? "/Users/demo/Movies" : DRAMA_EXPORT_FOLDER}/${file.name}`;
   return dramaCanvasBackend(sample, options);
