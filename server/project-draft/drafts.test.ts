@@ -211,6 +211,17 @@ describe("writing a project's draft", () => {
     expect(drafts.draftWire("p1", OWNER)).toMatchObject({ state: "kept", name: "Stand-in bride 3" });
   });
 
+  it("writes no new draft beside one JianYing saved while the timeline is what that draft was written from", async () => {
+    const { drafts, canvas, shot, draftRoot, draftFolders } = harness();
+    canvas.set("p1", [shot("s1"), shot("s2")]);
+    await drafts.writeDraftIfReady("p1");
+    writeFileSync(join(draftRoot, "Stand-in bride", "draft_info.json"), "what JianYing writes when it saves");
+    expect(await drafts.writeDraftIfReady("p1")).toMatchObject({ state: "written", name: "Stand-in bride" });
+    await drafts.setOrder("p1", { shotIds: ["s1", "s2"] });
+    expect(draftFolders()).toEqual(["Stand-in bride"]);
+    expect(readFileSync(join(draftRoot, "Stand-in bride", "draft_info.json"), "utf8")).toBe("what JianYing writes when it saves");
+  });
+
   it("does not bring back a draft the person deleted until the timeline changes", async () => {
     const { drafts, canvas, shot, draftRoot, draftFolders } = harness();
     canvas.set("p1", [shot("s1"), shot("s2")]);

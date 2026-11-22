@@ -60,6 +60,11 @@ function pathRefusal(error: ProjectPathError, folder: string): DraftRefusal {
   return refuse(error.status, "serverError.projectCanvas.outsideFolder");
 }
 
+function filmOf(video: { file: FinishedFilm["file"]; facts: VideoFacts }): FinishedFilm {
+  const { durationUs, width, height } = video.facts;
+  return { file: video.file, ...(durationUs ? { durationMs: Math.round(durationUs / 1000) } : {}), ...(width && height ? { width, height } : {}) };
+}
+
 const archivedRefusal = () => new DraftRefusal(409, { code: "canvas_read_only", ...userError("serverError.projectCanvas.archived"), reason: "archived" } satisfies CanvasReadOnly);
 
 /** A project's timeline, its JianYing draft and its finished film. */
@@ -268,9 +273,7 @@ export class ProjectDrafts {
 
   private async filmAt(project: TeamProjectWire, path: string): Promise<FinishedFilm | null> {
     const video = await this.videoAt(project, path);
-    if (!video) return null;
-    const { durationUs, width, height } = video.facts;
-    return { file: video.file, ...(durationUs ? { durationMs: Math.round(durationUs / 1000) } : {}), ...(width && height ? { width, height } : {}) };
+    return video ? filmOf(video) : null;
   }
 
   private async write(project: TeamProjectWire): Promise<void> {
@@ -287,8 +290,8 @@ export class ProjectDrafts {
     const stored = this.deps.store.read(project.id);
     const root = install.draftRoot;
     const previous = stored.draft && dirname(stored.draft.folder) === root ? stored.draft : undefined;
+    if (previous?.clipsHash === clipsHash) return;
     const held = previous ? await this.heldBy(previous, install.timelineFile) : "gone";
-    if (previous && held !== "saved" && previous.clipsHash === clipsHash) return;
     const now = this.deps.now();
     let place: Pick<WrittenDraft, "name" | "number" | "folder" | "draftId" | "createdUs" | "kept">;
     if (previous && held === "written") place = previous;
@@ -371,8 +374,7 @@ export class ProjectDrafts {
     if (this.deps.canvas.showsFile(project.id, path)) return;
     const video = await this.videoAt(project, path).catch(() => null);
     if (!video || (video.facts.mime !== "video/webm" && video.facts.durationUs === undefined)) return;
-    const { durationUs, width, height } = video.facts;
-    const film: FinishedFilm = { file: video.file, ...(durationUs ? { durationMs: Math.round(durationUs / 1000) } : {}), ...(width && height ? { width, height } : {}) };
+    const film = filmOf(video);
     try {
       await this.deps.canvas.addFinal(project.id, film.file.path, film);
     } catch (error) {

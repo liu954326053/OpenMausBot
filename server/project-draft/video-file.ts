@@ -16,8 +16,6 @@ export interface VideoFacts {
 
 const HEADER_MAX_BYTES = 32 * 1024 * 1024;
 const BOXES_MAX = 10_000;
-// A QuickTime track names its data handler in a second `hdlr` inside `minf` (QuickTime File Format, "Handler
-// Reference Atoms"), so a track is a video once any of its handlers says so.
 const CONTAINERS: ReadonlySet<string> = new Set(["trak", "mdia", "minf", "stbl"]);
 
 interface Box {
@@ -85,6 +83,8 @@ function readTrack(trak: Buffer): Track {
       if (CONTAINERS.has(type)) walk(body);
       else if (type === "tkhd") track.size = frameSize(body);
       else if (type === "mdhd") track.media = scaleAndDuration(body);
+      // A QuickTime track names its data handler in a second `hdlr` inside `minf` (QuickTime File Format, "Handler
+      // Reference Atoms"), so a track is a video once any of its handlers says so.
       else if (type === "hdlr") track.video ||= body.length >= 12 && body.subarray(8, 12).toString("latin1") === "vide";
       else if (type === "stts") track.frames = frameCount(body);
     }
