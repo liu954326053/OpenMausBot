@@ -11,7 +11,7 @@ import { nodeSettings } from "@/lib/project-canvas/settings";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
-import { formatBytes, NODE_ICONS, nodeLabel, nodeTypeLabel } from "./node-kinds";
+import { formatBytes, NODE_ICONS, nodeLabel, nodeTypeLabel, shotOf } from "./node-kinds";
 
 const DEFAULT_FONT_SIZE = 14;
 
@@ -24,7 +24,7 @@ export function NodeBody({ node }: { node: CanvasNode }) {
     case "video": return <VideoBody node={node} />;
     case "audio": return <AudioBody node={node} />;
     case "file": return <FileBody node={node} />;
-    case "config": return <ConfigBody node={node} />;
+    case "config": return node.metadata?.role === "creation" ? <CreationBody node={node} /> : <ConfigBody node={node} />;
     case "group": return null;
   }
 }
@@ -128,29 +128,48 @@ function BotBody({ node }: { node: CanvasNode }) {
 
 function ShotBody({ node }: { node: CanvasNode }) {
   const ui = useCanvasUi();
-  const project = ui.state.generation?.settings;
-  const settings = project ? nodeSettings("video", project, node) : null;
-  const model = settings && ui.state.models.video?.find((candidate) => candidate.id === settings.model);
   const references = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections).length;
   const prompt = node.metadata?.prompt?.trim();
   if (node.metadata?.status === "error") return <GenerationState node={node}>{null}</GenerationState>;
   return (
     <div className="relative flex size-full flex-col gap-3 p-4">
-      <p dir="auto" className={cn("line-clamp-5 min-h-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-[18px]", prompt ? "text-ink" : "text-ink-tertiary")}>
+      <p dir="auto" className={cn("line-clamp-6 min-h-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-[18px]", prompt ? "text-ink" : "text-ink-tertiary")}>
         {prompt || t("projectCanvas.shot.noPrompt")}
       </p>
       <div className="flex flex-wrap gap-1">
-        {settings ? (
-          <>
-            <span className="ui-chip tabular-nums">{t("projectCanvas.settings.secondsValue", { count: settings.seconds })}</span>
-            <span className="ui-chip">{settings.resolution}</span>
-            <span className="ui-chip max-w-full truncate">{model?.name ?? (settings.model || t("projectCanvas.settings.noModel"))}</span>
-          </>
-        ) : null}
         <span className="ui-chip tabular-nums">{t("projectCanvas.shot.references", { count: references })}</span>
       </div>
       {node.metadata?.status === "loading" ? <GeneratingBadge /> : null}
     </div>
+  );
+}
+
+/** A shot's creation node: the shot's description, and what its video is generated with. */
+function CreationBody({ node }: { node: CanvasNode }) {
+  const ui = useCanvasUi();
+  const project = ui.state.generation?.settings;
+  const settings = project ? nodeSettings("video", project, node) : null;
+  const model = settings && ui.state.models.video?.find((candidate) => candidate.id === settings.model);
+  const references = mentionReferences(node.id, ui.snapshot.nodes, ui.snapshot.connections).length;
+  const prompt = node.metadata?.prompt?.trim() || shotOf(node, ui.snapshot.nodes)?.metadata?.prompt?.trim();
+  return (
+    <GenerationState node={node}>
+      <div className="flex size-full flex-col gap-3 p-4">
+        <p dir="auto" className={cn("line-clamp-5 min-h-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-[18px]", prompt ? "text-ink-secondary" : "text-ink-tertiary")}>
+          {prompt || t("projectCanvas.shot.noPrompt")}
+        </p>
+        <div className="flex flex-wrap gap-1">
+          {settings ? (
+            <>
+              <span className="ui-chip tabular-nums">{t("projectCanvas.settings.secondsValue", { count: settings.seconds })}</span>
+              <span className="ui-chip">{settings.resolution}</span>
+              <span className="ui-chip max-w-full truncate">{model?.name ?? (settings.model || t("projectCanvas.settings.noModel"))}</span>
+            </>
+          ) : null}
+          <span className="ui-chip tabular-nums">{t("projectCanvas.shot.references", { count: references })}</span>
+        </div>
+      </div>
+    </GenerationState>
   );
 }
 

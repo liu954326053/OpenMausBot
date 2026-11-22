@@ -140,12 +140,12 @@ describe("the project canvas", () => {
     await mount();
     expect(host.querySelector("h1")?.textContent).toBe("Rain City");
     for (const id of ["mira", "kai", "lena", "otto"]) expect(nodeElement(botNodeId(id))).not.toBeNull();
-    for (const id of ["logline", "shot-1", "shot-1-take-1", "city-night"]) expect(nodeElement(id)).not.toBeNull();
+    for (const id of ["logline", "shot-1", "shot-1-creation", "shot-1-take-1", "city-night"]) expect(nodeElement(id)).not.toBeNull();
 
     const dispatch = host.querySelectorAll('[data-kind="dispatch"]');
     expect(dispatch).toHaveLength(3);
     for (const line of dispatch) expect(line.tagName.toLowerCase()).toBe("path");
-    expect(host.querySelectorAll('[data-kind="content"]')).toHaveLength(4);
+    expect(host.querySelectorAll('[data-kind="content"]')).toHaveLength(6);
 
     const bot = nodeElement(botNodeId("kai"))!;
     expect(bot.querySelector('[data-handle="target"]')).not.toBeNull();
@@ -156,7 +156,7 @@ describe("the project canvas", () => {
   it("opens a node's panel on a click and keeps one panel open at a time", async () => {
     await mount();
     await clickNode("shot-1");
-    expect(panel()?.textContent).toContain("Generate video");
+    expect(panel()!.querySelector('textarea[aria-label="Shot prompt"]')).not.toBeNull();
     expect(nodeElement("shot-1")!.querySelectorAll("[data-resize-corner]")).toHaveLength(4);
 
     await clickNode(botNodeId("mira"));
@@ -170,7 +170,7 @@ describe("the project canvas", () => {
     await act(async () => root.render(createElement(ProjectCanvas, { projectId: SAMPLE_PROJECT_ID, backend, selectedBotId: "kai" })));
     await settle();
     await settle();
-    expect(["mira", "kai", "lena", "otto"].map((id) => nodeElement(botNodeId(id))!.querySelectorAll("[data-resize-corner]").length)).toEqual([0, 4, 0, 0]);
+    expect(["mira", "kai", "lena"].map((id) => nodeElement(botNodeId(id))!.querySelectorAll("[data-resize-corner]").length)).toEqual([0, 4, 0]);
     expect(panel()).toBeNull();
   });
 
@@ -311,17 +311,17 @@ describe("the project canvas", () => {
     expect(backend.current().connections.some((connection) => connection.id === "c-kai-logline")).toBe(true);
   });
 
-  it("lets a shot override a setting, restore the project default, then follow the project when its default changes", async () => {
+  it("lets a shot's creation node override a setting, restore the project default, then follow the project when its default changes", async () => {
     await mount();
-    const chips = () => nodeElement("shot-1")!.textContent ?? "";
+    const chips = () => nodeElement("shot-1-creation")!.textContent ?? "";
     expect(chips()).toContain("10s");
 
-    await clickNode("shot-1");
+    await clickNode("shot-1-creation");
     const summary = [...panel()!.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"]')][0]!;
     await act(async () => summary.click());
     await act(async () => buttonByText(panel()!, "Restore default")!.click());
     await settle();
-    expect(shown("shot-1")!.metadata?.settings).toBeUndefined();
+    expect(shown("shot-1-creation")!.metadata?.settings).toBeUndefined();
     expect(chips()).toContain("5s");
 
     await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Project settings"]')!.click());
@@ -332,7 +332,7 @@ describe("the project canvas", () => {
     await settle();
     expect(document.body.querySelector("[data-project-canvas-settings]")).toBeNull();
     expect(chips()).toContain("10s");
-    expect(shown("shot-1")!.metadata?.settings).toBeUndefined();
+    expect(shown("shot-1-creation")!.metadata?.settings).toBeUndefined();
   });
 
   it("asks a bot to revise a text node's text, draws the node its reply becomes beside it while the bot writes, and the reply takes exactly that place", async () => {

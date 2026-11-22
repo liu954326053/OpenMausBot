@@ -58,10 +58,10 @@ export function copySelection(selected: ReadonlySet<string>, nodes: readonly Can
   return { nodes: copied, connections: connections.filter((connection) => connection.kind === "content" && ids.has(connection.toNodeId)).map((connection) => ({ ...connection })) };
 }
 
-/** A copy shows its own result, never a generation still running for the original. */
+/** A copy shows its own result, never a generation still running for the original, and is no part of the pipeline. */
 function copiedMetadata(metadata: CanvasNodeMetadata | undefined): CanvasNodeMetadata | undefined {
   if (!metadata) return undefined;
-  const { jobId: _jobId, ...rest } = metadata;
+  const { jobId: _jobId, role: _role, shotId: _shotId, selected: _selected, stale: _stale, ...rest } = metadata;
   if (rest.status === "loading") delete rest.status;
   return Object.keys(rest).length ? rest : undefined;
 }
