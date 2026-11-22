@@ -41,7 +41,7 @@ export function CanvasConnections({ nodes, connections, bounds, selectedId, acti
           const curve = connection.kind === "dispatch" ? dispatchCurve(from, to, standing.filter((node) => node !== from && node !== to)) : connectionCurve(from, to);
           if (!curveInView(curve, bounds)) return null;
           if (connection.kind === "dispatch") {
-            return <path key={connection.id} data-connection={connection.id} data-kind="dispatch" d={curve.path} fill="none" stroke="var(--color-ink-tertiary)" strokeWidth={2} strokeDasharray="2 6" strokeLinecap="round" opacity={0.9} />;
+            return <path key={connection.id} data-connection={connection.id} data-kind="dispatch" d={curve.path} fill="none" stroke="var(--color-ink-tertiary)" strokeWidth={1.5} strokeLinecap="round" opacity={0.7} />;
           }
           const isSelected = connection.id === selectedId;
           const isActive = isSelected || active.has(connection.id);

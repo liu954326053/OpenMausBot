@@ -60,7 +60,7 @@ export type PlacedFrame = CanvasFrame & { placed: boolean };
 /** Each bot node's frame by node id: where it is stored, or where the default layout puts it, moved down clear of the
  * nodes on the canvas and of the bots before it. */
 export function botFrames(document: CanvasDocument, flow: CanvasFlow): Map<string, PlacedFrame> {
-  const defaults = defaultBotFrames(flow);
+  const defaults = defaultBotFrames(flow, document);
   const members = new Set(flow.botIds.map(botNodeId));
   const stored = new Map(document.nodes.filter((node) => node.type === "bot").map((node) => [node.id, node]));
   const taken: CanvasFrame[] = document.nodes.filter((node) => node.type !== "group" && (node.type !== "bot" || members.has(node.id)));
