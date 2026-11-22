@@ -120,6 +120,42 @@ describe("the list of projects on disk", () => {
   });
 });
 
+describe("who hears of a change to the list", () => {
+  it("hears each project added, replaced or removed once it is saved, and nothing for a change that was not made", () => {
+    const saved = registry();
+    const heard: Array<{ id: string; listed: string[] }> = [];
+    const stop = saved.onProjectChange((id) => heard.push({ id, listed: saved.projects().map((one) => `${one.id}${one.archivedAt ? " archived" : ""}`) }));
+    saved.setRoot("/dramas");
+    saved.add(project());
+    saved.add(project({ id: "p2" }));
+    saved.replace(project({ archivedAt: 9 }));
+    saved.replace(project({ id: "gone" }));
+    expect(() => saved.add(project({ id: "p3", folder: "" }))).toThrow();
+    saved.remove("p2");
+    expect(heard).toEqual([
+      { id: "p1", listed: ["p1"] },
+      { id: "p2", listed: ["p1", "p2"] },
+      { id: "p1", listed: ["p1 archived", "p2"] },
+      { id: "p2", listed: ["p1 archived"] },
+    ]);
+    stop();
+    saved.remove("p1");
+    expect(heard).toHaveLength(4);
+  });
+
+  it("keeps a change saved when a listener fails, and logs no more than the error's name", () => {
+    const saved = registry();
+    saved.onProjectChange(() => { throw new Error("/dramas/Stand-in bride is private"); });
+    const heard: string[] = [];
+    saved.onProjectChange((id) => heard.push(id));
+    saved.add(project());
+    expect(heard).toEqual(["p1"]);
+    expect(registry().projects()).toEqual([project()]);
+    expect(logged.join("\n")).toContain("Error");
+    expect(logged.join("\n")).not.toContain("/dramas");
+  });
+});
+
 describe("a list of projects that cannot be read", () => {
   const damaged: Array<[string, string]> = [
     ["cut off mid-write", '{"version":1,"projects":[{"id":"p1","na'],

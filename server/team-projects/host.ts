@@ -84,6 +84,7 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
   watchFile(SECTION_CONTEXTS_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.contextsChanged());
   watchFile(TEAM_MEMORY_FILE, { interval: SOURCE_POLL_MS, persistent: false }, () => projects.touchAll());
   onTeamProjectFolderChange((change) => deps.broadcast({ kind: "team-projects", ...change }));
+  registry.onProjectChange((projectId) => deps.broadcast({ kind: "team-projects", projectId }));
   watchProjectFolders(() => (registry.readable ? registry.projects() : []), SOURCE_POLL_MS);
   return {
     api: projects, root: () => projects.listWire().root, lookup: projects.lookup, routes: createTeamProjectRoutes(projects),

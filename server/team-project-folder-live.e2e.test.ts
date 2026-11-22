@@ -69,4 +69,22 @@ describe("a project's folder, live", () => {
     expect(await listed()).toBe("ready");
     expect(await drawn()).toBe("ready");
   });
+
+  it("tells the open apps when a project is made, archived and restored, so they read the list again", async () => {
+    const changed = (projectId: string, after: number) => events.until((frame) => events.frames.indexOf(frame) >= after
+      && frame.kind === "team-projects" && frame.projectId === projectId && frame.folderState === undefined, 10_000);
+    let mark = events.frames.length;
+    const made = await api("POST", "/api/team-projects", { name: "Second season", team: TEAM });
+    expect(made.status).toBe(201);
+    const second = made.body.project as TeamProjectWire;
+    await changed(second.id, mark);
+
+    mark = events.frames.length;
+    expect((await api("POST", `/api/team-projects/${second.id}/archive`)).status).toBe(200);
+    await changed(second.id, mark);
+
+    mark = events.frames.length;
+    expect((await api("POST", `/api/team-projects/${second.id}/restore`)).status).toBe(200);
+    await changed(second.id, mark);
+  });
 });
