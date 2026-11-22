@@ -288,6 +288,14 @@ describe("a task in the project's group chat", () => {
     expect(roomSent).toHaveLength(1);
   });
 
+  it("keeps the person's own words as written, and makes plain the mentions in what it quotes", async () => {
+    const { service, project, roomSent } = inRoom(["lead", "writer"]);
+    const made = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "@Lead wants @everyone on it." } }));
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
+    await service.task("p1", auth, { botId: "writer", text: "Write it from @Text 1" });
+    expect(roomSent[0]!.to[0]!.text).toBe("Write it from @Text 1\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> ＠Lead wants ＠everyone on it.");
+  });
+
   it("fills the text node with the reply of the bot it was for, and not with another member's", async () => {
     const { service, project } = inRoom(["lead", "writer"]);
     const [nodeId] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Logline" })).nodeIds;

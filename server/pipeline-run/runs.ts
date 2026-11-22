@@ -11,6 +11,7 @@ import { replyText } from "../project-canvas/task-targets.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import type { Message, Store } from "../store.ts";
 import type { ProjectRoom } from "../team-projects/project-rooms.ts";
+import { quietMentions } from "../team-projects/room-send.ts";
 import { userError } from "../user-errors.ts";
 import { handBackOf, handOffOf, lastReply, turnEndOf, type TurnEnd } from "./lines.ts";
 import { plannedStages, stageNeeds } from "./plan.ts";
@@ -460,10 +461,10 @@ export class PipelineRuns {
     await this.settle(project, run, stage);
   }
 
-  /** One line in the project's group chat that gives each of `botIds` its task. */
+  /** One line in the project's group chat that gives each of `botIds` its task, what it quotes calling in nobody. */
   private async startInRoom(project: TeamProjectWire, stage: RunStage, room: ProjectRoom, botIds: readonly string[], request: string, language: string | undefined): Promise<void> {
     try {
-      const to = await Promise.all(botIds.map(async (botId) => ({ botId, text: await this.deps.canvas.taskFor(project, botId, request, language) })));
+      const to = await Promise.all(botIds.map(async (botId) => ({ botId, text: quietMentions(await this.deps.canvas.taskFor(project, botId, request, language)) })));
       const receipt = await this.deps.deliverToRoom({ room, to, leadBotId: project.leadBotId });
       for (const botId of botIds) stage.tasks.push({ botId, threadId: receipt.threadId, via: "relay", ...sentWith(receipt) });
     } catch (error) {

@@ -449,15 +449,17 @@ describe("generating on a project's canvas", () => {
       { type: "connect_nodes", fromNodeId: night!.id, toNodeId: "tagline" },
     );
     const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const image = `图片 1 "夜景":\\n\\n<attached-image path="[^"]+" name="${escaped(night!.metadata!.file!.name)}"/>\\n\\n> 把 @图片 1 改成夜景，灯塔照着 @图片 2`;
+    const image = `图片 1 "夜景":\\n\\n<attached-image path="[^"]+" name="${escaped(night!.metadata!.file!.name)}"/>\\n\\n> 把 ＠图片 1 改成夜景，灯塔照着 ＠图片 2`;
     const request = "WRITE-THE-LOGLINE：把 @文本 1 按 @图片 1 和 @文本 2 改成一句梗概";
+    const stored = JSON.parse(readFileSync(join(server.dataDir, "groups.json"), "utf8")) as Array<{ id: string; threadId: string }> | { groups: Array<{ id: string; threadId: string }> };
+    const room = (Array.isArray(stored) ? stored : stored.groups).find((one) => one.id === project.roomId)!.threadId;
     const sent = await task({ botId: writer.id, text: request, targetNodeId: "logline", language: "zh" });
     expect(sent.status, JSON.stringify(sent.body)).toBe(202);
-    expect(sent.body).toMatchObject({ threadId: writer.threadId, references: 2 });
-    await said(writer.threadId, "WROTE THE LOGLINE");
+    expect(sent.body).toMatchObject({ threadId: room, references: 2 });
+    await said(room, "WROTE THE LOGLINE");
     await idle();
-    const asked = (await messages(writer.threadId)).find((line) => line.id === sent.body.messageId)!;
-    expect(asked.text).toMatch(new RegExp(`^请根据要求修改以下文本。\\n\\n原文：\\n文本 1 "梗概":\\n\\n> 雨夜，一个替身新娘。\\n\\n修改要求：\\n${escaped(request)}\\n\\n项目画布上文本节点 "梗概" 引用的内容：\\n\\n${image}\\n\\n文本 2 "剧情":\\n\\n> 雨夜，新娘在教堂台阶上回头。$`));
+    const asked = (await messages(room)).find((line) => line.id === sent.body.messageId)!;
+    expect(asked.text).toMatch(new RegExp(`^@${escaped(writer.name)} 请根据要求修改以下文本。\\n\\n原文：\\n文本 1 "梗概":\\n\\n> 雨夜，一个替身新娘。\\n\\n修改要求：\\n${escaped(request)}\\n\\n项目画布上文本节点 "梗概" 引用的内容：\\n\\n${image}\\n\\n文本 2 "剧情":\\n\\n> 雨夜，新娘在教堂台阶上回头。$`));
     expect(JSON.stringify(turnOf("logline").prompt)).toContain("> 雨夜，新娘在教堂台阶上回头。");
     const logline = await node("logline");
     expect(logline.metadata?.content).toBe("雨夜，一个替身新娘。");
@@ -467,11 +469,11 @@ describe("generating on a project's canvas", () => {
     expect(reply!.position.x).toBeGreaterThanOrEqual(logline.position.x + logline.width);
 
     const filling = await task({ botId: writer.id, text: "WRITE-THE-TAGLINE：按 @图片 1 写一句宣传语", targetNodeId: "tagline", language: "zh" });
-    expect(filling.body).toMatchObject({ threadId: writer.threadId, references: 1 });
-    await said(writer.threadId, "WROTE THE TAGLINE");
+    expect(filling.body).toMatchObject({ threadId: room, references: 1 });
+    await said(room, "WROTE THE TAGLINE");
     await idle();
-    const askedTagline = (await messages(writer.threadId)).find((line) => line.id === filling.body.messageId)!;
-    expect(askedTagline.text).toMatch(new RegExp(`^WRITE-THE-TAGLINE：按 @图片 1 写一句宣传语\\n\\n项目画布上文本节点 "宣传语" 引用的内容：\\n\\n${image}$`));
+    const askedTagline = (await messages(room)).find((line) => line.id === filling.body.messageId)!;
+    expect(askedTagline.text).toMatch(new RegExp(`^@${escaped(writer.name)} WRITE-THE-TAGLINE：按 @图片 1 写一句宣传语\\n\\n项目画布上文本节点 "宣传语" 引用的内容：\\n\\n${image}$`));
     await expect.poll(async () => (await node("tagline")).metadata?.content, { timeout: 30_000, message: "the reply in the empty tagline" }).toBe("WROTE THE TAGLINE");
     expect(await results("tagline")).toEqual([]);
     keep("09-text-node-task.json", { response: sent.body, message: asked, prompt: turnOf("logline").prompt, logline, reply, tagline: { response: filling.body, message: askedTagline, node: await node("tagline") } });

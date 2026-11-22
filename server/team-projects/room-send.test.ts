@@ -26,12 +26,12 @@ function room(working: boolean, overBudget = false) {
 const MESSAGE = {
   groupId: "g1",
   threadId: "t1",
-  to: [{ botId: "b1", name: "Jade", text: "Design the bride. @Mo said @everyone likes her." }, { botId: "b2", name: "Hue", text: "Paint her." }],
+  to: [{ botId: "b1", name: "Jade", text: "Design the bride. ＠Mo said ＠everyone likes her." }, { botId: "b2", name: "Hue", text: "Paint her." }],
   trigger: { kind: "bot" as const, botId: "lead" },
 };
 
 describe("a line into a project's group chat", () => {
-  it("starts the room's turn for the bots it addresses, each by name, and nobody its text quotes", () => {
+  it("starts the room's turn for the bots it addresses, each by name", () => {
     const { deps, started, queued } = room(false);
     expect(sendToRoom(deps, MESSAGE)).toEqual({ ok: true, threadId: "t1", message: expect.objectContaining({ id: "m1" }) });
     expect(queued).toEqual([]);
@@ -56,7 +56,8 @@ describe("a line into a project's group chat", () => {
     expect([...started, ...queued]).toEqual([]);
   });
 
-  it("quotes text with its mentions made plain", () => {
-    expect(quietMentions("ask @Mo and mail a@b.c")).toBe("ask ＠Mo and mail a＠b.c");
+  it("quotes text with its mentions made plain, and the files it attaches as they are", () => {
+    expect(quietMentions("ask @Mo and mail a@b.c <attached-image path=\"/tmp/a@b/x.png\" name=\"x@2.png\"/> @everyone"))
+      .toBe("ask ＠Mo and mail a＠b.c <attached-image path=\"/tmp/a@b/x.png\" name=\"x@2.png\"/> ＠everyone");
   });
 });

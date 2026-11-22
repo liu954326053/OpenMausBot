@@ -26,7 +26,7 @@ import type { DirectSendReceipt } from "../direct-send.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { Message, Store } from "../store.ts";
 import { projectRoom, type ProjectRoom } from "../team-projects/project-rooms.ts";
-import type { RoomMessage } from "../team-projects/room-send.ts";
+import { quietMentions, type RoomMessage } from "../team-projects/room-send.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
 import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments, type RemovedNode } from "./document-store.ts";
@@ -473,7 +473,8 @@ export class ProjectCanvasService {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
     }
     const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
-    const message = taskMessage(text, references, language);
+    const quoted = room ? { ...references, text: quietMentions(references.text), ...(references.source ? { source: quietMentions(references.source) } : {}) } : references;
+    const message = taskMessage(text, quoted, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
     const receipt = room
       ? this.deps.sendToRoom(auth, { groupId: room.groupId, threadId: room.threadId, to: [{ botId, name: this.deps.store.bot(botId)?.name ?? botId, text: message }] })

@@ -28,14 +28,14 @@ export interface RoomMessage {
   sender?: ResolvedSender;
 }
 
-/** Text in a room line with its mentions made plain: what it quotes never calls in a bot it is not for. */
-export const quietMentions = (text: string): string => text.replaceAll("@", "＠");
+/** Text a room line quotes, its mentions made plain so that it calls in no bot; the files it attaches keep their paths. */
+export const quietMentions = (text: string): string => text.replace(/(<attached-[^>]*>)|@/g, (_at, tag: string | undefined) => tag ?? "＠");
 
 /** A line into a room that each bot it is for answers in turn, as a person's line to them would go: it waits in the
  * room's queue while a turn runs in that thread. */
 export function sendToRoom(deps: RoomSendDeps, message: RoomMessage): DirectSendReceipt {
   deps.withinBudget();
-  const text = message.to.map(({ name, text: asked }) => `@${name} ${quietMentions(asked)}`).join("\n\n");
+  const text = message.to.map(({ name, text: asked }) => `@${name} ${asked}`).join("\n\n");
   const line: RoomLine = { trigger: message.trigger, mentions: message.to.map(({ botId }) => botId), ...(message.sender ? { sender: message.sender } : {}) };
   if (deps.working(message.groupId, message.threadId)) {
     const queued = deps.queue(message.groupId, message.threadId, text, { ...line, mode: "chat" });
