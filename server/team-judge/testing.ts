@@ -74,3 +74,42 @@ export function fakeModel(reply?: (prompt: string) => string | Promise<string>) 
   };
   return { generateText, prompts };
 }
+
+/** What the scheduler reads and writes in place of the running flows: teams with pending members, and what a judge
+ * recorded. `keeps` leaves a recorded member pending, as flows that take no stages would. */
+export function fakeFlows(options: { keeps?: boolean } = {}) {
+  const teams = new Map<string, JudgeTarget>();
+  const listeners = new Set<() => void>();
+  const recorded: Array<[string, Record<string, readonly FlowStage[]>]> = [];
+  const changed = () => {
+    for (const listener of listeners) listener();
+  };
+  return {
+    recorded,
+    listeners,
+    targets: (): JudgeTarget[] => [...teams.values()].filter((team) => team.pending.length).map((team) => structuredClone(team)),
+    record(section: string, stages: Readonly<Record<string, readonly FlowStage[]>>): void {
+      recorded.push([section, { ...stages }]);
+      const team = teams.get(section);
+      if (!team || options.keeps) return changed();
+      team.pending = team.pending.filter((memberId) => !Object.hasOwn(stages, memberId));
+      changed();
+    },
+    onChange(listener: () => void): () => void {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    /** Puts the team as given, in place of what was there under its name. */
+    put(target: JudgeTarget): void {
+      teams.set(target.section, structuredClone(target));
+      changed();
+    },
+    remove(section: string): void {
+      teams.delete(section);
+      changed();
+    },
+    changed,
+  };
+}

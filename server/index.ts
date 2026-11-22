@@ -12197,6 +12197,7 @@ const teamProjects = createTeamProjectsHost({ store, routines: () => routines, t
 const projectGeneration = createProjectGeneration({ dataDir: DATA_DIR, lookup: teamProjects.lookup, storedServers: () => cfg.mcpServers ?? {}, keys: mcpKeys, oauth: mcpOAuth, personMcp: teamConnections.personMcp, policyRefusal: mcpPolicyRefusal, probeAs: (server) => mcpServersHost.probeAs(server) }); ROUTES.push(projectGeneration.routes);
 import { createProjectCanvasHost } from "./project-canvas/host.ts"; import { resumeCanvasGeneration } from "./project-canvas/generation-card.ts"; const projectCanvas = createProjectCanvasHost({ store, projects: teamProjects.api, broadcast: (event) => broadcast({ ...event }, { adminOnly: true }), visibleFor: (auth) => visibleTo(viewerFor(auth)), threadBusy, mainThread: botMainThread, send: (auth, message) => acceptDirectSend({ ...message, sender: messageSender(auth), trigger: usageTriggerFor(auth), personPresent: true, admin: runActor(auth).admin }), generation: projectGeneration.api, answerCard: answerCardNode, language: appLanguage }); ROUTES.push(projectCanvas.routes);
 ROUTES.push(createTeamFlowsHost({ store }).routes);
+import { startTeamJudge } from "./team-judge/host.ts"; startTeamJudge({ decider, config: () => cfg, mainBotText: () => sideJobs.text("team-judge", store.bots.find(isMainBot)?.id ?? "") });
 ROUTES.push(createBotSettingsRoutes({
   store, cfg, registry, commandAllowlist, commandAllowlistDrivers: COMMAND_ALLOWLIST_DRIVERS,
   cloudHome: Boolean(CLOUD_HOME), cloudOwnerProfileFields: CLOUD_OWNER_PROFILE_FIELDS,
