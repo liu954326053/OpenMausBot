@@ -36,12 +36,13 @@ describe("the in-memory canvas backend", () => {
   it("lets a bot answer a task written in a text node: in the node shown beside a node with text from the moment it is sent, or into an empty one, which shows the bot writing", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
     const logline = backend.current().nodes.find((node) => node.id === "logline")!;
+    const inTheWay = backend.current().nodes.find((node) => node.id === botNodeId("lena"))!;
     const response = await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "a tagline", targetNodeId: "logline" });
     expect(response).toMatchObject({ threadId: "thread-kai", references: 0 });
     const [placeholder] = backend.current().bots.kai!.writingBeside!;
     expect(backend.current().bots.kai).toMatchObject({
       status: "working",
-      writingBeside: [{ id: expect.any(String), nodeId: "logline", position: { x: logline.position.x + logline.width + OUTPUT_OFFSET_X, y: logline.position.y }, ...CANVAS_NODE_SIZE.text }],
+      writingBeside: [{ id: expect.any(String), nodeId: "logline", position: { x: logline.position.x + logline.width + OUTPUT_OFFSET_X, y: inTheWay.position.y + inTheWay.height + OUTPUT_GAP_Y }, ...CANVAS_NODE_SIZE.text }],
     });
     expect(backend.current().bots.kai!.writingInto).toBeUndefined();
     expect(backend.current().nodes.map((node) => node.id)).not.toContain(placeholder!.id);
@@ -70,11 +71,12 @@ describe("the in-memory canvas backend", () => {
 
   it("queues a bot's tasks, giving two revisions of a node two placeholders that overlap neither each other nor a node, each taken by its own reply", async () => {
     const backend = sampleCanvasBackend({ delayMs: 100, reply: (task) => `Wrote: ${task.text}` });
-    const take = backend.current().nodes.find((node) => node.id === "shot-1-take-1")!;
+    const inTheWay = backend.current().nodes.find((node) => node.id === botNodeId("lena"))!;
     await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "shorter", targetNodeId: "logline" });
     await backend.sendTask(SAMPLE_PROJECT_ID, { botId: "kai", text: "darker", targetNodeId: "logline" });
     const [first, second] = backend.current().bots.kai!.writingBeside!;
-    expect(second!.position).toEqual({ x: first!.position.x, y: take.position.y + take.height + OUTPUT_GAP_Y });
+    expect(first!.position.y).toBe(inTheWay.position.y + inTheWay.height + OUTPUT_GAP_Y);
+    expect(second!.position).toEqual({ x: first!.position.x, y: first!.position.y + first!.height + OUTPUT_GAP_Y });
     await vi.advanceTimersByTimeAsync(100);
     expect(backend.current().bots.kai).toMatchObject({ status: "working", writingBeside: [second] });
     await vi.advanceTimersByTimeAsync(100);
@@ -178,7 +180,7 @@ describe("the in-memory canvas backend", () => {
       },
     });
     await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [
-      { type: "add_node", id: "look", nodeType: "config", position: { x: 2000, y: 0 }, metadata: { generationMode: "image", prompt: "Image 1 at dawn" } },
+      { type: "add_node", id: "look", nodeType: "config", position: { x: 2000, y: -2000 }, metadata: { generationMode: "image", prompt: "Image 1 at dawn" } },
       { type: "connect_nodes", fromNodeId: "city-night", toNodeId: "look" },
     ] });
     expect(await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "look", language: "zh" })).toEqual({ jobId: expect.any(String) });
@@ -208,7 +210,7 @@ describe("the in-memory canvas backend", () => {
         inputs.push(input);
       },
     });
-    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "image", position: { x: 2000, y: 0 }, metadata: { prompt: "A bride at dawn" } }] });
+    await backend.applyOps(SAMPLE_PROJECT_ID, { ops: [{ type: "add_node", id: "blank", nodeType: "image", position: { x: 2000, y: -2000 }, metadata: { prompt: "A bride at dawn" } }] });
     await backend.startGeneration(SAMPLE_PROJECT_ID, { nodeId: "blank" });
     await vi.advanceTimersByTimeAsync(100);
     const filled = backend.current().nodes.find((node) => node.id === "blank")!;

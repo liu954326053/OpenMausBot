@@ -11527,7 +11527,7 @@
   "projectCanvas.archived": "Archived",
   "projectCanvas.folderMissingHint": "The project's folder isn't there. Files can't be added or generated until it's back.",
   "projectCanvas.tidy": "Tidy",
-  "projectCanvas.tidyHint": "Lay the bots out as their team, with what each made beside it",
+  "projectCanvas.tidyHint": "Stand the bots in their stages' columns, with what each made beside it and each shot in a row",
   "projectCanvas.copied": "Copied: {count}",
   "projectCanvas.cleared": "Cleared the canvas. Undo brings it back.",
   "projectCanvas.dismiss": "Dismiss",

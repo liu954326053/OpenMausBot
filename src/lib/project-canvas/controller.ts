@@ -5,7 +5,7 @@ import { randomUuid } from "../random-uuid";
 import { canvasErrorText, type CanvasBackend } from "./backend";
 import { emptyHistory, recordHistory, redoHistory, undoHistory } from "./history";
 import { addNodeOp, applyCanvasOps, invertCanvasOps } from "./ops";
-import { layoutBotTree } from "./tree-layout";
+import { layoutPipeline } from "./stage-layout";
 import type { CanvasBotLook, CanvasExchangeMessage } from "./types";
 
 /** How long the view rests before it is stored. */
@@ -149,13 +149,13 @@ export class CanvasController {
     this.apply([{ type: "set_background", backgroundMode }], { record: false });
   }
 
-  /** Lays the bots out as their tree, with what each made beside it, as one change. */
+  /** Lays the bots out in their stages' columns, with what each made beside it, as one change. */
   tidy(): void {
     const shown = this.state.snapshot;
     if (!shown) return;
     const byId = new Map(shown.nodes.map((node) => [node.id, node]));
     const ops: CanvasOp[] = [];
-    for (const [id, position] of layoutBotTree(shown)) {
+    for (const [id, position] of layoutPipeline(shown)) {
       const node = byId.get(id);
       if (node && (node.position.x !== position.x || node.position.y !== position.y)) ops.push({ type: "update_node", id, patch: { position } });
     }

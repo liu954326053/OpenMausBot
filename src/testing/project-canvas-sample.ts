@@ -1,7 +1,7 @@
 import { botNodeId, dispatchConnectionId, type CanvasBotState, type CanvasConnection, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationModel, type ProjectGenerationSettings } from "../../shared/project-generation";
 import { createMemoryCanvasBackend, type MemoryCanvasOptions } from "../lib/project-canvas/memory-backend";
-import { layoutBotTree } from "../lib/project-canvas/tree-layout";
+import { layoutPipeline } from "../lib/project-canvas/stage-layout";
 import type { CanvasBotLook, CanvasExchangeMessage } from "../lib/project-canvas/types";
 
 export const SAMPLE_PROJECT_ID = "rain-city";
@@ -13,6 +13,7 @@ const bot = (botId: string, name: string, title: string, extra: Partial<CanvasBo
 export const SAMPLE_BOTS: Record<string, CanvasBotState> = {
   mira: bot("mira", "Mira", "Director", {
     lead: true,
+    stages: ["lead"],
     output: {
       text: "**Episode 1 plan**\n\n- Kai writes the logline and the rooftop scene.\n- Lena boards shot 1 and generates it.\n- Otto cuts the teaser once shot 1 is in.",
       threadId: "thread-mira",
@@ -20,13 +21,14 @@ export const SAMPLE_BOTS: Record<string, CanvasBotState> = {
       at: Date.UTC(2026, 10, 21, 9, 30),
     },
   }),
-  kai: bot("kai", "Kai", "Screenwriter", { status: "working", doing: "Writing the rooftop scene" }),
+  kai: bot("kai", "Kai", "Screenwriter", { stages: ["script"], status: "working", doing: "Writing the rooftop scene" }),
   lena: bot("lena", "Lena", "Storyboard artist", {
+    stages: ["storyboard"],
     status: "waiting",
     output: { text: "Shot 1 is boarded: a slow push-in on the rooftop, rain in the neon light.", threadId: "thread-lena", messageId: "l-2", at: Date.UTC(2026, 10, 21, 9, 40) },
     waiting: { threadId: "thread-lena", messageId: "l-3", card: { title: "Generate shot 1 again at 1080p?", subtitle: "The first take is 720p; 1080p takes longer.", options: ["Generate at 1080p", "Keep 720p"] } },
   }),
-  otto: bot("otto", "Otto", "Editor"),
+  otto: bot("otto", "Otto", "Editor", { stages: ["post"] }),
 };
 
 export const SAMPLE_LOOKS: Record<string, CanvasBotLook> = {
@@ -83,8 +85,8 @@ const contentNodes: CanvasNode[] = [
 
 const connections: CanvasConnection[] = [
   { id: dispatchConnectionId("mira", "kai"), fromNodeId: botNodeId("mira"), toNodeId: botNodeId("kai"), kind: "dispatch" },
-  { id: dispatchConnectionId("mira", "lena"), fromNodeId: botNodeId("mira"), toNodeId: botNodeId("lena"), kind: "dispatch" },
-  { id: dispatchConnectionId("mira", "otto"), fromNodeId: botNodeId("mira"), toNodeId: botNodeId("otto"), kind: "dispatch" },
+  { id: dispatchConnectionId("kai", "lena"), fromNodeId: botNodeId("kai"), toNodeId: botNodeId("lena"), kind: "dispatch" },
+  { id: dispatchConnectionId("lena", "otto"), fromNodeId: botNodeId("lena"), toNodeId: botNodeId("otto"), kind: "dispatch" },
   { id: "c-kai-logline", fromNodeId: botNodeId("kai"), toNodeId: "logline", kind: "content" },
   { id: "c-lena-shot", fromNodeId: botNodeId("lena"), toNodeId: "shot-1", kind: "content" },
   { id: "c-city-shot", fromNodeId: "city-night", toNodeId: "shot-1", kind: "content" },
@@ -103,7 +105,7 @@ export function sampleCanvasSnapshot(): CanvasSnapshot {
     project: { id: SAMPLE_PROJECT_ID, name: "Rain City", leadBotId: "mira", archived: false, folderState: "ready" },
     bots: SAMPLE_BOTS,
   };
-  const positions = layoutBotTree(base);
+  const positions = layoutPipeline(base);
   return structuredClone({ ...base, nodes: base.nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position })) });
 }
 

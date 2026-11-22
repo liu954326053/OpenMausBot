@@ -11527,7 +11527,7 @@
   "projectCanvas.archived": "已封存",
   "projectCanvas.folderMissingHint": "專案資料夾不在原處。在它回來之前，不能加入或生成檔案。",
   "projectCanvas.tidy": "整理",
-  "projectCanvas.tidyHint": "依團隊排列機器人，並把各自的產出放在旁邊",
+  "projectCanvas.tidyHint": "依環節把機器人排成列，各自的產出放在旁邊，每個鏡頭排成一行",
   "projectCanvas.copied": "已複製：{count}",
   "projectCanvas.cleared": "畫布已清空，復原可以還原。",
   "projectCanvas.dismiss": "關閉",

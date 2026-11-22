@@ -171,7 +171,7 @@ describe("the canvas controller", () => {
     expect(controller.getState().canUndo).toBe(false);
   });
 
-  it("tidies the bots into their tree as one undoable change", async () => {
+  it("tidies the bots into their stages' columns as one undoable change", async () => {
     const { controller } = await started();
     controller.apply([{ type: "update_node", id: botNodeId("otto"), patch: { position: { x: 2000, y: 2000 } } }], { record: false });
     controller.tidy();

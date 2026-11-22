@@ -11527,7 +11527,7 @@
   "projectCanvas.archived": "已归档",
   "projectCanvas.folderMissingHint": "项目文件夹不在原处。在它回来之前，不能添加或生成文件。",
   "projectCanvas.tidy": "整理",
-  "projectCanvas.tidyHint": "按团队排列机器人，并把各自的产出放在旁边",
+  "projectCanvas.tidyHint": "按环节把机器人排成列，各自的产出放在旁边，每个镜头排成一行",
   "projectCanvas.copied": "已复制：{count}",
   "projectCanvas.cleared": "画布已清空，撤销可以恢复。",
   "projectCanvas.dismiss": "关闭",

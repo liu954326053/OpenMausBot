@@ -11527,7 +11527,7 @@
   "projectCanvas.archived": "Arquivado",
   "projectCanvas.folderMissingHint": "A pasta do projeto não está lá. Não dá para adicionar nem gerar arquivos até ela voltar.",
   "projectCanvas.tidy": "Organizar",
-  "projectCanvas.tidyHint": "Dispõe os bots como a equipe deles, com o que cada um fez ao lado",
+  "projectCanvas.tidyHint": "Dispõe os bots em colunas por etapa, com o que cada um fez ao lado e cada cena em uma linha",
   "projectCanvas.copied": "Copiado: {count}",
   "projectCanvas.cleared": "O canvas foi limpo. Desfazer traz tudo de volta.",
   "projectCanvas.dismiss": "Dispensar",
