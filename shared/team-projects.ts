@@ -138,12 +138,13 @@ export interface TeamProjectWire extends TeamProjectRecord {
   teamChanges?: TeamProjectChanges;
 }
 
-/** The live event the owner's and admins' open apps get when a project's folder goes missing or comes back, within a
- * few seconds. They read the list again. */
+/** The live event the owner's and admins' open apps get when a project is added to the list, changed or taken off it,
+ * and within a few seconds when its folder goes missing or comes back. They read the list again. */
 export interface TeamProjectsEvent {
   kind: "team-projects";
   projectId: string;
-  folderState: TeamProjectWire["folderState"];
+  /** The folder's new state; absent when the list changed rather than the folder. */
+  folderState?: TeamProjectWire["folderState"];
 }
 
 /**

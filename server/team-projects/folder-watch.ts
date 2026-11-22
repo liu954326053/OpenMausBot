@@ -2,7 +2,7 @@ import type { TeamProjectsEvent, TeamProjectWire } from "../../shared/team-proje
 import { teamProjectFolderReadyAsync } from "../team-project-folders.ts";
 
 type FolderState = TeamProjectWire["folderState"];
-export type FolderChange = Omit<TeamProjectsEvent, "kind">;
+export type FolderChange = Required<Omit<TeamProjectsEvent, "kind">>;
 
 const folderStateOf = async (folder: string): Promise<FolderState> => ((await teamProjectFolderReadyAsync(folder)) ? "ready" : "missing");
 

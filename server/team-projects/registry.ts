@@ -55,6 +55,7 @@ function readProjectsFile(file: string): FileRead {
 export class TeamProjectRegistry {
   private readonly file: string;
   private readonly log: (line: string) => void;
+  private readonly projectListeners = new Set<(projectId: string) => void>();
   private data: ProjectsFile | null = null;
 
   constructor(file: string, log: (line: string) => void = (line) => console.error(line)) {
@@ -114,9 +115,29 @@ export class TeamProjectRegistry {
     return found && structuredClone(found);
   }
 
+  /** Calls `listener` with a project's id once a change adding, replacing or removing it is saved. Returns how to stop. */
+  onProjectChange(listener: (projectId: string) => void): () => void {
+    this.projectListeners.add(listener);
+    return () => {
+      this.projectListeners.delete(listener);
+    };
+  }
+
+  private changed(projectId: string): void {
+    for (const listener of this.projectListeners) {
+      try {
+        listener(projectId);
+      } catch (error) {
+        // Security: the error's name only; its message can hold a project's folder path.
+        this.log(`team projects: a listener to the list failed (${error instanceof Error ? error.name : "unknown"})`);
+      }
+    }
+  }
+
   add(project: StoredTeamProject): void {
     const data = this.current();
     this.save({ ...data, projects: [...data.projects, structuredClone(project)] });
+    this.changed(project.id);
   }
 
   /** False when no project has that id. */
@@ -124,11 +145,13 @@ export class TeamProjectRegistry {
     const data = this.current();
     if (!data.projects.some((held) => held.id === project.id)) return false;
     this.save({ ...data, projects: data.projects.map((held) => (held.id === project.id ? structuredClone(project) : held)) });
+    this.changed(project.id);
     return true;
   }
 
   remove(id: string): void {
     const data = this.current();
     this.save({ ...data, projects: data.projects.filter((project) => project.id !== id) });
+    this.changed(id);
   }
 }
