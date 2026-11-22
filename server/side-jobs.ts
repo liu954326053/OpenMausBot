@@ -35,8 +35,9 @@ export function helperSelection(cfg: HelperConfig, env: Record<string, string | 
   return HELPER_MODEL_ID.test(model) ? { instanceId, model } : null;
 }
 
-/** "representative": a person's assistant answering a teammate's question for them, which must never get tools. */
-export type SideJob = "compaction" | "memory" | "skill-review" | "setup-suggestions" | "representative" | "status-reply";
+/** "representative": a person's assistant answering a teammate's question for them, which must never get tools.
+ * "team-judge": which stages of the pipeline a team's members have, read from their profiles alone. */
+export type SideJob = "compaction" | "memory" | "skill-review" | "setup-suggestions" | "representative" | "status-reply" | "team-judge";
 
 export type SideJobInstance = Pick<ProviderInstance, "instanceId" | "driverKind" | "enabled" | "generateText" | "generateMemoryText" | "models" | "quickModelsUsable"> & {
   adapter: { capabilities: Pick<ProviderAdapter["capabilities"], "agentsMcp"> };
@@ -83,9 +84,9 @@ export interface SideJobs {
 
 type TextCall = (prompt: string, options?: TextGenerationOptions) => Promise<string>;
 
-/** Jobs someone is waiting on, and the representative, which must never get tools, run only on a one-off text call:
- * generateMemoryText starts a whole agent process. */
-const ONE_OFF_ONLY: ReadonlySet<SideJob> = new Set(["compaction", "setup-suggestions", "representative", "status-reply"]);
+/** Jobs someone is waiting on, and the representative and the team judge, which must never get tools, run only on a
+ * one-off text call: generateMemoryText starts a whole agent process. */
+const ONE_OFF_ONLY: ReadonlySet<SideJob> = new Set(["compaction", "setup-suggestions", "representative", "status-reply", "team-judge"]);
 
 function ownCall(job: SideJob, instance: SideJobInstance): TextCall | undefined {
   const call = ONE_OFF_ONLY.has(job) ? instance.generateText : instance.generateText ?? instance.generateMemoryText;
@@ -94,8 +95,11 @@ function ownCall(job: SideJob, instance: SideJobInstance): TextCall | undefined 
 
 /** A turn or a person is waiting on these, so they start at once. */
 const NEVER_QUEUED: ReadonlySet<SideJob> = new Set(["compaction", "representative", "status-reply"]);
-/** A person sees these soon (a new bot's suggestions card): they wait ahead of memory upkeep and skill review. */
-const SEEN_SOON: ReadonlySet<SideJob> = new Set(["setup-suggestions"]);
+/** A person sees these soon (a new bot's suggestions card, a new team's lines): they wait ahead of memory upkeep and
+ * skill review. */
+const SEEN_SOON: ReadonlySet<SideJob> = new Set(["setup-suggestions", "team-judge"]);
+/** Short answers from little text: written by the engine's fastest model. */
+const QUICK: ReadonlySet<SideJob> = new Set(["setup-suggestions", "team-judge"]);
 
 export function createSideJobs(deps: SideJobsDeps): SideJobs {
   // Logged once per change, not once per call.
@@ -212,7 +216,7 @@ export function createSideJobs(deps: SideJobsDeps): SideJobs {
     if (call) {
       // The summary belongs to a turn that already passed the spend limit and is not booked on its own.
       if (job === "compaction") return { via: "engine", generateText: call };
-      if (job === "setup-suggestions") {
+      if (QUICK.has(job)) {
         const quick = quickModel(bot, own);
         const write = booked(job, bot, own, call, { kind: "bot", botId: bot.id }, () => ({ fallback: ownFallback(bot, own), ...quick }));
         return { via: "engine", generateText: quick.model ? rememberRefusal(write, own, quick.model) : write };

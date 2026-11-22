@@ -196,6 +196,7 @@ export const VITEST_SUBSETS = {
       "server/skill-switch.test.ts",
       "server/host/team-project-stops.test.ts",
       "server/routines-team-project.test.ts",
+      "server/team-judge/proposal.test.ts",
       "server/team-project-proposal.test.ts",
     ],
     shards: 2,
