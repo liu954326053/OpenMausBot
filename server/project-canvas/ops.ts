@@ -142,6 +142,10 @@ const METADATA_FIELDS = {
   jobId: short(200),
   settings,
   generationMode: z.enum(["image", "video"]),
+  role: z.enum(["script", "character", "creation", "take", "final"]),
+  shotId: short(200),
+  selected: z.boolean(),
+  stale: z.boolean(),
 } satisfies { [Key in keyof CanvasNodeMetadata]-?: z.ZodType };
 
 type MetadataKey = keyof typeof METADATA_FIELDS;

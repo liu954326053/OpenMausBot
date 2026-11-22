@@ -8,7 +8,7 @@ export const SAMPLE_PROJECT_ID = "rain-city";
 export const SAMPLE_IMAGE_PATH = "素材/city-night.png";
 export const SAMPLE_VIDEO_PATH = "产出/视频/rooftop-1.webm";
 
-const bot = (botId: string, name: string, title: string, extra: Partial<CanvasBotState> = {}): CanvasBotState => ({ botId, name, title, lead: false, status: "idle", placed: false, ...extra });
+const bot = (botId: string, name: string, title: string, extra: Partial<CanvasBotState> = {}): CanvasBotState => ({ botId, name, title, lead: false, stages: ["other"], status: "idle", placed: false, ...extra });
 
 export const SAMPLE_BOTS: Record<string, CanvasBotState> = {
   mira: bot("mira", "Mira", "Director", {

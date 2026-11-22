@@ -100,6 +100,7 @@ function botState(bot: BotFacts, lead: boolean, placed: boolean, sees: (threadId
     name: bot.name,
     title: bot.title,
     lead,
+    stages: lead ? ["lead"] : ["other"],
     status: statusOf(bot.threads),
     ...(doing ? { doing: redactSecretsInText(doing.doing!) } : {}),
     ...(reply ? { output: { ...boundedOutput(reply.reply!.text), threadId: reply.threadId, messageId: reply.reply!.messageId, at: reply.reply!.at } } : {}),

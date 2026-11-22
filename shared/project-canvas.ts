@@ -25,7 +25,10 @@
  */
 
 import type { GenerationKind } from "./project-generation.ts";
+import type { PipelineRunWire } from "./pipeline-run.ts";
+import type { ProjectDraftWire } from "./project-draft.ts";
 import type { ServerTextParams } from "./server-text.ts";
+import type { FlowStage } from "./team-pipeline.ts";
 import type { OptionCardData } from "./wire.ts";
 
 export type { CanvasGenerationConfirmation, CanvasGenerationDecision } from "../packages/phone-protocol/src/canvas-generation-card.ts";
@@ -104,7 +107,24 @@ export interface CanvasNodeMetadata {
   jobId?: string;
   settings?: CanvasNodeSettings;
   generationMode?: "image" | "video";
+  /** What the node is in the project's pipeline; absent on a node that is none of these. Set by the server, never by
+   * an operation of the person or a bot, except `character`, which the bot of the character stage gives a text node
+   * it adds. */
+  role?: CanvasNodeRole;
+  /** On a `creation` and a `take`: the shot it belongs to. */
+  shotId?: string;
+  /** On a `take`: it is the one of its shot that goes to post. One take of a shot at most. */
+  selected?: boolean;
+  /** Something it was made from changed after it was made. Cleared when it is made again. */
+  stale?: boolean;
 }
+
+/**
+ * `script`: the text node holding the script stage's result. `character`: a text node holding one character's
+ * profile; it and the pictures generated from it sit in one group. `creation`: the config node that generates a
+ * shot's video. `take`: a video generated for a shot. `final`: the finished film the person exported.
+ */
+export type CanvasNodeRole = "script" | "character" | "creation" | "take" | "final";
 
 export interface CanvasNode {
   id: string;
@@ -127,6 +147,8 @@ export interface CanvasConnection {
   fromNodeId: string;
   toNodeId: string;
   kind: "content" | "dispatch";
+  /** A content connection the server made because the pipeline says so. A bot cannot delete it. */
+  pipeline?: true;
 }
 
 /** A project's canvas. As stored, bot nodes keep only their frame (`title` is empty) and there are no dispatch
@@ -221,6 +243,8 @@ export interface CanvasBotState {
   /** Its job title. */
   title: string;
   lead: boolean;
+  /** Its stages in the project's pipeline, in order; `["other"]` outside it. */
+  stages: FlowStage[];
   status: CanvasBotStatus;
   /** While working: the step it is on, in the words of its chat's activity line. */
   doing?: string;
@@ -257,6 +281,10 @@ export interface CanvasSnapshot extends CanvasDocument {
   readOnly?: "archived";
   /** By bot id; the node is `bot:<botId>`. */
   bots: Record<string, CanvasBotState>;
+  /** The project's pipeline run, once one started. */
+  run?: PipelineRunWire;
+  /** The project's JianYing draft and where the finished film is expected. */
+  draft?: ProjectDraftWire;
 }
 
 /** On `/api/events`, to the owner and admins, when a project's canvas changes. `document`: the stored canvas has a new

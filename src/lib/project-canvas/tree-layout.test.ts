@@ -6,7 +6,7 @@ const bot = (id: string, x = 0, y = 0): CanvasNode => ({ id: botNodeId(id), type
 const made = (id: string, by: string, over: Partial<CanvasNode> = {}): CanvasNode => ({ id, type: "shot", title: id, position: { x: 5000, y: 5000 }, width: 340, height: 240, createdBy: { kind: "bot", botId: by }, ...over });
 const dispatch = (parent: string, child: string): CanvasConnection => ({ id: dispatchConnectionId(parent, child), fromNodeId: botNodeId(parent), toNodeId: botNodeId(child), kind: "dispatch" });
 const link = (fromNodeId: string, toNodeId: string): CanvasConnection => ({ id: `${fromNodeId}>${toNodeId}`, fromNodeId, toNodeId, kind: "content" });
-const state = (botId: string, lead = false): CanvasBotState => ({ botId, name: botId, title: "", lead, status: "idle", placed: true });
+const state = (botId: string, lead = false): CanvasBotState => ({ botId, name: botId, title: "", lead, stages: lead ? ["lead"] : ["other"], status: "idle", placed: true });
 
 describe("what each bot made", () => {
   it("takes the nodes a bot created, then the images and videos fed only from them", () => {

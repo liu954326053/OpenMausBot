@@ -15,8 +15,8 @@ function snapshot(): CanvasSnapshot {
     projectId: "p1", revision: 7, viewport: { x: 0, y: 0, k: 1 }, backgroundMode: "dots",
     project: { id: "p1", name: "Stand-in bride", leadBotId: "lead", archived: false, folderState: "ready" },
     bots: {
-      lead: { botId: "lead", name: "Lead", title: "Producer", lead: true, status: "working", placed: false },
-      writer: { botId: "writer", name: "Writer", title: "Writes", lead: false, status: "idle", placed: true },
+      lead: { botId: "lead", name: "Lead", title: "Producer", lead: true, stages: ["lead"], status: "working", placed: false },
+      writer: { botId: "writer", name: "Writer", title: "Writes", lead: false, stages: ["other"], status: "idle", placed: true },
     },
     nodes: [
       node(botNodeId("lead"), { type: "bot", title: "Lead" }),
