@@ -21,6 +21,7 @@ import { referenceProblems } from "@/lib/project-canvas/settings";
 import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { serverErrorText } from "@/lib/server-error";
 import { useCanvasUi } from "./canvas-ui";
+import { DraftSection } from "./DraftSection";
 import { shotOf } from "./node-kinds";
 import { ModelPicker, PANEL_SURFACE, PanelLabel, problemText, PromptInput, ReferenceBar, SettingsPopover } from "./panel-parts";
 import { WaitingCard } from "./WaitingCard";
@@ -293,6 +294,7 @@ function BotPanel({ node }: { node: CanvasNode }) {
   };
   return (
     <div className={PANEL_SURFACE}>
+      {ui.snapshot.draft && bot.stages.includes("post") ? <DraftSection draft={ui.snapshot.draft} /> : null}
       <ReferenceBar node={node} references={references} />
       {bot.waiting ? <WaitingCard bot={bot} waiting={bot.waiting} onOpenChat={() => ui.controller.openChat(botId, bot.waiting?.threadId)} /> : null}
       <PromptInput

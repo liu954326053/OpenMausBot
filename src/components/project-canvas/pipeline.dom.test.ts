@@ -7,6 +7,7 @@ vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 
 import type { PipelineRunWire, PipelineStageStatus } from "../../../shared/pipeline-run";
 import { botNodeId, type CanvasNodeMetadata, type CanvasSnapshot } from "../../../shared/project-canvas";
+import type { ProjectDraftWire } from "../../../shared/project-draft";
 import type { StartGenerationInput } from "../../../shared/project-generation";
 import type { PipelineStage } from "../../../shared/team-pipeline";
 import { loadLocale, setLocale } from "@/lib/i18n";
@@ -334,3 +335,167 @@ describe("the run on the project canvas", () => {
     expect(buttonByText(bar()!, "生成 8 段视频")).toBeDefined();
   });
 });
+
+describe("the post bot's JianYing draft", () => {
+  const FOLDER = "/dramas/Rain City/产出";
+  const withDraft = (draft: Omit<ProjectDraftWire, "exportFolder">) => (snapshot: CanvasSnapshot) => { snapshot.draft = { ...draft, exportFolder: FOLDER }; };
+  const section = () => panel()!.querySelector<HTMLElement>("[data-draft]");
+  const openPost = async (draft: Omit<ProjectDraftWire, "exportFolder">, options: Parameters<typeof sampleCanvasBackend>[0] = {}) => {
+    await mount(options, withDraft(draft));
+    await clickNode(botNodeId("otto"));
+  };
+  const pick = async (name: string) => {
+    const input = section()!.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await act(async () => {
+      Object.defineProperty(input, "files", { configurable: true, value: [new File(["film"], name, { type: "video/mp4" })] });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await settle();
+  };
+  const inFolder = (file: File) => `${FOLDER}/${file.name}`;
+
+  it("has no part in the panel while the project has no draft to speak of, and none in the panel of a bot that is not in post", async () => {
+    await mount();
+    await clickNode(botNodeId("otto"));
+    expect(section()).toBeNull();
+    expect(buttonByText(panel()!, "Send")).toBeDefined();
+
+    await act(async () => backend.updateBots(withDraft({ state: "written", name: "Rain City" })));
+    await settle();
+    expect(section()).not.toBeNull();
+    await clickNode(botNodeId("lena"));
+    expect(section()).toBeNull();
+  });
+
+  it("says a draft is not written yet, and where the film goes all the same", async () => {
+    await openPost({ state: "none" });
+    expect(section()!.textContent).toContain("Not written yet. It is written once every shot has a video.");
+    expect(buttonByText(section()!, "Edit in JianYing")).toBeUndefined();
+    expect(section()!.querySelector("code")!.textContent).toBe(FOLDER);
+  });
+
+  it("says in plain words why there is no draft: no JianYing here, a version it can't write for, or a server on another computer", async () => {
+    await openPost({ state: "unavailable", reason: "not-installed" });
+    expect(section()!.textContent).toContain("JianYing isn't installed on this computer. Install it to get a draft you can edit.");
+    expect(buttonByText(section()!, "Edit in JianYing")!.disabled).toBe(true);
+
+    await act(async () => backend.updateBots(withDraft({ state: "unavailable", reason: "unsupported-version" })));
+    await settle();
+    expect(section()!.textContent).toContain("This version of JianYing isn't one a draft can be written for yet.");
+    expect(buttonByText(section()!, "Edit in JianYing")).toBeUndefined();
+    expect(section()!.querySelector("code")).not.toBeNull();
+
+    await act(async () => backend.updateBots(withDraft({ state: "unavailable", reason: "remote" })));
+    await settle();
+    expect(section()!.textContent).toContain("The draft is made on the computer this app is connected to. Open JianYing there to edit it.");
+    expect(section()!.querySelectorAll("button, code")).toHaveLength(0);
+  });
+
+  it("names the written draft and opens it in JianYing, saying which draft to open when only the app came up", async () => {
+    const name = "Rain City, the long cut with every alternate ending and the director's notes";
+    await openPost({ state: "written", name }, { draftOpens: "app" });
+    const title = section()!.querySelector<HTMLElement>("[data-draft-name]")!;
+    expect(title.textContent).toBe(name);
+    expect(title.title).toBe(name);
+    expect(title.className).toContain("truncate");
+    expect(section()!.textContent).not.toContain("JianYing is open");
+    await act(async () => buttonByText(section()!, "Edit in JianYing")!.click());
+    await settle();
+    expect(section()!.querySelector('[role="status"]')!.textContent).toBe(`JianYing is open. Open the draft “${name}” there.`);
+  });
+
+  it("says nothing more when JianYing opened the draft itself, and why when it didn't open", async () => {
+    await openPost({ state: "written", name: "Rain City" });
+    await act(async () => buttonByText(section()!, "Edit in JianYing")!.click());
+    await settle();
+    expect(section()!.querySelector('[role="status"]')).toBeNull();
+    expect(section()!.querySelector('[role="alert"]')).toBeNull();
+
+    backend.openDraft = () => Promise.reject(new Error("JianYing is not responding."));
+    await act(async () => buttonByText(section()!, "Edit in JianYing")!.click());
+    await settle();
+    expect(section()!.querySelector('[role="alert"]')!.textContent).toBe("JianYing didn't open: JianYing is not responding.");
+    expect(buttonByText(section()!, "Edit in JianYing")!.disabled).toBe(false);
+  });
+
+  it("says a draft JianYing saved was left alone and names the newer one beside it", async () => {
+    await openPost({ state: "kept", name: "Rain City 2" });
+    expect(section()!.querySelector("[data-draft-name]")!.textContent).toBe("Rain City 2");
+    expect(section()!.textContent).toContain("JianYing saved the earlier draft, so it was left as it is. This is a newer one beside it.");
+    expect(buttonByText(section()!, "Edit in JianYing")!.disabled).toBe(false);
+  });
+
+  it("shows the folder to export the film to and copies its path", async () => {
+    const writeText = vi.fn(async () => {});
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    await openPost({ state: "written", name: "Rain City" });
+    expect(section()!.textContent).toContain("Export the finished film to this folder");
+    expect(section()!.querySelector("code")!.textContent).toBe(FOLDER);
+    await act(async () => section()!.querySelector<HTMLButtonElement>('button[aria-label="Copy the folder\'s path"]')!.click());
+    await settle();
+    expect(writeText).toHaveBeenCalledWith(FOLDER);
+  });
+
+  it("offers the finished film to choose only where the app can tell where a picked file is", async () => {
+    await openPost({ state: "written", name: "Rain City" });
+    expect(buttonByText(section()!, "Choose the finished film")).toBeUndefined();
+    expect(section()!.querySelector('input[type="file"]')).toBeNull();
+
+    act(() => root.unmount());
+    root = createRoot(host);
+    await openPost({ state: "written", name: "Rain City" }, { localPathOf: inFolder });
+    expect(buttonByText(section()!, "Choose the finished film")).toBeDefined();
+    expect(section()!.querySelector<HTMLInputElement>('input[type="file"]')!.accept).toBe("video/*");
+  });
+
+  it("makes a chosen file of the project folder the finished film, and refuses one outside it in words without asking the server", async () => {
+    const paths: Record<string, string> = { "film.mp4": `${FOLDER}/film.mp4`, "elsewhere.mp4": "/Users/me/Movies/elsewhere.mp4", "notes.txt": `${FOLDER}/notes.txt` };
+    await openPost({ state: "written", name: "Rain City" }, { localPathOf: (file) => paths[file.name]! });
+    const setFinalFilm = vi.spyOn(backend, "setFinalFilm");
+
+    await pick("elsewhere.mp4");
+    expect(section()!.querySelector('[role="alert"]')!.textContent).toBe("That file isn't in the project's folder. Export the film to the folder above, then choose it.");
+    expect(setFinalFilm).not.toHaveBeenCalled();
+
+    await pick("notes.txt");
+    expect(section()!.querySelector('[role="alert"]')!.textContent).toBe("The film wasn't added: notes.txt is not a video.");
+
+    await pick("film.mp4");
+    expect(setFinalFilm).toHaveBeenLastCalledWith(SAMPLE_PROJECT_ID, { path: "产出/film.mp4" });
+    expect(section()!.querySelector('[role="alert"]')).toBeNull();
+    const film = backend.current().nodes.find((node) => node.metadata?.role === "final")!;
+    expect(kind(film.id)).toBe("Finished film");
+  });
+
+  it("lets nobody choose a film for an archived project", async () => {
+    await mount({ localPathOf: inFolder }, (snapshot) => {
+      withDraft({ state: "written", name: "Rain City" })(snapshot);
+      snapshot.readOnly = "archived";
+    });
+    await clickNode(botNodeId("otto"));
+    expect(buttonByText(section()!, "Choose the finished film")!.disabled).toBe(true);
+  });
+
+  it("words every state in Chinese", async () => {
+    await loadLocale("zh");
+    await openPost({ state: "written", name: "雨城" }, { draftOpens: "app", localPathOf: inFolder });
+    expect(section()!.textContent).toContain("剪映草稿");
+    expect(section()!.textContent).toContain("把成片导出到这个文件夹");
+    expect(buttonByText(section()!, "选择成片")).toBeDefined();
+    await act(async () => buttonByText(section()!, "编辑")!.click());
+    await settle();
+    expect(section()!.querySelector('[role="status"]')!.textContent).toBe("已打开剪映，请在里面打开草稿“雨城”。");
+    for (const [draft, words] of [
+      [{ state: "none" }, "还没有生成。所有镜头都有视频后会自动生成。"],
+      [{ state: "unavailable", reason: "not-installed" }, "这台电脑没有安装剪映。先安装剪映，才能生成草稿并在里面编辑。"],
+      [{ state: "unavailable", reason: "unsupported-version" }, "还不支持这个版本的剪映，所以没有生成草稿。"],
+      [{ state: "unavailable", reason: "remote" }, "草稿在这个应用连接的那台电脑上，请在那台电脑上打开剪映编辑。"],
+      [{ state: "kept", name: "雨城 2" }, "剪映保存过原来那份草稿，所以没有动它；这是另存的一份新草稿。"],
+    ] as const) {
+      await act(async () => backend.updateBots(withDraft(draft)));
+      await settle();
+      expect(section()!.textContent).toContain(words);
+    }
+  });
+});
+
