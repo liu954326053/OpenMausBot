@@ -42,9 +42,9 @@ export function canvasStateText(snapshot: CanvasSnapshot, me: string, ask: Recor
     you: own,
     ...(snapshot.readOnly ? { readOnly: "The project is archived: the canvas can be read, not changed." } : {}),
   };
-  const bots = Object.values(snapshot.bots).map((bot) => ({ id: botNodeId(bot.botId), name: bot.name, title: bot.title, ...(bot.lead ? { lead: true } : {}), status: bot.status }));
+  const bots = Object.values(snapshot.bots).map((bot) => ({ id: botNodeId(bot.botId), name: bot.name, title: bot.title, ...(bot.lead ? { lead: true } : {}), stages: bot.stages, status: bot.status }));
   const content = snapshot.nodes.filter((node) => node.type !== "bot");
-  const link = (one: CanvasSnapshot["connections"][number]) => ({ id: one.id, from: one.fromNodeId, to: one.toNodeId, kind: one.kind });
+  const link = (one: CanvasSnapshot["connections"][number]) => ({ id: one.id, from: one.fromNodeId, to: one.toNodeId, kind: one.kind, ...(one.pipeline ? { pipeline: true } : {}) });
   if (typeof ask.node_id === "string") {
     const node = snapshot.nodes.find((one) => one.id === ask.node_id);
     if (!node) throw new CanvasRefusal(404, { error: `no node ${ask.node_id} on this canvas` });
@@ -85,7 +85,11 @@ export function createProjectCanvasToolRoutes(service: ProjectCanvasService, car
       const nodeId = String(body.node_id);
       const outcome = await service.generate(project, actor, body.node_id);
       if ("job" in outcome) {
-        return void ctx.json(ctx.res, 202, { text: `Generation of ${nodeId} started (job ${outcome.job.id}). Its node shows how it goes; what it makes lands to its right, connected from it.` });
+        const { id, nodeId: creation } = outcome.job;
+        const text = creation === nodeId
+          ? `Generation of ${nodeId} started (job ${id}). Its node shows how it goes; what it makes lands to its right, connected from it.`
+          : `Generation of ${nodeId} started through its creation node ${creation} (job ${id}). That node shows how it goes; the video lands to its right as the shot's newest take, which becomes its selected take.`;
+        return void ctx.json(ctx.res, 202, { text });
       }
       const failure = outcome.refused;
       if (failure.code !== "confirmation_needed") return void ctx.json(ctx.res, statusOf(failure), { error: failure.error });
