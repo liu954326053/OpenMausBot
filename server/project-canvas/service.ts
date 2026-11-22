@@ -179,6 +179,8 @@ export class ProjectCanvasService {
   private readonly targets = new TaskTargets();
   private readonly deps: ProjectCanvasServiceDeps;
   private readonly pipelineListeners = new Set<(event: CanvasPipelineEvent) => void>();
+  private readonly changeListeners = new Set<(projectId: string) => void>();
+  private alsoShown: (projectId: string, auth: RequestAuth) => Pick<CanvasSnapshot, "run" | "draft"> = () => ({});
   private lastLines = new Map<string, string>();
 
   constructor(deps: ProjectCanvasServiceDeps) {
@@ -237,12 +239,41 @@ export class ProjectCanvasService {
     };
   }
 
+  /** `listener` hears the id of every project whose canvas changed, after the change is stored. Returns the way to
+   * stop listening. */
+  onChange(listener: (projectId: string) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
+  /** What the person's snapshot of a project carries besides its canvas: the pipeline's run and the draft. */
+  showAlso(extras: (projectId: string, auth: RequestAuth) => Pick<CanvasSnapshot, "run" | "draft">): void {
+    this.alsoShown = extras;
+  }
+
+  /** Open apps read the project's canvas again: something its snapshot carries besides the canvas changed. */
+  refresh(projectId: string): void {
+    this.deps.broadcast({ kind: "project-canvas", projectId, revision: this.revisionOf(projectId) ?? 0, reason: "bots" });
+  }
+
   private tell(event: CanvasPipelineEvent): void {
     for (const listener of this.pipelineListeners) {
       try {
         listener(event);
       } catch (error) {
         this.deps.log(`[project-canvas] ${event.projectId}: a listener failed on a pipeline ${event.kind} event (${error instanceof Error ? error.message : "unknown"})`);
+      }
+    }
+  }
+
+  private changed(projectId: string): void {
+    for (const listener of this.changeListeners) {
+      try {
+        listener(projectId);
+      } catch (error) {
+        this.deps.log(`[project-canvas] ${projectId}: a listener failed on a change (${error instanceof Error ? error.message : "unknown"})`);
       }
     }
   }
@@ -287,6 +318,7 @@ export class ProjectCanvasService {
     });
     if (!isEmpty(outcome.changed)) this.deps.broadcast({ kind: "project-canvas", projectId: project.id, revision: outcome.revision, reason: "document" });
     for (const event of events) this.tell({ ...event, projectId: project.id });
+    if (!isEmpty(outcome.changed)) this.changed(project.id);
     return outcome;
   }
 
@@ -324,7 +356,7 @@ export class ProjectCanvasService {
   snapshot(projectId: string, auth: RequestAuth): CanvasSnapshot {
     const project = this.project(projectId);
     const visible = this.deps.visibleFor(auth);
-    return this.view(project, (threadId) => visible.thread(threadId));
+    return { ...this.view(project, (threadId) => visible.thread(threadId)), ...this.alsoShown(projectId, auth) };
   }
 
   /** What a bot reads: the canvas and every bot's status, and nothing taken from a conversation. */
@@ -435,6 +467,13 @@ export class ProjectCanvasService {
     return "queued" in receipt
       ? { threadId: receipt.threadId, queued: true, references: references.count }
       : { threadId: receipt.threadId, messageId: receipt.message.id, references: references.count };
+  }
+
+  /** The message a task of the project's pipeline gives `botId`: `request`, then what is connected to its node, the way
+   * a task from the canvas carries them. */
+  async pipelineTask(project: TeamProjectWire, botId: string, request: string, language: string | undefined): Promise<string> {
+    const references = await taskReferences(this.document(project), botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
+    return taskMessage(request, references, language);
   }
 
   /** Keeps the text node a task was written in until the turn for the task ends. A node that had text gets the node its

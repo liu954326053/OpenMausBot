@@ -35,7 +35,7 @@ const isSettledLine = (message: Message): message is SettledLine =>
   message.role === "bot" && message.kind === "text" && message.turnTerminal === true && message.turnSucceeded !== undefined && message.requestMessageId !== undefined;
 
 /** The row a turn that failed or was stopped ends with, whether or not it wrote a line before. */
-const isUnfinishedTurn = (message: Message) => message.kind === "activity" && message.tool !== undefined && message.tool.partial !== true
+export const isUnfinishedTurn = (message: Message) => message.kind === "activity" && message.tool !== undefined && message.tool.partial !== true
   && (failedTurnCause(message.tool.name) !== null || isStoppedTurnName(message.tool.name));
 
 /** A reply as a text node's text. Security: redacted before it is cut, so a cut never leaves part of a key

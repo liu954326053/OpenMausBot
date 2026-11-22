@@ -1,4 +1,6 @@
-import { botNodeId, CANVAS_MAX_NODES, CANVAS_NODE_SIZE, canvasFileNodeType, type CanvasFileRef, type CanvasNode, type CanvasNodeMetadata } from "../../shared/project-canvas.ts";
+import {
+  botNodeId, CANVAS_CONTENT_MAX_CHARS, CANVAS_MAX_NODES, CANVAS_NODE_SIZE, CANVAS_TITLE_MAX_CHARS, canvasFileNodeType, type CanvasFileRef, type CanvasNode, type CanvasNodeMetadata,
+} from "../../shared/project-canvas.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import { userError } from "../user-errors.ts";
 import { botsAt } from "./flow.ts";
@@ -27,6 +29,11 @@ export interface CanvasPipelineApi {
   /** A text node becomes the script and is no longer stale; an older script of the same maker is a plain text node
    * again. */
   markScript(projectId: string, nodeId: string): { revision: number };
+  /** The project's text nodes in the order they were added, each with the bot that made it when a bot did. */
+  textNodes(projectId: string): Array<{ nodeId: string; botId?: string }>;
+  /** A text node holding `content`, made by `botId` and placed in its lane as one it adds is. Content past
+   * `CANVAS_CONTENT_MAX_CHARS` is cut. */
+  addText(projectId: string, botId: string, title: string, content: string): { nodeId: string; revision: number };
   /** `listener` hears, for every project, a node that newly has a role, the end of a take's generation, and a shot's
    * selected take changing. Returns the way to stop listening. */
   on(listener: (event: CanvasPipelineEvent) => void): () => void;
@@ -128,6 +135,19 @@ export function createCanvasPipeline(service: ProjectCanvasService): CanvasPipel
         script.metadata = { ...without(script.metadata, "stale"), role: "script" };
         return { nodes: [script.id, ...older.map((node) => node.id)], connections: [] };
       }).revision };
+    },
+
+    textNodes: (projectId) => service.document(service.project(projectId)).nodes.flatMap((node) => {
+      if (node.type !== "text") return [];
+      const botId = makerOf(node);
+      return [botId === undefined ? { nodeId: node.id } : { nodeId: node.id, botId }];
+    }),
+
+    addText(projectId, botId, title, content) {
+      const added = service.apply(open(projectId), { kind: "bot", botId }, [{
+        type: "add_node", nodeType: "text", title: title.slice(0, CANVAS_TITLE_MAX_CHARS), metadata: { content: content.slice(0, CANVAS_CONTENT_MAX_CHARS) },
+      }]);
+      return { nodeId: added.nodeIds[0] ?? "", revision: added.revision };
     },
 
     on: (listener) => service.onPipeline(listener),
