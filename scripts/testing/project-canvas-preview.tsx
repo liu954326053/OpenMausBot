@@ -1,15 +1,24 @@
-// The project canvas on the in-memory backend with the sample project, for screenshots: it wears the daylight skin
-// unless ?skin= names another, and ?bot=<id> opens the canvas on that bot. Images are painted and videos recorded in
-// the page, so the preview needs no server and no files.
+// The project canvas on the in-memory backend with a sample project, for screenshots: it wears the daylight skin unless
+// ?skin= names another, speaks ?lang=, and ?bot=<id> opens the canvas on that bot. ?sample=drama is the drama project
+// with its whole pipeline, at ?moment=confirm|generating|failed|finished, with ?film=1 for the finished film on the
+// canvas and ?draft=none|written|kept|not-installed|unsupported-version|remote for the post bot's draft; ?opens=app has
+// JianYing come up without the draft, ?name= names the draft, and ?pick=1 lets the page tell where a picked file is, as
+// the desktop app does. ?view=x,y,k opens either sample on that view instead of fitting it.
+// Images are painted and videos recorded in the page, so the preview needs no server and no files.
 import { createRoot } from "react-dom/client";
+import type { CanvasSnapshot } from "../../shared/project-canvas";
+import type { ProjectDraftWire } from "../../shared/project-draft";
 import type { StartGenerationInput } from "../../shared/project-generation";
 import { ProjectCanvas } from "../../src/components/project-canvas/ProjectCanvas";
-import type { MemoryGenerationOutput } from "../../src/lib/project-canvas/memory-backend";
-import { SAMPLE_IMAGE_PATH, SAMPLE_PROJECT_ID, SAMPLE_VIDEO_PATH, sampleCanvasBackend } from "../../src/testing/project-canvas-sample";
+import { loadLocale } from "../../src/lib/i18n";
+import type { MemoryCanvasOptions, MemoryGenerationOutput } from "../../src/lib/project-canvas/memory-backend";
+import { DRAMA_EXPORT_FOLDER, dramaCanvasBackend, dramaCanvasSnapshot, type DramaMoment } from "../../src/testing/project-canvas-drama-sample";
+import { SAMPLE_IMAGE_PATH, SAMPLE_VIDEO_PATH, sampleCanvasBackend, sampleCanvasSnapshot } from "../../src/testing/project-canvas-sample";
 import "../../src/styles.css";
 
 const params = new URLSearchParams(location.search);
 document.documentElement.dataset.skin = params.get("skin") ?? "daylight";
+await loadLocale(params.get("lang") ?? "en");
 
 function paintCity(context: CanvasRenderingContext2D, width: number, height: number, hue: number, time: number) {
   const sky = context.createLinearGradient(0, 0, 0, height);
@@ -88,20 +97,52 @@ const output = (input: StartGenerationInput, index: number): MemoryGenerationOut
   return { file: { path: `产出/图片/${input.name ?? "image"}-${made}.png`, mime: "image/png", bytes: 900_000, name: `${input.name ?? "image"}-${made}.png` }, url: paintImage(768, 432, 200 + index * 40), naturalWidth: 768, naturalHeight: 432 };
 };
 
-const backend = sampleCanvasBackend({
-  fileUrls: { [SAMPLE_IMAGE_PATH]: paintImage(1536, 1024, 230), [SAMPLE_VIDEO_PATH]: firstTake },
-  output,
-  delayMs: 1500,
-});
+function draftOf(state: string | null): Omit<ProjectDraftWire, "exportFolder"> | undefined {
+  switch (state) {
+    case "none": return { state: "none" };
+    case "written": return { state: "written", name: params.get("name") ?? "雨城 · 第一集", writtenAt: Date.UTC(2026, 10, 22, 9, 58) };
+    case "kept": return { state: "kept", name: params.get("name") ?? "雨城 · 第一集 2", writtenAt: Date.UTC(2026, 10, 22, 10, 30) };
+    case "not-installed":
+    case "unsupported-version":
+    case "remote": return { state: "unavailable", reason: state };
+    default: return undefined;
+  }
+}
+
+function viewed(snapshot: CanvasSnapshot): CanvasSnapshot {
+  const [x, y, k] = (params.get("view") ?? "").split(",").map(Number);
+  return x !== undefined && y !== undefined && k ? { ...snapshot, viewport: { x, y, k } } : snapshot;
+}
+
+function dramaBackend() {
+  const sample = { moment: (params.get("moment") ?? "finished") as DramaMoment, draft: draftOf(params.get("draft")), film: params.has("film") };
+  const snapshot = viewed(dramaCanvasSnapshot(sample));
+  const files = snapshot.nodes.flatMap((node) => (node.metadata?.file ? [node.metadata.file] : []));
+  const fileUrls = Object.fromEntries(files.map((file, index) => [file.path, file.mime.startsWith("image/") ? paintImage(768, 512, 200 + index * 47) : index % 2 ? secondTake : firstTake]));
+  const options: Partial<MemoryCanvasOptions> = { snapshot, fileUrls, output, delayMs: 1500 };
+  if (params.get("opens") === "app") options.draftOpens = "app";
+  if (params.has("pick")) options.localPathOf = (file) => `${file.name.startsWith("out-") ? "/Users/demo/Movies" : DRAMA_EXPORT_FOLDER}/${file.name}`;
+  return dramaCanvasBackend(sample, options);
+}
+
+const drama = params.get("sample") === "drama";
+const backend = drama
+  ? dramaBackend()
+  : sampleCanvasBackend({
+    snapshot: viewed(sampleCanvasSnapshot()),
+    fileUrls: { [SAMPLE_IMAGE_PATH]: paintImage(1536, 1024, 230), [SAMPLE_VIDEO_PATH]: firstTake },
+    output,
+    delayMs: 1500,
+  });
 Object.assign(window, { projectCanvasBackend: backend });
 
 createRoot(document.getElementById("root")!).render(
   <div style={{ height: "100vh" }}>
     <ProjectCanvas
-      projectId={SAMPLE_PROJECT_ID}
+      projectId={backend.current().project.id}
       backend={backend}
       selectedBotId={params.get("bot") ?? undefined}
-      topBarSlot={<span className="ui-chip">Team changed: Otto joined</span>}
+      topBarSlot={drama ? undefined : <span className="ui-chip">Team changed: Otto joined</span>}
     />
   </div>,
 );
