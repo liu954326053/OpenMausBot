@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { GroupRecord } from "../store.ts";
-import { ProjectRooms } from "./project-rooms.ts";
+import { inOwnProjectRoom, ProjectRooms } from "./project-rooms.ts";
 import { closeTeamProjectsInstallation, teamProjectsInstallation, type TeamProjectsTestApp } from "./testing.ts";
 
 let app: TeamProjectsTestApp | undefined;
@@ -43,6 +43,17 @@ async function made(service: Awaited<ReturnType<typeof installation>>["service"]
 }
 
 describe("a project's group chat", () => {
+  it("is a room of a bot's own project when it is in the department that is the bot's project's team", () => {
+    const bot = { teamProject: { id: "p1", role: "writer" }, section: "Stand-in bride" };
+    expect([
+      inOwnProjectRoom(bot, { section: " Stand-in bride " }),
+      inOwnProjectRoom(bot, { section: "Sales desk" }),
+      inOwnProjectRoom(bot, { section: undefined }),
+      inOwnProjectRoom(bot, { section: "Stand-in bride", dm: true }),
+      inOwnProjectRoom({ section: "Stand-in bride" }, { section: "Stand-in bride" }),
+      inOwnProjectRoom(bot, undefined),
+    ]).toEqual([true, false, false, false, false, false]);
+  });
   it("is made with the project: every bot of it, its lead answering, in its folder", async () => {
     const { store, service, published, app } = await installation();
     const project = await made(service);

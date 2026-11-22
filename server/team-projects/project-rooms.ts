@@ -1,6 +1,6 @@
 import type { TeamProjectRecord } from "../../shared/team-projects.ts";
 import { serverLine } from "../server-lines.ts";
-import type { BotRecord, GroupRecord, Store, StoreChange } from "../store.ts";
+import { sectionKey, type BotRecord, type GroupRecord, type Store, type StoreChange } from "../store.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 
 /** A project's group chat, as the parts that send into it see it. */
@@ -20,6 +20,12 @@ export function projectRoom(store: Pick<Store, "group">, project: Pick<TeamProje
 export function projectOfRoomThread(store: Pick<Store, "groupByThread">, projects: () => ReadonlyArray<Pick<TeamProjectRecord, "id" | "roomId">>, threadId: string): string | undefined {
   const group = store.groupByThread(threadId);
   return group ? projects().find((project) => project.roomId === group.id)?.id : undefined;
+}
+
+/** Whether a room is one of the bot's own project: one in the department that is its project's team. */
+export function inOwnProjectRoom(bot: Pick<BotRecord, "teamProject" | "section"> | null | undefined, room: Pick<GroupRecord, "section" | "dm"> | undefined): boolean {
+  const section = sectionKey(room?.section);
+  return Boolean(bot?.teamProject && room && !room.dm && section && section === sectionKey(bot.section));
 }
 
 export interface ProjectRoomsDeps {
