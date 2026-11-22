@@ -19,6 +19,8 @@ export interface TaskTarget {
   /** When the task's message joined the conversation. */
   requestAt?: number;
   queueId?: string;
+  /** The task went into the project's group chat, where every member speaks: only this bot's own turns there end it. */
+  inRoom?: true;
 }
 
 export interface SettledTask {
@@ -29,10 +31,8 @@ export interface SettledTask {
 
 const MAX_TARGETS = 200;
 
-type SettledLine = Message & { requestMessageId: string; turnSucceeded: boolean };
-
-const isSettledLine = (message: Message): message is SettledLine =>
-  message.role === "bot" && message.kind === "text" && message.turnTerminal === true && message.turnSucceeded !== undefined && message.requestMessageId !== undefined;
+const isTurnEnd = (message: Message) =>
+  message.role === "bot" && message.kind === "text" && message.turnTerminal === true && message.turnSucceeded !== undefined;
 
 /** The row a turn that failed or was stopped ends with, whether or not it wrote a line before. */
 export const isUnfinishedTurn = (message: Message) => message.kind === "activity" && message.tool !== undefined && message.tool.partial !== true
@@ -64,30 +64,35 @@ export class TaskTargets {
   /** Hears a new or changed line of a conversation, and answers the task whose turn it ends. A conversation runs one
    * turn at a time, so a turn ending there, however it ends, ends every task whose message came before it. So does a
    * queued message joining it: the queue lets messages in only once the bot is free, and they start the next turn
-   * together. Those tasks get no reply. */
+   * together. Those tasks get no reply. In a group chat the same holds for each member, from the lines it says. */
   heard(threadId: string, message: Message): SettledTask | null {
     if (message.role === "user" && message.queueId) {
       for (const one of this.targets) {
         if (one.threadId === threadId && one.queueId === message.queueId) Object.assign(one, { requestId: message.id, requestAt: message.at });
       }
-      this.endBefore(threadId, message.at, message.id);
+      this.endBefore(threadId, message.at, { kept: message.id });
       return null;
     }
+    const speaker = message.from?.botId;
     if (isUnfinishedTurn(message)) {
-      this.endBefore(threadId, message.at);
+      this.endBefore(threadId, message.at, { speaker });
       return null;
     }
-    if (!isSettledLine(message)) return null;
-    const target = this.targets.find((one) => one.threadId === threadId && one.requestId === message.requestMessageId);
+    if (!isTurnEnd(message) || (!speaker && message.requestMessageId === undefined)) return null;
+    const target = speaker
+      ? this.targets.filter((one) => one.inRoom && one.threadId === threadId && one.botId === speaker && one.requestAt !== undefined && one.requestAt <= message.at).at(-1)
+      : this.targets.find((one) => !one.inRoom && one.threadId === threadId && one.requestId === message.requestMessageId);
     this.targets = this.targets.filter((one) => one !== target);
-    this.endBefore(threadId, message.at);
+    this.endBefore(threadId, message.at, { speaker });
     if (!target) return null;
     const reply = message.turnSucceeded ? message.text?.trim() : undefined;
     return reply ? { target, reply } : { target };
   }
 
-  /** Ends the tasks of a conversation whose messages joined it by `at`, but the task of the message `kept`. */
-  private endBefore(threadId: string, at: number, kept?: string): void {
-    this.targets = this.targets.filter((one) => one.threadId !== threadId || one.requestAt === undefined || one.requestAt > at || one.requestId === kept);
+  /** Ends the tasks of a conversation whose messages joined it by `at`, but the task of the message `kept`, and in a group
+   * chat only those of the bot that spoke. */
+  private endBefore(threadId: string, at: number, { kept, speaker }: { kept?: string; speaker?: string }): void {
+    this.targets = this.targets.filter((one) => one.threadId !== threadId || one.requestAt === undefined || one.requestAt > at || one.requestId === kept
+      || (one.inRoom === true && one.botId !== speaker));
   }
 }

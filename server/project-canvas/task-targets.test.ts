@@ -22,6 +22,24 @@ describe("a reply as a text node's text", () => {
 });
 
 describe("the text nodes replies go into", () => {
+  it("in a group chat end only at the turns of the bot each task is for", () => {
+    const targets = new TaskTargets();
+    const room = { projectId: "p1", threadId: "room", title: "Write the logline", inRoom: true as const };
+    const said = (botId: string, at: number, patch: Partial<Message> = {}): Message =>
+      ({ id: `${botId}-${at}`, at, role: "bot", kind: "text", text: `${botId} at ${at}`, turnTerminal: true, turnSucceeded: true, from: { botId, name: botId, color: "blue" }, ...patch }) as Message;
+    const writer = { ...room, botId: "writer", nodeId: "n1", requestId: "m1", requestAt: 1 };
+    const painter = { ...room, botId: "painter", nodeId: "n2", queueId: "q1" };
+    targets.add(writer);
+    targets.add(painter);
+    expect(targets.heard("room", said("lead", 2))).toBeNull();
+    expect(targets.heard("room", { id: "m3", at: 3, role: "user", kind: "text", text: "@painter go", queueId: "q1" })).toBeNull();
+    expect(targets.of("p1")).toEqual([writer, { ...painter, requestId: "m3", requestAt: 3 }]);
+    expect(targets.heard("room", { ...said("painter", 4), kind: "activity", text: undefined, turnTerminal: undefined, turnSucceeded: undefined, tool: failedTurnTool("The engine stopped answering.") })).toBeNull();
+    expect(targets.of("p1")).toEqual([writer]);
+    expect(targets.heard("room", said("writer", 5))).toEqual({ target: writer, reply: "writer at 5" });
+    expect(targets.of("p1")).toEqual([]);
+  });
+
   it("keep each task for a node until the turn for it ends, and a blank reply ends its task with nothing to write", () => {
     const targets = new TaskTargets();
     const [first, second] = [{ ...where, nodeId: "n1", requestId: "m1", requestAt: 1 }, { ...where, nodeId: "n1", requestId: "m2", requestAt: 3 }];

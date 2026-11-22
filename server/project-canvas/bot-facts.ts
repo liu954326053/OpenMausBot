@@ -18,11 +18,15 @@ export interface BotFactsDeps {
   openCards(): OpenCardRow[];
   /** The conversations a message waits in for its bot to be free. */
   queuedThreads(): ReadonlySet<string>;
+  /** The bot speaking in a group chat's conversation now. */
+  roomSpeaker(threadId: string): string | undefined;
 }
 
 /** The newest conversations of a bot whose messages are read; the others give only their state. */
 const READ_THREADS = 8;
 const TAIL_MESSAGES = 80;
+/** A group chat holds every member's lines: a member's own are read from this many of its newest. */
+const ROOM_TAIL_MESSAGES = 200;
 const DOING_MAX_CHARS = 200;
 
 export interface ThreadRead {
@@ -59,6 +63,7 @@ function parsedCard(raw: string | null): OptionCardData | null {
 /** What each bot's node is derived from. A conversation's messages are read once and again only after `forget`. */
 export class BotFactsReader {
   private readonly reads = new Map<string, ThreadRead>();
+  private readonly roomReads = new Map<string, Map<string, ThreadRead & { lastAt: number }>>();
   private readonly deps: BotFactsDeps;
 
   constructor(deps: BotFactsDeps) {
@@ -67,6 +72,7 @@ export class BotFactsReader {
 
   forget(threadId: string): void {
     this.reads.delete(threadId);
+    this.roomReads.delete(threadId);
   }
 
   private read(threadId: string): ThreadRead {
@@ -78,9 +84,27 @@ export class BotFactsReader {
     return read;
   }
 
-  facts(botIds: readonly string[]): BotFacts[] {
+  /** A member's own lines in a group chat's conversation. */
+  private readRoom(threadId: string, botId: string): ThreadRead & { lastAt: number } {
+    let byBot = this.roomReads.get(threadId);
+    if (!byBot) {
+      byBot = new Map();
+      this.roomReads.set(threadId, byBot);
+    }
+    let read = byBot.get(botId);
+    if (!read) {
+      const own = this.deps.store.messagesTail(threadId, ROOM_TAIL_MESSAGES).messages.filter((message) => message.from?.botId === botId);
+      read = { ...readThread(own), lastAt: own.at(-1)?.at ?? 0 };
+      byBot.set(botId, read);
+    }
+    return read;
+  }
+
+  /** `room`: the project's group chat, whose members' lines there count as one more conversation of theirs. */
+  facts(botIds: readonly string[], room?: { threadId: string; memberIds: readonly string[] }): BotFacts[] {
     const cards = this.deps.openCards();
     const queued = this.deps.queuedThreads();
+    const speaker = room ? this.deps.roomSpeaker(room.threadId) : undefined;
     return botIds.flatMap((botId) => {
       const bot = this.deps.store.bot(botId);
       if (!bot) return [];
@@ -100,6 +124,19 @@ export class BotFactsReader {
           ...(read.reply ? { reply: read.reply } : {}),
         };
       });
+      if (room?.memberIds.includes(botId)) {
+        const read = this.readRoom(room.threadId, botId);
+        threads.push({
+          threadId: room.threadId,
+          busy: speaker === botId,
+          waitingOnPerson: false,
+          queued: false,
+          failed: read.failed,
+          lastAt: read.lastAt,
+          ...(read.doing ? { doing: read.doing } : {}),
+          ...(read.reply ? { reply: read.reply } : {}),
+        });
+      }
       const own = new Set(tasks.map((task) => task.threadId));
       for (const row of cards) {
         if (row.fromBotId ? row.fromBotId !== botId : !own.has(row.threadId)) continue;

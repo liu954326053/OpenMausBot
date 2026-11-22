@@ -51,6 +51,7 @@ function setup(pipeline: ProjectPipeline = structuredClone(DRAMA)) {
       tasks: () => [] as TaskRecord[],
       taskByThread: () => undefined,
       messagesTail: () => ({ messages: [], hasMore: false, activeLeafId: null }),
+      group: () => undefined,
     },
     projects: { list: () => [project] },
     documents: new CanvasDocuments(join(dir, "canvases"), () => undefined),
@@ -59,6 +60,8 @@ function setup(pipeline: ProjectPipeline = structuredClone(DRAMA)) {
     threadBusy: () => false,
     mainThread: () => undefined,
     send: async () => { throw new Error("no task is sent here"); },
+    sendToRoom: () => { throw new Error("no task is sent here"); },
+    roomSpeaker: () => undefined,
     pipelineOf: () => current.pipeline,
     generation: {
       start: async (projectId, input, { requester }) => {

@@ -21,7 +21,7 @@ import type { ProjectPipeline } from "./flow.ts";
 import { createCanvasPipeline, type CanvasPipelineApi } from "./pipeline-api.ts";
 import { setCanvasGenerationCardAnswer } from "./card-route.ts";
 import { CanvasGenerationCards } from "./generation-card.ts";
-import { ProjectCanvasService } from "./service.ts";
+import { ProjectCanvasService, type ProjectCanvasServiceDeps } from "./service.ts";
 import { setProjectCanvasToolRoutes } from "./tool-route.ts";
 
 export interface ProjectCanvasHostDeps {
@@ -33,6 +33,8 @@ export interface ProjectCanvasHostDeps {
   threadBusy(botId: string, threadId: string): boolean;
   mainThread(botId: string): string | undefined;
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
+  sendToRoom: ProjectCanvasServiceDeps["sendToRoom"];
+  roomSpeaker(threadId: string): string | undefined;
   /** A project's pipeline; by default the one its team's pipeline gives its copies. */
   pipelineOf?(projectId: string, leadBotId: string): ProjectPipeline;
   generation: ProjectGenerationApi;
@@ -68,6 +70,8 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     threadBusy: deps.threadBusy,
     mainThread: deps.mainThread,
     send: deps.send,
+    sendToRoom: deps.sendToRoom,
+    roomSpeaker: deps.roomSpeaker,
     pipelineOf: deps.pipelineOf ?? projectPipeline,
     generation: deps.generation,
     openCards: openCardRows,
@@ -114,7 +118,9 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
       threadChanged(change.threadId, change.message.from?.botId);
       service.taskLine(change.threadId, change.message);
     } else if (change.type === "thread") threadChanged(change.threadId);
-    else if (change.type === "thread.deleted") {
+    else if (change.type === "group") {
+      for (const botId of deps.store.group(change.groupId)?.memberIds ?? []) botsChanged(projectOf.get(botId));
+    } else if (change.type === "thread.deleted") {
       service.facts.forget(change.threadId);
       for (const projectId of new Set(projectOf.values())) botsChanged(projectId);
     } else if (change.type === "bot") botChanged(change.botId);

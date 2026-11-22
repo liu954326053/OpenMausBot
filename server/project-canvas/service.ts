@@ -25,6 +25,8 @@ import { FILE_MAX_BYTES } from "../attachments.ts";
 import type { DirectSendReceipt } from "../direct-send.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { Message, Store } from "../store.ts";
+import { projectRoom, type ProjectRoom } from "../team-projects/project-rooms.ts";
+import type { RoomMessage } from "../team-projects/room-send.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
 import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments, type RemovedNode } from "./document-store.ts";
@@ -84,16 +86,20 @@ export function canvasRefusalOf(error: unknown): { status: number; body: { error
 }
 
 export interface ProjectCanvasServiceDeps {
-  store: Pick<Store, "bot" | "botByThread" | "tasks" | "taskByThread" | "messagesTail">;
+  store: Pick<Store, "bot" | "botByThread" | "tasks" | "taskByThread" | "messagesTail" | "group">;
   projects: Pick<TeamProjectsApi, "list">;
   documents: CanvasDocuments;
   broadcast(event: ProjectCanvasEvent): void;
   visibleFor(auth: RequestAuth): { thread(threadId: string): boolean };
   threadBusy(botId: string, threadId: string): boolean;
-  /** The conversation a task goes to when the person names none. */
+  /** The conversation a task goes to when the person names none and the bot is in no group chat of its project. */
   mainThread(botId: string): string | undefined;
   /** Delivers the person's message to a bot's conversation as their own chat message would be. */
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
+  /** Delivers the person's line into a group chat, for the bots it names, as their own line there would be. */
+  sendToRoom(auth: RequestAuth, message: Pick<RoomMessage, "groupId" | "threadId" | "to">): DirectSendReceipt;
+  /** The bot speaking in a group chat's conversation now. */
+  roomSpeaker(threadId: string): string | undefined;
   /** A project's pipeline: its bots' stages and the lines between them. */
   pipelineOf(projectId: string, leadBotId: string): ProjectPipeline;
   generation: Pick<ProjectGenerationApi, "start" | "job">;
@@ -206,6 +212,12 @@ export class ProjectCanvasService {
 
   projectIdOfBot(botId: string): string | undefined {
     return this.deps.store.bot(botId)?.teamProject?.id;
+  }
+
+  /** The project's group chat when the bot is in it: where a task from the canvas goes. */
+  private roomOf(project: TeamProjectWire, botId: string): ProjectRoom | undefined {
+    const room = projectRoom(this.deps.store, project);
+    return room?.memberIds.includes(botId) ? room : undefined;
   }
 
   revisionOf(projectId: string): number | null {
@@ -327,7 +339,7 @@ export class ProjectCanvasService {
     const snapshot = buildSnapshot({
       document: this.document(project),
       project: { id: project.id, name: project.name, leadBotId: project.leadBotId, archived: project.archivedAt !== undefined, folderState: project.folderState },
-      bots: this.facts.facts(project.botIds),
+      bots: this.facts.facts(project.botIds, projectRoom(this.deps.store, project)),
       pipeline: this.deps.pipelineOf(project.id, project.leadBotId),
       sees,
     });
@@ -450,8 +462,9 @@ export class ProjectCanvasService {
     }
     const language = requestLanguage(request.language) ?? this.deps.language();
     if (!project.botIds.includes(botId)) throw refusal(404, "serverError.projectCanvas.notMember");
-    const threadId = asked ?? this.deps.mainThread(botId) ?? this.deps.store.bot(botId)?.threadId;
-    if (!threadId || !this.deps.store.taskByThread(botId, threadId) || !this.deps.visibleFor(auth).thread(threadId)) {
+    const room = asked === undefined ? this.roomOf(project, botId) : undefined;
+    const threadId = room?.threadId ?? asked ?? this.deps.mainThread(botId) ?? this.deps.store.bot(botId)?.threadId;
+    if (!threadId || !(room || this.deps.store.taskByThread(botId, threadId)) || !this.deps.visibleFor(auth).thread(threadId)) {
       throw new CanvasRefusal(404, { error: "That is not a conversation of this bot you can open." });
     }
     const document = this.document(project);
@@ -462,9 +475,12 @@ export class ProjectCanvasService {
     const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
     const message = taskMessage(text, references, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });
-    const receipt = await this.deps.send(auth, { botId, threadId, text: message });
+    const receipt = room
+      ? this.deps.sendToRoom(auth, { groupId: room.groupId, threadId: room.threadId, to: [{ botId, name: this.deps.store.bot(botId)?.name ?? botId, text: message }] })
+      : await this.deps.send(auth, { botId, threadId, text: message });
     if (targetNodeId !== undefined) {
-      this.awaitReply(project, { botId, threadId: receipt.threadId, nodeId: targetNodeId, title: replyTitle(text) }, Boolean(target?.metadata?.content?.trim()), receipt);
+      const where = { botId, threadId: receipt.threadId, nodeId: targetNodeId, title: replyTitle(text), ...(room ? { inRoom: true as const } : {}) };
+      this.awaitReply(project, where, Boolean(target?.metadata?.content?.trim()), receipt);
     }
     return "queued" in receipt
       ? { threadId: receipt.threadId, queued: true, references: references.count }
@@ -480,7 +496,7 @@ export class ProjectCanvasService {
 
   /** Keeps the text node a task was written in until the turn for the task ends. A node that had text gets the node its
    * reply becomes now, and open apps are told so they show it while the bot writes. */
-  private awaitReply(project: TeamProjectWire, where: Pick<TaskTarget, "botId" | "threadId" | "nodeId" | "title">, hadText: boolean, receipt: DirectSendReceipt): void {
+  private awaitReply(project: TeamProjectWire, where: Pick<TaskTarget, "botId" | "threadId" | "nodeId" | "title" | "inRoom">, hadText: boolean, receipt: DirectSendReceipt): void {
     if (!("queued" in receipt) && receipt.steered) return;
     const document = this.document(project);
     const source = document.nodes.find((node) => node.id === where.nodeId);
