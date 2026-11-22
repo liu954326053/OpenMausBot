@@ -1,5 +1,5 @@
-// A project's canvas drawing its team's flow, on a real server with the scripted fake engine: the lines between the
-// project's bots, an open canvas told when the team's flow moves one, and a project whose bots follow no team.
+// A project's canvas drawing its team's pipeline, on a real server with the scripted fake engine: the lines between the
+// project's bots, an open canvas told when the team's pipeline moves one, and a project whose bots follow no team.
 // Nothing here reaches the user's data or port 8799.
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { botIdOfNode, botNodeId, type CanvasSnapshot, type ProjectCanvasEvent } from "../shared/project-canvas.ts";
-import type { ProjectFlowWire } from "../shared/team-flow.ts";
+import type { ProjectPipelineWire } from "../shared/team-pipeline.ts";
 import type { TeamProjectMembership, TeamProjectRecord, TeamProjectWire } from "../shared/team-projects.ts";
 import { removeTempDir } from "./testing/cleanup.ts";
 import { hostTimeout } from "./testing/host-timeout.ts";
@@ -30,7 +30,7 @@ const keep = (name: string, value: unknown) => {
 const lines = (canvas: CanvasSnapshot) => canvas.connections.filter((one) => one.kind === "dispatch")
   .map((one) => `${canvas.bots[botIdOfNode(one.fromNodeId)!]!.name} → ${canvas.bots[botIdOfNode(one.toNodeId)!]!.name}`).sort();
 
-describe("a project's canvas drawing its team's flow", () => {
+describe("a project's canvas drawing its team's pipeline", () => {
   let server: RestartableServer;
   let root: string;
   let events: SseRecorder;
@@ -66,8 +66,11 @@ describe("a project's canvas drawing its team's flow", () => {
     expect(read.status, JSON.stringify(read.body)).toBe(200);
     return read.body;
   };
-  const projectFlow = async (projectId: string) => (await api("GET", `/api/team-flows/projects/${projectId}`)).body as ProjectFlowWire;
-  const line = (bot: Bot, superior: Bot) => api("PUT", "/api/team-flows/line", { botId: bot.id, superiorId: superior.id });
+  const projectFlow = async (projectId: string) => (await api("GET", `/api/team-pipelines/projects/${projectId}`)).body as ProjectPipelineWire;
+  const line = async (from: Bot, to: Bot, present: boolean) => {
+    const drawn = await api("PUT", "/api/team-pipelines/line", { from: from.id, to: to.id, present });
+    expect(drawn.status, JSON.stringify(drawn.body)).toBe(200);
+  };
   const stored = () => JSON.parse(readFileSync(join(server.dataDir, "bots.json"), "utf8")) as StoredBot[];
   const copyOf = (source: Bot) => stored().find((bot) => bot.teamProject?.id === project.id && bot.teamProject.source === source.id)!.id;
   const toldOf = (projectId: string): ProjectCanvasEvent[] => events.frames.filter((frame) => frame.kind === "project-canvas" && frame.projectId === projectId);
@@ -102,8 +105,11 @@ describe("a project's canvas drawing its team's flow", () => {
     writer = await member("Writer", TEAM);
     board = await member("Board", TEAM);
     await appoint(chief);
-    const drawn = await line(board, writer);
-    expect(drawn.status, JSON.stringify(drawn.body)).toBe(200);
+    const staged = await api("PUT", "/api/team-pipelines/restore", {
+      section: TEAM,
+      state: { stages: { [writer.id]: ["script"], [board.id]: ["storyboard"] }, judged: {}, manual: [writer.id, board.id], added: [], removed: [] },
+    });
+    expect(staged.status, JSON.stringify(staged.body)).toBe(200);
     await settled();
     const made = await api("POST", "/api/team-projects", { name: "Flow drama", team: TEAM });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
@@ -133,8 +139,8 @@ describe("a project's canvas drawing its team's flow", () => {
     await quiet(project.id);
     const before = await canvas(project.id);
     const mark = events.frames.length;
-    const moved = await line(board, chief);
-    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    await line(chief, board, true);
+    await line(writer, board, false);
     const told = await events.until((frame) => events.frames.indexOf(frame) >= mark && frame.kind === "project-canvas" && frame.projectId === project.id, 10_000);
     expect(told).toMatchObject({ kind: "project-canvas", projectId: project.id, revision: before.revision, reason: "bots" } satisfies ProjectCanvasEvent);
     const after = await canvas(project.id);
@@ -145,7 +151,8 @@ describe("a project's canvas drawing its team's flow", () => {
   });
 
   it("tells it again when the Writer is archived in the team, and the Board's copy moves up under the Chief's", async () => {
-    expect((await line(board, writer)).status).toBe(200);
+    await line(writer, board, true);
+    await line(chief, board, false);
     await expect.poll(async () => lines(await canvas(project.id)), { timeout: 10_000 }).toEqual(["Chief → Writer", "Writer → Board"]);
     await quiet(project.id);
     const mark = events.frames.length;
