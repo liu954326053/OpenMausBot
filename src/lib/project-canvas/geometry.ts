@@ -87,6 +87,8 @@ export interface ConnectionCurve {
   start: CanvasPoint;
   end: CanvasPoint;
   curvature: number;
+  /** What bounds the curve, when its ends widened by the curvature do not. */
+  box?: CanvasBounds;
 }
 
 /** From the right middle of `from` to the left middle of `to`. */
@@ -99,8 +101,40 @@ export function connectionCurve(from: Pick<CanvasNode, "position" | "width" | "h
 
 /** A cubic curve stays inside its control points' hull, so the ends widened by the curvature bound it. */
 export function curveInView(curve: ConnectionCurve, bounds: CanvasBounds): boolean {
-  const { start, end, curvature } = curve;
+  const { start, end, curvature, box } = curve;
+  if (box) return box.right > bounds.left && box.left < bounds.right && box.bottom > bounds.top && box.top < bounds.bottom;
   return Math.max(start.x + curvature, end.x) > bounds.left && Math.min(start.x, end.x - curvature) < bounds.right && Math.max(start.y, end.y) > bounds.top && Math.min(start.y, end.y) < bounds.bottom;
+}
+
+/** How far above the nodes between two bots their line runs: past the labels above those nodes. */
+export const DISPATCH_CLEARANCE = 44;
+const DISPATCH_TURN = 24;
+
+type Frame = Pick<CanvasNode, "position" | "width" | "height">;
+
+/**
+ * The line from a bot to a bot its work goes to. To a bot on its right it is the plain curve, unless nodes of `others`
+ * stand between the two: then it rises beside the first bot, runs above those nodes and comes down before the second.
+ * To a bot that is not on its right, as one standing below it, it leaves and arrives by the left side.
+ */
+export function dispatchCurve(from: Frame, to: Frame, others: readonly Frame[]): ConnectionCurve {
+  const end = { x: to.position.x, y: to.position.y + to.height / 2 };
+  if (to.position.x < from.position.x + from.width) {
+    const start = { x: from.position.x, y: from.position.y + from.height / 2 };
+    const bulge = Math.min(Math.max(Math.abs(end.y - start.y) * 0.25, 48), 120);
+    const box = { left: Math.min(start.x, end.x) - bulge, right: Math.max(start.x, end.x), top: Math.min(start.y, end.y), bottom: Math.max(start.y, end.y) };
+    return { path: `M ${start.x} ${start.y} C ${start.x - bulge} ${start.y}, ${end.x - bulge} ${end.y}, ${end.x} ${end.y}`, start, end, curvature: bulge, box };
+  }
+  const plain = connectionCurve(from, to);
+  const { start } = plain;
+  const upper = Math.min(start.y, end.y);
+  const lower = Math.max(start.y, end.y);
+  const between = others.filter((one) => one.position.x < end.x && one.position.x + one.width > start.x && one.position.y < lower && one.position.y + one.height > upper);
+  if (!between.length || end.x - start.x < DISPATCH_TURN * 4) return plain;
+  const top = Math.min(...between.map((one) => one.position.y)) - DISPATCH_CLEARANCE;
+  const path = `M ${start.x} ${start.y} C ${start.x + DISPATCH_TURN} ${start.y}, ${start.x + DISPATCH_TURN} ${top}, ${start.x + DISPATCH_TURN * 2} ${top} `
+    + `L ${end.x - DISPATCH_TURN * 2} ${top} C ${end.x - DISPATCH_TURN} ${top}, ${end.x - DISPATCH_TURN} ${end.y}, ${end.x} ${end.y}`;
+  return { path, start, end, curvature: plain.curvature, box: { left: start.x, right: end.x, top: Math.min(top, upper), bottom: Math.max(top, lower) } };
 }
 
 /** The dashed line while a connection is being drawn, snapped to the node it would land on. */
