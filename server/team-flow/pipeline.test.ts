@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { FlowLineWire, FlowStage } from "../../shared/team-pipeline.ts";
-import { lineProblem, memberStages, parentsOf, pipelineLines, placeIn, projectPipelineOf } from "./pipeline.ts";
+import { heldBy, lineProblem, memberStages, nothingStored, parentsOf, pipelineLines, placeIn, projectPipelineOf } from "./pipeline.ts";
 
 const arrows = (lines: readonly FlowLineWire[]) => lines.map(({ from, to }) => `${from}>${to}`);
 const line = (arrow: string): FlowLineWire => ({ from: arrow.split(">")[0]!, to: arrow.split(">")[1]! });
@@ -139,5 +139,30 @@ describe("a project's pipeline", () => {
   it("gives two copies of one member the same stages and lines", () => {
     const mapped = projectPipelineOf({ leadId: "L", bots: [{ id: "L", source: "chief" }, { id: "W1", source: "w" }, { id: "W2", source: "w" }, { id: "S", source: "s" }], team: studio });
     expect(arrows(mapped.lines)).toEqual(["L>W1", "L>W2", "W1>S", "W2>S"]);
+  });
+});
+
+describe("what a team still holds of its stored pipeline", () => {
+  const stored = {
+    stages: { w: ["script"], gone: ["post"], chief: ["script"], s: ["storyboard", "character"] } satisfies Record<string, FlowStage[]>,
+    judged: { w: "f1", gone: "f2", unjudged: "f3" },
+    manual: ["w", "gone", "chief", "w"],
+    added: ["w>s", "gone>s", "s>gone", "s>chief", "chief>s", "w>s", "w>w"].map(line),
+    removed: ["chief>w", "chief>gone"].map(line),
+  };
+
+  it("drops what a member that left held, the Chief's stages and the lines into it, and keeps each line once", () => {
+    expect(heldBy(["chief", "w", "s"], "chief", stored)).toEqual({
+      stages: { w: ["script"], s: ["character", "storyboard"] },
+      judged: { w: "f1" },
+      manual: ["w"],
+      added: ["w>s", "chief>s"].map(line),
+      removed: ["chief>w"].map(line),
+    });
+  });
+
+  it("holds nothing once no member has stages, is manual or has a line of its own", () => {
+    expect(nothingStored(heldBy(["chief"], "chief", stored))).toBe(true);
+    expect(nothingStored(heldBy(["chief", "w"], "chief", stored))).toBe(false);
   });
 });

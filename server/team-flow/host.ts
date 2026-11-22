@@ -10,7 +10,7 @@ import { TeamFlows, type TeamFlowsDeps } from "./service.ts";
 
 const FILE_POLL_MS = 2000;
 
-/** This installation's flows, in `<data dir>/team-flows.json`, followed from the moment this returns and used for who may reach whom. */
+/** This installation's pipelines, in `<data dir>/team-flows.json`, followed from the moment this returns and used for who may reach whom. */
 export function createTeamFlowsHost(deps: { store: TeamFlowsDeps["store"] }): { flows: TeamFlows; routes: RouteHandler } {
   const file = join(DATA_DIR, "team-flows.json");
   const flows = new TeamFlows({

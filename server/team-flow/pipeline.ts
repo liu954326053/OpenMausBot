@@ -1,4 +1,5 @@
 import { PIPELINE_STAGES, stageLines, type FlowLineWire, type FlowStage } from "../../shared/team-pipeline.ts";
+import type { StoredPipeline } from "./file.ts";
 import type { PipelinePlace } from "./flows.ts";
 
 export type Stages = Readonly<Record<string, readonly FlowStage[]>>;
@@ -128,3 +129,29 @@ export function projectPipelineOf({ leadId, bots, team }: ProjectPipelineInput):
   });
   return { stages, lines };
 }
+
+/** What of `stored` today's team still holds: a member that left takes its stages and the lines at it with it, the
+ * Chief has no stages of its own and no line into it, and a line is kept once. */
+export function heldBy(members: readonly string[], chiefId: string, stored: StoredPipeline): StoredPipeline {
+  const inTeam = new Set(members);
+  const member = (botId: string) => botId !== chiefId && inTeam.has(botId);
+  const stages = Object.fromEntries(Object.entries(stored.stages).filter(([botId]) => member(botId)).map(([botId, given]) => [botId, memberStages(given)]));
+  const once = (lines: readonly FlowLineWire[]) => {
+    const seen = new Set<string>();
+    return lines.filter((line) => {
+      if (!inTeam.has(line.from) || !member(line.to) || line.from === line.to || seen.has(lineKey(line))) return false;
+      seen.add(lineKey(line));
+      return true;
+    });
+  };
+  return {
+    stages,
+    judged: Object.fromEntries(Object.entries(stored.judged).filter(([botId]) => Object.hasOwn(stages, botId))),
+    manual: [...new Set(stored.manual)].filter(member),
+    added: once(stored.added),
+    removed: once(stored.removed),
+  };
+}
+
+export const nothingStored = (stored: StoredPipeline): boolean =>
+  !Object.keys(stored.stages).length && !stored.manual.length && !stored.added.length && !stored.removed.length;
