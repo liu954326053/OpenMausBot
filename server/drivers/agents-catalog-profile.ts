@@ -29,6 +29,8 @@ export interface CatalogProfile {
   teamProjects?: boolean;
   /** One of a project's bots in a chat of its own: the canvas tools are mounted. */
   projectCanvas?: boolean;
+  /** A bot whose stages in its project include post, in a chat of its own: the timeline tools are mounted. */
+  projectTimeline?: boolean;
   /** A direct chat whose bot may pick where it works (Works on is not Off and no team computer is its own): select_computer
    * is mounted, and the harness refuses a pick on any turn but a person's own message. */
   computerSelection?: boolean;
@@ -62,6 +64,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     mausbot: env.OMB_MAUSBOT === "1",
     teamProjects: env.OMB_TEAM_PROJECTS === "1",
     projectCanvas: env.OMB_PROJECT_CANVAS === "1",
+    projectTimeline: env.OMB_PROJECT_TIMELINE === "1",
     computerSelection: env.OMB_COMPUTER_SELECTION === "1",
     localVm: env.OMB_LOCAL_VM !== "0",
     room: env.OMB_ROOM === "1",

@@ -1,6 +1,7 @@
 import { PAIRING_INPUT_PROBLEM_TEXT } from "../shared/pairing-code.ts";
 import { redactParams } from "../shared/redact.ts";
 import { formatServerText, type ServerErrorBody, type ServerTextParams } from "../shared/server-text.ts";
+import { PROJECT_DRAFT_ERRORS } from "./project-draft/error-text.ts";
 import { PROJECT_GENERATION_ERRORS } from "./project-generation/error-text.ts";
 
 /** The client translates by key and falls back to this English, which the server keeps sending for older clients. */
@@ -289,6 +290,7 @@ export const USER_ERROR = {
   "serverError.teamFlow.chief": "{bot} is the Chief of Staff of {team} and leads its pipeline, so no line can go into it.",
   "serverError.teamFlow.loop": "{to}'s work already reaches {from}, so a line from {from} to {to} would make a loop.",
   ...PROJECT_GENERATION_ERRORS,
+  ...PROJECT_DRAFT_ERRORS,
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;

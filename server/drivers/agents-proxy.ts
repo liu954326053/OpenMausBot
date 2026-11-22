@@ -7,6 +7,7 @@
 //   OMB_CHIEF_OF_STAFF  "1" for a Chief of Staff, the only bot shown the Chief-only tools
 //   OMB_MAUSBOT  "1" for the person's MagicBot, the only bot shown its notification tools
 //   OMB_TEAM_PROJECTS  "1" for the global main bot in a chat of its own, the only bot shown the project tools
+//   OMB_PROJECT_TIMELINE  "1" for a project's bot whose stages include post, the only bot shown the timeline tools
 //   OMB_AGENTS_TOOL_BRIDGE  "1" lists a few tools and puts the rest behind find_tool and use_tool
 // scripts/bundle-server.mjs inlines agents-mcp and agents-catalog/-call/-client/-bridge into this file, which the harness spawns.
 import readline from "node:readline";
