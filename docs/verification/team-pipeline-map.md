@@ -1,8 +1,7 @@
 # A team's pipeline on the team map
 
-The team map draws a team's pipeline from `GET /api/team-pipelines` and changes it through
-`PUT /api/team-pipelines/line`, `POST /api/team-pipelines/rejudge` and `PUT /api/team-pipelines/restore`
-(`shared/team-pipeline.ts`).
+The team map reads a team's pipeline, adds and removes its lines, has it judged again and takes that back through the
+four routes `shared/team-pipeline.ts` describes.
 
 ## Tests
 
