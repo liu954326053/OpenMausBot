@@ -252,8 +252,8 @@ export class TeamFlows implements InstalledFlows {
     return { projectId, leadId: this.projectPipelineOf(projectId)?.leadId ?? null, parents: this.projectParents(projectId) };
   }
 
-  /** The old tree's line: `superiorId` becomes the one bot whose work goes to `botId`; null forgets the lines into
-   * `botId` that were drawn and taken away by hand. */
+  /** A tree's line: `superiorId` becomes the one bot whose work goes to `botId`; null forgets the lines into `botId`
+   * that were drawn and taken away by hand. */
   setSuperior({ botId, superiorId }: TeamFlowLineInput): LineResult {
     const ends = this.ends(superiorId ?? botId, botId);
     if ("ok" in ends) return ends;

@@ -87,7 +87,7 @@ export function placeIn({ leadId, members, stages, lines }: Pipeline, botId: str
   };
 }
 
-/** The old tree's answer: every member but the Chief → its first upstream, or the Chief when no line reaches it. */
+/** The pipeline read as a tree: every member but the Chief → its first upstream, or the Chief when no line reaches it. */
 export function parentsOf(members: readonly string[], chiefId: string, lines: readonly FlowLineWire[]): Record<string, string> {
   const parents: Record<string, string> = {};
   for (const member of members) {

@@ -36,8 +36,8 @@ const sectionOf = (body: unknown): string | null => {
   return typeof section === "string" ? section : null;
 };
 
-/** The team map's routes for reading and drawing pipelines, and the old tree's routes answered from them. A pipeline
- * is the owner's or an admin's to read and change. */
+/** The team map's routes for reading and drawing pipelines, and the `/api/team-flows` routes, which answer the
+ * pipelines read as trees. A pipeline is the owner's or an admin's to read and change. */
 export function createTeamFlowRoutes(flows: TeamFlowRouteHost): RouteHandler {
   return async ({ req, res, path, method, auth, json, readBody }) => {
     if (!path.startsWith("/api/team-pipelines") && !path.startsWith("/api/team-flows")) return PASS;
