@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 
+import type { PipelineRunWire, PipelineStageStatus } from "../../../shared/pipeline-run";
 import { botNodeId, type CanvasNodeMetadata, type CanvasSnapshot } from "../../../shared/project-canvas";
 import type { StartGenerationInput } from "../../../shared/project-generation";
+import type { PipelineStage } from "../../../shared/team-pipeline";
 import { loadLocale, setLocale } from "@/lib/i18n";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
 import { SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "@/testing/project-canvas-sample";
@@ -222,5 +224,113 @@ describe("the pipeline on the project canvas", () => {
     expect(copy.metadata).not.toHaveProperty("shotId");
     expect(copy.metadata).not.toHaveProperty("selected");
     expect(copy.metadata).not.toHaveProperty("stale");
+  });
+});
+
+describe("the run on the project canvas", () => {
+  const run = (videos: PipelineRunWire["videos"], stages: Array<[PipelineStage, PipelineStageStatus]> = [["script", "done"], ["storyboard", "done"], ["post", "waiting"]]): PipelineRunWire => ({
+    id: "run-1",
+    startedAt: 1,
+    stages: stages.map(([stage, status]) => ({ stage, botIds: [], status })),
+    videos,
+  });
+  const withRun = (value: PipelineRunWire) => (snapshot: CanvasSnapshot) => { snapshot.run = value; };
+  const bar = () => host.querySelector<HTMLElement>("[data-pipeline-run]");
+  const steps = () => [...bar()!.querySelectorAll<HTMLElement>("[data-run-step]")].map((step) => `${step.dataset.runStep}:${step.dataset.status}`);
+
+  it("shows nothing of a run while the project has none, and adds nothing to the canvas's top bar when it has one", async () => {
+    await mount();
+    expect(bar()).toBeNull();
+    const buttons = host.querySelector("header")!.querySelectorAll("button").length;
+    await act(async () => backend.updateBots(withRun(run({ status: "waiting", shots: 0, ready: 0, failed: 0 }))));
+    await settle();
+    expect(bar()).not.toBeNull();
+    expect(host.querySelector("header")!.querySelectorAll("button")).toHaveLength(buttons);
+    expect(host.querySelector("header")!.contains(bar())).toBe(false);
+  });
+
+  it("shows the run's stages in order with where each stands, the videos before post and counted while they generate", async () => {
+    await mount({}, withRun(run({ status: "working", shots: 8, ready: 3, failed: 0 }, [["script", "done"], ["character", "failed"], ["storyboard", "working"], ["post", "waiting"]])));
+    expect(steps()).toEqual(["script:done", "character:failed", "storyboard:working", "videos:working", "post:waiting"]);
+    expect([...bar()!.querySelectorAll<HTMLElement>("[data-run-step]")].map((step) => step.textContent)).toEqual(["ScriptDone", "Character designFailed", "StoryboardIn progress", "Videos3/8In progress", "PostWaiting"]);
+    expect(bar()!.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("leaves the videos out of a run that has no storyboard stage and no shots, and puts them last in one with no post stage", async () => {
+    await mount({}, withRun(run({ status: "waiting", shots: 0, ready: 0, failed: 0 }, [["script", "working"], ["post", "waiting"]])));
+    expect(steps()).toEqual(["script:working", "post:waiting"]);
+    await act(async () => backend.updateBots(withRun(run({ status: "waiting", shots: 0, ready: 0, failed: 0 }, [["script", "done"], ["storyboard", "working"]]))));
+    await settle();
+    expect(steps()).toEqual(["script:done", "storyboard:working", "videos:waiting"]);
+  });
+
+  it("waits for the person before the videos: how many shots there are and one action, which starts the ones that have none", async () => {
+    await mount({}, withRun(run({ status: "confirm", shots: 8, ready: 2, failed: 0 })));
+    expect(steps()).toContain("videos:confirm");
+    expect(bar()!.textContent).toContain("8 shots are ready.");
+    expect([...bar()!.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Generate 6 videos"]);
+    await act(async () => buttonByText(bar()!, "Generate 6 videos")!.click());
+    await settle();
+    expect(backend.videoAnswers).toEqual(["start"]);
+    expect(steps()).toContain("videos:working");
+    expect(bar()!.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("counts one shot and one video as one", async () => {
+    await mount({}, withRun(run({ status: "confirm", shots: 1, ready: 0, failed: 0 })));
+    expect(bar()!.textContent).toContain("1 shot is ready.");
+    expect(buttonByText(bar()!, "Generate 1 video")).toBeDefined();
+  });
+
+  it("says how many shots have no video once generating ended without them, to try them again or go on without them", async () => {
+    await mount({}, withRun(run({ status: "failed", shots: 8, ready: 6, failed: 2 })));
+    expect(steps()).toContain("videos:failed");
+    expect(bar()!.textContent).toContain("2 shots have no video.");
+    expect([...bar()!.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Try the failed shots again", "Go on without them"]);
+    await act(async () => buttonByText(bar()!, "Try the failed shots again")!.click());
+    await settle();
+    expect(backend.videoAnswers).toEqual(["retry"]);
+    expect(steps()).toContain("videos:working");
+
+    await act(async () => backend.updateBots(withRun(run({ status: "failed", shots: 8, ready: 7, failed: 1 }))));
+    await settle();
+    expect(bar()!.textContent).toContain("1 shot has no video.");
+    await act(async () => buttonByText(bar()!, "Go on without them")!.click());
+    await settle();
+    expect(backend.videoAnswers).toEqual(["retry", "skip"]);
+    expect(steps()).toContain("videos:done");
+    expect(bar()!.querySelectorAll("button")).toHaveLength(0);
+  });
+
+  it("says beside the action why an answer didn't go through, and keeps the action to try again", async () => {
+    await mount({}, withRun(run({ status: "confirm", shots: 3, ready: 0, failed: 0 })));
+    const answer = backend.answerVideos.bind(backend);
+    backend.answerVideos = () => Promise.reject(new Error("Not found"));
+    await act(async () => buttonByText(bar()!, "Generate 3 videos")!.click());
+    await settle();
+    expect(bar()!.querySelector('[role="alert"]')!.textContent).toBe("That didn't go through: Not found");
+    expect(buttonByText(bar()!, "Generate 3 videos")!.disabled).toBe(false);
+
+    backend.answerVideos = answer;
+    await act(async () => buttonByText(bar()!, "Generate 3 videos")!.click());
+    await settle();
+    expect(bar()!.querySelector('[role="alert"]')).toBeNull();
+    expect(backend.videoAnswers).toEqual(["start"]);
+  });
+
+  it("takes no answer on an archived project", async () => {
+    await mount({}, (snapshot) => {
+      snapshot.run = run({ status: "failed", shots: 4, ready: 3, failed: 1 });
+      snapshot.readOnly = "archived";
+    });
+    expect([...bar()!.querySelectorAll("button")].map((button) => button.disabled)).toEqual([true, true]);
+  });
+
+  it("names the stages and the ask in Chinese", async () => {
+    await loadLocale("zh");
+    await mount({}, withRun(run({ status: "confirm", shots: 8, ready: 0, failed: 0 }, [["script", "done"], ["character", "done"], ["storyboard", "done"], ["post", "waiting"]])));
+    expect([...bar()!.querySelectorAll<HTMLElement>("[data-run-step] [data-run-label]")].map((label) => label.textContent)).toEqual(["编剧", "角色设计", "分镜", "视频", "后期"]);
+    expect(bar()!.textContent).toContain("8 个镜头已就绪。");
+    expect(buttonByText(bar()!, "生成 8 段视频")).toBeDefined();
   });
 });
