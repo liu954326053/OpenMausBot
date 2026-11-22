@@ -13,12 +13,13 @@ export type PipelineVideosStatus = "waiting" | "confirm" | "working" | "done" | 
 
 /**
  * One run of a project's pipeline, from the lead handing the first stage its task to the JianYing draft. A project
- * has one at a time; a new one starts when the lead hands the first stage a task after the last one ended.
+ * has one at a time; a new one starts when the lead hands the first stage a task while the last one has ended, has a
+ * failed stage, or waits on the person about the videos.
  */
 export interface PipelineRunWire {
   id: string;
   startedAt: number;
-  /** Set once the draft was written, or the run was ended by the person. */
+  /** Set once post-production is done; by then the draft is written if this computer can write one. */
   endedAt?: number;
   /** Only the stages the project's pipeline has, in order. */
   stages: Array<{ stage: PipelineStage; botIds: string[]; status: PipelineStageStatus }>;

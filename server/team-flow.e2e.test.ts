@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import type { PipelineRunWire } from "../shared/pipeline-run.ts";
 import type { ProjectFlowWire, TeamFlowsWire } from "../shared/team-flow.ts";
 import type { FlowLineWire, FlowStage, ProjectPipelineWire, TeamPipelineRejudgeResult, TeamPipelinesWire, TeamPipelineWire } from "../shared/team-pipeline.ts";
 import type { TeamProjectMembership, TeamProjectRecord, TeamProjectsListWire, TeamProjectWire } from "../shared/team-projects.ts";
@@ -438,22 +439,33 @@ describe("a team's pipeline on the real server", () => {
     const storyCopy = copyIn(season!, story);
     const seen = await personAsks("a project's lead", lead, "Cut a teaser.", {
       [lead.id]: {
-        steps: [
-          { tool: "list_bots", arguments: {} },
-          { arguments: { bot_ids: [copyIn(season!, video)], message: "Cut a teaser." }, expectError: true },
-          { arguments: { bot_ids: [video.id], message: "Cut a teaser." }, expectError: true },
-          { arguments: { bot_ids: ["MagicBot"], message: "How long should a teaser run?", consult: true } },
-          { arguments: { bot_ids: [storyCopy], message: "Write the teaser's script." } },
+        script: [
+          {
+            key: "teaser", match: ["Cut a teaser."],
+            steps: [
+              { tool: "list_bots", arguments: {} },
+              { arguments: { bot_ids: [copyIn(season!, video)], message: "Cut a teaser." }, expectError: true },
+              { arguments: { bot_ids: [video.id], message: "Cut a teaser." }, expectError: true },
+              { arguments: { bot_ids: ["MagicBot"], message: "How long should a teaser run?", consult: true } },
+              { arguments: { bot_ids: [storyCopy], message: "Write the teaser's script." } },
+            ],
+            reply: "Asked the right bots",
+          },
+          { key: "pipeline", match: [""], repeat: true, reply: "Noted", resumeReply: "Story wrote the script" },
         ],
-        reply: "Asked the right bots",
-        resumeReply: "Story wrote the script",
       },
       [main.id]: { reply: "Fifteen seconds" },
       [storyCopy]: {
         steps: [{ arguments: { bot_ids: ["MagicBot"], message: "Which beats sell?", consult: true }, expectError: true }],
         reply: "Script: hook, twist, title",
       },
+      [copyIn(season!, board)]: { reply: "Nothing to draw yet" },
     });
+    const run = async () => (await call("GET", `/api/team-projects/${season!.id}/canvas`)).body.run as PipelineRunWire | undefined;
+    await expect.poll(async () => (await run())?.stages.map(({ stage, status }) => `${stage}:${status}`), { timeout: 60_000 })
+      .toEqual(["script:done", "character:done", "storyboard:failed", "post:waiting"]);
+    record.teaserRun = await run();
+    expect((await cli("wait", "--bot", lead.id, "--task", lead.threadId, "--timeout", "60")).status).toBe("settled");
     const [listed, further, team, consulted, handed] = answers(firstTurn(seen, lead));
     expect(listed).toContain(storyCopy);
     expect(listed).toContain(`[id: ${main.id}, model:`);
