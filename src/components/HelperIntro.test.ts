@@ -7,13 +7,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setWelcomingBot, stageIntro } from "@/lib/default-bot";
 import { setLocale, t } from "@/lib/i18n";
+import { loadLocalePack, localePacks } from "@/locales";
 import type { Bot, InstanceInfo, Message } from "@/state/store";
 import type { HelperFollowupFacts } from "../../shared/helper-followup";
 
 const f = vi.hoisted(() => ({
   state: {} as Record<string, unknown>, dispatch: vi.fn(), advanced: false, local: false, reduced: false,
   services: {} as Record<string, { connected: boolean }>, phones: [] as unknown[], found: null as unknown, detect: vi.fn(),
-  followups: [] as unknown[], saves: true, bots: 0, routines: 0,
+  followups: [] as unknown[], saves: true, bots: 0, routines: 0, projects: null as unknown,
 }));
 vi.mock("@/state/store", () => ({
   useStore: () => ({ state: f.state, dispatch: f.dispatch }),
@@ -28,6 +29,10 @@ vi.mock("@/state/store", () => ({
     return {};
   },
 }));
+vi.mock("@/state/team-projects", async () => {
+  const { teamProjectSide } = await import("@/lib/team-projects");
+  return { useTeamProjectSide: () => teamProjectSide(f.projects as Parameters<typeof teamProjectSide>[0]) };
+});
 vi.mock("./PluginsPanel", () => ({ preloadConnectedApps: async () => ({ services: f.services, authoritative: true }) }));
 vi.mock("./bot-settings/useBotApps", () => ({ loadAppCards: async () => new Map([["gmail", { label: "Gmail" }], ["github", { label: "GitHub" }]]) }));
 vi.mock("./Avatar", () => ({ BotAvatar: () => null }));
@@ -88,6 +93,7 @@ beforeEach(() => {
   f.saves = true;
   f.bots = 0;
   f.routines = 0;
+  f.projects = null;
   f.state = { bots: [maus()], instances: [claude(true)], config: { profile: { name: "" } } };
   Object.assign(window, { ogb: { cloudAccount: {} } });
   stageIntro(null);
@@ -115,6 +121,18 @@ describe("what MagicBot says first", () => {
     expect(introLines({ name: "MagicBot", chief: true, team: "Acme" })[1]).toBe(`${said[1]} On Acme, I'm here for you and look after your own bots.`);
   });
 
+  it("calls itself by the role under its name, in every language that has its lines", async () => {
+    const speaking: string[] = [];
+    for (const name of new Set(Object.values(localePacks))) if ((await loadLocalePack(name))?.["helperIntro.lead.chiefOfStaff"]) speaking.push(name);
+    expect(speaking).toEqual(expect.arrayContaining(["en", "zh", "zh-tw", "ja", "ko", "pt-br"]));
+    for (const name of speaking) {
+      setLocale(name);
+      const role = t("defaultBot.description").toLowerCase();
+      expect(introLines({ name: "MagicBot", chief: true })[1].toLowerCase(), name).toContain(role);
+      expect(t("helperIntro.chief").toLowerCase(), name).toContain(role);
+    }
+  });
+
   it("keeps a helper's lines for a MagicBot that is not the Chief", () => {
     expect(introLines({ name: "MagicBot", chief: false })[0]).toBe("Hi! I'm MagicBot, your helper for everything here.");
     expect(introLines({ name: "MagicBot", chief: false, person: "Ada" })[0]).toBe("Hi Ada! I'm MagicBot, your helper for everything here.");
@@ -134,6 +152,16 @@ describe("what MagicBot says first", () => {
     expect(whoConnectsAi(null), "off a team").toBeUndefined();
     expect(followupLine({ ai: "backup", ...none, connects: "" })).toBe(t("helperIntro.followup.backupTeamOwner"));
     expect(followupLine({ ai: "own", ...none, connects: "Olive" }), "with an AI there is nothing to connect").toContain("nothing's waiting");
+  });
+
+  it("follows up in Chinese as Chinese sentences, each count in its own clause", () => {
+    setLocale("zh");
+    const found = "我看了一圈，目前没有事情在等你。", offer = t("helperIntro.followup.offer");
+    expect(followupLine({ ai: "own", apps: [], bots: 7, routines: 0 })).toBe(`${found}你有 7 个其他机器人，没有例行任务，目前还没有连接任何应用。${offer}`);
+    expect(followupLine({ ai: "own", apps: [], bots: 1, routines: 3 })).toContain("你有 1 个其他机器人，有 3 个例行任务，目前还没有连接任何应用。");
+    expect(followupLine({ ai: "own", apps: [], bots: 0, routines: 1 })).toContain("你没有其他机器人，有 1 个例行任务，目前还没有连接任何应用。");
+    expect(followupLine({ ai: "own", apps: [], bots: 0, routines: 0 })).toBe(`${found}没有未完成的工作，也没有其他机器人或例行任务，目前还没有连接任何应用。${offer}`);
+    expect(followupLine({ ai: "own", apps: ["Gmail"], bots: 0, routines: 0 })).toBe(`${found}${t("helperIntro.followup.apps", { apps: "Gmail" })}`);
   });
 });
 
@@ -288,6 +316,17 @@ describe("as a first run lands in the chat", () => {
     expect(f.followups).toHaveLength(1);
     expect(lines()).toHaveLength(4);
     expect(chips()).toEqual(["apps", "phone", "cloud"]);
+  });
+
+  it("counts the team's bots when it says what it saw itself, not their copies inside projects", async () => {
+    f.reduced = true;
+    f.saves = false;
+    const teamBot = (id: string, section: string) => maus({ id, threadId: id, name: id, section, defaultBot: undefined, chiefOfStaff: false });
+    f.state = { ...f.state, bots: [maus(), teamBot("writer", "Story"), teamBot("editor", "Story"), teamBot("writer-copy", "Film")] };
+    f.projects = { root: "/projects", projects: [{ id: "film", section: "Film", botIds: ["writer-copy"], follows: { "writer-copy": "writer" } }] };
+    stageIntro("maus");
+    await show();
+    expect(lines()[3]).toContain("You have 2 other bots and no routines,");
   });
 });
 
