@@ -18,7 +18,7 @@ import {
   type ProjectCanvasEvent,
   replyTitle,
 } from "../../shared/project-canvas.ts";
-import { nodeStatusOf, type GenerationJob, type GenerationRequester, type ProjectGenerationApi, type Refused } from "../../shared/project-generation.ts";
+import { nodeStatusOf, type GenerationFailure, type GenerationJob, type GenerationRequester, type ProjectGenerationApi, type Refused } from "../../shared/project-generation.ts";
 import type { ServerTextParams } from "../../shared/server-text.ts";
 import type { TeamProjectWire, TeamProjectsApi } from "../../shared/team-projects.ts";
 import { FILE_MAX_BYTES } from "../attachments.ts";
@@ -27,10 +27,13 @@ import type { RequestAuth } from "../request-auth.ts";
 import type { Message, Store } from "../store.ts";
 import { userError, type UserErrorKey } from "../user-errors.ts";
 import { BotFactsReader, type OpenCardRow } from "./bot-facts.ts";
-import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments } from "./document-store.ts";
+import { CanvasConflictError, CanvasRequestError, CanvasUnreadableError, type CanvasChangeOutcome, type CanvasDocuments, type RemovedNode } from "./document-store.ts";
 import { generationInput } from "./generation.ts";
+import { settlePipeline, type PipelineChange } from "./pipeline.ts";
+import { isCreation } from "./pipeline-nodes.ts";
+import { generationSource, landTake, takeHost } from "./pipeline-shots.ts";
 import { handOver } from "./handover.ts";
-import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame } from "./ops.ts";
+import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame, type OpsResult } from "./ops.ts";
 import type { ProjectPathError } from "./paths.ts";
 import { canvasFlow, type CanvasFlow, type ProjectPipeline } from "./flow.ts";
 import { placeAfter, placeForActor } from "./placement.ts";
@@ -119,7 +122,26 @@ function requestLanguage(value: unknown): string | undefined {
   return tag;
 }
 
+/** What other parts of the server hear of a project's pipeline nodes: a node that newly has a role; a shot whose
+ * selected take is another one, or none (`nodeId: null`); and the end of a take's generation, with the take it made
+ * or why it made none. */
+export type CanvasPipelineEvent =
+  | (PipelineChange & { projectId: string })
+  | ({ kind: "take"; projectId: string; shotId: string; creationNodeId: string; jobId: string } & ({ ok: true; nodeId: string } | { ok: false; cancelled: boolean; failure?: GenerationFailure }));
+
+/** A change to a canvas: who makes it, what it touches, and how it is made on a copy of the document. */
+interface ServiceChange {
+  baseRevision?: number;
+  targets: CanvasChangeSet;
+  /** Absent for a change the server makes. */
+  actor?: CanvasNodeCreator;
+  /** Brings a canvas stored before the pipeline forward. */
+  upgrade?: true;
+  apply(document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>, removed: (id: string) => RemovedNode | undefined): OpsResult;
+}
+
 const NONE: CanvasChangeSet = { nodes: [], connections: [] };
+const merged = (a: CanvasChangeSet, b: CanvasChangeSet): CanvasChangeSet => ({ ...a, nodes: [...new Set([...a.nodes, ...b.nodes])], connections: [...new Set([...a.connections, ...b.connections])] });
 const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.length && !set.viewport && !set.backgroundMode;
 const madeBy = (node: CanvasNode, botId: string) => node.createdBy?.kind === "bot" && node.createdBy.botId === botId;
 const record = (body: unknown): Record<string, unknown> => (body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {});
@@ -156,6 +178,7 @@ export class ProjectCanvasService {
   private readonly queues = new Map<string, Promise<unknown>>();
   private readonly targets = new TaskTargets();
   private readonly deps: ProjectCanvasServiceDeps;
+  private readonly pipelineListeners = new Set<(event: CanvasPipelineEvent) => void>();
   private lastLines = new Map<string, string>();
 
   constructor(deps: ProjectCanvasServiceDeps) {
@@ -197,13 +220,79 @@ export class ProjectCanvasService {
     return [...this.lastLines].filter(([projectId, lines]) => before.get(projectId) !== lines).map(([projectId]) => projectId);
   }
 
-  private flow(project: TeamProjectWire): CanvasFlow {
+  newId(): string {
+    return this.deps.newId();
+  }
+
+  flow(project: TeamProjectWire): CanvasFlow {
     return canvasFlow(project, this.deps.pipelineOf(project.id, project.leadBotId));
+  }
+
+  /** `listener` hears what happens to the pipeline's nodes on every project's canvas, after it is stored. Returns the
+   * way to stop listening. */
+  onPipeline(listener: (event: CanvasPipelineEvent) => void): () => void {
+    this.pipelineListeners.add(listener);
+    return () => {
+      this.pipelineListeners.delete(listener);
+    };
+  }
+
+  private tell(event: CanvasPipelineEvent): void {
+    for (const listener of this.pipelineListeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        this.deps.log(`[project-canvas] ${event.projectId}: a listener failed on a pipeline ${event.kind} event (${error instanceof Error ? error.message : "unknown"})`);
+      }
+    }
+  }
+
+  /** Before a canvas is read or changed: one stored before the pipeline is brought forward, and one whose pipeline
+   * links were made for other stages than its bots have now gets the links of these. An archived project's canvas is
+   * left as it is stored. */
+  private settle(project: TeamProjectWire): void {
+    if (project.archivedAt !== undefined) return;
+    const made = this.deps.documents.stagesOf(project.id);
+    if (made ? JSON.stringify(made) === JSON.stringify(this.flow(project).stages) : !this.deps.documents.hasNodes(project.id)) return;
+    this.change(project, { targets: NONE, ...(made ? {} : { upgrade: true }), apply: (document) => ({ document, changed: NONE, nodeIds: [], connectionIds: [] }) }, true);
+  }
+
+  /** The project's canvas as stored, settled first. */
+  document(project: TeamProjectWire): CanvasDocument {
+    this.settle(project);
+    return this.deps.documents.read(project.id);
+  }
+
+  /** Every change to a canvas goes through here: it is made, the pipeline is settled on the result, both are stored as
+   * one revision, and open apps and the pipeline's listeners are told. */
+  private change(project: TeamProjectWire, request: ServiceChange, settled = false): CanvasChangeOutcome {
+    if (!settled) this.settle(project);
+    const flow = this.flow(project);
+    const events: PipelineChange[] = [];
+    const outcome = this.deps.documents.change(project.id, {
+      ...(request.baseRevision === undefined ? {} : { baseRevision: request.baseRevision }),
+      targets: request.targets,
+      apply: (document, removed) => {
+        const made = this.deps.documents.stagesOf(project.id);
+        const before = structuredClone(document);
+        const result = request.apply(document, botFrames(document, flow), removed);
+        if (!made && before.nodes.length && !request.upgrade) return result;
+        const pipeline = settlePipeline({
+          before, after: result.document, beforeStages: made ?? {}, stages: flow.stages, bots: botFrames(result.document, flow), reserved: this.reserved(project.id, result.document), newId: this.deps.newId,
+          ...(request.actor ? { actor: request.actor } : {}), ...(request.upgrade ? { upgrade: true } : {}),
+        });
+        events.push(...pipeline.events);
+        return { ...result, changed: merged(result.changed, pipeline.changed), stages: flow.stages };
+      },
+    });
+    if (!isEmpty(outcome.changed)) this.deps.broadcast({ kind: "project-canvas", projectId: project.id, revision: outcome.revision, reason: "document" });
+    for (const event of events) this.tell({ ...event, projectId: project.id });
+    return outcome;
   }
 
   private view(project: TeamProjectWire, sees: (threadId: string) => boolean): CanvasSnapshot {
     const snapshot = buildSnapshot({
-      document: this.deps.documents.read(project.id),
+      document: this.document(project),
       project: { id: project.id, name: project.name, leadBotId: project.leadBotId, archived: project.archivedAt !== undefined, folderState: project.folderState },
       bots: this.facts.facts(project.botIds),
       pipeline: this.deps.pipelineOf(project.id, project.leadBotId),
@@ -228,7 +317,7 @@ export class ProjectCanvasService {
   }
 
   /** The nodes the replies being written beside text nodes of `document` become, where the server places nothing else. */
-  private reserved(projectId: string, document: CanvasDocument): CanvasReplyPlaceholder[] {
+  reserved(projectId: string, document: CanvasDocument): CanvasReplyPlaceholder[] {
     return this.writing(projectId, document.nodes).flatMap((target) => (target.beside ? [target.beside] : []));
   }
 
@@ -253,31 +342,25 @@ export class ProjectCanvasService {
 
   apply(project: TeamProjectWire, actor: CanvasNodeCreator, ops: readonly CanvasOp[], baseRevision?: number): CanvasOpsResponse {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
-    const outcome = this.deps.documents.change(project.id, {
+    const stages = actor.kind === "bot" ? this.flow(project).stages[actor.botId] : undefined;
+    const outcome = this.change(project, {
       ...(baseRevision === undefined ? {} : { baseRevision }),
       targets: opTargets(ops),
-      apply: (document, removed) => {
-        const bots = botFrames(document, this.flow(project));
-        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots, this.reserved(project.id, current)), removed });
+      actor,
+      apply: (document, bots, removed) => {
+        const place = (current: CanvasDocument, node: CanvasNode) => placeForActor(current, node, actor, bots, this.reserved(project.id, current));
+        const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place, removed, ...(stages ? { stages } : {}) });
         if (actor.kind === "bot" && result.nodeIds.length) pinBot(result.document, result.changed, actor.botId, bots);
         return result;
       },
     });
-    this.changed(project.id, outcome);
     return { revision: outcome.revision, nodeIds: outcome.nodeIds, connectionIds: outcome.connectionIds };
   }
 
-  /** A change the server makes on someone's behalf, never refused for what changed since. */
-  private serverChange(project: TeamProjectWire, make: (document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>) => CanvasChangeSet | null): void {
-    const outcome = this.deps.documents.change(project.id, {
-      targets: NONE,
-      apply: (document) => ({ document, changed: make(document, botFrames(document, this.flow(project))) ?? NONE, nodeIds: [], connectionIds: [] }),
-    });
-    this.changed(project.id, outcome);
-  }
-
-  private changed(projectId: string, outcome: CanvasChangeOutcome): void {
-    if (!isEmpty(outcome.changed)) this.deps.broadcast({ kind: "project-canvas", projectId, revision: outcome.revision, reason: "document" });
+  /** A change the server makes on someone's behalf, never refused for what changed since. `make` answers what it
+   * changed, or null for nothing. */
+  serverChange(project: TeamProjectWire, make: (document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>) => CanvasChangeSet | null): CanvasChangeOutcome {
+    return this.change(project, { targets: NONE, apply: (document, bots) => ({ document, changed: make(document, bots) ?? NONE, nodeIds: [], connectionIds: [] }) });
   }
 
   private serial(projectId: string, work: () => Promise<void>): Promise<void> {
@@ -300,7 +383,7 @@ export class ProjectCanvasService {
     return this.serial(projectId, async () => {
       const project = this.deps.projects.list().find((one) => one.id === projectId);
       if (!project || project.archivedAt !== undefined || project.folderState !== "ready" || !project.botIds.includes(botId)) return;
-      const handed = await handOver(this.deps.documents.read(project.id), project.folder, file);
+      const handed = await handOver(this.document(project), project.folder, file);
       if ("existing" in handed) return;
       const { nodeType, title, file: ref } = handed.add;
       this.serverChange(project, (document, bots) => {
@@ -337,7 +420,7 @@ export class ProjectCanvasService {
     if (!threadId || !this.deps.store.taskByThread(botId, threadId) || !this.deps.visibleFor(auth).thread(threadId)) {
       throw new CanvasRefusal(404, { error: "That is not a conversation of this bot you can open." });
     }
-    const document = this.deps.documents.read(project.id);
+    const document = this.document(project);
     const target = targetNodeId === undefined ? undefined : document.nodes.find((node) => node.id === targetNodeId);
     if (targetNodeId !== undefined && target?.type !== "text") {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
@@ -358,7 +441,7 @@ export class ProjectCanvasService {
    * reply becomes now, and open apps are told so they show it while the bot writes. */
   private awaitReply(project: TeamProjectWire, where: Pick<TaskTarget, "botId" | "threadId" | "nodeId" | "title">, hadText: boolean, receipt: DirectSendReceipt): void {
     if (!("queued" in receipt) && receipt.steered) return;
-    const document = this.deps.documents.read(project.id);
+    const document = this.document(project);
     const source = document.nodes.find((node) => node.id === where.nodeId);
     if (!source) return;
     const beside = hadText ? this.replyNode(project, document, source) : undefined;
@@ -424,20 +507,23 @@ export class ProjectCanvasService {
   }
 
   /** Starts the project's generation for a shot, image, video or config node, which shows `loading` until its job ends.
-   * A bot starts only its own nodes. A refusal leaves the node as it was. `language` is the one a person's request names
-   * its references in; a bot's request names none. */
+   * A shot that has a creation node generates through it: the creation node is the one that shows `loading`, and its
+   * settings and references go with the shot's prompt. A bot starts only its own nodes. A refusal leaves the node as it
+   * was. `language` is the one a person's request names its references in; a bot's request names none. */
   async generate(project: TeamProjectWire, requester: GenerationRequester, nodeId: unknown, language?: unknown): Promise<{ job: GenerationJob } | Refused> {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     if (typeof nodeId !== "string") throw new CanvasOpRefusal("invalid_op", "nodeId is required");
     const named = requestLanguage(language) ?? this.deps.language();
-    const document = this.deps.documents.read(project.id);
-    const node = document.nodes.find((one) => one.id === nodeId);
-    if (!node) throw coded(404, "not_found", "serverError.projectCanvas.nodeMissing");
-    const kind = generationKindOf(node);
-    if (!kind) throw new CanvasOpRefusal("invalid_op", "only shot, image, video and config nodes are generated");
-    if (requester.kind === "bot" && !madeBy(node, requester.botId)) throw new CanvasOpRefusal("not_yours", `${nodeId} was not put there by you; ask the person to generate it`);
+    const document = this.document(project);
+    const asked = document.nodes.find((one) => one.id === nodeId);
+    if (!asked) throw coded(404, "not_found", "serverError.projectCanvas.nodeMissing");
+    if (!generationKindOf(asked)) throw new CanvasOpRefusal("invalid_op", "only shot, image, video and config nodes are generated");
+    if (requester.kind === "bot" && !madeBy(asked, requester.botId)) throw new CanvasOpRefusal("not_yours", `${nodeId} was not put there by you; ask the person to generate it`);
+    const source = generationSource(document, asked);
+    const { node } = source;
+    const kind = isCreation(node) ? "video" : generationKindOf(node)!;
     if (node.metadata?.status === "loading") throw coded(409, "generating", "serverError.projectCanvas.alreadyGenerating");
-    const prompt = node.metadata?.prompt?.trim();
+    const prompt = source.prompt?.trim();
     if (!prompt) throw coded(400, "no_prompt", "serverError.projectCanvas.noPrompt");
     const before = Object.fromEntries(JOB_KEYS.flatMap((key) => (node.metadata?.[key] === undefined ? [] : [[key, node.metadata[key]]]))) as CanvasNodeMetadata;
     const reserved = (metadata: CanvasNodeMetadata) => metadata.status === "loading" && metadata.jobId === undefined;
@@ -445,7 +531,7 @@ export class ProjectCanvasService {
     this.patchNode(project, node.id, (metadata) => ({ ...without(metadata, ...JOB_KEYS), status: "loading" }));
     let started: { job: GenerationJob } | Refused;
     try {
-      started = await this.deps.generation.start(project.id, generationInput(document, node, kind, prompt, named), { requester });
+      started = await this.deps.generation.start(project.id, generationInput(document, node, kind, prompt, named, source.name), { requester });
     } catch (error) {
       restore();
       throw error;
@@ -462,11 +548,13 @@ export class ProjectCanvasService {
 
   /** A job's change, on its node: `loading` while it runs, then the files it made, or its failure as the node's error.
    * An empty image or video node takes the first file of its kind; each other file becomes a node to its right,
-   * connected from it. A node given another job since, or none, is left as it is. Kept for an archived project too: the
-   * job began before. */
+   * connected from it. A video made for a shot through its creation node is the shot's newest take, and how the take's
+   * generation ended is told. A node given another job since, or none, is left as it is. Kept for an archived project
+   * too: the job began before. */
   jobChanged(job: GenerationJob): void {
     const project = this.deps.projects.list().find((one) => one.id === job.projectId);
     if (!project) return;
+    let ended: CanvasPipelineEvent | undefined;
     try {
       this.serverChange(project, (document, bots) => {
         const node = document.nodes.find((one) => one.id === job.nodeId);
@@ -477,6 +565,8 @@ export class ProjectCanvasService {
         if (metadata.status === status && metadata.errorDetails === failure?.error && metadata.errorKey === failure?.errorKey) return null;
         node.metadata = { ...without(metadata, "errorDetails", "errorKey", "errorParams"), status, ...(failure ? nodeError(failure) : {}) };
         const changed: CanvasChangeSet = { nodes: [node.id], connections: [] };
+        const creation = takeHost(document, node);
+        let takeId: string | undefined;
         for (const file of status === "success" ? job.files : []) {
           if (document.nodes.some((one) => one.metadata?.file?.path === file.path)) continue;
           const type = canvasFileNodeType(file.mime);
@@ -485,6 +575,13 @@ export class ProjectCanvasService {
             continue;
           }
           if (document.nodes.length >= CANVAS_MAX_NODES) break;
+          if (creation && type === "video") {
+            const landed = landTake(document, creation, file, { bots, reserved: this.reserved(project.id, document), newId: this.deps.newId });
+            changed.nodes.push(...landed.nodes);
+            changed.connections.push(landed.connection.id);
+            takeId = landed.take.id;
+            continue;
+          }
           const made: CanvasNode = { id: this.deps.newId(), type, title: file.name, position: { x: 0, y: 0 }, ...CANVAS_NODE_SIZE[type], metadata: { file }, ...(node.createdBy ? { createdBy: node.createdBy } : {}) };
           made.position = placeAfter(document, node, made, bots, this.reserved(project.id, document));
           const connection: CanvasConnection = { id: this.deps.newId(), fromNodeId: node.id, toNodeId: made.id, kind: "content" };
@@ -493,11 +590,17 @@ export class ProjectCanvasService {
           changed.nodes.push(made.id);
           changed.connections.push(connection.id);
         }
+        if (creation && status !== "loading") {
+          const take = { kind: "take", projectId: project.id, shotId: creation.metadata!.shotId!, creationNodeId: creation.id, jobId: job.id } as const;
+          ended = takeId ? { ...take, ok: true, nodeId: takeId } : { ...take, ok: false, cancelled: job.status === "cancelled", ...(failure ? { failure: job.failure! } : {}) };
+        }
         return changed;
       });
     } catch (error) {
       this.deps.log(`[project-canvas] ${job.projectId}: job ${job.id} could not be shown on the canvas (${error instanceof Error ? error.message : "unknown"})`);
+      return;
     }
+    if (ended) this.tell(ended);
   }
 
   /** At start, each node still loading follows its job as generation has it now, since a change made while nobody

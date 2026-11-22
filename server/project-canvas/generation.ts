@@ -20,12 +20,12 @@ export function generationPrompt(prompt: string, references: readonly CanvasRefe
 }
 
 /** What generation starts for a node, all of it taken from the node and what it takes in: the node's settings are its
- * overrides, its title names the files, and the files of its image and audio references go with a prompt that numbers
- * them as the person saw them. */
-export function generationInput(document: CanvasDocument, node: CanvasNode, kind: GenerationKind, prompt: string, language: string | undefined): StartGenerationInput {
+ * overrides, `title` (its own, or its shot's for a creation node) names the files, and the files of its image and
+ * audio references go with a prompt that numbers them as the person saw them. */
+export function generationInput(document: CanvasDocument, node: CanvasNode, kind: GenerationKind, prompt: string, language: string | undefined, title = node.title): StartGenerationInput {
   const references = mentionReferences(node.id, document.nodes, document.connections);
   const overrides = node.metadata?.settings;
-  const name = node.title.trim();
+  const name = title.trim();
   return {
     kind,
     nodeId: node.id,

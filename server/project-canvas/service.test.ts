@@ -485,6 +485,7 @@ describe("a task written in a text node", () => {
 
 describe("generating a node", () => {
   const shot = (prompt = "A bride alone at the altar") => ({ type: "add_node", nodeType: "shot", metadata: { prompt } });
+  const empty = (prompt = "A bride alone at the altar") => ({ type: "add_node", nodeType: "video", metadata: { prompt } });
 
   const file = (path: string, mime = "image/png"): CanvasFileRef => ({ path, mime, bytes: 3, name: path.split("/").at(-1)! });
 
@@ -496,7 +497,7 @@ describe("generating a node", () => {
       { type: "add_node", nodeType: "image", title: " Poster ", metadata: { prompt: "A poster", settings: { aspect: "16:9", count: 2 } } },
     )).nodeIds as [string, string, string];
     service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: still, toNodeId: poster }, { type: "connect_nodes", fromNodeId: song, toNodeId: poster }));
-    const take = service.apply(project, person, opsOf(shot())).nodeIds[0]!;
+    const take = service.apply(project, person, opsOf(empty())).nodeIds[0]!;
     expect(await service.generate(project, person, poster)).toEqual({ job: expect.objectContaining({ id: "job-1" }) });
     await service.generate(project, person, take);
     const numbering = [
@@ -519,7 +520,7 @@ describe("generating a node", () => {
       { type: "add_node", nodeType: "config", title: "生成配置", metadata: { prompt: "@Image 2 at dawn", generationMode: "image", settings: { model: "pixel-1", count: 2 } } },
       { type: "add_node", nodeType: "config", metadata: { prompt: "Rain", generationMode: "video" } },
     )).nodeIds as [string, string, string, string, string];
-    const [, take] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "image", groupId: refs, metadata: { file: file("refs/veil.png") } }, shot())).nodeIds as [string, string];
+    const [, take] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "image", groupId: refs, metadata: { file: file("refs/veil.png") } }, empty())).nodeIds as [string, string];
     service.apply(project, person, opsOf(...[still, refs, brief, take].map((from) => ({ type: "connect_nodes", fromNodeId: from, toNodeId: config }))));
     await service.generate(project, person, config);
     await service.generate(project, person, take);
@@ -569,7 +570,7 @@ describe("generating a node", () => {
   it("answers generation's refusal as it is, and leaves the node as it was, its last error too", async () => {
     const { service, project, generation } = setup();
     const timedOut = { status: "error", errorDetails: "gen gave no result within 10 minutes.", errorKey: "serverError.projectGeneration.timedOut", errorParams: { server: "gen", minutes: 10 } };
-    const id = service.apply(project, person, opsOf({ ...shot(), metadata: { prompt: "A bride", ...timedOut, jobId: "old" } })).nodeIds[0]!;
+    const id = service.apply(project, person, opsOf({ ...empty(), metadata: { prompt: "A bride", ...timedOut, jobId: "old" } })).nodeIds[0]!;
     const before = nodeOf(service, id)!.metadata;
     const refusal: GenerationFailure = { code: "no_server", error: "Choose an MCP server for videos in this project's settings first.", errorKey: "serverError.projectGeneration.noVideoServer" };
     generation.refuseWith(refusal);
@@ -672,7 +673,7 @@ describe("generating a node", () => {
 
   it("puts a failure on its node in English and as generation's key and values, and a cancelled job leaves the node idle", async () => {
     const { service, project, generation } = setup();
-    const [failed, cancelled] = service.apply(project, person, opsOf(shot(), shot())).nodeIds as [string, string];
+    const [failed, cancelled] = service.apply(project, person, opsOf(empty(), empty())).nodeIds as [string, string];
     await service.generate(project, person, failed);
     await service.generate(project, person, cancelled);
     const failure: GenerationFailure = {

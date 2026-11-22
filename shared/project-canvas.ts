@@ -363,6 +363,18 @@ export interface CanvasGenerateResponse {
   jobId: string;
 }
 
+/** `POST /api/team-projects/:id/canvas/select-take`: a take of the project, a video generated for a shot, becomes its
+ * shot's selected take, and the shot's other takes lose the mark. Refused for a node that is no take with
+ * `code: "not_a_take"`, and for an archived project with `CanvasReadOnly`. */
+export interface CanvasSelectTakeRequest {
+  nodeId: string;
+}
+
+/** The canvas's revision once the take is selected; the one it had when the take was selected already. */
+export interface CanvasSelectTakeResponse {
+  revision: number;
+}
+
 /** Uploads go here, in the project folder. */
 export const CANVAS_UPLOAD_FOLDER = "素材";
 /** Generated images and videos, and files a bot hands over from outside the project folder, go here. */

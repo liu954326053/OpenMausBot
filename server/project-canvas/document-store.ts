@@ -200,6 +200,10 @@ export class CanvasDocuments {
     return stages && structuredClone(stages);
   }
 
+  hasNodes(projectId: string): boolean {
+    return this.load(projectId).document.nodes.length > 0;
+  }
+
   /** Null while the canvas cannot be read. */
   revisionOf(projectId: string): number | null {
     try {

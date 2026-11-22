@@ -18,6 +18,7 @@ import { onTeamProjectFolderChange } from "../team-projects/folder-watch.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
 import type { ProjectPipeline } from "./flow.ts";
+import { createCanvasPipeline, type CanvasPipelineApi } from "./pipeline-api.ts";
 import { setCanvasGenerationCardAnswer } from "./card-route.ts";
 import { CanvasGenerationCards } from "./generation-card.ts";
 import { ProjectCanvasService } from "./service.ts";
@@ -45,6 +46,8 @@ export interface ProjectCanvasHostDeps {
 export interface ProjectCanvasHost {
   routes: RouteHandler;
   service: ProjectCanvasService;
+  /** The pipeline's nodes on the canvases, for the parts of the server that relay work and write the draft. */
+  pipeline: CanvasPipelineApi;
 }
 
 const BOTS_SETTLE_MS = 500;
@@ -142,5 +145,6 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
   const cards = new CanvasGenerationCards({ store: deps.store, service, answer: deps.answerCard });
   setCanvasGenerationCardAnswer((threadId, requestId, behavior) => cards.answer(threadId, requestId, behavior));
   setProjectCanvasToolRoutes(createProjectCanvasToolRoutes(service, cards));
-  return { routes: createProjectCanvasRoutes(service), service };
+  const pipeline = createCanvasPipeline(service);
+  return { routes: createProjectCanvasRoutes(service, pipeline), service, pipeline };
 }
