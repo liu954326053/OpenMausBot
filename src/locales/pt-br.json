@@ -10625,7 +10625,6 @@
   "teamPipeline.unreadable": "Não é possível mudar as linhas agora: o fluxo da equipe não pôde ser lido.",
   "teamPipeline.dismiss": "Fechar",
   "teamPipeline.rejudge": "Avaliar de novo",
-  "teamPipeline.rejudgeAria": "Avaliar de novo as etapas de {name}",
   "teamPipeline.rejudged": "Avaliando {name} de novo. As linhas que você mudou à mão foram desfeitas.",
   "teamPipeline.undoFailed": "Não foi possível desfazer. Mude as linhas no mapa da equipe para voltar ao que era.",
   "serverError.projectGeneration.noImageServer": "Primeiro escolha um servidor MCP para imagens nas configurações deste projeto.",

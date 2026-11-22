@@ -9,7 +9,7 @@ import type { PipelineLayout, PipelineLine } from "@/lib/team-pipeline";
 import type { TeamMapSection } from "@/lib/team-map";
 import type { FlowLineWire, TeamPipelineLineInput, TeamPipelineWire } from "../../../shared/team-pipeline";
 import { MENU_GUTTER, MENU_LABEL, MENU_NOTE, MENU_ROW, MENU_SHEET } from "../menu-recipe";
-import { PipelineCardNote } from "./PipelineCardNote";
+import { cardHasNote, PipelineCardNote } from "./PipelineCardNote";
 
 type Drawing = { from: string; pointerId: number; start: Point; moved: boolean };
 
@@ -58,6 +58,7 @@ export function TeamPipeline({ section, pipeline, layout, canDraw, readable, ren
   }, [selected, focused]);
 
   const change = async (input: TeamPipelineLineInput, at: Point) => {
+    if (busy) return;
     setProblem(null); setMenuFor(null); setBusy(true);
     try {
       await onLine(input);
@@ -153,7 +154,7 @@ export function TeamPipeline({ section, pipeline, layout, canDraw, readable, ren
       if (!bot) return null;
       const candidates = members.filter((other) => other.id !== bot.id && other.id !== pipeline.chiefId);
       const note = `${noteId}-${bot.id}`;
-      return <div key={bot.id} data-pipeline-card={bot.id} data-column={card.column} role="group" aria-label={bot.name} aria-describedby={note}
+      return <div key={bot.id} data-pipeline-card={bot.id} data-column={card.column} role="group" aria-label={bot.name} aria-describedby={cardHasNote(pipeline, bot.id) ? note : undefined}
         className={cn("pointer-events-auto absolute rounded-xl", pointer?.target === bot.id && "ring-2 ring-accent ring-offset-2 ring-offset-panel")}
         style={{ left: card.x, top: card.y }}>
         {renderBot(bot, <PipelineCardNote id={note} pipeline={pipeline} botId={bot.id} />)}

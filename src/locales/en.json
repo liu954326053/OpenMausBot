@@ -10625,7 +10625,6 @@
   "teamPipeline.unreadable": "Lines can't be changed right now: the team's pipeline couldn't be read.",
   "teamPipeline.dismiss": "Dismiss",
   "teamPipeline.rejudge": "Judge again",
-  "teamPipeline.rejudgeAria": "Judge the stages of {name} again",
   "teamPipeline.rejudged": "Judging {name} again. Lines you changed by hand were cleared.",
   "teamPipeline.undoFailed": "Couldn't undo that. Change the lines on the team map to put them back.",
   "serverError.projectGeneration.noImageServer": "Choose an MCP server for pictures in this project's settings first.",

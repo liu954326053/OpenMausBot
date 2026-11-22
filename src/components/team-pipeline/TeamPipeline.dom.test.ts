@@ -93,6 +93,7 @@ describe("a team's pipeline on the map", () => {
     expect(stages("art")!.title).toBe("Characters · Storyboard");
     expect(stages("art")!.className.split(" ")).toContain("truncate");
     expect(container.querySelector('[data-pipeline-note="ops"]')).toBeNull();
+    expect(card("ops").hasAttribute("aria-describedby")).toBe(false);
     expect(card("art").getAttribute("role")).toBe("group");
     expect(card("art").getAttribute("aria-label")).toBe("Art");
     expect(document.getElementById(card("art").getAttribute("aria-describedby")!)!.textContent).toBe("Characters · Storyboard");
@@ -200,6 +201,18 @@ describe("a team's pipeline on the map", () => {
     await show(studio(), { canDraw: false, readable: true });
     expect(container.querySelector("[data-pipeline-dot]")).toBeNull();
     expect(container.textContent).not.toContain("couldn't be read");
+  });
+
+  it("sends one change at a time: a second asked for while the first is on its way is dropped", async () => {
+    let finish!: () => void;
+    answer = () => new Promise<void>((resolve) => { finish = resolve; });
+    await show();
+    await key(byLabel("Line from Ink to Art")!, "Delete");
+    await key(byLabel("Line from Sol to Story")!, "Delete");
+    expect(sent).toEqual([{ from: "ink", to: "art", present: false }]);
+    expect(byLabel<HTMLButtonElement>("Draw a line from Story")!.disabled).toBe(true);
+    await act(async () => finish());
+    expect(byLabel<HTMLButtonElement>("Draw a line from Story")!.disabled).toBe(false);
   });
 
   it("draws a line the person added beside the ones the stages give", async () => {
