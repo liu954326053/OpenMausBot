@@ -1,7 +1,7 @@
 // The projects as the sidebar, the New project dialog and Settings show them: one copy of the server's list. It is read
-// again when the server says a project's folder went missing or came back, when the set of bots or departments changes,
-// after every change made here, and when the window gets focus again. A server without projects answers 404 and is not
-// asked again.
+// again when the server says the list or a project's folder changed, when the set of bots or departments changes, after
+// every change made here, when the window gets focus again, and shortly after a read that failed. A server without
+// projects answers 404 and is not asked again.
 import { useEffect, useSyncExternalStore } from "react";
 import type { CreateTeamProjectInput, TeamChangesInput, TeamChangesResult, TeamProjectsEvent, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
 import { listenLiveFrames } from "../lib/live-events";
@@ -39,6 +39,11 @@ let readAgain = false;
 let quiet = true;
 let unasked: AbortController | null = null;
 
+type ReadOutcome = "landed" | "failed";
+const readOutcomes = new Set<(outcome: ReadOutcome) => void>();
+const tell = (outcome: ReadOutcome) => { for (const listener of readOutcomes) listener(outcome); };
+const worthRetrying = (error: { status?: number; name?: string }) => error.name !== "AbortError" && (error.status === undefined || error.status >= 500);
+
 /** Reads the list now, or once more after the read on its way, so the newest answer lands last. A read nobody asked for
  * (`background`) waits while the page is out of sight; one the person's own change asks for takes its place at once.
  * The first read never waits: until it lands a project's department is drawn as a department. */
@@ -56,11 +61,12 @@ export function refreshTeamProjects(init?: { background?: boolean }): Promise<vo
         const seq = ++sent, background = quiet;
         quiet = true;
         unasked = background ? new AbortController() : null;
-        const answer = await listTeamProjects({ background, signal: unasked?.signal }).catch((error: { status?: number }) => {
+        const answer = await listTeamProjects({ background, signal: unasked?.signal }).catch((error: { status?: number; name?: string }) => {
           if (error.status === 404 || error.status === 403) { offered = false; show(null); }
+          else if (worthRetrying(error)) tell("failed");
           return null;
         });
-        if (answer && Array.isArray(answer.projects) && seq >= shown) { shown = seq; show(answer); }
+        if (answer && Array.isArray(answer.projects) && seq >= shown) { shown = seq; show(answer); tell("landed"); }
       } while (readAgain && offered);
     } finally {
       reading = null;
@@ -121,20 +127,42 @@ export async function saveProjectsRoot(path: string): Promise<{ root: string } |
   return saved;
 }
 
-const isFolderEvent = (frame: unknown) => (frame as Partial<TeamProjectsEvent>).kind === "team-projects";
+const isProjectsEvent = (frame: unknown) => (frame as Partial<TeamProjectsEvent>).kind === "team-projects";
 
-/** Reads the list when the server says a project's folder went missing or came back, and when the live stream came back
- * without the frames it missed. Returns how to stop. */
+/** Reads the list when the server says a project was added, changed or taken off, or its folder went missing or came back,
+ * and when the live stream came back without the frames it missed. Returns how to stop. */
 export function followTeamProjectEvents(): () => void {
   const again = () => { void refreshTeamProjects({ background: true }); };
-  return listenLiveFrames({ onFrame: (frame) => { if (isFolderEvent(frame)) again(); }, onMissedFrames: again });
+  return listenLiveFrames({ onFrame: (frame) => { if (isProjectsEvent(frame)) again(); }, onMissedFrames: again });
 }
 
-/** Reads the list when `version` changes (`teamProjectsVersion`), when the server says a folder changed, and when the
- * window gets focus again. */
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
+
+/** Reads the list again after a read that failed on the way or on the server, once after each of `delaysMs`, until a
+ * read lands. Returns how to stop. */
+export function retryFailedTeamProjectReads(delaysMs: readonly number[] = RETRY_DELAYS_MS): () => void {
+  let failures = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const onOutcome = (outcome: ReadOutcome) => {
+    clearTimeout(timer);
+    timer = undefined;
+    if (outcome === "landed") { failures = 0; return; }
+    const delay = delaysMs[failures++];
+    if (delay !== undefined) timer = setTimeout(() => { timer = undefined; void refreshTeamProjects({ background: true }); }, delay);
+  };
+  readOutcomes.add(onOutcome);
+  return () => {
+    clearTimeout(timer);
+    readOutcomes.delete(onOutcome);
+  };
+}
+
+/** Reads the list when `version` changes (`teamProjectsVersion`), when the server says the list or a folder changed, when
+ * the window gets focus again, and again shortly after a read that failed. */
 export function useTeamProjectsLoader(version: string): void {
   useEffect(() => { void refreshTeamProjects({ background: true }); }, [version]);
   useEffect(followTeamProjectEvents, []);
+  useEffect(() => retryFailedTeamProjectReads(), []);
   useEffect(() => {
     const again = () => { void refreshTeamProjects({ background: true }); };
     window.addEventListener("focus", again);

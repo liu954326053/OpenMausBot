@@ -4,7 +4,8 @@ import type { TeamProjectsEvent, TeamProjectsListWire, TeamProjectWire } from ".
 import type { ServerFrame } from "../../shared/wire";
 import { publishLiveFrame, publishMissedFrames } from "../lib/live-events";
 import {
-  archiveProject, createProject, currentTeamProjectSide, followTeamProjectEvents, refreshTeamProjects, restoreProject, saveProjectsRoot, setTeamProjects,
+  archiveProject, createProject, currentTeamProjectSide, followTeamProjectEvents, refreshTeamProjects, restoreProject, retryFailedTeamProjectReads, saveProjectsRoot,
+  setTeamProjects,
 } from "./team-projects";
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
@@ -171,6 +172,74 @@ describe("the server's word", () => {
     folder("missing");
     await soon();
     expect(calls.length).toBe(2);
+  });
+
+  it("reads the list again when a project is added, changed or taken off elsewhere, with no folder change", async () => {
+    const calls = server();
+    setTeamProjects(list(project("bride")));
+    const stop = followTeamProjectEvents();
+    publishLiveFrame({ kind: "team-projects", projectId: "palace" } satisfies TeamProjectsEvent as unknown as ServerFrame);
+    await soon();
+    await calls[0]!.answer(200, list(project("bride"), project("palace")));
+    expect(names()).toEqual(["bride", "palace"]);
+    stop();
+  });
+});
+
+describe("a read that fails on the way or on the server", () => {
+  const failing = () => {
+    const fetch = vi.fn(() => Promise.reject(new TypeError("fetch failed")));
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  };
+
+  it("is read again on its own after a short wait, until a read lands", async () => {
+    const calls = server();
+    setTeamProjects(list(project("bride")));
+    const stop = retryFailedTeamProjectReads([5, 5, 5]);
+    void refreshTeamProjects({ background: true });
+    await calls[0]!.answer(503, { error: "The list of projects cannot be read." });
+    await vi.waitFor(() => expect(calls.length).toBe(2));
+    await calls[1]!.answer(200, list(project("bride"), project("palace")));
+    expect(names()).toEqual(["bride", "palace"]);
+    await new Promise((done) => setTimeout(done, 40));
+    expect(calls.length).toBe(2);
+    stop();
+  });
+
+  it("stops after its last wait, and once whoever asked is gone", async () => {
+    setTeamProjects(list(project("bride")));
+    const fetch = failing();
+    const stop = retryFailedTeamProjectReads([5, 5]);
+    void refreshTeamProjects({ background: true });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await new Promise((done) => setTimeout(done, 40));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    stop();
+
+    const after = failing();
+    const gone = retryFailedTeamProjectReads([5]);
+    gone();
+    void refreshTeamProjects({ background: true });
+    await new Promise((done) => setTimeout(done, 40));
+    expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("never asks again after a refusal, and waits for a page out of sight to show", async () => {
+    const calls = server();
+    setTeamProjects(list(project("bride")));
+    const stop = retryFailedTeamProjectReads([5]);
+    void refreshTeamProjects({ background: true });
+    await calls[0]!.answer(500, { error: "The list of projects cannot be read." });
+    const page = hiddenPage();
+    await new Promise((done) => setTimeout(done, 40));
+    expect(calls.length).toBe(1);
+    page.show();
+    await vi.waitFor(() => expect(calls.length).toBe(2));
+    await calls[1]!.answer(403, { error: "Not for this device." });
+    await new Promise((done) => setTimeout(done, 40));
+    expect([calls.length, currentTeamProjectSide().shown]).toEqual([2, false]);
+    stop();
   });
 });
 
