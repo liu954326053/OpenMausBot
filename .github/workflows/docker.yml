@@ -258,7 +258,7 @@ jobs:
             curl -s -o /tmp/pair-reply -w '%{http_code}' --max-time 5 "${H[@]}" -X POST -H 'content-type: application/json' \
               -H "x-omb-cloud-timestamp: $ts" -H "x-omb-cloud-nonce: $nonce" -H "x-omb-cloud-signature: v1=$sig" --data-binary "$body" $E/api/cloud/pairing
           }
-          body='{"label":"OpenMausBot app (Cloud)","ttlSeconds":300}'
+          body='{"label":"MagicBot app (Cloud)","ttlSeconds":300}'
           test "$(pair "$body" "$(rand43)" "$(date +%s)" "$(rand43)")" = 401                 # wrong key
           test "$(pair "$body" "$secret" "$(( $(date +%s) - 400 ))" "$(rand43)")" = 401      # stale
           nonce=$(rand43); now=$(date +%s)

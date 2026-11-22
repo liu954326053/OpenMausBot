@@ -41,7 +41,7 @@ export function verifyLicenseKey(
 ): LicenseClaims {
   const parts = key.trim().split(".");
   if (parts.length !== 3 || parts[0] !== PREFIX || !parts[1] || !parts[2]) {
-    throw new Error(`OMB_LICENSE_KEY is not an OpenMausBot license key (expected "${PREFIX}.<claims>.<signature>")`);
+    throw new Error(`OMB_LICENSE_KEY is not a MagicBot license key (expected "${PREFIX}.<claims>.<signature>")`);
   }
   const [, claimsPart, signaturePart] = parts;
   const signature = Buffer.from(signaturePart, "base64url");
@@ -51,7 +51,7 @@ export function verifyLicenseKey(
   );
   if (!trusted) {
     throw new Error(
-      "OMB_LICENSE_KEY signature does not match any OpenMausBot signing key: the key was altered, or it was issued for a different build",
+      "OMB_LICENSE_KEY signature does not match any MagicBot signing key: the key was altered, or it was issued for a different build",
     );
   }
   let parsed: unknown;

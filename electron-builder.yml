@@ -16,7 +16,7 @@ protocols:
 publish:
   - provider: github
     owner: liu954326053
-    repo: OpenMausBot
+    repo: MagicBot
 
 directories:
   buildResources: build
@@ -57,11 +57,11 @@ asar: true
 extraResources:
   # Ship the app's own license terms in every desktop distribution.
   - from: LICENSE
-    to: licenses/OpenMausBot-LICENSE.txt
+    to: licenses/MagicBot-LICENSE.txt
   - from: NOTICE
-    to: licenses/OpenMausBot-NOTICE.txt
+    to: licenses/MagicBot-NOTICE.txt
   # cloudflared is distributed under Apache-2.0 as a separate executable.
-  # OpenMausBot itself uses the same full license text; ship another named
+  # MagicBot itself uses the same full license text; ship another named
   # copy so the third-party executable's terms remain unambiguous.
   - from: LICENSE
     to: licenses/cloudflared-LICENSE.txt
