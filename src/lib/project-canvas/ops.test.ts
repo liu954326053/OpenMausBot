@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CanvasConnection, CanvasDocument, CanvasNode, CanvasOp } from "../../../shared/project-canvas";
+import { CANVAS_TEXT_MAX_HEIGHT, type CanvasConnection, type CanvasDocument, type CanvasNode, type CanvasOp } from "../../../shared/project-canvas";
 import { applyCanvasOps, diffCanvasOps, invertCanvasOps } from "./ops";
 
 const node = (id: string, over: Partial<CanvasNode> = {}): CanvasNode => ({
@@ -24,6 +24,15 @@ describe("applyCanvasOps", () => {
     expect(next.nodes.map((item) => item.id)).toEqual(["a", "b"]);
     expect(next.nodes[1]).toEqual({ id: "b", type: "video", title: "Clip", position: { x: 10, y: 20 }, width: 420, height: 236, createdBy: { kind: "person" } });
     expect(next.nodes[0]!.title).toBe("a");
+  });
+
+  it("keeps a text node no taller than a text node may be, as the server does, and any other node as tall as asked", () => {
+    const next = applyCanvasOps(doc([node("a"), node("pic", { type: "image" })]), [
+      { type: "add_node", id: "long", nodeType: "text", height: 2_000 },
+      { type: "update_node", id: "a", patch: { height: 900 } },
+      { type: "update_node", id: "pic", patch: { height: 900 } },
+    ]);
+    expect(next.nodes.map((item) => [item.id, item.height])).toEqual([["a", CANVAS_TEXT_MAX_HEIGHT], ["pic", 900], ["long", CANVAS_TEXT_MAX_HEIGHT]]);
   });
 
   it("patches a node's frame and merges its metadata, a null removing the key and the group", () => {

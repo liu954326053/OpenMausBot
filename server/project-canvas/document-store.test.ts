@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { CanvasDocument, CanvasNodeCreator, CanvasOp } from "../../shared/project-canvas.ts";
+import { CANVAS_TEXT_MAX_HEIGHT, type CanvasDocument, type CanvasNodeCreator, type CanvasOp } from "../../shared/project-canvas.ts";
 import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { CanvasConflictError, CanvasDocuments, CanvasUnreadableError, CANVAS_HISTORY, type RemovedNode } from "./document-store.ts";
 import { applyCanvasOps, opTargets } from "./ops.ts";
@@ -47,6 +47,14 @@ describe("a project's canvas on disk", () => {
   it("reads as an empty canvas at revision 0 before any change, and writes nothing for that", () => {
     expect(store().read("p1")).toEqual({ projectId: "p1", revision: 0, nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 }, backgroundMode: "dots" });
     expect(existsSync(file())).toBe(false);
+  });
+
+  it("reads a text node stored taller than a text node may be at the tallest it may be, and any other node as stored", () => {
+    change(store(), [{ type: "add_node", id: "long", nodeType: "text" }, { type: "add_node", id: "tall", nodeType: "image" }]);
+    const stored = JSON.parse(readFileSync(file(), "utf8")) as { document: CanvasDocument };
+    stored.document.nodes = stored.document.nodes.map((node) => ({ ...node, height: 1_500 }));
+    writeFileSync(file(), JSON.stringify(stored));
+    expect(store().read("p1").nodes.map((node) => [node.id, node.height])).toEqual([["long", CANVAS_TEXT_MAX_HEIGHT], ["tall", 1_500]]);
   });
 
   it("raises the revision with each change and keeps it across a restart, readable by its owner only", () => {

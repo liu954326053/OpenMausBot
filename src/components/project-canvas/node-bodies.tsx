@@ -217,7 +217,8 @@ function TextBody({ node }: { node: CanvasNode }) {
       ) : (
         <div
           dir="auto"
-          className={cn("size-full overflow-hidden whitespace-pre-wrap break-words p-4", content ? "text-ink" : "text-ink-tertiary")}
+          data-canvas-scroll=""
+          className={cn("size-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words p-4", content ? "text-ink" : "text-ink-tertiary")}
           style={{ fontSize, lineHeight: 1.65 }}
           onDoubleClick={() => !ui.readOnly && setEditing(true)}
         >

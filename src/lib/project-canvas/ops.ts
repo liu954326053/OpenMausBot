@@ -2,6 +2,7 @@
 // 2026 basketikun (full text in third_party/infinite-canvas/LICENSE); modified: the operations of
 // shared/project-canvas.ts, applied as the server applies a person's, with their inverse and a diff between documents.
 import {
+  allowedNodeHeight,
   CANVAS_NODE_SIZE,
   type CanvasConnection,
   type CanvasContentNodeType,
@@ -38,7 +39,7 @@ export function patchNode(node: CanvasNode, patch: CanvasNodePatch = {}, metadat
   if (content && patch.title !== undefined) next.title = patch.title;
   if (patch.position) next.position = { x: patch.position.x, y: patch.position.y };
   if (patch.width !== undefined) next.width = patch.width;
-  if (patch.height !== undefined) next.height = patch.height;
+  if (patch.height !== undefined) next.height = allowedNodeHeight(node.type, patch.height);
   if (content && patch.groupId !== undefined) next = patch.groupId === null ? withoutGroup(next) : { ...next, groupId: patch.groupId };
   if (content && metadata) {
     const merged = patchMetadata(node.metadata, metadata);
@@ -56,7 +57,7 @@ function addedNode(op: Extract<CanvasOp, { type: "add_node" }>): CanvasNode {
     title: op.title ?? "",
     position: op.position ?? { x: 0, y: 0 },
     width: op.width ?? size.width,
-    height: op.height ?? size.height,
+    height: allowedNodeHeight(op.nodeType, op.height ?? size.height),
     createdBy: { kind: "person" },
   };
   if (op.metadata) node.metadata = op.metadata;

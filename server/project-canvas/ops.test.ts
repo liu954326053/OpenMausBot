@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CANVAS_MAX_NODES, CANVAS_MAX_OPS, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasOp } from "../../shared/project-canvas.ts";
+import { CANVAS_MAX_NODES, CANVAS_MAX_OPS, CANVAS_TEXT_MAX_HEIGHT, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasOp } from "../../shared/project-canvas.ts";
 import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type OpsContext } from "./ops.ts";
 
@@ -70,6 +70,19 @@ describe("adding a node", () => {
   it("keeps an id and position it was given", () => {
     const result = applyCanvasOps(canvas(), [{ type: "add_node", id: "mine", nodeType: "video", position: { x: -40, y: 12 } }], context());
     expect(find(result.document, "mine")).toMatchObject({ position: { x: -40, y: 12 }, width: 420, height: 236 });
+  });
+
+  it("makes a text node no taller than a text node may be, whoever asks for more, and any other node as tall as asked", () => {
+    const added = applyCanvasOps(canvas(), [
+      { type: "add_node", id: "long", nodeType: "text", height: 2_000 },
+      { type: "add_node", id: "short", nodeType: "text", height: 300 },
+      { type: "add_node", id: "tall", nodeType: "image", height: 2_000 },
+    ], context());
+    expect(["long", "short", "tall"].map((id) => find(added.document, id)?.height)).toEqual([CANVAS_TEXT_MAX_HEIGHT, 300, 2_000]);
+    const grown = applyCanvasOps(added.document, [{ type: "update_node", id: "short", patch: { height: 900 } }], context());
+    expect(find(grown.document, "short")?.height).toBe(CANVAS_TEXT_MAX_HEIGHT);
+    const byBot = applyCanvasOps(canvas(), [{ type: "add_node", id: "script", nodeType: "text", height: 1_600 }], context(WRITER));
+    expect(find(byBot.document, "script")?.height).toBe(CANVAS_TEXT_MAX_HEIGHT);
   });
 
   it("refuses a bot node, an id in use, a key the type does not take and text over the limit", () => {

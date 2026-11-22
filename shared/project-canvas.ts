@@ -400,6 +400,13 @@ export const CANVAS_NODE_SIZE: Readonly<Record<CanvasNodeType, { width: number; 
   group: { width: 760, height: 480 },
 };
 
+/** The tallest a text node is: longer text scrolls inside it. */
+export const CANVAS_TEXT_MAX_HEIGHT = 480;
+
+/** A node's height as its type allows it: a text node no taller than `CANVAS_TEXT_MAX_HEIGHT`. */
+export const allowedNodeHeight = (type: CanvasNodeType, height: number): number =>
+  type === "text" ? Math.min(height, CANVAS_TEXT_MAX_HEIGHT) : height;
+
 const BOT_NODE_PREFIX = "bot:";
 
 export const botNodeId = (botId: string): string => `${BOT_NODE_PREFIX}${botId}`;

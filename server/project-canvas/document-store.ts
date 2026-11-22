@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { CANVAS_MAX_NODES, CANVAS_UNSET_VIEWPORT, type CanvasConflict, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasNodeRole, type CanvasNodeType } from "../../shared/project-canvas.ts";
+import { allowedNodeHeight, CANVAS_MAX_NODES, CANVAS_UNSET_VIEWPORT, type CanvasConflict, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasNodeRole, type CanvasNodeType } from "../../shared/project-canvas.ts";
 import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { userError } from "../user-errors.ts";
@@ -102,7 +102,11 @@ function readCanvasFile(file: string, projectId: string): FileRead {
   const checked = fileSchema.safeParse(parsed);
   if (!checked.success || checked.data.document.projectId !== projectId) return { state: "unreadable", reason: "not a canvas" };
   const { document, history, removed, stages } = checked.data;
-  return { state: "ok", data: { document: document as CanvasDocument, history, removed: removed ?? [], ...(stages ? { stages } : {}) } };
+  const nodes = (document.nodes as CanvasNode[]).map((node) => {
+    const height = allowedNodeHeight(node.type, node.height);
+    return height === node.height ? node : { ...node, height };
+  });
+  return { state: "ok", data: { document: { ...document, nodes } as CanvasDocument, history, removed: removed ?? [], ...(stages ? { stages } : {}) } };
 }
 
 export class CanvasUnreadableError extends Error {

@@ -1,7 +1,7 @@
 // Adapted from basketikun/infinite-canvas@9cd3deac web/src/pages/canvas/project.tsx (viewport and pointer handling), MIT License, Copyright (c) 2026 basketikun (full text in third_party/infinite-canvas/LICENSE)
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { LoaderCircle } from "lucide-react";
-import type { CanvasNode, CanvasPoint, CanvasViewport } from "../../../shared/project-canvas";
+import { CANVAS_TEXT_MAX_HEIGHT, type CanvasNode, type CanvasPoint, type CanvasViewport } from "../../../shared/project-canvas";
 import { isReferenceNode } from "../../../shared/project-canvas-references";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -30,6 +30,22 @@ import { CanvasNodeView, NodePanelLayer, StageHandlersContext, type StageHandler
 
 const DRAG_THRESHOLD = 3;
 const NOT_A_DRAG = "button, a, input, textarea, select, video, audio, [contenteditable='true'], [data-node-panel], [data-handle], [data-resize-corner]";
+
+/** The text a node scrolls that `target` is in, while there is more of it than shows. */
+function scrollingText(target: EventTarget | null): HTMLElement | null {
+  const text = (target as Element | null)?.closest?.<HTMLElement>("[data-canvas-scroll]");
+  return text && text.scrollHeight > text.clientHeight ? text : null;
+}
+
+/** A press on the scrollbar of a node's text, which scrolls it and moves nothing. The scrollbar is outside the text's
+ * client box, on its left for right-to-left text. */
+function onScrollbar(event: ReactPointerEvent): boolean {
+  const text = scrollingText(event.target);
+  if (!text || event.target !== text) return false;
+  const rect = text.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) * text.offsetWidth) / rect.width;
+  return x < text.clientLeft || x >= text.clientLeft + text.clientWidth;
+}
 
 type Interaction =
   | { kind: "pan"; pointerId: number; start: CanvasPoint; origin: CanvasViewport }
@@ -94,6 +110,7 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
     if (!root) return;
     const onWheel = (event: WheelEvent) => {
       if ((event.target as Element | null)?.closest?.("[data-canvas-no-zoom]")) return;
+      if (!event.ctrlKey && scrollingText(event.target)) return;
       event.preventDefault();
       const rect = root.getBoundingClientRect();
       ui.controller.setViewport(zoomAtPoint(viewportRef.current, { x: event.clientX - rect.left, y: event.clientY - rect.top }, event.deltaY));
@@ -139,7 +156,7 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
         else ui.showNotice(t("projectCanvas.reference.notReference"));
         return;
       }
-      if ((event.target as Element).closest(NOT_A_DRAG)) {
+      if ((event.target as Element).closest(NOT_A_DRAG) || onScrollbar(event)) {
         if (!selection.has(node.id)) ui.select([node.id]);
         return;
       }
@@ -162,7 +179,8 @@ export function CanvasStage({ tool, panning, onSize, onCreateMenu, onContextMenu
       event.preventDefault();
       capture(event.pointerId);
       const keepsRatio = (node.type === "image" && node.metadata?.file) || node.type === "video";
-      begin({ kind: "resize", pointerId: event.pointerId, start: local(event), nodeId: node.id, frame: { corner, left: node.position.x, top: node.position.y, width: node.width, height: node.height, ratio: keepsRatio ? node.width / node.height : null }, current: null });
+      const frame = { corner, left: node.position.x, top: node.position.y, width: node.width, height: node.height, ratio: keepsRatio ? node.width / node.height : null };
+      begin({ kind: "resize", pointerId: event.pointerId, start: local(event), nodeId: node.id, frame: node.type === "text" ? { ...frame, maxHeight: CANVAS_TEXT_MAX_HEIGHT } : frame, current: null });
     },
   };
 

@@ -522,6 +522,46 @@ describe("the project canvas", () => {
     expect(backend.current().nodes.filter((node) => node.type === "text")).toEqual(before.nodes.filter((node) => node.type === "text"));
   });
 
+  it("scrolls a text node's text that is longer than the node on a wheel and from its scrollbar, and zooms on a pinch or over text that fits", async () => {
+    await mount();
+    const text = () => nodeElement("logline")!.querySelector<HTMLElement>("[data-canvas-scroll]")!;
+    const view = () => (stage().firstElementChild as HTMLElement).style.transform;
+    const wheel = async ({ ctrlKey = false }: { ctrlKey?: boolean } = {}) => {
+      const event = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+      Object.defineProperties(event, { clientX: { value: 100 }, clientY: { value: 100 }, ctrlKey: { value: ctrlKey } });
+      await act(async () => { text().dispatchEvent(event); });
+      return event.defaultPrevented;
+    };
+    const longer = (element: HTMLElement) => Object.defineProperties(element, {
+      scrollHeight: { configurable: true, value: 900 }, clientHeight: { configurable: true, value: 448 }, clientWidth: { configurable: true, value: 300 },
+      offsetWidth: { configurable: true, value: 308 }, getBoundingClientRect: { configurable: true, value: () => new DOMRect(50, 40, 308 * 0.5, 448 * 0.5) },
+    });
+    const fits = view();
+    expect(await wheel()).toBe(true);
+    expect(view()).not.toBe(fits);
+    longer(text());
+    const scrolled = view();
+    expect(await wheel()).toBe(false);
+    expect(view()).toBe(scrolled);
+    expect(await wheel({ ctrlKey: true })).toBe(true);
+    expect(view()).not.toBe(scrolled);
+
+    const pressAndDrag = async (clientX: number) => {
+      await act(async () => {
+        pointer(text(), "pointerdown", { clientX, clientY: 100 });
+        pointer(stage(), "pointermove", { clientX: clientX + 80, clientY: 100 });
+        pointer(stage(), "pointerup", { clientX: clientX + 80, clientY: 100 });
+      });
+      await settle();
+      return shown("logline")!.position;
+    };
+    const before = shown("logline")!.position;
+    expect(await pressAndDrag(202)).toEqual(before);
+    Object.defineProperty(text(), "clientLeft", { configurable: true, value: 8 });
+    expect(await pressAndDrag(52)).toEqual(before);
+    expect((await pressAndDrag(120)).x).toBeGreaterThan(before.x);
+  });
+
   it("takes the pointer on a node only once it drags, so a double-click on the node reaches it", async () => {
     await mount();
     const capture = vi.fn();
