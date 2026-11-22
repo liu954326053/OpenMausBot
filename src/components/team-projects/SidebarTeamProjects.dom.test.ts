@@ -203,16 +203,31 @@ describe("the projects in the sidebar", () => {
     expect(listed()).toEqual(["The heir"]);
   });
 
-  it("ends with New project, which is all there is with no projects, and asks the sidebar for its dialog", async () => {
+  it("starts with New project, a filled button as wide as the list, which is all there is with no projects, and asks the sidebar for its dialog", async () => {
     await draw();
-    const last = q("[data-sidebar-team-projects]")!.lastElementChild as HTMLElement;
-    expect([last.dataset.teamProjectNew, last.textContent]).toEqual(["", "New project"]);
+    const first = q("[data-sidebar-team-projects]")!.firstElementChild as HTMLElement;
+    expect([first.dataset.teamProjectNew, first.textContent]).toEqual(["", "New project"]);
+    expect([...first.classList]).toEqual(expect.arrayContaining(["ui-button", "ui-button-primary", "w-full"]));
     list = { root: "/dramas", projects: [] };
     await draw();
     expect(listed()).toEqual([]);
     expect(q("[data-sidebar-team-projects]")!.textContent).toBe("New project");
     await click(q("[data-team-project-new]"));
     expect(onNew).toHaveBeenCalledTimes(1);
+  });
+
+  it("heads the projects with a label and sets them in from it, and has no label with no project", async () => {
+    await draw();
+    const label = q("[data-sidebar-projects-label]")!;
+    const projects = q("[data-sidebar-project-list]")!;
+    expect([label.textContent, projects.getAttribute("role"), projects.getAttribute("aria-labelledby")]).toEqual(["Projects", "group", label.id]);
+    expect(label.compareDocumentPosition(projects) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(q("[data-team-project-new]")!.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect([...projects.classList]).toContain("ps-3");
+    expect(all("[data-sidebar-team-project]").map((one) => one.parentElement === projects)).toEqual([true, true]);
+    list = { root: "/dramas", projects: [] };
+    await draw();
+    expect([q("[data-sidebar-projects-label]"), q("[data-sidebar-project-list]")]).toEqual([null, null]);
   });
 
   it("says on the row when the project's folder is not there", async () => {
@@ -264,6 +279,7 @@ describe("a search", () => {
     query = "zzz";
     await draw();
     expect([listed(), q("[data-team-project-new]") === null, noMatch()]).toEqual([[], true, "No project matches “zzz”"]);
+    expect(q("[data-sidebar-projects-label]"), "no label over no project").toBeNull();
     query = "";
     await draw();
     expect([listed(), q("[data-team-project-new]") === null, noMatch()]).toEqual([["The bride", "The heir"], false, null]);

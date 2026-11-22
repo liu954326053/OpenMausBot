@@ -7159,6 +7159,7 @@
   "sidebar.nav.publishedApps": "已发布的应用",
   "sidebar.nav.teamFiles": "团队文件",
   "teamProjects.new": "新建项目",
+  "teamProjects.list": "项目列表",
   "teamProjects.actions": "{name} 项目的操作",
   "teamProjects.folderMissing": "找不到项目文件夹",
   "teamProjects.folderMissingNamed": "{name}：找不到项目文件夹",
