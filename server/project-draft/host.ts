@@ -65,7 +65,7 @@ export function createProjectDraftHost(deps: ProjectDraftHostDeps): ProjectDraft
   const canvas: ProjectDraftCanvas = {
     shots: (projectId) => connected.shots(projectId),
     showsFile: (projectId, path) => connected.showsFile(projectId, path),
-    addFinal: (projectId, film) => connected.addFinal(projectId, film),
+    addFinal: (projectId, path, film) => connected.addFinal(projectId, path, film),
   };
   const drafts = new ProjectDrafts({
     projects: deps.projects,

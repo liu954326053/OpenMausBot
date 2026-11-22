@@ -82,10 +82,10 @@ export class MemoryDraftCanvas implements ProjectDraftCanvas {
     return (this.shown.get(projectId)?.has(path) ?? false) || this.shots(projectId).some((shot) => shot.take?.file.path === path);
   }
 
-  async addFinal(projectId: string, film: FinishedFilm): Promise<{ nodeId: string }> {
+  async addFinal(projectId: string, path: string, film: FinishedFilm): Promise<{ nodeId: string }> {
     if (this.refuseFinal) throw this.refuseFinal;
     this.finals.push({ projectId, film });
-    this.show(projectId, film.file.path);
+    this.show(projectId, path);
     return { nodeId: `final-${this.finals.length}` };
   }
 }

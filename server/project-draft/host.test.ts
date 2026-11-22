@@ -154,6 +154,28 @@ describe("the draft host", () => {
     expect(canvas.finals).toEqual([]);
   });
 
+  it("takes a canvas that says more of a shot, has null for no take, and adds the film by its path alone", async () => {
+    const { host, folder, draftRoot } = installation();
+    const added: Array<[string, string]> = [];
+    host.connectCanvas({
+      shots: () => [
+        { shotId: "s1", title: "One", prompt: "A bride at the altar", creationNodeId: "c1", status: "success", takes: 2, take: { nodeId: "take-s1", title: "s1", file: fileRef("产出/视频/s1.mp4") } },
+        { shotId: "s2", title: "Two", prompt: "", creationNodeId: null, status: "idle", takes: 0, take: null },
+      ],
+      showsFile: () => false,
+      addFinal: async (projectId: string, path: string) => {
+        added.push([projectId, path]);
+        return { nodeId: "film", revision: 7 };
+      },
+    });
+    expect(await host.drafts.timeline("p1")).toMatchObject({ clips: [{ shotId: "s1" }], missingShots: ["s2"] });
+    await host.writeDraftIfReady("p1");
+    expect(readdirSync(draftRoot)).toEqual([]);
+    writeFileSync(join(folder, "产出", "成片.mp4"), fakeMp4());
+    expect(await host.drafts.final("p1", { path: "产出/成片.mp4" })).toEqual({ nodeId: "film" });
+    expect(added).toEqual([["p1", "产出/成片.mp4"]]);
+  });
+
   it("opens JianYing through the launcher it is given", async () => {
     const { host, launched, base } = installation();
     expect(await host.drafts.open("p1", OWNER)).toEqual({ opened: "app" });

@@ -165,7 +165,8 @@ export class ProjectDrafts {
       throw isProjectPathError(error) ? pathRefusal(error, project.folder) : error;
     }
     if (!film) throw refuse(422, "serverError.projectDraft.notVideo");
-    return this.deps.canvas.addFinal(projectId, film);
+    const { nodeId } = await this.deps.canvas.addFinal(projectId, film.file.path, film);
+    return { nodeId };
   }
 
   /**
@@ -373,7 +374,7 @@ export class ProjectDrafts {
     const { durationUs, width, height } = video.facts;
     const film: FinishedFilm = { file: video.file, ...(durationUs ? { durationMs: Math.round(durationUs / 1000) } : {}), ...(width && height ? { width, height } : {}) };
     try {
-      await this.deps.canvas.addFinal(project.id, film);
+      await this.deps.canvas.addFinal(project.id, film.file.path, film);
     } catch (error) {
       // Security: the error's name only; its message can hold the project's folder path.
       this.deps.log(`[project-draft] the finished film of project ${project.id} could not be put on the canvas (${error instanceof Error ? error.name : "unknown"})`);
