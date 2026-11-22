@@ -74,6 +74,13 @@ function freeBelow(x: number, y: number, node: Pick<CanvasFrame, "width" | "heig
   return { x, y: top };
 }
 
+/** The first spot at `at.x` from `at.y` down that is clear of every node but the groups and `ignore`, of the bots and
+ * of `reserved`. */
+export function clearSpot(document: CanvasDocument, at: CanvasPoint, size: Pick<CanvasFrame, "width" | "height">, bots: ReadonlyMap<string, CanvasFrame>, reserved: readonly CanvasFrame[] = [], ignore: ReadonlySet<string> = new Set()): CanvasPoint {
+  const others = ignore.size ? { ...document, nodes: document.nodes.filter((one) => !ignore.has(one.id)) } : document;
+  return freeBelow(at.x, at.y, size, obstacles(others, bots, reserved));
+}
+
 /** `frame` moved down until it overlaps none of `taken`. */
 export function clearBelow(frame: CanvasFrame, taken: readonly CanvasFrame[]): CanvasFrame {
   return { ...frame, position: freeBelow(frame.position.x, frame.position.y, frame, taken.map(rectOf)) };
