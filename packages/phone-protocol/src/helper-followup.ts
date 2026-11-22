@@ -7,7 +7,7 @@ export interface HelperFollowupFacts {
   ai: "own" | "backup" | "none";
   /** The apps every bot here can use, by name. */
   apps: string[];
-  /** The person's other bots, and the routines running here, when it looked. */
+  /** The person's other team bots, without the copies inside projects, and the routines they run, when it looked. */
   bots: number;
   routines: number;
   /** On a team, for someone who can't connect an AI: the name of the person who does; empty until the team's owner has
@@ -50,6 +50,11 @@ function counted(say: Say, count: number, none: FollowupKey, one: FollowupKey, m
   return count <= 0 ? say(none) : count === 1 ? say(one) : say(many, { count });
 }
 
+/** Sentences in a row. Chinese and Japanese put no space after a full-width stop; the other languages put one. */
+export function joinSentences(sentences: readonly string[]): string {
+  return sentences.reduce((text, sentence) => (!text ? sentence : /[。！？]$/.test(text) ? text + sentence : `${text} ${sentence}`), "");
+}
+
 /** The follow-up in `say`'s language; `list` joins app names as that language does. */
 export function followupText(facts: HelperFollowupFacts, say: Say, list: (items: string[]) => string): string {
   if (facts.ai !== "own") {
@@ -62,13 +67,13 @@ export function followupText(facts: HelperFollowupFacts, say: Say, list: (items:
   if (facts.apps.length) {
     const shown = facts.apps.slice(0, FOLLOWUP_APP_NAMES);
     const rest = facts.apps.length - shown.length;
-    return `${found} ${say("helperIntro.followup.apps", { apps: list(rest > 0 ? [...shown, say("helperIntro.followup.more", { count: rest })] : shown) })}`;
+    return joinSentences([found, say("helperIntro.followup.apps", { apps: list(rest > 0 ? [...shown, say("helperIntro.followup.more", { count: rest })] : shown) })]);
   }
   const middle = facts.bots <= 0 && facts.routines <= 0 ? say("helperIntro.followup.empty") : say("helperIntro.followup.counts", {
     bots: counted(say, facts.bots, "helperIntro.followup.botsNone", "helperIntro.followup.botOne", "helperIntro.followup.bots"),
     routines: counted(say, facts.routines, "helperIntro.followup.routinesNone", "helperIntro.followup.routineOne", "helperIntro.followup.routines"),
   });
-  return `${found} ${middle} ${say("helperIntro.followup.offer")}`;
+  return joinSentences([found, middle, say("helperIntro.followup.offer")]);
 }
 
 /** The English the server stores, which the model reads. */

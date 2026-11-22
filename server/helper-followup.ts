@@ -29,7 +29,8 @@ function seenBy(bot: BotRecord, person: string): boolean {
   return typeof visibility === "object" && visibility.people.some((email) => email.trim().toLowerCase() === person);
 }
 
-/** What MagicBot found: what its client saw, with the person's other bots and the routines they run counted here. */
+/** What MagicBot found: what its client saw, with the person's other team bots (not the copies inside projects) and the
+ * routines they run counted here. */
 export function followupFacts(
   maus: BotRecord,
   seen: { ai: HelperFollowupFacts["ai"]; apps: readonly string[] },
@@ -38,7 +39,7 @@ export function followupFacts(
   connects?: string,
 ): HelperFollowupFacts {
   const person = defaultBotPerson(maus);
-  const others = bots.filter((bot) => bot.id !== maus.id && !bot.hidden && !bot.defaultBot && !bot.movedTo && seenBy(bot, person));
+  const others = bots.filter((bot) => bot.id !== maus.id && !bot.hidden && !bot.defaultBot && !bot.movedTo && !bot.teamProject && seenBy(bot, person));
   const theirs = new Set([maus.id, ...others.map((bot) => bot.id)]);
   return {
     ai: seen.ai,
