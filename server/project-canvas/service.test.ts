@@ -14,6 +14,7 @@ import { addServerLinePacks } from "../server-lines.ts";
 import type { BotRecord, Message, TaskRecord } from "../store.ts";
 import { canvasStateText } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
+import type { ProjectPipeline } from "./flow.ts";
 import { parseCanvasOps } from "./ops.ts";
 import { LANE_GAP, NODE_GAP } from "./placement.ts";
 import { canvasRefusalOf, ProjectCanvasService, type ProjectCanvasServiceDeps } from "./service.ts";
@@ -66,6 +67,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     plain: { id: "plain", name: "Plain", threadId: "plain-main" },
   };
   let next = 0;
+  const pipeline: ProjectPipeline = { stages: {}, lines: [] };
   const generation = fakeGeneration();
   const service = new ProjectCanvasService({
     store: {
@@ -85,7 +87,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
       sent.push(message);
       return { ok: true, threadId: message.threadId, message: { id: "sent-1", at: 1, role: "user", kind: "text", text: message.text } };
     },
-    parentOf: () => undefined,
+    pipelineOf: () => pipeline,
     generation: generation.api,
     openCards: () => [],
     queuedThreads: () => new Set(),
@@ -96,7 +98,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     log: () => undefined,
     ...patch,
   });
-  return { service, project, events, sent, threads, generation };
+  return { service, project, events, sent, threads, generation, pipeline };
 }
 
 const opsOf = (...ops: unknown[]): CanvasOp[] => parseCanvasOps(ops);
@@ -141,26 +143,26 @@ describe("changing a project's canvas", () => {
   });
 });
 
-describe("the flow's lines between a project's bots", () => {
-  it("names the projects whose canvas draws other lines than when last asked, a project made since included", () => {
-    const superiors: Record<string, string> = {};
+describe("the pipeline's lines between a project's bots", () => {
+  it("names the projects whose canvas draws other lines or stages than when last asked, a project made since included", () => {
+    const pipelines: Record<string, ProjectPipeline> = {};
     const listed: TeamProjectWire[] = [];
-    const { service, project } = setup({ projects: { list: () => listed }, parentOf: (projectId, botId) => (projectId === "p1" ? superiors[botId] : undefined) });
+    const { service, project } = setup({ projects: { list: () => listed }, pipelineOf: (projectId) => pipelines[projectId] ?? { stages: {}, lines: [] } });
     listed.push({ ...project, botIds: ["lead", "writer", "board"] });
     expect(service.linesMoved()).toEqual(["p1"]);
     expect(service.linesMoved()).toEqual([]);
 
-    superiors.board = "writer";
+    const lines = [{ from: "lead", to: "writer" }, { from: "writer", to: "board" }];
+    pipelines.p1 = { stages: { writer: ["script"], board: ["storyboard"] }, lines };
     expect(service.linesMoved()).toEqual(["p1"]);
     expect(service.linesMoved()).toEqual([]);
-    superiors.board = "lead";
+    pipelines.p1 = { stages: { writer: ["script"], board: ["storyboard", "post"] }, lines };
     expect(service.linesMoved()).toEqual(["p1"]);
-    delete superiors.board;
-    superiors.writer = "someone-elsewhere";
+    pipelines.p1 = { stages: pipelines.p1.stages, lines: [...lines, { from: "writer", to: "someone-elsewhere" }] };
     expect(service.linesMoved()).toEqual([]);
 
     listed.push({ ...project, id: "p2", botIds: ["lead-2", "writer-2"], leadBotId: "lead-2" });
-    superiors.board = "writer";
+    pipelines.p1 = { stages: {}, lines: [] };
     expect(service.linesMoved()).toEqual(["p1", "p2"]);
   });
 });

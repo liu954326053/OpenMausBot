@@ -23,7 +23,7 @@ function input(patch: Partial<SnapshotInput> = {}): SnapshotInput {
     document: canvas(),
     project: { id: "p1", name: "Stand-in bride", leadBotId: "lead", archived: false, folderState: "ready" },
     bots: [bot("lead"), bot("writer"), bot("boards")],
-    parentOf: () => undefined,
+    pipeline: { stages: {}, lines: [] },
     sees: () => true,
     ...patch,
   };
@@ -43,13 +43,13 @@ describe("the bots on a project's canvas", () => {
   });
 
   it("go below a stored node where the default layout would lay one over it, a bot that left in nobody's way", () => {
-    const writer: CanvasNode = { id: "bot:writer", type: "bot", title: "", position: { x: 880, y: 240 }, width: 300, height: 180 };
+    const writer: CanvasNode = { id: "bot:writer", type: "bot", title: "", position: { x: 0, y: 400 }, width: 300, height: 180 };
     const gone: CanvasNode = { id: "bot:gone", type: "bot", title: "", position: { x: 0, y: 0 }, width: 300, height: 180 };
     const snapshot = buildSnapshot(input({ document: canvas([writer, gone]) }));
     const frame = (id: string) => snapshot.nodes.find((node) => node.id === id)!;
     expect(frame("bot:lead").position).toEqual({ x: 0, y: 0 });
-    expect(frame("bot:writer").position).toEqual({ x: 880, y: 240 });
-    expect(frame("bot:boards")).toMatchObject({ position: { x: 880, y: 460 }, width: 300, height: 180 });
+    expect(frame("bot:writer").position).toEqual({ x: 0, y: 400 });
+    expect(frame("bot:boards")).toMatchObject({ position: { x: 0, y: 620 }, width: 300, height: 180 });
     expect(snapshot.bots.boards).toMatchObject({ placed: false });
   });
 
@@ -65,12 +65,24 @@ describe("the bots on a project's canvas", () => {
     expect(snapshot.bots).not.toHaveProperty("gone");
   });
 
-  it("are joined by dispatch connections from the flow, the lead above any bot the flow does not place", () => {
-    const snapshot = buildSnapshot(input({ parentOf: (id) => (id === "boards" ? "writer" : undefined) }));
+  it("are joined by dispatch connections along the pipeline's lines, several into one bot, and carry their stages", () => {
+    const snapshot = buildSnapshot(input({ pipeline: {
+      stages: { lead: ["lead"], writer: ["script"], boards: ["character", "storyboard"] },
+      lines: [{ from: "lead", to: "writer" }, { from: "writer", to: "boards" }, { from: "lead", to: "boards" }],
+    } }));
     expect(snapshot.connections).toEqual([
       { id: "dispatch:lead:writer", fromNodeId: "bot:lead", toNodeId: "bot:writer", kind: "dispatch" },
       { id: "dispatch:writer:boards", fromNodeId: "bot:writer", toNodeId: "bot:boards", kind: "dispatch" },
+      { id: "dispatch:lead:boards", fromNodeId: "bot:lead", toNodeId: "bot:boards", kind: "dispatch" },
     ]);
+    expect(Object.values(snapshot.bots).map((bot) => bot.stages)).toEqual([["lead"], ["script"], ["character", "storyboard"]]);
+  });
+
+  it("are other under the lead when the pipeline does not know them", () => {
+    const snapshot = buildSnapshot(input());
+    expect(snapshot.connections.map((one) => one.id)).toEqual(["dispatch:lead:writer", "dispatch:lead:boards"]);
+    expect(snapshot.bots.writer!.stages).toEqual(["other"]);
+    expect(snapshot.bots.lead!.stages).toEqual(["lead"]);
   });
 });
 

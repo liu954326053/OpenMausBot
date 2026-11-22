@@ -32,9 +32,10 @@ import { generationInput } from "./generation.ts";
 import { handOver } from "./handover.ts";
 import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type CanvasChangeSet, type CanvasFrame } from "./ops.ts";
 import type { ProjectPathError } from "./paths.ts";
-import { placeAfter, placeForActor, type BotTree } from "./placement.ts";
+import { canvasFlow, type CanvasFlow, type ProjectPipeline } from "./flow.ts";
+import { placeAfter, placeForActor } from "./placement.ts";
 import { taskMessage, taskReferences } from "./references.ts";
-import { botFrames, buildSnapshot, dispatchConnections } from "./snapshot.ts";
+import { botFrames, buildSnapshot } from "./snapshot.ts";
 import { replyText, TaskTargets, type TaskTarget } from "./task-targets.ts";
 
 /** A request the canvas does not carry out, and what it is answered with. */
@@ -89,8 +90,8 @@ export interface ProjectCanvasServiceDeps {
   mainThread(botId: string): string | undefined;
   /** Delivers the person's message to a bot's conversation as their own chat message would be. */
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
-  /** A project bot's superior in the flow. */
-  parentOf(projectId: string, botId: string): string | undefined;
+  /** A project's pipeline: its bots' stages and the lines between them. */
+  pipelineOf(projectId: string, leadBotId: string): ProjectPipeline;
   generation: Pick<ProjectGenerationApi, "start" | "job">;
   openCards(): OpenCardRow[];
   queuedThreads(): ReadonlySet<string>;
@@ -185,16 +186,19 @@ export class ProjectCanvasService {
     return this.deps.documents.revisionOf(projectId);
   }
 
-  /** The projects whose canvas draws other lines between its bots than when this was last called, each project on the
-   * first call. Throws while the list of projects cannot be read. */
+  /** The projects whose canvas draws other lines between its bots, or other stages on them, than when this was last
+   * called, each project on the first call. Throws while the list of projects cannot be read. */
   linesMoved(): string[] {
     const before = this.lastLines;
-    this.lastLines = new Map(this.deps.projects.list().map((project) => [project.id, dispatchConnections(this.tree(project)).map((one) => one.id).join(" ")]));
+    this.lastLines = new Map(this.deps.projects.list().map((project) => {
+      const { stages, lines } = this.flow(project);
+      return [project.id, JSON.stringify([stages, lines])];
+    }));
     return [...this.lastLines].filter(([projectId, lines]) => before.get(projectId) !== lines).map(([projectId]) => projectId);
   }
 
-  private tree(project: TeamProjectWire): BotTree {
-    return { botIds: project.botIds, leadBotId: project.leadBotId, parentOf: (botId) => this.deps.parentOf(project.id, botId) };
+  private flow(project: TeamProjectWire): CanvasFlow {
+    return canvasFlow(project, this.deps.pipelineOf(project.id, project.leadBotId));
   }
 
   private view(project: TeamProjectWire, sees: (threadId: string) => boolean): CanvasSnapshot {
@@ -202,7 +206,7 @@ export class ProjectCanvasService {
       document: this.deps.documents.read(project.id),
       project: { id: project.id, name: project.name, leadBotId: project.leadBotId, archived: project.archivedAt !== undefined, folderState: project.folderState },
       bots: this.facts.facts(project.botIds),
-      parentOf: (botId) => this.deps.parentOf(project.id, botId),
+      pipeline: this.deps.pipelineOf(project.id, project.leadBotId),
       sees,
     });
     for (const target of this.writing(project.id, snapshot.nodes)) {
@@ -253,7 +257,7 @@ export class ProjectCanvasService {
       ...(baseRevision === undefined ? {} : { baseRevision }),
       targets: opTargets(ops),
       apply: (document, removed) => {
-        const bots = botFrames(document, this.tree(project));
+        const bots = botFrames(document, this.flow(project));
         const result = applyCanvasOps(document, ops, { actor, bots, newId: this.deps.newId, place: (current, node) => placeForActor(current, node, actor, bots, this.reserved(project.id, current)), removed });
         if (actor.kind === "bot" && result.nodeIds.length) pinBot(result.document, result.changed, actor.botId, bots);
         return result;
@@ -267,7 +271,7 @@ export class ProjectCanvasService {
   private serverChange(project: TeamProjectWire, make: (document: CanvasDocument, bots: ReadonlyMap<string, CanvasFrame>) => CanvasChangeSet | null): void {
     const outcome = this.deps.documents.change(project.id, {
       targets: NONE,
-      apply: (document) => ({ document, changed: make(document, botFrames(document, this.tree(project))) ?? NONE, nodeIds: [], connectionIds: [] }),
+      apply: (document) => ({ document, changed: make(document, botFrames(document, this.flow(project))) ?? NONE, nodeIds: [], connectionIds: [] }),
     });
     this.changed(project.id, outcome);
   }
@@ -368,7 +372,7 @@ export class ProjectCanvasService {
    * written there. */
   private replyNode(project: TeamProjectWire, document: CanvasDocument, source: CanvasNode): CanvasReplyPlaceholder {
     const size = CANVAS_NODE_SIZE.text;
-    const position = placeAfter(document, source, size, botFrames(document, this.tree(project)), this.reserved(project.id, document));
+    const position = placeAfter(document, source, size, botFrames(document, this.flow(project)), this.reserved(project.id, document));
     return { id: this.deps.newId(), nodeId: source.id, position, ...size };
   }
 
