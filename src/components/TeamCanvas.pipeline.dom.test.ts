@@ -293,12 +293,12 @@ describe("a team's pipeline on the team map", () => {
   });
 
   it("says why the server refused a line, in the server's words, and leaves the lines as they were", async () => {
-    refusal = { status: 409, body: { error: "A loop.", errorKey: "serverError.teamFlow.loop", errorParams: { bot: "砚青", superior: "墨白" } } };
+    refusal = { status: 409, body: { error: "A loop.", errorKey: "serverError.teamFlow.loop", errorParams: { from: "墨白", to: "砚青" } } };
     await open();
     await click(labelled("Draw a line from 墨白"));
     await click(named('[role="menu"] [role="menuitemcheckbox"]', "砚青"));
     const alert = all('[data-team-key="Drama"] [role="alert"]')[0]!;
-    expect(alert.textContent).toBe(t("serverError.teamFlow.loop", { bot: "砚青", superior: "墨白" }));
+    expect(alert.textContent).toBe(t("serverError.teamFlow.loop", { from: "墨白", to: "砚青" }));
     expect(alert.style.left).toBe(all('[data-pipeline-card="mobai"]')[0]!.style.left);
     expect(linesOf("Drama")).toEqual(DRAMA);
     expect(noteOf("mobai")).toEqual(["Characters · Storyboard"]);
