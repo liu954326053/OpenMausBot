@@ -7,9 +7,11 @@ import { intlLocale } from "../language.ts";
 import type { CanvasFlow } from "../project-canvas/flow.ts";
 import type { CanvasPipelineEvent, PipelineShot } from "../project-canvas/pipeline-api.ts";
 import { CanvasRefusal, readOnlyRefusal } from "../project-canvas/service.ts";
-import { replyText } from "../project-canvas/task-targets.ts";
+import { replyText, roomTurnClosedBy } from "../project-canvas/task-targets.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import type { Message, Store } from "../store.ts";
+import type { ProjectRoom } from "../team-projects/project-rooms.ts";
+import { quietMentions } from "../team-projects/room-send.ts";
 import { userError } from "../user-errors.ts";
 import { handBackOf, handOffOf, lastReply, turnEndOf, type TurnEnd } from "./lines.ts";
 import { plannedStages, stageNeeds } from "./plan.ts";
@@ -50,6 +52,13 @@ export interface PipelineRunsDeps {
    * wrote, quoted in it as the canvas's references, as a task the person sends from the canvas carries them.
    */
   deliver(message: { botId: string; threadId: string; text: string; leadBotId: string }): Promise<DirectSendReceipt>;
+  /** The project's group chat; undefined while it has none. */
+  room(project: TeamProjectWire): ProjectRoom | undefined;
+  /** The project whose group chat this conversation is in. */
+  projectOfRoom(threadId: string): string | undefined;
+  /** Sends a line into the project's group chat that each bot it is for answers, queued behind a turn that runs there.
+   * The same open risk as `deliver`. */
+  deliverToRoom(message: { room: ProjectRoom; to: Array<{ botId: string; text: string }>; leadBotId: string }): Promise<DirectSendReceipt>;
   mainThread(botId: string): string | undefined;
   /** The conversation waits for the person to answer what the bot asked in it since `since`. */
   waitingOnPerson(botId: string, threadId: string, since: number): boolean;
@@ -89,11 +98,16 @@ const ACTIONS = ["start", "retry", "skip"] as const satisfies ReadonlyArray<Pipe
 
 const failure = (error: unknown) => (error instanceof Error ? error.message : "unknown");
 
+/** How a task's message is known: by its id once its conversation has it, by its place in the queue until then. */
+const sentWith = (receipt: DirectSendReceipt): Pick<RunTask, "queueId" | "requestId" | "at"> =>
+  "queued" in receipt ? { queueId: receipt.queueId } : { requestId: receipt.message.id, at: receipt.message.at };
+
 /**
  * Each project's pipeline run: it starts when the project's lead hands the first stage its task, takes each stage's
- * end from its bots' turns, gives the next stages their tasks in the bots' main conversations, asks the person before
- * the shots' videos are generated, and writes the JianYing draft before post and once more at the end. A stage that
- * fails stops the run and goes back to the lead, who decides what happens next.
+ * end from its bots' turns, gives the next stages their tasks in the project's group chat (in the bots' main
+ * conversations while it has none), asks the person before the shots' videos are generated, and writes the JianYing
+ * draft before post and once more at the end. A stage that fails stops the run and goes back to the lead, who decides
+ * what happens next.
  */
 export class PipelineRuns {
   private readonly deps: PipelineRunsDeps;
@@ -122,9 +136,9 @@ export class PipelineRuns {
 
   /** A line of a conversation, new or changed. */
   heard(threadId: string, message: Message): void {
-    const relevant = handOffOf(message) || handBackOf(message) || (message.role === "user" && message.queueId) || turnEndOf(message);
+    const relevant = handOffOf(message) || handBackOf(message) || (message.role === "user" && message.queueId) || turnEndOf(message) || roomTurnClosedBy(message);
     if (!relevant) return;
-    const projectId = this.deps.store.botByThread(threadId)?.teamProject?.id;
+    const projectId = this.deps.store.botByThread(threadId)?.teamProject?.id ?? this.deps.projectOfRoom(threadId);
     if (!projectId) return;
     void this.serially(projectId, () => this.hear(projectId, threadId, message)).catch((error: unknown) => {
       this.deps.log(`[pipeline-run] ${projectId}: a line could not be followed (${failure(error)})`);
@@ -230,18 +244,20 @@ export class PipelineRuns {
 
   private async hear(projectId: string, threadId: string, message: Message): Promise<void> {
     const project = this.project(projectId);
-    const bot = this.deps.store.botByThread(threadId);
-    if (!project || !bot || project.archivedAt !== undefined || !project.botIds.includes(bot.id)) return;
+    if (!project || project.archivedAt !== undefined) return;
+    const inRoom = this.deps.projectOfRoom(threadId) === projectId;
+    const owner = inRoom ? undefined : this.deps.store.botByThread(threadId);
+    if (!inRoom && (!owner || !project.botIds.includes(owner.id))) return;
     const handed = handOffOf(message);
     if (handed) {
-      this.handed(project, bot.id, threadId, handed.fromBotId, message.at);
+      for (const botId of owner ? [owner.id] : handed.botIds) this.handed(project, botId, threadId, handed.fromBotId, message.at);
       return;
     }
     const run = this.run(projectId);
     if (!run || run.endedAt !== undefined) return;
     const back = handBackOf(message);
     if (back) {
-      if (bot.id !== project.leadBotId) return;
+      if (owner && owner.id !== project.leadBotId) return;
       const found = this.taskOf(run, (task) => task.via === "handoff" && task.botId === back.botId && task.threadId === back.threadId && !task.outcome);
       if (!found) return;
       const end: TurnEnd = back.ok ? { ok: true, reply: lastReply(this.deps.store.activePath(back.threadId), found.task.at ?? 0) } : { ok: false };
@@ -250,27 +266,34 @@ export class PipelineRuns {
     }
     if (message.role === "user") {
       const { queueId } = message;
-      const found = queueId ? this.taskOf(run, (task) => task.threadId === threadId && task.queueId === queueId && task.requestId === undefined) : null;
-      if (!found) return;
-      found.task.requestId = message.id;
-      found.task.at = message.at;
+      const joined = queueId ? this.tasksOf(run, (task) => task.threadId === threadId && task.queueId === queueId && task.requestId === undefined) : [];
+      if (!joined.length) return;
+      for (const { task } of joined) Object.assign(task, { requestId: message.id, at: message.at });
       this.save(projectId, run);
       return;
     }
-    const end = turnEndOf(message);
-    if (!end) return;
-    const found = this.taskOf(run, (task, stage) => task.via === "relay" && task.threadId === threadId && task.at !== undefined && task.at <= message.at
-      && (!task.outcome || (end.ok && task.outcome === "failed" && stage.status === "failed")));
-    if (!found || (end.ok && this.deps.waitingOnPerson(bot.id, threadId, found.task.at!))) return;
+    const closedBy = owner ? null : roomTurnClosedBy(message);
+    const end: TurnEnd | null = closedBy ? { ok: false } : turnEndOf(message);
+    const speaker = owner?.id ?? closedBy ?? message.from?.botId;
+    if (!end || (!speaker && end.ok)) return;
+    const waiting = (task: RunTask, stage: RunStage) => task.threadId === threadId && task.at !== undefined && task.at <= message.at
+      && (owner ? task.via === "relay" : speaker === undefined || task.botId === speaker)
+      && (!task.outcome || (end.ok && task.outcome === "failed" && stage.status === "failed"));
+    if (!speaker) {
+      for (const { stage, task } of this.tasksOf(run, waiting)) await this.ended(project, run, stage, task, end);
+      return;
+    }
+    const found = this.taskOf(run, waiting);
+    if (!found || ((end.ok || closedBy) && this.deps.waitingOnPerson(speaker, threadId, found.task.at!))) return;
     await this.ended(project, run, found.stage, found.task, end);
   }
 
   private taskOf(run: StoredRun, match: (task: RunTask, stage: RunStage) => boolean): { stage: RunStage; task: RunTask } | null {
-    for (const stage of run.stages) {
-      const task = stage.tasks.find((one) => match(one, stage));
-      if (task) return { stage, task };
-    }
-    return null;
+    return this.tasksOf(run, match)[0] ?? null;
+  }
+
+  private tasksOf(run: StoredRun, match: (task: RunTask, stage: RunStage) => boolean): Array<{ stage: RunStage; task: RunTask }> {
+    return run.stages.flatMap((stage) => stage.tasks.filter((task) => match(task, stage)).map((task) => ({ stage, task })));
   }
 
   /** The lead handed a bot of the first stage its task: a run starts, unless one is under way, or the task joins it. */
@@ -311,16 +334,17 @@ export class PipelineRuns {
   /** The end of a turn that ends nothing yet, found in its conversation. */
   private endSince(project: TeamProjectWire, task: RunTask): TurnEnd | null {
     if (task.at === undefined) return null;
-    if (task.via === "handoff") {
-      const lead = this.deps.mainThread(project.leadBotId);
-      const back = lead ? this.deps.store.activePath(lead).map(handBackOf).find((one) => one?.botId === task.botId && one.threadId === task.threadId) : undefined;
+    const inRoom = this.deps.projectOfRoom(task.threadId) === project.id;
+    if (task.via === "handoff" && !inRoom) {
+      const handedBack = [this.deps.mainThread(project.leadBotId), this.deps.room(project)?.threadId].flatMap((threadId) => (threadId ? this.deps.store.activePath(threadId) : []));
+      const back = handedBack.map(handBackOf).find((one) => one?.botId === task.botId && one.threadId === task.threadId);
       if (!back) return null;
       return back.ok ? { ok: true, reply: lastReply(this.deps.store.activePath(task.threadId), task.at) } : { ok: false };
     }
     const path = this.deps.store.activePath(task.threadId);
     for (const message of path) {
-      if (message.at < task.at) continue;
-      const end = turnEndOf(message);
+      if (message.at < task.at || (inRoom && message.from?.botId !== task.botId)) continue;
+      const end: TurnEnd | null = inRoom && roomTurnClosedBy(message) ? { ok: false } : turnEndOf(message);
       if (end && !(end.ok && this.deps.waitingOnPerson(task.botId, task.threadId, task.at))) return end;
     }
     return null;
@@ -420,7 +444,10 @@ export class PipelineRuns {
     if (stage.stage === "post") await this.deps.draft.writeDraftIfReady(project.id);
     const language = this.deps.language();
     const request = this.request(project, stage.stage, language);
-    for (const botId of stage.botIds) {
+    const room = this.deps.room(project);
+    const inRoom = room ? stage.botIds.filter((botId) => room.memberIds.includes(botId)) : [];
+    if (room && inRoom.length) await this.startInRoom(project, stage, room, inRoom, request, language);
+    for (const botId of stage.botIds.filter((one) => !inRoom.includes(one))) {
       const threadId = this.deps.mainThread(botId) ?? this.deps.store.bot(botId)?.threadId;
       if (!threadId) {
         stage.tasks.push({ botId, threadId: botId, via: "relay", outcome: "failed" });
@@ -429,8 +456,7 @@ export class PipelineRuns {
       try {
         const text = await this.deps.canvas.taskFor(project, botId, request, language);
         const receipt = await this.deps.deliver({ botId, threadId, text, leadBotId: project.leadBotId });
-        const sent = "queued" in receipt ? { queueId: receipt.queueId } : { requestId: receipt.message.id, at: receipt.message.at };
-        stage.tasks.push({ botId, threadId: receipt.threadId, via: "relay", ...sent });
+        stage.tasks.push({ botId, threadId: receipt.threadId, via: "relay", ...sentWith(receipt) });
       } catch (error) {
         this.deps.log(`[pipeline-run] ${project.id}: the ${stage.stage} task did not reach ${botId} (${failure(error)})`);
         stage.tasks.push({ botId, threadId, via: "relay", outcome: "failed" });
@@ -439,6 +465,18 @@ export class PipelineRuns {
     this.save(project.id, run);
     this.note(project, "server.pipelineRun.note.started", { stage: serverLine(language, STAGE_NAME[stage.stage]), bots: this.names(stage.botIds) });
     await this.settle(project, run, stage);
+  }
+
+  /** One line in the project's group chat that gives each of `botIds` its task, what it quotes calling in nobody. */
+  private async startInRoom(project: TeamProjectWire, stage: RunStage, room: ProjectRoom, botIds: readonly string[], request: string, language: string | undefined): Promise<void> {
+    try {
+      const to = await Promise.all(botIds.map(async (botId) => ({ botId, text: quietMentions(await this.deps.canvas.taskFor(project, botId, request, language)) })));
+      const receipt = await this.deps.deliverToRoom({ room, to, leadBotId: project.leadBotId });
+      for (const botId of botIds) stage.tasks.push({ botId, threadId: receipt.threadId, via: "relay", ...sentWith(receipt) });
+    } catch (error) {
+      this.deps.log(`[pipeline-run] ${project.id}: the ${stage.stage} task did not reach the group chat (${failure(error)})`);
+      for (const botId of botIds) stage.tasks.push({ botId, threadId: room.threadId, via: "relay", outcome: "failed" });
+    }
   }
 
   private request(project: TeamProjectWire, stage: PipelineStage, language: string | undefined): string {
@@ -513,25 +551,31 @@ export class PipelineRuns {
     await this.tellLead(project, written ? "server.pipelineRun.lead.done" : "server.pipelineRun.lead.doneNoDraft", { project: project.name, ...(written ? { draft: written } : {}) });
   }
 
-  /** A turn of the lead's, in its main conversation, that decides what happens next. */
+  /** A turn of the lead's that decides what happens next: in the project's group chat, else in its main conversation. */
   private async tellLead(project: TeamProjectWire, key: ServerLineKey, params: Record<string, string | number>): Promise<void> {
-    const threadId = this.deps.mainThread(project.leadBotId);
-    if (!threadId) return;
+    const text = serverLine(this.deps.language(), key, { project: project.name, ...params });
+    const room = this.deps.room(project);
     try {
-      await this.deps.deliver({ botId: project.leadBotId, threadId, text: serverLine(this.deps.language(), key, { project: project.name, ...params }), leadBotId: project.leadBotId });
+      if (room?.memberIds.includes(project.leadBotId)) {
+        await this.deps.deliverToRoom({ room, to: [{ botId: project.leadBotId, text }], leadBotId: project.leadBotId });
+        return;
+      }
+      const threadId = this.deps.mainThread(project.leadBotId);
+      if (threadId) await this.deps.deliver({ botId: project.leadBotId, threadId, text, leadBotId: project.leadBotId });
     } catch (error) {
       this.deps.log(`[pipeline-run] ${project.id}: the lead could not be told (${failure(error)})`);
     }
   }
 
-  /** A row in the lead's main conversation that says where the run is, and starts no turn. */
+  /** A row that says where the run is and starts no turn: in the project's group chat, else in the lead's main
+   * conversation. */
   private note(project: TeamProjectWire, key: ServerLineKey, params?: Record<string, string | number>): void {
-    const threadId = this.deps.mainThread(project.leadBotId);
+    const threadId = this.deps.room(project)?.threadId ?? this.deps.mainThread(project.leadBotId);
     if (!threadId) return;
     try {
       this.deps.store.appendMessage(threadId, { role: "bot", kind: "activity", tool: { name: serverLine(this.deps.language(), key, params), ok: true } });
     } catch (error) {
-      this.deps.log(`[pipeline-run] ${project.id}: the lead's conversation could not be told (${failure(error)})`);
+      this.deps.log(`[pipeline-run] ${project.id}: the run's line could not be written (${failure(error)})`);
     }
   }
 }

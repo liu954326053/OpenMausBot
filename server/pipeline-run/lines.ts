@@ -13,17 +13,19 @@ export function turnEndOf(message: Message): TurnEnd | null {
   return isUnfinishedTurn(message) ? { ok: false } : null;
 }
 
-/** The line a teammate's hand-off leaves at the top of the conversation it runs in: who handed it, and its request. */
-export function handOffOf(message: Message): { fromBotId: string; requestId: string } | null {
+/** The line a teammate's hand-off leaves at the top of the conversation it runs in: who handed it, its request, and the
+ * bots it went to when the line names them. */
+export function handOffOf(message: Message): { fromBotId: string; requestId: string; botIds: readonly string[] } | null {
   if (message.role !== "bot" || message.kind !== "text" || message.roomRequest?.phase !== "request" || !message.from?.botId) return null;
-  return { fromBotId: message.from.botId, requestId: message.roomRequest.id };
+  return { fromBotId: message.from.botId, requestId: message.roomRequest.id, botIds: message.roomRequest.botIds ?? [] };
 }
 
 /** The row a hand-off's end leaves in the conversation that handed it: the bot that did it, the conversation it ran
  * in, and whether it was done. */
 export function handBackOf(message: Message): { botId: string; threadId: string; ok: boolean } | null {
-  if (message.role !== "bot" || message.kind !== "activity" || message.roomRequest?.phase !== "result" || !message.from?.botId || !message.threadRef) return null;
-  return { botId: message.from.botId, threadId: message.threadRef.threadId, ok: message.tool?.ok === true };
+  if (message.role !== "bot" || message.kind !== "activity" || message.roomRequest?.phase !== "result" || !message.from?.botId) return null;
+  const threadId = message.threadRef?.threadId ?? message.comm?.threadId;
+  return threadId ? { botId: message.from.botId, threadId, ok: message.tool?.ok === true } : null;
 }
 
 /** The newest reply in a conversation after `since`, the line a hand-off began with left aside. */

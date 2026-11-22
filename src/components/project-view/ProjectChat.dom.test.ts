@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
-import type { Bot } from "@/state/store";
+import type { Bot, Group } from "@/state/store";
 
 const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: { bots: [] as unknown[], groups: [] as unknown[], pendingQueued: {} } }));
 vi.mock("@/state/store-select", () => ({
@@ -17,10 +17,14 @@ vi.mock("@/components/ChatView", async () => {
   const { createElement: element } = await import("react");
   return { ChatView: ({ bot }: { bot: Bot }) => element("main", { "data-chat-view": bot.id }) };
 });
+vi.mock("@/components/GroupView", async () => {
+  const { createElement: element } = await import("react");
+  return { GroupView: ({ group }: { group: Group }) => element("main", { "data-group-view": group.id }) };
+});
 
 import { setLocale } from "@/lib/i18n";
 import { setTeamProjects } from "@/state/team-projects";
-import { ProjectChat } from "./ProjectChat";
+import { ProjectChat, ProjectGroup } from "./ProjectChat";
 
 const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
   id, threadId: `${id}-thread`, name: id, title: "", description: "", notifications: true,
@@ -93,6 +97,39 @@ describe("a conversation in a project", () => {
     await draw(writer);
     expect(fixture.dispatch).not.toHaveBeenCalled();
     await act(async () => setTeamProjects({ root: "/dramas", projects: [{ ...bride, archivedAt: 5 }] }));
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "main" }]]);
+  });
+});
+
+describe("a group chat in a project", () => {
+  const room = (id: string, section: string): Group => ({
+    id, threadId: `${id}-thread`, name: `${id} chat`, memberIds: ["lead", "writer"], messages: [], defaultResponder: { kind: "member", botId: "lead" }, bulletin: "", unread: false, createdAt: 1, section,
+  });
+  const drawRoom = async (shown: Group) => {
+    await act(async () => root.render(createElement(ProjectGroup, { group: shown })));
+  };
+
+  it("is under the project's top bar, whose Chat it is and whose Canvas goes to the project's canvas", async () => {
+    setTeamProjects({ root: "/dramas", projects: [{ ...bride, roomId: "bride-room" }] });
+    await drawRoom(room("bride-room", "The bride"));
+    expect([q("[data-project-chat]")?.dataset.projectChat, q("[data-project-chat] h1")?.textContent, q("[data-project-chat] [data-group-view]")?.dataset.groupView])
+      .toEqual(["p-bride", "The bride", "bride-room"]);
+    expect(options().map((one) => [one.textContent, one.getAttribute("aria-pressed")])).toEqual([["Chat", "true"], ["Canvas", "false"]]);
+    await act(async () => options()[1]!.click());
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "showProject", projectId: "p-bride" }]]);
+  });
+
+  it("shows another group chat of the project's department under its top bar too, and one outside the projects as it is", async () => {
+    await drawRoom(room("side-room", "The bride"));
+    expect(q("[data-project-chat]")?.dataset.projectChat).toBe("p-bride");
+    await drawRoom(room("sales-room", "Sales"));
+    expect([q("[data-project-chat]"), q("[data-group-view]")?.dataset.groupView]).toEqual([null, "sales-room"]);
+  });
+
+  it("gives way to MagicBot when the project is archived while its group chat is open", async () => {
+    setTeamProjects({ root: "/dramas", projects: [{ ...bride, roomId: "bride-room" }] });
+    await drawRoom(room("bride-room", "The bride"));
+    await act(async () => setTeamProjects({ root: "/dramas", projects: [{ ...bride, roomId: "bride-room", archivedAt: 5 }] }));
     expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "main" }]]);
   });
 });

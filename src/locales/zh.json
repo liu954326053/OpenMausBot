@@ -351,6 +351,7 @@
   "server.rooms.pickNotSent": "{bot} 现在无法回复这条线路，因此你在其页面中指向的内容未发送。请在 {bot} 可以回复时重新指向。",
   "server.threads.posted": "{bot} 在这里发了一条消息",
   "server.rooms.chiefRetargeted": "{chief} 现在是参谋长，因此由它代替 {former} 主持此房间。",
+  "server.teamProject.roomName": "{project} 群聊",
   "server.stop.nothingRunning": "这里没有正在运行的内容，所以无需停止。",
   "server.memory.wait": "正在等待这个 Cloud 的内存。正在运行：{running}。排在前面：{ahead}。有空间时会自动开始。",
   "server.memory.still": "仍在等待内存。正在运行：{running}。排在前面：{ahead}。",

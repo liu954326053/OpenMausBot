@@ -46,6 +46,7 @@ function deps(patch: Partial<BotFactsDeps> = {}): BotFactsDeps & { reads: string
     threadBusy: (_botId, threadId) => threadId === "a",
     openCards: () => [],
     queuedThreads: () => new Set(["b"]),
+    roomSpeaker: () => undefined,
     ...patch,
   };
 }

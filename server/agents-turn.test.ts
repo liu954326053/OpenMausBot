@@ -138,3 +138,14 @@ describe("what a turn that may not use a listed tool is told", () => {
     expect(roomSkillsRefusal(true)).toMatch(/This turn is a teammate's hand-off, so carry on without changing skills\.$/);
   });
 });
+
+describe("a project's bot", () => {
+  const projectBot = { id: "bot-1", teamProject: { id: "p1" } };
+  const canvasIn = (conversation: Partial<AgentsConversation>) =>
+    agentsServerEnv({ ...CHAT, bot: projectBot, ...conversation }, { generation: "person", depth: 0, skillAuthoring: true }, () => "token", "http://127.0.0.1:1").OMB_PROJECT_CANVAS;
+
+  it("keeps its project's canvas in its own conversations and in its project's group chats, and has none in another room", () => {
+    expect([canvasIn({}), canvasIn({ room: true, projectRoom: true }), canvasIn({ room: true }), canvasIn({ bot: { id: "bot-2" }, room: true, projectRoom: true })])
+      .toEqual(["1", "1", "0", "0"]);
+  });
+});

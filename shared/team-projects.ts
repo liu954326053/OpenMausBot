@@ -43,6 +43,9 @@ export interface TeamProjectRecord {
   /** On a project made from a team template instead of a team: that template. Nothing reads it. */
   template?: { id: string; name: string; version: number };
   leadBotId: string;
+  /** The project's group chat: its bots, its lead answering by default. Absent until it is made; it stays the id of a
+   * group chat the person deleted, and none is made again. */
+  roomId?: string;
   createdAt: number;
   archivedAt?: number;
 }

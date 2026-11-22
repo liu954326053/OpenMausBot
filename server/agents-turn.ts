@@ -14,6 +14,8 @@ export interface AgentsConversation {
   bot: NonNullable<Parameters<typeof roleToolEnv>[0]> & { id: string; computer?: string; memoryEnabled?: boolean; xResearch?: boolean; toolsOff?: readonly string[]; teamProject?: object };
   /** A room's thread: rooms refuse widgets, pages and a computer pick. */
   room: boolean;
+  /** The room is one of the bot's own project, where its team works: the bot keeps its project's canvas there. */
+  projectRoom?: boolean;
   /** The bot works on its team's cloud computer, so it has no computer of its own to pick. */
   teamComputer: boolean;
   /** Only bots or automation drive it (`botDrivenConversation`): no turn in it is a person's own message to pick a computer for. */
@@ -37,6 +39,7 @@ const flag = (on: boolean) => (on ? "1" : "0");
 
 export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTurn, bearer: (turn: AgentsTurn) => string, harnessUrl: string): Record<string, string> {
   const { bot, host } = conversation;
+  const projectWork = Boolean(bot.teamProject) && (!conversation.room || conversation.projectRoom === true);
   return {
     ...AGENTS_PROXY_ENV,
     OMB_HARNESS_URL: harnessUrl,
@@ -52,8 +55,8 @@ export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTu
     OMB_RESEARCH: flag(host.x && host.research && bot.xResearch !== false),
     ...roleToolEnv(bot),
     OMB_TEAM_PROJECTS: flag(proposesTeamProjects(bot) && !conversation.room),
-    OMB_PROJECT_CANVAS: flag(Boolean(bot.teamProject) && !conversation.room),
-    OMB_PROJECT_TIMELINE: flag(Boolean(bot.teamProject) && !conversation.room && pipelinePlaceOf(bot.id)?.stages.includes("post") === true),
+    OMB_PROJECT_CANVAS: flag(projectWork),
+    OMB_PROJECT_TIMELINE: flag(projectWork && pipelinePlaceOf(bot.id)?.stages.includes("post") === true),
     OMB_IMAGE_GENERATION: flag(host.imageGeneration),
     OMB_MEETINGS: flag(host.meetings === true && !conversation.room),
     OMB_APP_HOSTING: flag(host.appHosting === true),

@@ -15,6 +15,7 @@ import { renderTeamProjectCopies, writeTeamProjectCopies, type TeamMemoryLine } 
 import { createTeamProject, type ExportedTeam } from "./create.ts";
 import { changedCopyFields, isCopyField } from "./follow.ts";
 import { Following } from "./following.ts";
+import type { ProjectRooms } from "./project-rooms.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
 import { checkTeamProjectsRoot } from "./root.ts";
 import { addCopy, teamChangesOf } from "./team-changes.ts";
@@ -44,6 +45,8 @@ export interface TeamProjectsDeps {
   memory(section: string): readonly TeamMemoryLine[];
   /** Calls `flush` a moment after the first call since the last flush. */
   schedule(flush: () => void): void;
+  /** Each project's group chat. */
+  rooms?: Pick<ProjectRooms, "ensure">;
   newId(): string;
   now?(): number;
   log?(line: string): void;
@@ -185,7 +188,9 @@ export class TeamProjects implements TeamProjectsApi {
       now: () => this.now(),
       log: (line) => this.log(line),
     });
-    return "project" in outcome ? { project: this.wire(outcome.project) } : outcome;
+    if (!("project" in outcome)) return outcome;
+    this.deps.rooms?.ensure(outcome.project.id);
+    return { project: this.wire(this.stored(outcome.project.id) ?? outcome.project) };
   }
 
   /**

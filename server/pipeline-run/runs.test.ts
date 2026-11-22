@@ -19,10 +19,11 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-const NAMES: Record<string, string> = { lead: "Mo", writer: "Ink", designer: "Jade", boarder: "Frame", editor: "Cut" };
+const NAMES: Record<string, string> = { lead: "Mo", writer: "Ink", designer: "Jade", painter: "Hue", boarder: "Frame", editor: "Cut" };
 const STAGES: Record<string, FlowStage[]> = { lead: ["lead"], writer: ["script"], designer: ["character"], boarder: ["storyboard"], editor: ["post"] };
 
 const main = (botId: string) => `${botId}-main`;
+const ROOM = "room-thread";
 const flush = async () => {
   for (let tick = 0; tick < 10; tick += 1) await new Promise((resolve) => setImmediate(resolve));
 };
@@ -34,13 +35,14 @@ function shot(shotId: string, take: boolean, status: PipelineShot["status"] = "i
   };
 }
 
-function setup(options: { stages?: Record<string, FlowStage[]>; dataDir?: string } = {}) {
+/** `room`: the project has a group chat, with these of its bots in it. */
+function setup(options: { stages?: Record<string, FlowStage[]>; dataDir?: string; room?: string[] } = {}) {
   const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), "omb-pipeline-runs-"));
   if (!options.dataDir) dirs.push(dataDir);
   const stages = options.stages ?? STAGES;
   const project: TeamProjectWire = {
     id: "p1", name: "Bride", folder: "/projects/Bride", leadBotId: "lead", createdAt: 1, folderState: "ready",
-    botIds: Object.keys(stages), follows: {},
+    botIds: Object.keys(stages), follows: {}, ...(options.room ? { roomId: "room" } : {}),
   } as unknown as TeamProjectWire;
   let clock = 1_000;
   let ids = 0;
@@ -53,6 +55,7 @@ function setup(options: { stages?: Record<string, FlowStage[]>; dataDir?: string
     return row;
   };
   const sent: Array<{ botId: string; threadId: string; text: string; leadBotId: string }> = [];
+  const roomSent: Array<{ to: Array<{ botId: string; text: string }>; leadBotId: string }> = [];
   const busy = new Set<string>();
   const waiting = new Set<string>();
   const state = {
@@ -110,6 +113,14 @@ function setup(options: { stages?: Record<string, FlowStage[]>; dataDir?: string
       if (busy.has(message.threadId)) return { ok: true, queued: true, queueId: `q-${sent.length}`, threadId: message.threadId };
       return { ok: true, threadId: message.threadId, message: append(message.threadId, { role: "user", kind: "text", text: message.text }) };
     },
+    room: (one) => (one.roomId && options.room ? { groupId: one.roomId, threadId: ROOM, memberIds: options.room } : undefined),
+    projectOfRoom: (threadId) => (options.room && threadId === ROOM ? "p1" : undefined),
+    deliverToRoom: async ({ room, to, leadBotId }): Promise<DirectSendReceipt> => {
+      roomSent.push({ to, leadBotId });
+      if (busy.has(room.threadId)) return { ok: true, queued: true, queueId: `rq-${roomSent.length}`, threadId: room.threadId };
+      const text = to.map((one) => `@${NAMES[one.botId]} ${one.text}`).join("\n\n");
+      return { ok: true, threadId: room.threadId, message: append(room.threadId, { role: "user", kind: "text", text }) };
+    },
     mainThread: main,
     waitingOnPerson: (_botId, threadId) => waiting.has(threadId),
     language: () => undefined,
@@ -130,7 +141,7 @@ function setup(options: { stages?: Record<string, FlowStage[]>; dataDir?: string
     return row;
   };
   const world = {
-    project, runs, deps, sent, busy, waiting, state, paths, dataDir,
+    project, runs, deps, sent, roomSent, busy, waiting, state, paths, dataDir,
     hear,
     /** The lead hands a bot its task with coordinate_bots: the line it leaves in the bot's new conversation. */
     handOff: (botId: string, threadId = `${botId}-handoff`) => hear(threadId, { role: "bot", kind: "text", text: "Write the script.", roomRequest: { id: `r-${botId}`, phase: "request" }, from: { botId: "lead" } } as Omit<Message, "id" | "at">),
@@ -143,9 +154,18 @@ function setup(options: { stages?: Record<string, FlowStage[]>; dataDir?: string
     reply: (threadId: string, text: string, ok = true) => hear(threadId, { role: "bot", kind: "text", text, turnTerminal: true, turnSucceeded: ok } as Omit<Message, "id" | "at">),
     /** The row a failed turn ends with. */
     fail: (threadId: string) => hear(threadId, { role: "bot", kind: "activity", tool: { name: "error: the engine stopped answering", ok: false } } as Omit<Message, "id" | "at">),
+    /** In the group chat: a hand-off from `from`, which runs there. */
+    roomHandOff: (botIds: string[], from = "lead") => hear(ROOM, {
+      role: "bot", kind: "text", text: `${botIds.map((id) => `@${NAMES[id]}`).join(" ")} Write the script.`,
+      roomRequest: { id: `r-room-${botIds.join("-")}`, phase: "request", botIds }, from: { botId: from },
+    } as Omit<Message, "id" | "at">),
+    /** In the group chat: the last reply of `botId`'s turn, settled. */
+    roomReply: (botId: string, text: string, ok = true) => hear(ROOM, { role: "bot", kind: "text", text, turnTerminal: true, turnSucceeded: ok, from: { botId } } as Omit<Message, "id" | "at">),
+    roomFail: (botId: string) => hear(ROOM, { role: "bot", kind: "activity", tool: { name: "error: the engine stopped answering", ok: false }, from: { botId } } as Omit<Message, "id" | "at">),
     statuses: () => runs.wire("p1")?.stages.map(({ stage, status }) => `${stage}:${status}`),
-    notes: () => (paths.get(main("lead")) ?? []).filter((row) => row.kind === "activity" && row.tool?.name.startsWith("Pipeline")).map((row) => row.tool!.name),
+    notes: (threadId = main("lead")) => (paths.get(threadId) ?? []).filter((row) => row.kind === "activity" && row.tool?.name.startsWith("Pipeline")).map((row) => row.tool!.name),
     toLead: () => sent.filter((one) => one.botId === "lead").map((one) => one.text),
+    toLeadInRoom: () => roomSent.filter((one) => one.to.some((to) => to.botId === "lead")).map((one) => one.to.map((to) => to.text).join("\n\n")),
   };
   return world;
 }
@@ -380,6 +400,141 @@ describe("a pipeline run", () => {
     expect(again.wire("p1")?.stages.map(({ status }) => status)).toEqual(["done", "working", "waiting", "waiting"]);
     await again.resume();
     expect(again.wire("p1")?.stages.map(({ status }) => status)).toEqual(["done", "done", "working", "waiting"]);
+  });
+});
+
+describe("a pipeline run in the project's group chat", () => {
+  const ALL = Object.keys(STAGES);
+
+  it("starts at the lead's hand-off there, and gives each next stage its task there, with the run's lines", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"]);
+    expect(world.statuses()).toEqual(["script:working", "character:waiting", "storyboard:waiting", "post:waiting"]);
+
+    await world.roomReply("lead", "I asked Ink for the script.");
+    expect(world.statuses()?.[0]).toBe("script:working");
+    world.state.texts.push({ nodeId: "script-1", botId: "writer" });
+    await world.roomReply("writer", "The script is on the canvas.");
+    expect(world.statuses()).toEqual(["script:done", "character:working", "storyboard:waiting", "post:waiting"]);
+    expect(world.state.scripts).toEqual(["script-1"]);
+    expect(world.sent).toEqual([]);
+    const task = serverLine(undefined, "server.pipelineRun.task.character", { project: "Bride", lead: "Mo" });
+    expect(world.roomSent).toEqual([{ to: [{ botId: "designer", text: `${task}\n\n[what is connected to designer]` }], leadBotId: "lead" }]);
+
+    await world.roomReply("designer", "Three characters are on the canvas.");
+    expect(world.statuses()?.[1]).toBe("character:done");
+    expect(world.roomSent.at(-1)!.to.map((one) => one.botId)).toEqual(["boarder"]);
+    expect(world.notes(ROOM)).toEqual([
+      serverLine(undefined, "server.pipelineRun.note.stageDone", { stage: "script" }),
+      serverLine(undefined, "server.pipelineRun.note.started", { stage: "character design", bots: "Jade" }),
+      serverLine(undefined, "server.pipelineRun.note.stageDone", { stage: "character design" }),
+      serverLine(undefined, "server.pipelineRun.note.started", { stage: "storyboard", bots: "Frame" }),
+    ]);
+    expect(world.notes()).toEqual([]);
+  });
+
+  it("starts nothing for a hand-off there from a bot other than the lead", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"], "designer");
+    expect(world.runs.wire("p1")).toBeUndefined();
+  });
+
+  it("gives a stage's bots their tasks in one line, and ends the stage once each has answered", async () => {
+    const stages: Record<string, FlowStage[]> = { lead: ["lead"], writer: ["script"], designer: ["character"], painter: ["character"], boarder: ["storyboard"] };
+    const world = setup({ stages, room: Object.keys(stages) });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    expect(world.roomSent.at(-1)!.to.map((one) => one.botId)).toEqual(["designer", "painter"]);
+    await world.roomReply("designer", "Jade's characters.");
+    expect(world.statuses()?.[1]).toBe("character:working");
+    await world.roomReply("painter", "Hue's characters.");
+    expect(world.statuses()?.[1]).toBe("character:done");
+  });
+
+  it("counts a task that waited in the room's queue from the moment it joins the room", async () => {
+    const world = setup({ room: ALL });
+    world.busy.add(ROOM);
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    expect(world.statuses()?.[1]).toBe("character:working");
+    await world.roomReply("designer", "An answer to something else.");
+    expect(world.statuses()?.[1]).toBe("character:working");
+    await world.hear(ROOM, { role: "user", kind: "text", text: "@Jade the task", queueId: "rq-1" } as Omit<Message, "id" | "at">);
+    await world.roomReply("designer", "Three characters are on the canvas.");
+    expect(world.statuses()?.[1]).toBe("character:done");
+  });
+
+  it("gives a bot that is not in the group chat its task in its own conversation", async () => {
+    const world = setup({ room: ["lead", "writer", "boarder", "editor"] });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    expect(world.roomSent).toEqual([]);
+    expect(world.sent.map((one) => [one.botId, one.threadId])).toEqual([["designer", "designer-main"]]);
+    await world.reply("designer-main", "Characters done.");
+    expect(world.roomSent.at(-1)!.to.map((one) => one.botId)).toEqual(["boarder"]);
+  });
+
+  it("asks the lead there when a stage failed, and tells it there when the run is complete", async () => {
+    const world = setup({ room: ALL, stages: { lead: ["lead"], writer: ["script"], designer: ["character"], editor: ["post"] } });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    await world.roomFail("designer");
+    expect(world.statuses()?.[1]).toBe("character:failed");
+    expect(world.toLeadInRoom()).toEqual([serverLine(undefined, "server.pipelineRun.lead.stageFailed", { project: "Bride", stage: "character design", bots: "Jade" })]);
+    await world.roomReply("designer", "Done after all.");
+    await world.roomReply("editor", "Cut.");
+    expect(world.toLeadInRoom().at(-1)).toBe(serverLine(undefined, "server.pipelineRun.lead.doneNoDraft", { project: "Bride" }));
+    expect(world.toLead()).toEqual([]);
+  });
+
+  it("ends a hand-off that ran in the bot's own thread at its result in the group chat", async () => {
+    const world = setup({ room: ALL });
+    await world.handOff("writer", "writer-job");
+    await world.hear(ROOM, {
+      role: "bot", kind: "activity", roomRequest: { id: "r-writer", phase: "result" }, from: { botId: "writer" }, tool: { name: "coordinate_bots", ok: true, output: "done" },
+      comm: { groupId: "room", threadId: "writer-job", withBotId: "writer", withName: "Ink", withColor: "blue" },
+    } as Omit<Message, "id" | "at">);
+    expect(world.statuses()?.slice(0, 2)).toEqual(["script:done", "character:working"]);
+  });
+
+  it("fails the stage whose task waits in the group chat when a turn there stops and names no bot", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    await world.hear(ROOM, { role: "bot", kind: "activity", tool: { name: "error: the engine stopped answering", ok: false } } as Omit<Message, "id" | "at">);
+    expect(world.statuses()?.[1]).toBe("character:failed");
+    expect(world.toLeadInRoom()).toEqual([serverLine(undefined, "server.pipelineRun.lead.stageFailed", { project: "Bride", stage: "character design", bots: "Jade" })]);
+  });
+
+  it("fails the stage of a bot whose turn in the group chat closed with no reply, as a stopped one does, unless it waits on the person", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    const summary = (botId: string) => world.hear(ROOM, { role: "bot", kind: "digest", text: "[digest]", from: { botId } } as Omit<Message, "id" | "at">);
+    await summary("writer");
+    await summary("lead");
+    expect(world.statuses()?.slice(0, 2)).toEqual(["script:done", "character:working"]);
+    world.waiting.add(ROOM);
+    await summary("designer");
+    expect(world.statuses()?.[1]).toBe("character:working");
+    world.waiting.delete(ROOM);
+    await summary("designer");
+    expect(world.statuses()?.[1]).toBe("character:failed");
+  });
+
+  it("after a restart, ends a task at its own bot's turn that ended in the group chat while the server was down", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    const late = (id: string, at: number, botId: string) => ({ id, at, role: "bot", kind: "text", text: "Done.", turnTerminal: true, turnSucceeded: true, from: { botId } }) as Message;
+    world.paths.set(ROOM, [...(world.paths.get(ROOM) ?? []), late("other", 99_998, "boarder")]);
+    const again = new PipelineRuns(world.deps);
+    await again.resume();
+    expect(again.wire("p1")?.stages[1]?.status).toBe("working");
+    world.paths.set(ROOM, [...(world.paths.get(ROOM) ?? []), late("mine", 99_999, "designer")]);
+    const third = new PipelineRuns(world.deps);
+    await third.resume();
+    expect(third.wire("p1")?.stages[1]?.status).toBe("done");
   });
 });
 

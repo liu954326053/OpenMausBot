@@ -38,7 +38,7 @@ function OpenProject({ projectId }: { projectId: string }) {
     <button
       type="button"
       data-team-project-open={projectId}
-      onClick={() => (project ? openProject(store.dispatch, project, store.state.bots, showThreads) : store.dispatch({ type: "showProject", projectId }))}
+      onClick={() => (project ? openProject(store.dispatch, project, { bots: store.state.bots, groups: store.state.groups }, showThreads) : store.dispatch({ type: "showProject", projectId }))}
       className="ui-pill mt-3"
     >
       <FolderClosed size={14} aria-hidden="true" />

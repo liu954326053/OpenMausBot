@@ -308,24 +308,27 @@ describe("a project's canvas", () => {
     }
   });
 
-  it("sends a bot a task with what is connected into its node", async () => {
+  it("sends a bot a task with what is connected into its node, in the project's group chat and addressed to it", async () => {
     const connected = await ops({ ops: [
       { type: "connect_nodes", fromNodeId: brief, toNodeId: botNodeId(writer.id) },
       { type: "connect_nodes", fromNodeId: reference, toNodeId: botNodeId(writer.id) },
     ] });
     expect(connected.status, JSON.stringify(connected.body)).toBe(200);
     plan([{ key: "task", match: ["Write the opening scene"], reply: "SCENE WRITTEN" }]);
+    const stored = JSON.parse(readFileSync(join(server.dataDir, "groups.json"), "utf8")) as Array<{ id: string; threadId: string }> | { groups: Array<{ id: string; threadId: string }> };
+    const room = (Array.isArray(stored) ? stored : stored.groups).find((one) => one.id === project.roomId)!;
     const sent = await api("POST", `${canvasPath()}/tasks`, { botId: writer.id, text: "Write the opening scene" });
     expect(sent.status, JSON.stringify(sent.body)).toBe(202);
-    expect(sent.body).toMatchObject({ threadId: writer.threadId, references: 2 });
-    await said(writer.threadId, "SCENE WRITTEN");
+    expect(sent.body).toMatchObject({ threadId: room.threadId, references: 2 });
+    await said(room.threadId, "SCENE WRITTEN");
     await idle();
-    const asked = (await messages(writer.threadId)).find((line) => line.id === sent.body.messageId)!;
+    const asked = (await messages(room.threadId)).find((line) => line.id === sent.body.messageId)!;
     const prompt = JSON.stringify(turnOf(writer.id, "task").prompt);
     keep("06-task-with-references.json", { response: sent.body, message: asked, prompt: turnOf(writer.id, "task").prompt });
-    expect(asked.text).toMatch(/^Write the opening scene\n\nConnected to your node on the project's canvas:\n\nText 1 "Brief":\n\n> Episode one: the bride is swapped at the altar\.\n\nImage 1 "reference\.png"\n\n<attached-image path="[^"]+" name="reference\.png"\/>$/);
+    expect(asked.text).toMatch(new RegExp(`^@${writer.name} Write the opening scene\\n\\nConnected to your node on the project's canvas:\\n\\nText 1 "Brief":\\n\\n> Episode one: the bride is swapped at the altar\\.\\n\\nImage 1 "reference\\.png"\\n\\n<attached-image path="[^"]+" name="reference\\.png"/>$`));
     expect(prompt).toContain("> Episode one: the bride is swapped at the altar.");
     expect(prompt).toContain(`"data":"${png(90).toString("base64")}"`);
+    expect((await messages(writer.threadId)).some((line) => line.text?.includes("Write the opening scene"))).toBe(false);
   }, hostTimeout(60_000));
 
   it("merges a change made against an old revision that touches other nodes, and refuses one that touches a changed node", async () => {

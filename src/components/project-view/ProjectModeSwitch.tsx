@@ -14,15 +14,16 @@ const MODES = [
   { mode: "canvas", label: "projectView.mode.canvas", Icon: Workflow },
 ] as const;
 
-/** At the top of a project: its lead's conversation, or its canvas. */
+/** At the top of a project: its conversations, opening on its group chat, or its canvas. */
 export function ProjectModeSwitch({ project, mode }: { project: TeamProjectWire; mode: ProjectMode }) {
   const dispatch = useStoreDispatch();
   const bots = useStoreSelector((state) => state.bots);
+  const groups = useStoreSelector((state) => state.groups);
   const showThreads = useShowThreads();
   const choose = (next: ProjectMode) => {
     if (next === mode) return;
     if (next === "canvas") dispatch({ type: "showProject", projectId: project.id });
-    else openProject(dispatch, project, bots, showThreads);
+    else openProject(dispatch, project, { bots, groups }, showThreads);
   };
   return (
     <div role="group" aria-label={t("projectView.mode")} data-project-mode={mode} className="flex shrink-0 rounded-full bg-ink/[0.05] p-[3px]">
