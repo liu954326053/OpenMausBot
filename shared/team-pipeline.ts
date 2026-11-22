@@ -75,9 +75,10 @@ export interface TeamPipelineRestoreInput {
 
 /**
  * `GET /api/team-pipelines/projects/:id`: a project's pipeline, never stored. The project's lead leads it. A copy
- * has the stages of its source in the team's pipeline, and a line runs between two copies when one runs between
- * their sources; every other bot of the project, and every bot of a project not made from a team, is `other`
- * under the lead.
+ * has the stages of its source in the team's pipeline, and the lines follow from the copies' stages as a team's do,
+ * so they run between two copies where they run between their sources, and pass over a member the project has no
+ * copy of; a line the person drew or took away in the team is drawn or taken away between the copies. Every other
+ * bot of the project, and every bot of a project not made from a team, is `other` under the lead.
  */
 export interface ProjectPipelineWire {
   projectId: string;

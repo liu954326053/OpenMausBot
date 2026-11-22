@@ -21,8 +21,13 @@ export interface PipelinePlace {
 export interface JudgeTarget {
   section: string;
   chiefId: string;
+  /** Every member of the team in the app's order, the Chief included. */
   members: Array<{ id: string; name: string; title: string; description: string; soul: string }>;
-  /** The members to judge; the others are there for context. */
+  /**
+   * The members to judge; the others are there for context. A member is here while it has no stages, or since its
+   * name, title, description or soul changed after it was judged; never the Chief, and never a member the person set
+   * by hand. Until its stages are recorded it counts as `other`.
+   */
   pending: string[];
 }
 
@@ -46,8 +51,9 @@ export function installTeamFlows(flows: InstalledFlows): void {
   installed = flows;
 }
 
-/** `listener` runs after a flow may have changed: a line drawn or taken away, `team-flows.json` read again, or a member,
- * a Chief or a project's copy changed. Returns the unsubscribe. */
+/** `listener` runs after a pipeline may have changed: a line drawn or taken away, stages judged, a team set to be judged
+ * again or restored, `team-flows.json` read again, or a member, its name, title, description or soul, a Chief or a
+ * project's copy changed. Returns the unsubscribe. */
 export function onTeamFlowsChange(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -97,8 +103,10 @@ export function judgeTargets(): JudgeTarget[] {
   return installed.judgeTargets?.() ?? [];
 }
 
-/** Records the stages a judge gave members of the team. A member the person set by hand, or one that left, is left
- * as it is. Tells `onTeamFlowsChange` listeners when anything changed. */
+/** Records the stages a judge gave members of the team: the pipeline's stages once each and in its order, `other` for
+ * a member given none of them. A member the person set by hand, the Chief, or one that left, is left as it is. The
+ * stages count as judged from each member's name, title, description and soul as they are now, so a judge records
+ * only for a member whose words are still the ones it read. Tells `onTeamFlowsChange` listeners when anything changed. */
 export function setJudgedStages(section: string, stages: Readonly<Record<string, readonly FlowStage[]>>): void {
   installed.setJudged?.(section, stages);
 }
