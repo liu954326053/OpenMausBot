@@ -228,6 +228,14 @@ describe("what a node is in the pipeline", () => {
     expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "shot", metadata: { prompt: "Mei", role: "character" } }], withStages("character"))).code).toBe("not_allowed");
   });
 
+  it("lets a bot of the character stage add the image node a character's picture is generated in, and no other bot", () => {
+    const picture: CanvasOp = { type: "add_node", nodeType: "image", title: "Mei, front", metadata: { prompt: "Front view, white dress", settings: { aspect: "3:4" } } };
+    const result = applyCanvasOps(canvas(), [picture], withStages("character"));
+    expect(find(result.document, "new-1")).toMatchObject({ type: "image", createdBy: FACES, metadata: { prompt: "Front view, white dress", settings: { aspect: "3:4" } } });
+    expect(refused(() => applyCanvasOps(canvas(), [picture], withStages("storyboard", "post"))).code).toBe("not_allowed");
+    expect(refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "video" }], withStages("character"))).code).toBe("not_allowed");
+  });
+
   it.each(["script", "creation", "take", "final"] as const)("is never %s because a bot says so", (role) => {
     const refusal = refused(() => applyCanvasOps(canvas(), [{ type: "add_node", nodeType: "text", metadata: { role } }], withStages("script", "character", "storyboard", "post")));
     expect(refusal).toMatchObject({ code: "not_allowed", index: 0 });

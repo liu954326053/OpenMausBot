@@ -16,14 +16,14 @@ const MAX_STEPS = 10_000;
 /** Around the nodes of a group the server makes, as the app wraps a selection it groups. */
 export const GROUP_PADDING = 24;
 export const GROUP_TOP_PADDING = 52;
-/** A character's group: its profile and one picture beside it. */
-export const GROUP_WIDTH = CANVAS_NODE_SIZE.text.width + NODE_GAP + CANVAS_NODE_SIZE.image.width + 2 * GROUP_PADDING;
+/** A character's group: its profile and two pictures beside it. */
+export const CHARACTER_ROOM = CANVAS_NODE_SIZE.text.width + 2 * (NODE_GAP + CANVAS_NODE_SIZE.image.width) + 2 * GROUP_PADDING;
 /** What the bots of each stage make to their right: a character's group, a shot's row of three, else one node. */
 const ROOM: Record<FlowStage, number> = {
   lead: LANE_WIDTH,
   other: LANE_WIDTH,
   script: LANE_WIDTH,
-  character: GROUP_WIDTH,
+  character: CHARACTER_ROOM,
   storyboard: CANVAS_NODE_SIZE.shot.width + LANE_GAP + CANVAS_NODE_SIZE.config.width + LANE_GAP + CANVAS_NODE_SIZE.video.width,
   post: LANE_WIDTH,
 };

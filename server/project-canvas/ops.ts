@@ -346,7 +346,9 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
 
   ops.forEach((op, index) => {
     if (op.type === "add_node") {
-      if (actor.kind === "bot" && !BOT_ADDS.has(op.nodeType)) throw new CanvasOpRefusal("not_allowed", "you can add text and shot nodes; files you attach become nodes on their own", index);
+      if (actor.kind === "bot" && !BOT_ADDS.has(op.nodeType) && !(op.nodeType === "image" && context.stages?.includes("character"))) {
+        throw new CanvasOpRefusal("not_allowed", "you can add text and shot nodes, and in the character stage image nodes; files you attach become nodes on their own", index);
+      }
       if (actor.kind === "bot" && op.groupId) throw new CanvasOpRefusal("not_allowed", "grouping is the person's", index);
       if (op.id && (exists(op.id) || isBotNode(op.id))) throw new CanvasOpRefusal("invalid_op", `node ${op.id} is already there`, index, op.id);
       if (document.nodes.length >= CANVAS_MAX_NODES) throw new CanvasOpRefusal("limit", `a canvas holds at most ${CANVAS_MAX_NODES} nodes`, index);

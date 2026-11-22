@@ -4,7 +4,7 @@ import type { CanvasDocument, CanvasNode, CanvasNodeCreator } from "../../shared
 import type { FlowStage } from "../../shared/team-pipeline.ts";
 import type { CanvasFlow } from "./flow.ts";
 import type { CanvasFrame } from "./ops.ts";
-import { defaultBotFrames, GROUP_WIDTH, LANE_GAP, NODE_GAP, placeAfter, placeForActor } from "./placement.ts";
+import { defaultBotFrames, CHARACTER_ROOM, LANE_GAP, NODE_GAP, placeAfter, placeForActor } from "./placement.ts";
 
 const WRITER: CanvasNodeCreator = { kind: "bot", botId: "writer" };
 
@@ -36,7 +36,7 @@ describe("where bots sit when nobody placed them", () => {
     const room = (from: string, to: string) => at(frames, to).x - at(frames, from).x - 300 - 2 * LANE_GAP;
     expect(room("lead", "writer")).toBe(420);
     expect(room("writer", "faces")).toBe(420);
-    expect(room("faces", "boards")).toBe(GROUP_WIDTH);
+    expect(room("faces", "boards")).toBe(CHARACTER_ROOM);
     expect(room("boards", "editor")).toBe(340 + LANE_GAP + 340 + LANE_GAP + 420);
   });
 

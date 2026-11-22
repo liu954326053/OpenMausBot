@@ -32,7 +32,7 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
   },
   {
     name: "canvas_apply_ops",
-    description: "Change your project's canvas, in order, all or nothing. You add text and shot nodes; they land to the right of your node, connected from it and below what you made, unless you give a position. The server makes the pipeline's connections (pipeline: true) by who made a node and what it is, and you cannot delete them. In the character stage, add each character as a text node with metadata.role \"character\": the server puts it in a group of its own and sends it on to the storyboard bots, and a picture you connect from it joins the group. A shot you add in the storyboard stage gets a creation node to its right, yours to change: it holds the video settings, and the images you connect into the shot are its references too; deleting the shot deletes it. You change, connect from and delete only nodes you made. Files you attach become nodes on their own.",
+    description: "Change your project's canvas, in order, all or nothing. You add text and shot nodes; they land to the right of your node, connected from it and below what you made, unless you give a position. The server makes the pipeline's connections (pipeline: true) by who made a node and what it is, and you cannot delete them. In the character stage, add each character as a text node with metadata.role \"character\": the server puts it in a group of its own and sends it on to the storyboard bots. There you also add image nodes with a prompt: connect the character into one and it joins the group, and generating it draws the character from its profile. A shot you add in the storyboard stage gets a creation node to its right, yours to change: it holds the video settings, and the images you connect into the shot are its references too; deleting the shot deletes it. You change, connect from and delete only nodes you made. Files you attach become nodes on their own.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -48,7 +48,7 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
               type: { type: "string", enum: ["add_node", "update_node", "delete_node", "connect_nodes", "delete_connections"] },
               id: { type: "string", maxLength: 200, description: "update_node and delete_node: the node; delete_connections: the connection." },
               ids: { type: "array", items: { type: "string", maxLength: 200 }, description: "delete_node and delete_connections: several at once." },
-              nodeType: { type: "string", enum: ["text", "shot"], description: "add_node: a text node holds content; a shot holds the prompt its video is generated from." },
+              nodeType: { type: "string", enum: ["text", "shot", "image"], description: "add_node: a text node holds content; a shot holds the prompt its video is generated from; an image node, in the character stage only, the prompt a character's picture is generated from." },
               title: { type: "string", maxLength: CANVAS_TITLE_MAX_CHARS },
               position: { ...point, description: "add_node: where its top-left corner goes; left out, the server places it." },
               metadata: {
@@ -57,9 +57,9 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
                 description: "add_node: the node's fields. update_node: the fields to change; null removes one.",
                 properties: {
                   content: { type: "string", maxLength: CANVAS_CONTENT_MAX_CHARS, description: "A text node's text, in Markdown." },
-                  prompt: { type: "string", maxLength: CANVAS_PROMPT_MAX_CHARS, description: "A shot's prompt." },
+                  prompt: { type: "string", maxLength: CANVAS_PROMPT_MAX_CHARS, description: "A shot's or an image node's prompt." },
                   role: { type: "string", enum: ["character"], description: "add_node, in the character stage only: the text node is one character's profile." },
-                  settings: { type: "object", additionalProperties: true, description: "Video settings, such as model, resolution, aspect or seconds: given with a shot you add they are where its creation node starts; after that, change the creation node's." },
+                  settings: { type: "object", additionalProperties: true, description: "Generation settings. A shot's video settings, such as model, resolution, aspect or seconds, are where its creation node starts; after that, change the creation node's. An image node's are model, aspect, quality or count." },
                 },
               },
               patch: {
