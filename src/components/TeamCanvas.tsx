@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { ArrowRight, BookOpen, Brain, Crown, MessageCircle, Minus, Monitor, MoreHorizontal, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { api, openBot, useStore, type Bot } from "@/state/store";
 import { teamBotName, useTeamPeople } from "@/state/team-people";
@@ -23,8 +23,10 @@ import { openBotSettings } from "./bot-panel/panel-link";
 import { requestBotMenu } from "./bot-menu-request";
 import { TeamMapDepartmentItems, TeamMapNote, useProjectTeamNotes } from "./TeamMapDepartment";
 import { menuPlacement, useTeamMapReveal, type MenuPlacement } from "./team-map-reveal";
-import { TeamFlowTree } from "./team-flow/TeamFlowTree";
-import { useTeamFlowMap } from "@/state/team-flows";
+import { PipelineRejudgeItem, PipelineRejudgeToast } from "./team-pipeline/PipelineRejudge";
+import { TeamPipeline } from "./team-pipeline/TeamPipeline";
+import { columnMates, laneIndexAmong } from "@/lib/team-pipeline";
+import { useTeamPipelineMap } from "@/state/team-pipelines";
 
 type Gesture = {
   id: number;
@@ -38,7 +40,7 @@ const iconButton = "flex size-9 shrink-0 items-center justify-center rounded-lg 
 const menuButton = "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] text-ink-secondary hover:bg-control hover:text-ink";
 const MENU_GAP = 40;
 
-function BotCard({ bot, selected, moving, connected, tagged = false, sent, onComputer, onArrange }: {
+function BotCard({ bot, selected, moving, connected, tagged = false, sent, note, onComputer, onArrange }: {
   bot: Bot;
   selected: boolean;
   moving: boolean;
@@ -46,6 +48,8 @@ function BotCard({ bot, selected, moving, connected, tagged = false, sent, onCom
   tagged?: boolean;
   /** Set while a message just sent from the map acknowledges this card; a new value restarts it. */
   sent?: number;
+  /** A line under the bot's role: its place in the team's pipeline. */
+  note?: ReactNode;
   onComputer?: (bot: Bot) => void;
   onArrange?: (bot: Bot, delta: number) => void;
 }) {
@@ -81,6 +85,7 @@ function BotCard({ bot, selected, moving, connected, tagged = false, sent, onCom
           {bot.chiefOfStaff && <Crown size={12} className="shrink-0 text-warning" aria-label={chiefTitle(bot)} />}
           {botShowsUnread(bot) && <span data-card-unread="" role="img" aria-label={t("task.unread")} className="size-2 shrink-0 rounded-full bg-accent" />}</span>
         <span className="mt-1 block truncate text-[11px] text-ink-secondary">{botRoleLine(bot) || t("canvas.bot")}</span>
+        {note}
       </span>
     </button>
     <button type="button" data-card-actions={bot.id} aria-label={t("sidebar.bot.actions", { name: bot.name })} title={t("sidebar.bot.actions", { name: bot.name })} aria-haspopup="menu"
@@ -174,7 +179,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     // Rounded so a small window resize never reshuffles the teams.
     return { sizes, columns: bestColumns(sizes, { width: Math.round(viewportSize.width / 200) * 200, height: Math.round(viewportSize.height / 200) * 200 }) };
   }, [geometries, sections, viewportSize]);
-  const flowMap = useTeamFlowMap(sections, canManage, botOrders);
+  const flowMap = useTeamPipelineMap(sections, canManage, botOrders);
   const tiles = useMemo(() => layoutTeams(sections, positions, columnsFor ?? flowMap.sizes), [sections, positions, columnsFor, flowMap.sizes]);
   const current = useRef({ view, positions, tiles, selectedId: state.selectedId, settingsOpen: state.settingsOpen, bottomInset });
   current.current = { view, positions, tiles, selectedId: state.selectedId, settingsOpen: state.settingsOpen, bottomInset };
@@ -215,11 +220,20 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     }
     setAnnouncement(t("canvas.arrangedBot", { name: bot.name, team: section.name }));
   };
+  /** The cards a bot's card is ordered among: its column's where the team draws its pipeline, else all of its lane. */
+  const columnOf = (section: TeamMapSection<Bot>, bot: Bot) => {
+    const index = sections.indexOf(section);
+    const layout = geometries[index] ? null : flowMap.layouts[index];
+    return layout ? columnMates(layout, bot.id) : null;
+  };
   const arrangeBot = (bot: Bot, delta: number) => {
     const section = sections.find((item) => item.key === (bot.section?.trim() ?? ""));
     if (!section) return;
     const lane = orderBots(bot.chiefOfStaff ? section.chiefs : section.members, personalOrder(section.key));
-    saveBotOrder(section, lane, bot, lane.findIndex((item) => item.id === bot.id) + delta);
+    const column = columnOf(section, bot);
+    saveBotOrder(section, lane, bot, column
+      ? laneIndexAmong(lane.map((item) => item.id), column.filter((id) => id !== bot.id), bot.id, column.indexOf(bot.id) + delta)
+      : lane.findIndex((item) => item.id === bot.id) + delta);
   };
   const fit = useCallback(() => {
     const bounds = viewport.current?.getBoundingClientRect();
@@ -312,13 +326,16 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
     const section = sections.find((item) => item.key === (bot.section?.trim() ?? ""));
     if (!section) return null;
     const lane = orderBots(bot.chiefOfStaff ? section.chiefs : section.members, personalOrder(section.key));
-    const remaining = lane.filter((item) => item.id !== bot.id);
+    const column = columnOf(section, bot);
+    const remaining = lane.filter((item) => item.id !== bot.id && (!column || column.includes(item.id)));
     const cards = [...(viewport.current?.querySelectorAll<HTMLElement>("[data-bot-id]") ?? [])];
-    const index = remaining.findIndex((item) => {
+    const found = remaining.findIndex((item) => {
       const bounds = cards.find((card) => card.dataset.botId === item.id)?.closest("article")?.getBoundingClientRect();
       return bounds ? y < bounds.top + bounds.height / 2 : false;
     });
-    return { section, lane, remaining, index: index < 0 ? remaining.length : index };
+    const index = found < 0 ? remaining.length : found;
+    const laneIndex = column ? laneIndexAmong(lane.map((item) => item.id), remaining.map((item) => item.id), bot.id, index) : index;
+    return { section, lane, remaining, index, laneIndex };
   };
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     const active = gesture.current;
@@ -364,7 +381,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
       if (destination === null) return;
       if (destination === (active.bot.section?.trim() ?? "")) {
         const position = insertionAt(active.bot, event.clientY);
-        if (position) saveBotOrder(position.section, position.lane, active.bot, position.index);
+        if (position) saveBotOrder(position.section, position.lane, active.bot, position.laneIndex);
         return;
       }
       if (!canManage || !mayJoinOnMap(active.bot, destination)) return;
@@ -456,10 +473,10 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
         const hierarchy = section.chiefs.length > 0 && section.members.length > 0;
         const dropping = computerDropKey === section.key || (dragged && dropKey === section.key && (dragged.bot.section?.trim() ?? "") !== section.key);
         const computer = Object.hasOwn(teamComputers, section.key) ? teamComputers[section.key] : undefined;
-        const renderBot = (bot: Bot) => <div key={bot.id} className="relative">
+        const renderBot = (bot: Bot, note?: ReactNode) => <div key={bot.id} className="relative">
           {insertion?.botId === bot.id && <div className={cn("pointer-events-none absolute inset-x-1 h-0.5 rounded bg-accent", insertion.after ? "-bottom-[9px]" : "-top-[9px]")} />}
           <BotCard bot={bot} selected={state.selectedId === bot.id && state.settingsOpen} moving={dragged?.bot.id === bot.id || moving === bot.id}
-            connected={connectedBotIds.includes(bot.id)} tagged={taggedBotIds.includes(bot.id) || revealed === bot.id} sent={sent?.botIds.includes(bot.id) ? sent.key : undefined} onComputer={onComputer} onArrange={layoutLoaded ? arrangeBot : undefined} />
+            connected={connectedBotIds.includes(bot.id)} tagged={taggedBotIds.includes(bot.id) || revealed === bot.id} sent={sent?.botIds.includes(bot.id) ? sent.key : undefined} note={note} onComputer={onComputer} onArrange={layoutLoaded ? arrangeBot : undefined} />
         </div>;
         return <section key={section.key} data-team-key={section.key} aria-label={t("canvas.teamRegion", { name: section.name })}
           className={cn("absolute rounded-2xl border bg-panel/90 shadow-sm has-[details[open]]:z-20 data-[computer-dropping=true]:border-accent data-[computer-dropping=true]:ring-2 data-[computer-dropping=true]:ring-accent/25", dropping || (section.key && revealed === section.key) ? "border-accent ring-2 ring-accent/25" : "border-hairline/50")}
@@ -501,6 +518,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
                 <button className={menuButton} onClick={() => onInstructions(section.key, section.name)} aria-label={t("team.instructionsEdit", { name: section.name })}><BookOpen size={14} />{t("team.instructions")}</button>
                 {onMemory && <button className={menuButton} onClick={() => onMemory(section.key, section.name)} aria-label={t("team.memoryFor", { name: section.name })}><Brain size={14} />{t("team.memory")}</button>}
                 {section.key && <TeamMapDepartmentItems department={section.key} itemClass={menuButton} />}
+                <PipelineRejudgeItem map={flowMap} section={section.key} itemClass={menuButton} onProblem={setAnnouncement} />
                 {section.key && <button className={menuButton} onClick={() => onEditTeam(section.key, true)} aria-label={t("team.renameAria", { name: section.name })}><Pencil size={14} />{t("team.rename")}</button>}
                 {section.key && <button className={cn(menuButton, "hover:text-danger")} onClick={() => onDeleteTeam(section.key)} aria-label={t("team.deleteAria", { name: section.name })}><Trash2 size={14} />{t("team.delete")}</button>}
               </div>
@@ -530,7 +548,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
                 state={shownState(computer)} activity={currentActivity(users.find((bot) => bot.busy), state.instances)}
                 onOpen={onOpenComputer ? () => onOpenComputer(computer) : undefined} />;
             })}
-          </> : flowMap.layouts[index] ? <TeamFlowTree section={section} flow={flowMap.flowOf(section.key)!} layout={flowMap.layouts[index]} canDraw={canManage} readable={flowMap.readable} renderBot={renderBot} onLine={flowMap.setLine} />
+          </> : flowMap.layouts[index] ? <TeamPipeline section={section} pipeline={flowMap.pipelineOf(section.key)!} layout={flowMap.layouts[index]} canDraw={canManage} readable={flowMap.readable} renderBot={renderBot} onLine={flowMap.setLine} />
           : <div className="flex items-center px-5 pb-5">
             {section.chiefs.length > 0 && <div className="flex flex-col gap-4">{orderBots(section.chiefs, personalOrder(section.key)).map(renderBot)}</div>}
             {hierarchy && <div className="flex w-10 shrink-0 justify-center text-ink-secondary/35" aria-hidden="true"><ArrowRight size={22} strokeWidth={1} /></div>}
@@ -540,6 +558,7 @@ export function TeamCanvas({ sections, canManage, onMove, onInstructions, onMemo
         </section>;
       })}
     </div>
+    <PipelineRejudgeToast map={flowMap} sections={sections} />
     {dragged && <div className="pointer-events-none absolute z-40 rounded-xl border border-accent/40 bg-card px-4 py-3 text-[13px] shadow-lg" style={{ left: dragged.point.x + 16, top: dragged.point.y + 16 }}>
       <span className="flex items-center gap-2"><BotAvatar bot={dragged.bot} size={24} animated={false} />{dragged.bot.name}</span>
       {dropHint && <p className="mt-1 text-[10px] text-ink-secondary">{dropHint}</p>}

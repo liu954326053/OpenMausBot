@@ -87,7 +87,7 @@ beforeEach(async () => {
     }
     if (path.startsWith("/api/bots?")) return json({ bots: [...saved.values()], groups: [] });
     if (path === "/api/team-map") return json({ collaborations: [], queued: [], running: [] });
-    if (path === "/api/team-flows") return json({ teams: [] });
+    if (path === "/api/team-pipelines") return json({ readable: true, teams: [] });
     if (path === "/api/instances") return json({ instances: [] });
     if (path.startsWith("/api/routines")) return json({ routines: [], runs: [] });
     if (path.startsWith("/api/webhooks")) return json({ webhooks: [], attempts: [] });
