@@ -12,6 +12,7 @@ vi.mock("@/state/store-select", () => ({
   useStoreDispatch: () => fixture.dispatch,
 }));
 vi.mock("@/lib/thread-preferences", () => ({ useShowThreads: () => false }));
+vi.mock("@/lib/default-bot", async (original) => ({ ...(await original<typeof import("@/lib/default-bot")>()), useViewerEmail: () => null }));
 vi.mock("@/components/ChatView", async () => {
   const { createElement: element } = await import("react");
   return { ChatView: ({ bot }: { bot: Bot }) => element("main", { "data-chat-view": bot.id }) };
@@ -79,11 +80,19 @@ describe("a conversation in a project", () => {
     }
   });
 
-  it("leaves a conversation outside the projects as it is, and one of an archived project", async () => {
+  it("leaves a conversation outside the projects as it is, and one opened once its project was archived", async () => {
     await draw(main);
     expect([q("[data-project-chat]"), q("[data-chat-view]")?.dataset.chatView]).toEqual([null, "main"]);
     setTeamProjects({ root: "/dramas", projects: [{ ...bride, archivedAt: 5 }] });
     await draw(lead);
     expect([q("[data-project-chat]"), q("[data-chat-view]")?.dataset.chatView]).toEqual([null, "lead"]);
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("gives way to MagicBot when the project is archived while its conversation is open", async () => {
+    await draw(writer);
+    expect(fixture.dispatch).not.toHaveBeenCalled();
+    await act(async () => setTeamProjects({ root: "/dramas", projects: [{ ...bride, archivedAt: 5 }] }));
+    expect(fixture.dispatch.mock.calls).toEqual([[{ type: "select", id: "main" }]]);
   });
 });
