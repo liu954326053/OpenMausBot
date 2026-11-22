@@ -17,7 +17,6 @@ export interface TeamJudgeWays {
 
 export interface TeamJudgement {
   way: JudgeWay;
-  /** Every member that was judged → its stages. */
   stages: Record<string, FlowStage[]>;
 }
 

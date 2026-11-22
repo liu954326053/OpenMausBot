@@ -9,7 +9,7 @@ import { startTeamJudgeScheduler } from "./scheduler.ts";
 export interface TeamJudgeHostDeps {
   decider: Pick<Decider, "ask">;
   config(): AppConfig;
-  /** The main bot's one-off text call (side-jobs.ts, "team-judge"); null while it has none. */
+  /** The main bot's one-off text call; null while it has none. */
   mainBotText(): JudgeModel | null;
   log?(line: string): void;
 }

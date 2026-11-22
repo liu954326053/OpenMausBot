@@ -1,5 +1,3 @@
-// When teams are judged: in the background, after a team has stopped changing, one judgement at a time, each bounded,
-// and only so many that ask a model in a minute.
 import type { FlowStage } from "../../shared/team-pipeline.ts";
 import type { JudgeTarget } from "../team-flow/flows.ts";
 import { judgeable, type TeamJudge, type TeamJudgement } from "./judge.ts";
@@ -20,11 +18,9 @@ export const TEAM_JUDGE_MODEL_LIMIT = { count: 12, perMs: 60_000 } as const;
 type Timer = { cancel(): void };
 
 export interface TeamJudgeSchedulerDeps {
-  /** The teams with members waiting for a judge. */
   targets(): JudgeTarget[];
-  /** Records the stages a judgement gave members of a team. */
   record(section: string, stages: Readonly<Record<string, readonly FlowStage[]>>): void;
-  /** `listener` runs after a team may have changed; returns the unsubscribe. */
+  /** Returns the unsubscribe. */
   onChange(listener: () => void): () => void;
   judge: TeamJudge;
   log?(line: string): void;

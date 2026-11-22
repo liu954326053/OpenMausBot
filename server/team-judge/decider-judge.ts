@@ -1,6 +1,6 @@
 // A member's stages, asked of the decision model: one yes/no per stage, so a member can have several. It goes as a
-// bot's own question so Cloud's relay takes it as it is (decider/relay.ts); only the members' names, titles,
-// descriptions and souls reach the model, cleaned.
+// bot's own question so Cloud's relay takes it as it is; only the members' names, titles, descriptions and souls reach
+// the model, cleaned.
 import { PIPELINE_STAGES, type FlowStage, type PipelineStage } from "../../shared/team-pipeline.ts";
 import type { AppConfig } from "../config.ts";
 import { deciderAccount, deciderEnabled, type Decider } from "../decider/index.ts";
