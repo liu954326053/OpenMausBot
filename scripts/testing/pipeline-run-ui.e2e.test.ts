@@ -185,7 +185,9 @@ type Box = { x: number; y: number; w: number; h: number };
       expect((await run())?.endedAt).toEqual(expect.any(Number));
       await settled();
 
-      const lines = (await api("GET", `/api/threads/${copies.lead.threadId}/messages`)).messages as Line[];
+      const storedRooms = JSON.parse(readFileSync(join(fixture.dataDir, "groups.json"), "utf8")) as Array<{ id: string; threadId: string }> | { groups: Array<{ id: string; threadId: string }> };
+      const roomThread = (Array.isArray(storedRooms) ? storedRooms : storedRooms.groups).find((one) => one.id === project.roomId)!.threadId;
+      const lines = (await api("GET", `/api/threads/${roomThread}/messages?limit=500`)).messages as Line[];
       const notes = lines.filter((line) => line.kind === "activity" && line.tool?.name.startsWith("流水线")).map((line) => line.tool!.name);
       expect(notes).toEqual(expect.arrayContaining([
         "流水线：角色设计交给了素衣。",
@@ -194,7 +196,7 @@ type Box = { x: number; y: number; w: number; h: number };
         "流水线：跳过 1 个没有视频的镜头，继续往下。",
         "流水线：后期已完成。",
       ]));
-      expect(lines.some((line) => line.role === "user" && line.text === `“${PROJECT}”的流水线：这次运行已完成。请向用户汇报做了什么。`)).toBe(true);
+      expect(lines.some((line) => line.role === "user" && line.text === `@${copies.lead.name} “${PROJECT}”的流水线：这次运行已完成。请向用户汇报做了什么。`)).toBe(true);
       evidence.ended = { steps: await steps(), run: await run(), notes };
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {

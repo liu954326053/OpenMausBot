@@ -497,6 +497,31 @@ describe("a pipeline run in the project's group chat", () => {
     expect(world.statuses()?.slice(0, 2)).toEqual(["script:done", "character:working"]);
   });
 
+  it("fails the stage whose task waits in the group chat when a turn there stops and names no bot", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    await world.hear(ROOM, { role: "bot", kind: "activity", tool: { name: "error: the engine stopped answering", ok: false } } as Omit<Message, "id" | "at">);
+    expect(world.statuses()?.[1]).toBe("character:failed");
+    expect(world.toLeadInRoom()).toEqual([serverLine(undefined, "server.pipelineRun.lead.stageFailed", { project: "Bride", stage: "character design", bots: "Jade" })]);
+  });
+
+  it("fails the stage of a bot whose turn in the group chat closed with no reply, as a stopped one does, unless it waits on the person", async () => {
+    const world = setup({ room: ALL });
+    await world.roomHandOff(["writer"]);
+    await world.roomReply("writer", "The script.");
+    const summary = (botId: string) => world.hear(ROOM, { role: "bot", kind: "digest", text: "[digest]", from: { botId } } as Omit<Message, "id" | "at">);
+    await summary("writer");
+    await summary("lead");
+    expect(world.statuses()?.slice(0, 2)).toEqual(["script:done", "character:working"]);
+    world.waiting.add(ROOM);
+    await summary("designer");
+    expect(world.statuses()?.[1]).toBe("character:working");
+    world.waiting.delete(ROOM);
+    await summary("designer");
+    expect(world.statuses()?.[1]).toBe("character:failed");
+  });
+
   it("after a restart, ends a task at its own bot's turn that ended in the group chat while the server was down", async () => {
     const world = setup({ room: ALL });
     await world.roomHandOff(["writer"]);

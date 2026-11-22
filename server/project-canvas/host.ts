@@ -35,6 +35,7 @@ export interface ProjectCanvasHostDeps {
   send(auth: RequestAuth, message: { botId: string; threadId: string; text: string }): Promise<DirectSendReceipt>;
   sendToRoom: ProjectCanvasServiceDeps["sendToRoom"];
   roomSpeaker(threadId: string): string | undefined;
+  roomWorking(threadId: string): boolean;
   /** A project's pipeline; by default the one its team's pipeline gives its copies. */
   pipelineOf?(projectId: string, leadBotId: string): ProjectPipeline;
   generation: ProjectGenerationApi;
@@ -72,6 +73,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     send: deps.send,
     sendToRoom: deps.sendToRoom,
     roomSpeaker: deps.roomSpeaker,
+    roomWorking: deps.roomWorking,
     pipelineOf: deps.pipelineOf ?? projectPipeline,
     generation: deps.generation,
     openCards: openCardRows,

@@ -72,6 +72,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
   const groups: Record<string, GroupRecord> = {};
   const roomSent: Array<Parameters<ProjectCanvasServiceDeps["sendToRoom"]>[1]> = [];
   const speakers = new Map<string, string>();
+  const roomsWorking = new Set<string>();
   const service = new ProjectCanvasService({
     store: {
       bot: (id) => (bots[id] ?? null) as BotRecord | null,
@@ -96,6 +97,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
       return { ok: true, threadId: message.threadId, message: { id: `room-sent-${roomSent.length}`, at: 10 + roomSent.length, role: "user", kind: "text", text: message.to[0]!.text } };
     },
     roomSpeaker: (threadId) => speakers.get(threadId),
+    roomWorking: (threadId) => roomsWorking.has(threadId),
     pipelineOf: () => pipeline,
     generation: generation.api,
     openCards: () => [],
@@ -107,7 +109,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
     log: () => undefined,
     ...patch,
   });
-  return { service, project, events, sent, threads, generation, pipeline, groups, roomSent, speakers };
+  return { service, project, events, sent, threads, generation, pipeline, groups, roomSent, speakers, roomsWorking };
 }
 
 const opsOf = (...ops: unknown[]): CanvasOp[] => parseCanvasOps(ops);
@@ -297,13 +299,25 @@ describe("a task in the project's group chat", () => {
   });
 
   it("fills the text node with the reply of the bot it was for, and not with another member's", async () => {
-    const { service, project } = inRoom(["lead", "writer"]);
+    const { service, project, roomsWorking } = inRoom(["lead", "writer"]);
     const [nodeId] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Logline" })).nodeIds;
+    roomsWorking.add(ROOM);
     await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: nodeId });
+    expect(service.snapshot("p1", auth).bots.writer!.writingInto).toEqual([nodeId]);
     service.taskLine(ROOM, said("lead", "lead-line", 12, "I will let the writer answer."));
     expect(nodeOf(service, nodeId!)?.metadata?.content).toBeUndefined();
     service.taskLine(ROOM, said("writer", "writer-line", 13, "A bride takes her sister's place."));
     expect(nodeOf(service, nodeId!)?.metadata?.content).toBe("A bride takes her sister's place.");
+  });
+
+  it("shows a task as written while the group chat works on it, and no more once it stopped working", async () => {
+    const { service, project, roomsWorking } = inRoom(["lead", "writer"]);
+    const [nodeId] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "text", title: "Logline" })).nodeIds;
+    roomsWorking.add(ROOM);
+    await service.task("p1", auth, { botId: "writer", text: "Write the logline", targetNodeId: nodeId });
+    expect(service.snapshot("p1", auth).bots.writer!.writingInto).toEqual([nodeId]);
+    roomsWorking.delete(ROOM);
+    expect(service.snapshot("p1", auth).bots.writer!.writingInto).toBeUndefined();
   });
 
   it("shows on the canvas what each member says and does in the group chat", () => {

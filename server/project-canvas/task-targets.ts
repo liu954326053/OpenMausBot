@@ -38,6 +38,12 @@ const isTurnEnd = (message: Message) =>
 export const isUnfinishedTurn = (message: Message) => message.kind === "activity" && message.tool !== undefined && message.tool.partial !== true
   && (failedTurnCause(message.tool.name) !== null || isStoppedTurnName(message.tool.name));
 
+/** The member whose turn in a group chat this summary closes. It comes after the turn's settled reply, and is all a
+ * stopped turn leaves there. */
+export function roomTurnClosedBy(message: Message): string | null {
+  return message.kind === "digest" && message.from?.botId ? message.from.botId : null;
+}
+
 /** A reply as a text node's text. Security: redacted before it is cut, so a cut never leaves part of a key
  * unrecognised. */
 export function replyText(reply: string): string {
@@ -64,7 +70,8 @@ export class TaskTargets {
   /** Hears a new or changed line of a conversation, and answers the task whose turn it ends. A conversation runs one
    * turn at a time, so a turn ending there, however it ends, ends every task whose message came before it. So does a
    * queued message joining it: the queue lets messages in only once the bot is free, and they start the next turn
-   * together. Those tasks get no reply. In a group chat the same holds for each member, from the lines it says. */
+   * together. Those tasks get no reply. In a group chat a turn's end ends only the tasks of the bot it names; a queued
+   * line joins it only once every turn there ended. */
   heard(threadId: string, message: Message): SettledTask | null {
     if (message.role === "user" && message.queueId) {
       for (const one of this.targets) {
@@ -74,7 +81,7 @@ export class TaskTargets {
       return null;
     }
     const speaker = message.from?.botId;
-    if (isUnfinishedTurn(message)) {
+    if (isUnfinishedTurn(message) || roomTurnClosedBy(message)) {
       this.endBefore(threadId, message.at, { speaker });
       return null;
     }
@@ -90,9 +97,9 @@ export class TaskTargets {
   }
 
   /** Ends the tasks of a conversation whose messages joined it by `at`, but the task of the message `kept`, and in a group
-   * chat only those of the bot that spoke. */
+   * chat only those of the bot that spoke, when the line names it. */
   private endBefore(threadId: string, at: number, { kept, speaker }: { kept?: string; speaker?: string }): void {
     this.targets = this.targets.filter((one) => one.threadId !== threadId || one.requestAt === undefined || one.requestAt > at || one.requestId === kept
-      || (one.inRoom === true && one.botId !== speaker));
+      || (one.inRoom === true && speaker !== undefined && one.botId !== speaker));
   }
 }

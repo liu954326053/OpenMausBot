@@ -289,7 +289,7 @@ describe("the project canvas on the app's server", () => {
       ] } },
     );
     expect(await backend.readExchange("p1", "writer")).toEqual([
-      { id: "r1", role: "person", text: "@Ink write the opening", at: 3 },
+      { id: "r1", role: "person", text: "write the opening", at: 3 },
       { id: "r4", role: "bot", text: "The bride runs.", at: 6 },
     ]);
     expect(sent.map((one) => one.path)).toEqual(["/api/threads/t-main/messages?limit=40", "/api/threads/room-thread/messages?limit=120"]);
@@ -329,5 +329,22 @@ describe("the project canvas on the app's server", () => {
       { type: "interrupt", botId: "idle" },
     ]);
     expect(sent).toEqual([]);
+  });
+
+  it("stops the turn the bot is taking in the project's group chat, and leaves the other members' turns", async () => {
+    setTeamProjects({ root: "/dramas", projects: [{
+      id: "p1", name: "p1", folder: "/dramas/p1", section: "p1", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer", "editor"], follows: {}, roomId: "room",
+    }] });
+    const room = { id: "room", threadId: "room-thread", memberIds: ["lead", "writer", "editor"], busyBotId: "writer", tasks: [{ threadId: "room-thread", busyBotId: "writer" }, { threadId: "room-side", busyBotId: "editor" }] } as unknown as Group;
+    const { backend, dispatch } = backendWith([bot({ id: "writer" }), bot({ id: "editor" }), bot({ id: "lead" })], [room]);
+    await backend.stopBot("p1", "writer");
+    await backend.stopBot("p1", "editor");
+    await backend.stopBot("p1", "lead");
+    expect(dispatch.mock.calls.map(([action]) => action)).toEqual([
+      { type: "interruptGroup", groupId: "room", threadId: "room-thread" },
+      { type: "interruptGroup", groupId: "room", threadId: "room-side" },
+      { type: "interrupt", botId: "lead" },
+    ]);
+    setTeamProjects(null);
   });
 });

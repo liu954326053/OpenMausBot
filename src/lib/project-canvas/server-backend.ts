@@ -78,9 +78,14 @@ function exchangeOf(messages: readonly Message[]): CanvasExchangeMessage[] {
   return lastAsk < 0 ? said.slice(-1) : said.slice(lastAsk);
 }
 
-/** A bot's part of a group chat: what it said, and what the person said to it by name. */
+/** A bot's part of a group chat: what it said, and what the person said to it by name, shown without that name. */
 function roomExchange(messages: readonly Message[], bot: Pick<Bot, "id" | "name">): Message[] {
-  return messages.filter((message) => message.from?.botId === bot.id || (message.role === "user" && Boolean(message.text?.includes(`@${bot.name}`))));
+  const addressed = `@${bot.name} `;
+  return messages.flatMap((message) => {
+    if (message.from?.botId === bot.id) return [message];
+    if (message.role !== "user" || !message.text?.includes(`@${bot.name}`)) return [];
+    return [message.text.startsWith(addressed) ? { ...message, text: message.text.slice(addressed.length) } : message];
+  });
 }
 
 const roomOfThread = (groups: readonly Group[], threadId: string) =>
@@ -155,9 +160,13 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
 
     sendTask: (projectId, task) => canvasCall<CanvasTaskResponse>(`${canvasPath(projectId)}/tasks`, { method: "POST", body: JSON.stringify(task) }),
 
-    async stopBot(_projectId, botId) {
+    async stopBot(projectId, botId) {
+      const room = roomWith(projectId, botId, store.state().groups);
+      const speaking = room ? [room.busyBotId === botId ? room.threadId : null, ...(room.tasks ?? []).map((task) => (task.busyBotId === botId ? task.threadId : null))] : [];
+      const inRoom = [...new Set(speaking.filter((threadId): threadId is string => threadId !== null))];
       const busy = (botOf(botId)?.tasks ?? []).filter((task) => task.busy).map((task) => task.threadId);
-      if (!busy.length) store.dispatch({ type: "interrupt", botId });
+      for (const threadId of inRoom) store.dispatch({ type: "interruptGroup", groupId: room!.id, threadId });
+      if (!busy.length && !inRoom.length) store.dispatch({ type: "interrupt", botId });
       for (const threadId of busy) store.dispatch({ type: "interrupt", botId, threadId });
     },
 

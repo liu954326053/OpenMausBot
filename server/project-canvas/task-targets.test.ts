@@ -22,21 +22,30 @@ describe("a reply as a text node's text", () => {
 });
 
 describe("the text nodes replies go into", () => {
-  it("in a group chat end only at the turns of the bot each task is for", () => {
+  it("in a group chat end at the turns of the bot each task is for, or at a turn's end that names no bot", () => {
     const targets = new TaskTargets();
     const room = { projectId: "p1", threadId: "room", title: "Write the logline", inRoom: true as const };
     const said = (botId: string, at: number, patch: Partial<Message> = {}): Message =>
       ({ id: `${botId}-${at}`, at, role: "bot", kind: "text", text: `${botId} at ${at}`, turnTerminal: true, turnSucceeded: true, from: { botId, name: botId, color: "blue" }, ...patch }) as Message;
+    const failed = (at: number, botId?: string): Message =>
+      ({ id: `failed-${at}`, at, role: "bot", kind: "activity", tool: failedTurnTool("The engine stopped answering."), ...(botId ? { from: { botId, name: botId, color: "blue" } } : {}) }) as Message;
     const writer = { ...room, botId: "writer", nodeId: "n1", requestId: "m1", requestAt: 1 };
     const painter = { ...room, botId: "painter", nodeId: "n2", queueId: "q1" };
     targets.add(writer);
     targets.add(painter);
     expect(targets.heard("room", said("lead", 2))).toBeNull();
-    expect(targets.heard("room", { id: "m3", at: 3, role: "user", kind: "text", text: "@painter go", queueId: "q1" })).toBeNull();
-    expect(targets.of("p1")).toEqual([writer, { ...painter, requestId: "m3", requestAt: 3 }]);
-    expect(targets.heard("room", { ...said("painter", 4), kind: "activity", text: undefined, turnTerminal: undefined, turnSucceeded: undefined, tool: failedTurnTool("The engine stopped answering.") })).toBeNull();
-    expect(targets.of("p1")).toEqual([writer]);
-    expect(targets.heard("room", said("writer", 5))).toEqual({ target: writer, reply: "writer at 5" });
+    expect(targets.heard("room", failed(3, "painter"))).toBeNull();
+    expect(targets.of("p1")).toEqual([writer, painter]);
+    expect(targets.heard("room", said("writer", 4))).toEqual({ target: writer, reply: "writer at 4" });
+    expect(targets.heard("room", { id: "m5", at: 5, role: "user", kind: "text", text: "@painter go", queueId: "q1" })).toBeNull();
+    expect(targets.of("p1")).toEqual([{ ...painter, requestId: "m5", requestAt: 5 }]);
+    const summary = (at: number): Message =>
+      ({ id: `digest-${at}`, at, role: "bot", kind: "digest", text: "[digest]", from: { botId: "painter", name: "painter", color: "blue" } }) as Message;
+    expect(targets.heard("room", summary(6))).toBeNull();
+    expect(targets.of("p1")).toEqual([]);
+    const lead = { ...room, botId: "lead", nodeId: "n3", requestId: "m8", requestAt: 8 };
+    targets.add(lead);
+    expect(targets.heard("room", failed(9))).toBeNull();
     expect(targets.of("p1")).toEqual([]);
   });
 

@@ -7,7 +7,7 @@ import { intlLocale } from "../language.ts";
 import type { CanvasFlow } from "../project-canvas/flow.ts";
 import type { CanvasPipelineEvent, PipelineShot } from "../project-canvas/pipeline-api.ts";
 import { CanvasRefusal, readOnlyRefusal } from "../project-canvas/service.ts";
-import { replyText } from "../project-canvas/task-targets.ts";
+import { replyText, roomTurnClosedBy } from "../project-canvas/task-targets.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import type { Message, Store } from "../store.ts";
 import type { ProjectRoom } from "../team-projects/project-rooms.ts";
@@ -136,7 +136,7 @@ export class PipelineRuns {
 
   /** A line of a conversation, new or changed. */
   heard(threadId: string, message: Message): void {
-    const relevant = handOffOf(message) || handBackOf(message) || (message.role === "user" && message.queueId) || turnEndOf(message);
+    const relevant = handOffOf(message) || handBackOf(message) || (message.role === "user" && message.queueId) || turnEndOf(message) || roomTurnClosedBy(message);
     if (!relevant) return;
     const projectId = this.deps.store.botByThread(threadId)?.teamProject?.id ?? this.deps.projectOfRoom(threadId);
     if (!projectId) return;
@@ -272,13 +272,19 @@ export class PipelineRuns {
       this.save(projectId, run);
       return;
     }
-    const end = turnEndOf(message);
-    const speaker = owner?.id ?? message.from?.botId;
-    if (!end || !speaker) return;
-    const found = this.taskOf(run, (task, stage) => task.threadId === threadId && task.at !== undefined && task.at <= message.at
-      && (owner ? task.via === "relay" : task.botId === speaker)
-      && (!task.outcome || (end.ok && task.outcome === "failed" && stage.status === "failed")));
-    if (!found || (end.ok && this.deps.waitingOnPerson(speaker, threadId, found.task.at!))) return;
+    const closedBy = owner ? null : roomTurnClosedBy(message);
+    const end: TurnEnd | null = closedBy ? { ok: false } : turnEndOf(message);
+    const speaker = owner?.id ?? closedBy ?? message.from?.botId;
+    if (!end || (!speaker && end.ok)) return;
+    const waiting = (task: RunTask, stage: RunStage) => task.threadId === threadId && task.at !== undefined && task.at <= message.at
+      && (owner ? task.via === "relay" : speaker === undefined || task.botId === speaker)
+      && (!task.outcome || (end.ok && task.outcome === "failed" && stage.status === "failed"));
+    if (!speaker) {
+      for (const { stage, task } of this.tasksOf(run, waiting)) await this.ended(project, run, stage, task, end);
+      return;
+    }
+    const found = this.taskOf(run, waiting);
+    if (!found || ((end.ok || closedBy) && this.deps.waitingOnPerson(speaker, threadId, found.task.at!))) return;
     await this.ended(project, run, found.stage, found.task, end);
   }
 
@@ -338,7 +344,7 @@ export class PipelineRuns {
     const path = this.deps.store.activePath(task.threadId);
     for (const message of path) {
       if (message.at < task.at || (inRoom && message.from?.botId !== task.botId)) continue;
-      const end = turnEndOf(message);
+      const end: TurnEnd | null = inRoom && roomTurnClosedBy(message) ? { ok: false } : turnEndOf(message);
       if (end && !(end.ok && this.deps.waitingOnPerson(task.botId, task.threadId, task.at))) return end;
     }
     return null;

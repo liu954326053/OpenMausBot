@@ -62,6 +62,7 @@ function setup(pipeline: ProjectPipeline = structuredClone(DRAMA)) {
     send: async () => { throw new Error("no task is sent here"); },
     sendToRoom: () => { throw new Error("no task is sent here"); },
     roomSpeaker: () => undefined,
+    roomWorking: () => false,
     pipelineOf: () => current.pipeline,
     generation: {
       start: async (projectId, input, { requester }) => {

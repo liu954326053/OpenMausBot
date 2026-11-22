@@ -42,7 +42,7 @@ import { placeAfter, placeForActor } from "./placement.ts";
 import { taskMessage, taskReferences } from "./references.ts";
 import { botFrames, buildSnapshot } from "./snapshot.ts";
 import { shownSoFar } from "./shown-so-far.ts";
-import { replyText, TaskTargets, type TaskTarget } from "./task-targets.ts";
+import { replyText, roomTurnClosedBy, TaskTargets, type TaskTarget } from "./task-targets.ts";
 
 /** A request the canvas does not carry out, and what it is answered with. */
 export class CanvasRefusal extends Error {
@@ -100,6 +100,8 @@ export interface ProjectCanvasServiceDeps {
   sendToRoom(auth: RequestAuth, message: Pick<RoomMessage, "groupId" | "threadId" | "to">): DirectSendReceipt;
   /** The bot speaking in a group chat's conversation now. */
   roomSpeaker(threadId: string): string | undefined;
+  /** A group chat's conversation has turns running or about to run. */
+  roomWorking(threadId: string): boolean;
   /** A project's pipeline: its bots' stages and the lines between them. */
   pipelineOf(projectId: string, leadBotId: string): ProjectPipeline;
   generation: Pick<ProjectGenerationApi, "start" | "job">;
@@ -355,7 +357,7 @@ export class ProjectCanvasService {
   /** The tasks of a project its bots are on or have queued, each written in a text node still among `nodes`. */
   private writing(projectId: string, nodes: readonly CanvasNode[]): TaskTarget[] {
     const present = new Set(nodes.map((node) => node.id));
-    const pending = (target: TaskTarget) => (target.requestId === undefined
+    const pending = (target: TaskTarget) => (target.inRoom ? this.deps.roomWorking(target.threadId) : target.requestId === undefined
       ? target.queueId !== undefined && this.deps.stillQueued(target.botId, target.threadId, target.queueId)
       : this.deps.threadBusy(target.botId, target.threadId));
     return this.targets.of(projectId).filter((target) => present.has(target.nodeId) && pending(target));
@@ -521,6 +523,8 @@ export class ProjectCanvasService {
    * as the task was sent and still has none, and otherwise becomes the bot's new text node to its right, connected
    * from it: the node the task was given when it was sent, or one placed now. */
   taskLine(threadId: string, message: Message): void {
+    const closedBy = roomTurnClosedBy(message);
+    if (closedBy && this.deps.openCards().some((row) => row.threadId === threadId && row.fromBotId === closedBy)) return;
     const settled = this.targets.heard(threadId, message);
     if (!settled?.reply) return;
     const { projectId, botId, nodeId, title, beside } = settled.target;
