@@ -44,7 +44,7 @@ export function NotNowButton({ onClick, label = t("notice.notNow") }: { onClick:
   return <button type="button" className="py-2 text-[12px] text-ink-secondary hover:text-ink" onClick={onClick}>{label}</button>;
 }
 
-export const TOAST_CLEAR_OF_COMPOSER = "fixed bottom-4 left-[calc(var(--rail-beside,0px)_+_1rem)] w-[300px] max-w-[calc(100vw_-_var(--rail-beside,0px)_-_32px)]";
+export const TOAST_CLEAR_OF_COMPOSER = "fixed bottom-[calc(var(--sidebar-foot,0px)_+_1rem)] left-[calc(var(--rail-beside,0px)_+_1rem)] w-[300px] max-w-[calc(100vw_-_var(--rail-beside,0px)_-_32px)]";
 
 export function NoticeToast({ text, onDone }: { text: string; onDone: () => void }) {
   useEffect(() => {

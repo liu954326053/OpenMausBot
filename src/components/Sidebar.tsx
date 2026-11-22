@@ -42,6 +42,8 @@ import { SidebarPhoneBar } from "./SidebarPhoneBar";
 import { PhoneHero } from "./SidebarPhoneHero";
 import { SidebarProfileMenu } from "./SidebarProfileMenu";
 import { PHONE_LAYOUT, useMediaQuery } from "@/lib/use-media-query";
+import { usePublishedSidebarFoot } from "@/lib/sidebar-foot";
+import { TOAST_CLEAR_OF_COMPOSER } from "./NoticeCard";
 import { GlassBar, GlassScrollFrame, GlassScroller } from "./GlassScrollFrame";
 import { DesktopWorkspaceSwitcher, endCloudHowTo } from "./DesktopWorkspaceSwitcher"; import { PlaceTint } from "./PlaceTint"; import { ChromeRailToggle } from "./ChromeRailToggle";
 import { useCloudOwner } from "./CloudOwner"; import { OtherPlaceBots, OwnBotHomeMark } from "./OtherPlaceBots"; import { NewBotOtherPlaceItem, useNewBotHereLabel } from "./NewBotPlaceItems";
@@ -575,6 +577,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
   const phone = useMediaQuery(PHONE_LAYOUT, false);
   const importReturnRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
+  usePublishedSidebarFoot(sidebarRef, !phone || open);
   const [confirm, setConfirm] = useState<{ kind: BotConfirmKind; bot: Bot; inPlace: boolean } | null>(null);
   const cancelConfirm = useCallback(() => setConfirm(null), []);
   const [menu, setMenu] = useState<MenuState | BotMenuRequest | null>(null);
@@ -873,7 +876,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           {!q && <OtherPlaceBots />}<MovedBotRows bots={state.bots} /><MovedToMyCloudRow bots={state.bots} />
         </div>
       </GlassScroller>
-      <GlassBar edge="bottom">
+      <GlassBar edge="bottom" data-sidebar-foot="">
       <LiveCallPill
         currentBotId={state.activeView === "chat" ? state.selectedId : null}
         onOpen={(botId, threadId) => openThread(dispatch, { botId, threadId }, state, showThreads)}
@@ -936,7 +939,7 @@ export const Sidebar = memo(function Sidebar({ open, onClose, collapseToIcons = 
           <div
             role="status"
             className={cn(
-              "fixed bottom-4 left-[calc(var(--rail-beside,0px)_+_1rem)] z-[60] max-w-[300px] rounded-xl border px-3.5 py-2.5 text-[13px] shadow-xl",
+              TOAST_CLEAR_OF_COMPOSER, "z-[60] rounded-xl border px-3.5 py-2.5 text-[13px] shadow-xl",
               teamFeedback.error
                 ? "border-danger/30 bg-card text-danger"
                 : "border-hairline/50 bg-card text-ink",
