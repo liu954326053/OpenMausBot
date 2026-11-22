@@ -126,7 +126,7 @@ export class ProjectDrafts {
    * one goes beside it, numbered. Does nothing, and costs little, when nothing changed, so it can be called on every
    * change to the canvas. Answers the draft as the person at this computer sees it.
    */
-  writeDraftIfReady(projectId: string): Promise<ProjectDraftWire> {
+  async writeDraftIfReady(projectId: string): Promise<ProjectDraftWire> {
     const project = this.project(projectId);
     return this.serial(projectId, async () => {
       await this.write(project);
