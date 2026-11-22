@@ -19,7 +19,7 @@ import { createProjectTimelineToolRoutes } from "./tools.ts";
 
 export interface ProjectDraftHostDeps {
   projects: Pick<TeamProjectsApi, "list">;
-  store: { bot(botId: string): { teamProject?: { id: string } } | undefined };
+  store: { bot(botId: string): { teamProject?: { id: string } } | null | undefined };
   /** This server was started by the desktop app, so it runs on the computer the person sits at. A server deployed
    * elsewhere never looks for JianYing: its folders are not the person's. */
   onPersonsComputer: boolean;

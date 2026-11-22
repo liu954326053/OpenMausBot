@@ -6,6 +6,7 @@ import { PASS } from "../routes/table.ts";
 import { draftsHarness } from "./testing.ts";
 import { createProjectTimelineToolRoutes, PROJECT_TIMELINE_TOOL_PATHS } from "./tools.ts";
 
+type Answer = { status: number; body: Record<string, any> };
 const made: Array<{ cleanup(): void }> = [];
 afterEach(() => {
   for (const one of made.splice(0)) one.cleanup();
@@ -21,19 +22,24 @@ function tools(stages: Record<string, FlowStage[]> = { post: ["post"], lead: ["l
     projectOfBot: (botId) => (harness.project.botIds.includes(botId) ? harness.project : undefined),
     stagesOf: (botId) => stages[botId] ?? [],
   });
-  const call = async (botId: string, path: string, body: unknown = {}, method = "POST") => {
-    let answered: { status: number; body: Record<string, any> } | undefined;
+  const ask = async (botId: string, path: string, body: unknown = {}, method = "POST") => {
+    let answered: Answer | undefined;
     const out = await route({
-      method, path, botId, threadId: "thread-1", res: {} as ServerResponse, readBody: async () => body, folders: { roots: [], vmWorkspace: null },
+      method, path, botId, threadId: "thread-1", res: {} as ServerResponse, readBody: async () => body, folders: async () => ({ roots: [], vmWorkspace: null }),
       json: ((_res: ServerResponse, status: number, sent: Record<string, any>) => { answered = { status, body: sent }; }) as never,
     });
     return out === PASS ? PASS : answered!;
   };
+  const call = async (botId: string, path: string, body: unknown = {}): Promise<Answer> => {
+    const answer = await ask(botId, path, body);
+    if (answer === PASS) throw new Error(`${path} was passed on`);
+    return answer;
+  };
   const read = async (botId = "post") => {
     const answer = await call(botId, PROJECT_TIMELINE_TOOL_PATHS.read);
-    return answer === PASS ? answer : { status: answer.status, state: JSON.parse(answer.body.text) };
+    return { status: answer.status, state: JSON.parse(answer.body.text) };
   };
-  return { ...harness, call, read };
+  return { ...harness, ask, call, read };
 }
 
 describe("the post bot's timeline tools", () => {
@@ -62,12 +68,12 @@ describe("the post bot's timeline tools", () => {
     canvas.set("p1", [shot("s1"), shot("s2"), shot("s3", {}, "多余的")]);
     const set = await call("post", PROJECT_TIMELINE_TOOL_PATHS.setOrder, { shot_ids: ["s2", "s1"] });
     expect(set).toMatchObject({ status: 200 });
-    const state = JSON.parse((set as { body: { text: string } }).body.text);
+    const state = JSON.parse(set.body.text);
     expect(state.clips.map((clip: { shot_id: string }) => clip.shot_id)).toEqual(["s2", "s1"]);
     expect(state.shots_left_out).toEqual([{ shot_id: "s3", title: "多余的" }]);
     expect(state.draft).toEqual({ state: "written", name: "Stand-in bride" });
     expect(paths("Stand-in bride")).toEqual([`${folder}/产出/视频/s2.mp4`, `${folder}/产出/视频/s1.mp4`]);
-    expect((await read() as { state: { clips: unknown[] } }).state.clips).toHaveLength(2);
+    expect((await read()).state.clips).toHaveLength(2);
   });
 
   it("tell the bot what is wrong with an order in words it can act on", async () => {
@@ -90,15 +96,15 @@ describe("the post bot's timeline tools", () => {
       for (const path of Object.values(PROJECT_TIMELINE_TOOL_PATHS)) {
         const answer = await call(botId, path, { shot_ids: ["s2"] });
         expect(answer, `${botId} ${path}`).toMatchObject({ status: 403 });
-        expect((answer as { body: { error: string } }).body.error).toMatch(/post/);
+        expect(answer.body.error).toMatch(/post/);
       }
     }
     expect((await drafts.timeline("p1")).clips.map((clip) => clip.shotId)).toEqual(["s1", "s2"]);
   });
 
   it("pass on every other internal path and method", async () => {
-    const { call } = tools();
-    expect(await call("post", "/api/internal/project-canvas/read")).toBe(PASS);
-    expect(await call("post", PROJECT_TIMELINE_TOOL_PATHS.read, {}, "GET")).toBe(PASS);
+    const { ask } = tools();
+    expect(await ask("post", "/api/internal/project-canvas/read")).toBe(PASS);
+    expect(await ask("post", PROJECT_TIMELINE_TOOL_PATHS.read, {}, "GET")).toBe(PASS);
   });
 });

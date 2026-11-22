@@ -63,13 +63,14 @@ function installation(options: { onPersonsComputer?: boolean; jianying?: boolean
   return { base, folder, draftRoot, project, host, canvas, launched, lines };
 }
 
-async function tool(botId: string, path: string, body: unknown = {}) {
+async function tool(botId: string, path: string, body: unknown = {}): Promise<{ status: number; body: Record<string, any> }> {
   let answered: { status: number; body: Record<string, any> } | undefined;
   const out = await projectDraftToolRoutes({
-    method: "POST", path, botId, threadId: "t1", res: {} as ServerResponse, readBody: async () => body, folders: { roots: [], vmWorkspace: null },
+    method: "POST", path, botId, threadId: "t1", res: {} as ServerResponse, readBody: async () => body, folders: async () => ({ roots: [], vmWorkspace: null }),
     json: ((_res: ServerResponse, status: number, sent: Record<string, any>) => { answered = { status, body: sent }; }) as never,
   });
-  return out === PASS ? PASS : answered!;
+  if (out === PASS || !answered) throw new Error(`${path} was passed on`);
+  return answered;
 }
 
 describe("the draft host", () => {
@@ -130,7 +131,7 @@ describe("the draft host", () => {
     host.connectCanvas(canvas);
     const read = await tool("post", PROJECT_TIMELINE_TOOL_PATHS.read);
     expect(read).toMatchObject({ status: 200 });
-    expect(JSON.parse((read as { body: { text: string } }).body.text).clips).toHaveLength(2);
+    expect(JSON.parse(read.body.text).clips).toHaveLength(2);
     for (const botId of ["lead", "main", "nobody"]) expect(await tool(botId, PROJECT_TIMELINE_TOOL_PATHS.read), botId).toMatchObject({ status: 403 });
   });
 
