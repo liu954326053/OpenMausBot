@@ -160,7 +160,7 @@ export function TeamPipeline({ section, pipeline, layout, canDraw, readable, ren
         {drawable && <button ref={(element) => { if (element) dots.current.set(bot.id, element); else dots.current.delete(bot.id); }}
           type="button" data-pipeline-dot={bot.id} disabled={busy} aria-haspopup="menu" aria-expanded={menuFor === bot.id}
           aria-label={t("teamPipeline.drawFrom", { name: bot.name })} title={t("teamPipeline.drawHint", { name: bot.name })}
-          className="group absolute -end-3 top-1/2 z-10 flex size-6 -translate-y-1/2 cursor-crosshair touch-none items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default"
+          className="group absolute -right-3 top-1/2 z-10 flex size-6 -translate-y-1/2 cursor-crosshair touch-none items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-accent disabled:cursor-default"
           onPointerDown={(event) => press(event, bot.id)} onPointerMove={drag} onPointerUp={(event) => release(event)} onPointerCancel={(event) => release(event, true)}
           onKeyDown={(event) => { if (event.key === "Escape" && drawing.current) { event.preventDefault(); release(null, true); } }}
           onClick={() => { if (!afterDrag.current) setMenuFor(menuFor === bot.id ? null : bot.id); }}>
@@ -168,7 +168,7 @@ export function TeamPipeline({ section, pipeline, layout, canDraw, readable, ren
             menuFor === bot.id || pointer?.from === bot.id ? "bg-accent" : "bg-ink-secondary/60 group-hover:bg-accent group-focus-visible:bg-accent")} />
         </button>}
         {menuFor === bot.id && <div ref={menu} role="menu" aria-label={t("teamPipeline.menu", { name: bot.name })} onKeyDown={menuKeys}
-          className={cn(MENU_SHEET, "absolute end-0 top-[calc(50%+16px)] z-30 w-56 animate-pop-in motion-reduce:animate-none")}>
+          className={cn(MENU_SHEET, "absolute right-0 top-[calc(50%+16px)] z-30 w-56 animate-pop-in motion-reduce:animate-none")}>
           <p className={MENU_LABEL}><span className="truncate">{t("teamPipeline.menu", { name: bot.name })}</span></p>
           {candidates.length === 0 && <p className={MENU_NOTE}>{t("teamPipeline.nobody")}</p>}
           {candidates.map((other) => {

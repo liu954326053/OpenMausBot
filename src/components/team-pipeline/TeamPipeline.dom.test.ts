@@ -88,15 +88,14 @@ describe("a team's pipeline on the map", () => {
 
   it("writes each card's stages in the team map's language, and nothing for `other`", async () => {
     await show();
-    const stages = (id: string) => all(`[data-pipeline-note="${id}"] [data-pipeline-stage]`).map((stage) => stage.textContent);
-    expect(stages("sol")).toEqual(["Lead"]);
-    expect(stages("story")).toEqual(["Script"]);
-    expect(stages("art")).toEqual(["Characters", "Storyboard"]);
-    expect(stages("cut")).toEqual(["Post"]);
+    const stages = (id: string) => container.querySelector<HTMLElement>(`[data-pipeline-note="${id}"] [data-pipeline-stages]`);
+    expect(["sol", "story", "art", "cut"].map((id) => stages(id)!.textContent)).toEqual(["Lead", "Script", "Characters · Storyboard", "Post"]);
+    expect(stages("art")!.title).toBe("Characters · Storyboard");
+    expect(stages("art")!.className.split(" ")).toContain("truncate");
     expect(container.querySelector('[data-pipeline-note="ops"]')).toBeNull();
     expect(card("art").getAttribute("role")).toBe("group");
     expect(card("art").getAttribute("aria-label")).toBe("Art");
-    expect(document.getElementById(card("art").getAttribute("aria-describedby")!)!.textContent).toBe("Characters Storyboard");
+    expect(document.getElementById(card("art").getAttribute("aria-describedby")!)!.textContent).toBe("Characters · Storyboard");
   });
 
   it("marks a member being placed with still words, and a member the person changed as set by hand", async () => {

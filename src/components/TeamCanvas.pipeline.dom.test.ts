@@ -265,7 +265,7 @@ describe("a team's pipeline on the team map", () => {
     expect(new Set(lefts).size).toBe(4);
     expect(new Set(["yunzhou", "yanqing", "mobai", "qinghe"].map((id) => placeOf(id).top)).size).toBe(1);
     expect(noteOf("yunzhou")).toEqual(["Lead"]);
-    expect(noteOf("mobai")).toEqual(["Characters Storyboard"]);
+    expect(noteOf("mobai")).toEqual(["Characters · Storyboard"]);
     expect(noteOf("promoter")).toEqual([]);
     const tile = all('[data-team-key="Drama"]')[0]!;
     expect(parseFloat(tile.style.width)).toBe(placeOf("qinghe").left + 236 + 20);
@@ -289,7 +289,7 @@ describe("a team's pipeline on the team map", () => {
     await click(labelled("Remove the line from 砚青 to 墨白"));
     expect(sentTo("/api/team-pipelines/line")).toEqual([{ from: "yanqing", to: "mobai", present: false }]);
     expect(linesOf("Drama")).toEqual(DRAMA.filter((line) => line !== "yanqing:mobai"));
-    expect(noteOf("mobai")).toEqual(["Characters Storyboard", "By hand"]);
+    expect(noteOf("mobai")).toEqual(["Characters · Storyboard", "By hand"]);
   });
 
   it("says why the server refused a line, in the server's words, and leaves the lines as they were", async () => {
@@ -301,7 +301,7 @@ describe("a team's pipeline on the team map", () => {
     expect(alert.textContent).toBe(t("serverError.teamFlow.loop", { bot: "砚青", superior: "墨白" }));
     expect(alert.style.left).toBe(all('[data-pipeline-card="mobai"]')[0]!.style.left);
     expect(linesOf("Drama")).toEqual(DRAMA);
-    expect(noteOf("mobai")).toEqual(["Characters Storyboard"]);
+    expect(noteOf("mobai")).toEqual(["Characters · Storyboard"]);
   });
 
   it("judges a team again from its menu without asking, and Undo puts back what the person had set by hand", async () => {

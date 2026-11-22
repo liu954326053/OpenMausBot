@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { cardStages } from "@/lib/team-pipeline";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
@@ -18,11 +17,7 @@ export function PipelineCardNote({ id, pipeline, botId }: { id: string; pipeline
   const pending = pipeline.pending.includes(botId), manual = pipeline.manual.includes(botId);
   if (!stages.length && !pending && !manual) return null;
   return <span id={id} data-pipeline-note={botId} className="-me-6 mt-1 flex min-w-0 items-center gap-1.5 text-[11px] leading-4">
-    {stages.length > 0 && <span title={stages.join(" · ")} className="flex min-w-0 gap-1">
-      {stages.map((stage, index) => <Fragment key={stage}>{index > 0 && " "}
-        <span data-pipeline-stage className="min-w-0 truncate rounded-full bg-ink/[0.06] px-1.5 text-ink-secondary">{stage}</span>
-      </Fragment>)}
-    </span>}
+    {stages.length > 0 && <span data-pipeline-stages title={stages.join(" · ")} className="min-w-0 truncate rounded-full bg-ink/[0.06] px-1.5 text-ink-secondary">{stages.join(" · ")}</span>}
     {(pending || manual) && " "}
     {pending ? <span data-pipeline-pending title={t("teamPipeline.pendingHint")} className="shrink-0 text-ink-tertiary">{t("teamPipeline.pending")}</span>
       : manual && <span data-pipeline-manual title={t("teamPipeline.manualHint")} className="shrink-0 text-ink-tertiary">{t("teamPipeline.manual")}</span>}
