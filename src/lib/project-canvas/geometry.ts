@@ -394,14 +394,16 @@ export interface ResizeStart {
   height: number;
   /** Width over height to keep, or null to resize freely. */
   ratio: number | null;
+  /** The tallest the node may be. */
+  maxHeight?: number;
 }
 
-/** The frame a corner drag of (dx, dy) world units gives, never under the minimum size. */
+/** The frame a corner drag of (dx, dy) world units gives, never under the minimum size nor over the node's tallest. */
 export function resizeFrame(start: ResizeStart, dx: number, dy: number) {
   const fromLeft = start.corner.includes("left");
   const fromTop = start.corner.includes("top");
   let width = Math.max(NODE_MIN_WIDTH, start.width + (fromLeft ? -dx : dx));
-  let height = Math.max(NODE_MIN_HEIGHT, start.height + (fromTop ? -dy : dy));
+  let height = Math.min(Math.max(NODE_MIN_HEIGHT, start.height + (fromTop ? -dy : dy)), start.maxHeight ?? Number.POSITIVE_INFINITY);
   if (start.ratio) {
     const ratio = start.ratio;
     if (Math.abs(dx) >= Math.abs(dy)) height = width / ratio;

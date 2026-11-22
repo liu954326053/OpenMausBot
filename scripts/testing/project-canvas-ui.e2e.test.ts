@@ -45,6 +45,24 @@ type Bot = { id: string; name: string; title?: string; color: string; threadId: 
 type Line = { id: string; role?: string; kind?: string; text?: string };
 type Box = { x: number; y: number; w: number; h: number };
 
+/** A real wheel turn at `at` on the page the browser shows, which agent-browser's `mouse wheel` does not aim. */
+async function wheelAt(browserUrl: string, at: { x: number; y: number }, deltaY: number) {
+  const pages = await (await fetch(`http://${new URL(browserUrl).host}/json/list`)).json() as Array<{ type: string; webSocketDebuggerUrl: string }>;
+  const socket = new WebSocket(pages.find((one) => one.type === "page")!.webSocketDebuggerUrl);
+  await new Promise((done, fail) => { socket.onopen = done; socket.onerror = fail; });
+  try {
+    await new Promise((done, fail) => {
+      socket.onmessage = (event) => {
+        const reply = JSON.parse(String(event.data)) as { id?: number; error?: { message: string } };
+        if (reply.id === 1) (reply.error ? fail(new Error(reply.error.message)) : done(undefined));
+      };
+      socket.send(JSON.stringify({ id: 1, method: "Input.dispatchMouseEvent", params: { type: "mouseWheel", x: at.x, y: at.y, deltaX: 0, deltaY } }));
+    });
+  } finally {
+    socket.close();
+  }
+}
+
 (enabled ? it : it.skip)("draws a project's canvas from the server, keeps its changes, and follows its bots live", async () => {
   const tools = await ensureUiBrowser();
   let server: RestartableServer | undefined;
@@ -353,6 +371,24 @@ type Box = { x: number; y: number; w: number; h: number };
         return text(node(outsideId));
       }, { timeout: 20_000, message: "a change made elsewhere on the open canvas" }).toContain("Keep the rain in every scene.");
       await shot("07-change-from-elsewhere.png");
+
+      const longNotes = Array.from({ length: 60 }, (_, line) => `Line ${line + 1}: the bride runs along the harbour in the rain.`).join("\n");
+      const longId = (await api("POST", `${canvasPath}/ops`, { ops: [{ type: "add_node", nodeType: "text", title: "Long notes", position: { x: moved.x + 420, y: moved.y + 280 }, height: 1_600, metadata: { content: longNotes } }] })).nodeIds[0] as string;
+      expect((await snapshot()).nodes.find((one) => one.id === longId)?.height).toBe(480);
+      const longText = `${node(longId)} [data-canvas-scroll]`;
+      await expect.poll(async () => {
+        await fit();
+        return evaluate<boolean>(`(() => { const shown = document.querySelector(${JSON.stringify(longText)}); return Boolean(shown) && shown.scrollHeight > shown.clientHeight; })()`);
+      }, { timeout: 20_000, message: "the long text node drawn no taller than a text node may be, its text longer than it" }).toBe(true);
+      const stageView = () => evaluate<string>(`document.querySelector("[data-project-canvas-stage]").firstElementChild.style.transform`);
+      const beforeWheel = await stageView();
+      await wheelAt((await browser("get", "cdp-url")).cdpUrl as string, centre((await box(longText))!), 300);
+      await expect.poll(() => evaluate<number>(`document.querySelector(${JSON.stringify(longText)}).scrollTop`), { timeout: 5_000, message: "the long text scrolled inside its node" }).toBeGreaterThan(0);
+      expect(await stageView()).toBe(beforeWheel);
+      evidence.longText = { height: (await snapshot()).nodes.find((one) => one.id === longId)?.height, scrolled: await evaluate<number>(`document.querySelector(${JSON.stringify(longText)}).scrollTop`) };
+      await shot("07b-long-text-scrolls-inside-its-node.png");
+      await api("POST", `${canvasPath}/ops`, { ops: [{ type: "delete_node", id: longId }] });
+      await expect.poll(() => drawnIds(), { timeout: 10_000, message: "the long text node taken away again" }).not.toContain(longId);
 
       plan([{ key: "season", match: ["Write the whole season"], gateFile: join(fixture.dataDir, "gate-season"), reply: "SEASON WRITTEN" }]);
       await clickEmpty();

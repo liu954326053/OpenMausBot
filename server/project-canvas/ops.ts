@@ -37,6 +37,7 @@ import {
   CANVAS_NODE_SIZE,
   CANVAS_PROMPT_MAX_CHARS,
   CANVAS_TITLE_MAX_CHARS,
+  allowedNodeHeight,
   type CanvasConnection,
   type CanvasDocument,
   type CanvasNode,
@@ -366,7 +367,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         title: op.title ?? "",
         position: { x: 0, y: 0 },
         width: op.width ?? spec.width,
-        height: op.height ?? spec.height,
+        height: allowedNodeHeight(op.nodeType, op.height ?? spec.height),
         ...(Object.keys(added).length ? { metadata: added } : {}),
         createdBy: makerOf(op.id, op.nodeType),
         ...(op.groupId ? { groupId: op.groupId } : {}),
@@ -396,6 +397,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
       if (op.metadata) checkMetadata(current.type, Object.fromEntries(Object.entries(op.metadata).filter(([, value]) => value !== null)), index);
       const { groupId, ...frame } = op.patch ?? {};
       const next: CanvasNode = { ...current, ...frame };
+      next.height = allowedNodeHeight(next.type, next.height);
       if (groupId === null) delete next.groupId;
       if (typeof groupId === "string") {
         if (actor.kind === "bot") throw new CanvasOpRefusal("not_allowed", "grouping is the person's", index);

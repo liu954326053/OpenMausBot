@@ -183,6 +183,11 @@ describe("resizing", () => {
     expect(resizeFrame({ ...start, corner: "top-left" }, 100, 50)).toEqual({ width: 300, height: 250, position: { x: 100, y: 50 } });
   });
 
+  it("never goes over the node's tallest, the opposite corner still", () => {
+    expect(resizeFrame({ ...start, maxHeight: 480 }, 0, 1000)).toEqual({ width: 400, height: 480, position: { x: 0, y: 0 } });
+    expect(resizeFrame({ ...start, corner: "top-left", top: 1000, maxHeight: 480 }, 0, -1000)).toEqual({ width: 400, height: 480, position: { x: 0, y: 820 } });
+  });
+
   it("keeps an image's ratio", () => {
     const frame = resizeFrame({ ...start, ratio: 2 }, 200, 10);
     expect(frame.width).toBe(600);
