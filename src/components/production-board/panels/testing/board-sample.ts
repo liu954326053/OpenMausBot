@@ -140,6 +140,8 @@ interface EpisodePlan {
   status: ProductionEpisodeWire["status"];
   /** How many of its shots have a selected take, are generating, and failed; the rest have no take yet. */
   shots: { selected: number; generating: number; failed: number; blank: number };
+  /** Each made shot has one take, not up to three. */
+  oneTake?: boolean;
 }
 
 const EPISODES: EpisodePlan[] = [
@@ -212,7 +214,7 @@ function addEpisodeShots(built: Built, plan: EpisodePlan, boardBotId: string, po
     built.connections.push(line(`image-${character.key}`, shot));
     built.connections.push(line(plan.episode === 1 && index === 5 ? `image-${REFINED_SCENE.key}` : `image-${SCENES[index % SCENES.length]!.key}`, shot));
     if (status !== "success") continue;
-    const takes = index === 2 ? 3 : 1 + (index % 2);
+    const takes = plan.oneTake ? 1 : index === 2 ? 3 : 1 + (index % 2);
     for (let take = 1; take <= takes; take += 1) {
       const id = `take-${plan.episode}-${index + 1}-${take}`;
       built.nodes.push(node(id, "video", design.title, {
@@ -236,6 +238,7 @@ interface SampleShape {
   episodes: EpisodePlan[];
   /** Episodes whose storyboard bot asks the person a question. */
   waitingEpisodes?: number[];
+  withoutPublicist?: boolean;
 }
 
 function buildDrama(shape: SampleShape): CanvasSnapshot {
@@ -248,7 +251,7 @@ function buildDrama(shape: SampleShape): CanvasSnapshot {
     { id: "scenery", name: "砚山", title: "场景设计师", stages: ["scene"] },
     { id: "board", name: "镜川", title: "分镜脚本设计师", stages: ["storyboard"] },
     { id: "post", name: "剪秋", title: "后期制作", stages: ["post"] },
-    { id: "publicist", name: "青禾", title: "宣发", stages: ["other"] },
+    ...(shape.withoutPublicist ? [] : [{ id: "publicist", name: "青禾", title: "宣发", stages: ["other"] } satisfies SampleBot]),
   ];
   const built: Built = { nodes: [], connections: [] };
   built.nodes.push(node("brief", "text", "创作需求单", {
@@ -368,6 +371,27 @@ export function bigBoardSnapshot(count: number): CanvasSnapshot {
   return buildDrama({ episodes });
 }
 
+/** The owner's drama as pb-bench measured it: 60 finished episodes, 126 bots in the project, 283 shots with a take each,
+ * 1124 nodes (pb-bench's had 1134). */
+export function dramaScaleSnapshot(): CanvasSnapshot {
+  const episodes: EpisodePlan[] = Array.from({ length: 60 }, (_, index) => ({
+    episode: index + 1,
+    title: `第 ${index + 1} 集`,
+    logline: "雾里又亮起一盏灯",
+    status: "done",
+    shots: { selected: index < 43 ? 5 : 4, generating: 0, failed: 0, blank: 0 },
+    oneTake: true,
+  }));
+  return buildDrama({ episodes, withoutPublicist: true });
+}
+
+/** What `readBotLooks` answers in a workspace of `total` bots: every bot's look, not only the project's. */
+export function workspaceLooks(snapshot: CanvasSnapshot, total: number): Record<string, CanvasBotLook> {
+  const looks: Record<string, CanvasBotLook> = Object.fromEntries(Object.keys(snapshot.bots).map((botId) => [botId, SAMPLE_LOOKS[botId] ?? { color: "blue" }]));
+  for (let other = 1; Object.keys(looks).length < total; other += 1) looks[`elsewhere-${other}`] = { color: "green" };
+  return looks;
+}
+
 export const SAMPLE_LOOKS: Record<string, CanvasBotLook> = {
   lead: { color: "orange" },
   writer: { color: "purple" },
@@ -423,7 +447,7 @@ export function fakeBackend(options: { exchanges?: Record<string, CanvasExchange
   let sentCount = 0;
   const used: OverlayBackend = {
     fileUrl: options.fileUrl ?? ((_projectId, ref) => `/__board-panels/files/${encodeURIComponent(ref.path)}`),
-    readBotLooks: async () => options.looks ?? SAMPLE_LOOKS,
+    readBotLooks: async () => ({ ...(options.looks ?? SAMPLE_LOOKS) }),
     readExchange: async (_projectId, botId) => {
       calls.exchanges.push(botId);
       return [...(exchanges.get(botId) ?? [])];
