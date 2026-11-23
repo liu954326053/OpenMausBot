@@ -94,6 +94,12 @@ describe("the scene card", () => {
     expect(textOf(card.querySelector("[data-asset-shots]"))).toBe("Used in EP01 SH01 · EP02 SH04");
   });
 
+  it("draws its palette as a strip along the foot of its picture", () => {
+    const strip = scene({ facts: { subtitle: "Night, fog", palette: ["#223344", "#ffcc88", "blue"] } }).querySelector("[data-scene-palette]");
+    expect([...strip!.querySelectorAll<HTMLElement>("[data-asset-swatch]")].map((swatch) => swatch.title)).toEqual(["#223344", "#ffcc88"]);
+    expect(scene().querySelector("[data-scene-palette]")).toBeNull();
+  });
+
   it("names the bot that refined it", () => {
     expect(textOf(scene({ refinedBy: "Jingchuan EP01" }).querySelector("[data-scene-refined]"))).toBe("Refined by Jingchuan EP01");
     expect(scene().querySelector("[data-scene-refined]")).toBeNull();

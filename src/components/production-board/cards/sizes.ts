@@ -14,7 +14,7 @@ export interface BoardCardSize {
 export const BOARD_CARD_SIZES: Readonly<Record<BoardCardKind, Readonly<BoardCardSize>>> = {
   bot: { width: 320, height: 300 },
   brief: { width: 320, height: 300 },
-  plan: { width: 320, height: 320 },
+  plan: { width: 320, height: 336 },
   episode: { width: 360, height: 236 },
   episodeStack: { width: 360, height: 212 },
   character: { width: 400, height: 208 },

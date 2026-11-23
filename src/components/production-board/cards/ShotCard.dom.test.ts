@@ -34,6 +34,20 @@ describe("the shot card", () => {
     expect(textOf(refs[1])).toBe("O");
   });
 
+  it("names the characters and scene it uses beside their pictures when the names fit, and shows the pictures alone when they do not", () => {
+    const names = (card: HTMLElement) => [...card.querySelectorAll("[data-shot-reference-name]")].map(textOf);
+    const named = draw({ referenceNames: true });
+    expect(names(named)).toEqual(["Qingwu", "Old pier"]);
+    expect(named.querySelector("[data-shot-reference] img")!.getAttribute("src")).toBe("/files/qingwu.png");
+    const chinese = [{ kind: "scene" as const, name: "栈桥尽头" }, { kind: "character" as const, name: "沈青梧" }, { kind: "character" as const, name: "陆沉舟" }];
+    expect(names(draw({ referenceNames: true, references: chinese }))).toEqual(["栈桥尽头", "沈青梧", "陆沉舟"]);
+    const crowd = Array.from({ length: 5 }, (_, index) => ({ kind: "character" as const, name: `Someone with a long name ${index + 1}` }));
+    const crowded = draw({ referenceNames: true, references: crowd });
+    expect(names(crowded)).toEqual([]);
+    expect(crowded.querySelectorAll("[data-shot-reference]")).toHaveLength(5);
+    expect(names(draw())).toEqual([]);
+  });
+
   it("says where its video stands and offers to make one", () => {
     const onGenerate = vi.fn();
     const onOpen = vi.fn();
@@ -55,6 +69,20 @@ describe("the shot card", () => {
     expect(textOf(failed.querySelector("[data-shot-failure]"))).toBe("Choose an MCP server for videos in this project's settings first.");
     click(buttonNamed(failed, "Generate again"));
     expect(onGenerate).toHaveBeenCalledTimes(2);
+  });
+
+  it("says where it plays in its episode", () => {
+    const time = draw({ startsAt: 12 }).querySelector<HTMLElement>("[data-shot-time]")!;
+    expect([textOf(time), time.title]).toEqual(["00:12 – 00:17", "At 00:12 – 00:17 in EP01"]);
+    expect(textOf(draw({ startsAt: 0, seconds: undefined, episode: undefined }).querySelector("[data-shot-time]"))).toBe("00:00");
+    expect(draw().querySelector("[data-shot-time]")).toBeNull();
+  });
+
+  it("marks itself, quietly, when something it was made from changed after it was made", () => {
+    const badge = draw({ stale: true }).querySelector<HTMLElement>("[data-stale]")!;
+    expect(textOf(badge)).toBe("Outdated");
+    expect(badge.title).toBe("Something this shot was made from changed after it was made.");
+    expect(draw().querySelector("[data-stale]")).toBeNull();
   });
 
   it("says when it has no description, and cuts long text short", () => {

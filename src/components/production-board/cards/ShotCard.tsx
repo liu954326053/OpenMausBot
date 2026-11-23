@@ -3,7 +3,7 @@ import { episodeCode } from "../../../../shared/production";
 import type { CanvasShotDesign } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, failureText, shotCode, StatusMark, type BoardGeneration } from "./parts";
+import { CardAction, CardName, CardShell, clockLength, failureText, shotCode, StaleMark, StatusMark, type BoardGeneration } from "./parts";
 import type { BoardStatus } from "./tone";
 
 /** A character or a scene a shot is drawn with. */
@@ -19,13 +19,20 @@ export interface ShotCardProps {
   title: string;
   design?: CanvasShotDesign;
   seconds?: number;
+  /** Where it starts in its episode, in seconds. */
+  startsAt?: number;
   /** What the shot shows. */
   prompt?: string;
   references?: readonly BoardReference[];
+  /** Names each reference beside its picture when the names fit; the pictures alone otherwise, and while a failure
+   * needs the room. */
+  referenceNames?: boolean;
   /** How many videos were made of it. */
   takes?: number;
   /** How its newest video is being made. */
   generation?: BoardGeneration;
+  /** The shot node's `metadata.stale`. */
+  stale?: boolean;
   onOpen?: () => void;
   onGenerate?: () => void;
 }
@@ -39,10 +46,23 @@ function videoStatus(generation: BoardGeneration | undefined, takes: number): Bo
   return { tone: "idle", label: t("boardCards.video.none") };
 }
 
-function Reference({ reference }: { reference: BoardReference }) {
+const NAMED_REFERENCES_ROOM = 220;
+const WIDE_CHARACTER = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff00-\uffef]/u;
+
+/** At most how wide a name tag runs: its 12px name, then its 16px picture, the gap and the padding. */
+function nameTagWidth(name: string): number {
+  return [...name].reduce((width, character) => width + (WIDE_CHARACTER.test(character) ? 12 : 7), 16 + 4 + 2 + 8);
+}
+
+function namesFit(references: readonly BoardReference[]): boolean {
+  const gaps = 4 * (references.length - 1);
+  return references.reduce((width, reference) => width + nameTagWidth(reference.name.trim()), gaps) <= NAMED_REFERENCES_ROOM;
+}
+
+function Picture({ reference, className }: { reference: BoardReference; className: string }) {
   const shape = reference.kind === "scene" ? "rounded-md" : "rounded-full";
   return (
-    <span data-shot-reference={reference.kind} title={reference.name} className={cn("flex size-6 shrink-0 items-center justify-center overflow-hidden bg-control text-[12px] font-medium text-ink-secondary ring-2 ring-card", shape)}>
+    <span className={cn("flex shrink-0 items-center justify-center overflow-hidden font-medium text-ink-secondary", shape, className)}>
       {reference.pictureUrl
         ? <img src={reference.pictureUrl} alt="" draggable={false} className="size-full object-cover" />
         : [...reference.name.trim()][0]?.toUpperCase()}
@@ -50,9 +70,39 @@ function Reference({ reference }: { reference: BoardReference }) {
   );
 }
 
-export function ShotCard({ number, episode, title, design, seconds, prompt, references, takes = 0, generation, onOpen, onGenerate }: ShotCardProps) {
+function References({ references, named }: { references: readonly BoardReference[]; named: boolean }) {
+  if (!named) {
+    return (
+      <div aria-label={t("boardCards.shot.references")} className="flex shrink-0 items-center -space-x-1">
+        {references.map((reference, index) => (
+          <span key={index} data-shot-reference={reference.kind} title={reference.name} className="flex">
+            <Picture reference={reference} className="size-6 bg-control text-[12px] ring-2 ring-card" />
+          </span>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <ul aria-label={t("boardCards.shot.references")} className="flex min-w-0 items-center gap-1">
+      {references.map((reference, index) => (
+        <li key={index} data-shot-reference={reference.kind} title={reference.name} className="ui-chip min-w-0 bg-control ps-0.5 text-ink-secondary">
+          <Picture reference={reference} className="size-4 bg-card text-[11px]" />
+          <span data-shot-reference-name="" dir="auto" className="min-w-0 truncate">{reference.name}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function timeIn(startsAt: number, seconds: number | undefined): string {
+  const start = clockLength(startsAt * 1000);
+  return seconds ? `${start} – ${clockLength((startsAt + seconds) * 1000)}` : start;
+}
+
+export function ShotCard({ number, episode, title, design, seconds, startsAt, prompt, references, referenceNames, takes = 0, generation, stale, onOpen, onGenerate }: ShotCardProps) {
   const status = videoStatus(generation, takes);
   const code = shotCode(number);
+  const time = startsAt === undefined ? undefined : timeIn(startsAt, seconds);
   const facts: Array<[label: string, value: string | undefined]> = [
     [t("boardCards.shot.size"), design?.size?.trim()],
     [t("boardCards.shot.move"), design?.move?.trim()],
@@ -65,6 +115,12 @@ export function ShotCard({ number, episode, title, design, seconds, prompt, refe
       <header className="flex items-center gap-2 px-3 pt-3">
         <span data-shot-code="" title={episode === undefined ? code : `${episodeCode(episode)} ${code}`} className="ui-chip shrink-0 bg-control font-mono text-ink-secondary">{code}</span>
         <CardName text={title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6" />
+        {time ? (
+          <span data-shot-time="" title={episode === undefined ? time : t("boardCards.shot.time", { time, episode: episodeCode(episode) })} className="shrink-0 font-mono text-[12px] leading-4 text-ink-tertiary">
+            {time}
+          </span>
+        ) : null}
+        {stale ? <StaleMark reason={t("boardCards.stale.shot")} /> : null}
         <StatusMark status={status} />
       </header>
       <dl className="grid grid-cols-3 gap-3 px-3 pt-2">
@@ -85,11 +141,9 @@ export function ShotCard({ number, episode, title, design, seconds, prompt, refe
         </div>
       ) : null}
       <footer className="mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-2">
-        {references?.length ? (
-          <div aria-label={t("boardCards.shot.references")} className="flex shrink-0 items-center -space-x-1">
-            {references.map((reference, index) => <Reference key={index} reference={reference} />)}
-          </div>
-        ) : null}
+        {references?.length
+          ? <References references={references} named={Boolean(referenceNames) && generation?.status !== "error" && namesFit(references)} />
+          : null}
         {generation?.status === "error" ? (
           <span data-shot-failure="" title={failureText(generation)} className="min-w-0 flex-1 truncate text-[12px] leading-4 text-danger">{failureText(generation)}</span>
         ) : (

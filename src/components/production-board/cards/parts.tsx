@@ -24,7 +24,8 @@ export interface BoardShotRef {
   number: number;
 }
 
-const SILVER: CanvasBotLook = { color: "silver" };
+/** The look of a bot whose own look the board does not have. */
+export const SILVER: CanvasBotLook = { color: "silver" };
 
 export const shotCode = (shot: number): string => `SH${String(shot).padStart(2, "0")}`;
 
@@ -70,6 +71,9 @@ const alone = (action: () => void) => (event: MouseEvent) => {
   action();
 };
 
+/** For a player's own controls: using them leaves the card closed. */
+export const keepClosed = (event: MouseEvent) => event.stopPropagation();
+
 /** The card's name, which opens it from the keyboard too. */
 export function CardName({ text, title = text, onOpen, className, data = "card-name" }: {
   text: string;
@@ -89,11 +93,16 @@ export function CardName({ text, title = text, onOpen, className, data = "card-n
 export function CardAction({ onClick, label, icon, className }: { onClick: () => void; label: string; icon?: ReactNode; className?: string }) {
   const act = alone(onClick);
   return (
-    <button type="button" data-board-card-action="" className={cn("ui-button ui-button-sm shrink-0", className)} onClick={act}>
+    <button type="button" data-board-card-action="" className={cn("ui-button ui-button-sm shrink-0 whitespace-nowrap", className)} onClick={act}>
       {icon}
       {label}
     </button>
   );
+}
+
+/** A quiet mark on something made before a change to what it was made from. */
+export function StaleMark({ reason, className }: { reason: string; className?: string }) {
+  return <span data-stale="" title={reason} className={cn("ui-chip shrink-0 bg-control text-ink-tertiary", className)}>{t("boardCards.stale.label")}</span>;
 }
 
 export function StatusMark({ status, className }: { status: BoardStatus; className?: string }) {
@@ -148,7 +157,7 @@ export function InlineVideo({ src, posterUrl, label, onPlay, className }: {
   };
   return (
     <div className={cn("relative overflow-hidden bg-black", className)}>
-      <video ref={video} src={src} poster={posterUrl} preload="metadata" playsInline controls={playing} className="size-full object-cover" />
+      <video ref={video} src={src} poster={posterUrl} preload="metadata" playsInline controls={playing} className="size-full object-cover" onClick={keepClosed} />
       {playing ? null : (
         <button type="button" aria-label={label} title={label} className="absolute inset-0 m-auto flex size-10 items-center justify-center rounded-full bg-black/55 text-white" onClick={alone(play)}>
           <Play size={16} aria-hidden="true" className="translate-x-px" />

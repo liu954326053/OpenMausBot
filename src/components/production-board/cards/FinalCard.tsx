@@ -4,13 +4,15 @@ import type { ProjectDraftWire } from "../../../../shared/project-draft";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { CardAction, CardLabel, CardName, CardShell, clockLength, InlineVideo, PicturePlaceholder, shotCode } from "./parts";
-import { TONE_DOT } from "./tone";
+import { BOARD_CARD_SIZES } from "./sizes";
 
 /** One of the episode's shots, in the order the film plays. */
 export interface FinalClip {
   number: number;
   state: "ready" | "generating" | "failed" | "missing";
   durationMs?: number;
+  /** A still of its selected take, drawn on a ready shot while the strip has room for each shot's code. */
+  posterUrl?: string;
 }
 
 export interface FinalCardProps {
@@ -27,12 +29,17 @@ export interface FinalCardProps {
   onOpenDraft?: () => void;
 }
 
-const CLIP_DOT: Readonly<Record<FinalClip["state"], string>> = {
-  ready: TONE_DOT.done,
-  generating: TONE_DOT.working,
-  failed: TONE_DOT.failed,
-  missing: "border border-ink-tertiary",
+const CLIP_LOOK: Readonly<Record<FinalClip["state"], string>> = {
+  ready: "bg-success/25 text-ink",
+  generating: "bg-accent/20 text-ink-secondary",
+  failed: "bg-danger/20 text-danger",
+  missing: "border border-dashed border-ink-tertiary/60 text-ink-tertiary",
 };
+const UNTIMED_CLIP_MS = 5000;
+const STRIP_WIDTH = BOARD_CARD_SIZES.final.width - 2 * 12;
+const CLIP_GAP = 2;
+const LABELLED_CLIP_MIN_WIDTH = 40;
+const LABELLED_CLIPS_MAX = Math.floor((STRIP_WIDTH + CLIP_GAP) / (LABELLED_CLIP_MIN_WIDTH + CLIP_GAP));
 
 function draftText(draft: ProjectDraftWire): string {
   switch (draft.state) {
@@ -50,6 +57,8 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
   const name = t("boardCards.final.title", { episode: episodeCode(episode) });
   const ready = clips.filter((clip) => clip.state === "ready").length;
   const opens = draft && (draft.state === "written" || draft.state === "kept") && onOpenDraft;
+  const labelled = clips.length <= LABELLED_CLIPS_MAX;
+  const stillOf = (clip: FinalClip) => (labelled && clip.state === "ready" ? clip.posterUrl : undefined);
   return (
     <CardShell kind="final" label={name} onOpen={onOpen}>
       <header className="flex min-w-0 items-center gap-2 px-3 pt-3">
@@ -58,7 +67,7 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
         <span data-final-title="" dir="auto" title={title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink-secondary">{title}</span>
         {durationMs ? <span data-final-length="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary tabular-nums">{clockLength(durationMs)}</span> : null}
       </header>
-      <div data-final-media="" className="mx-3 mt-2 h-[236px] shrink-0 overflow-hidden rounded-lg">
+      <div data-final-media="" className="mx-3 mt-2 h-59 shrink-0 overflow-hidden rounded-lg">
         {videoUrl ? (
           <InlineVideo src={videoUrl} posterUrl={coverUrl} label={t("boardCards.result.play", { name })} onPlay={onPlay} className="size-full" />
         ) : coverUrl ? (
@@ -74,18 +83,20 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
         {!videoUrl && ready < clips.length ? (
           <span data-final-progress="" className="text-[12px] leading-4 text-ink-tertiary tabular-nums">{t("boardCards.final.waiting", { ready, total: clips.length })}</span>
         ) : null}
-        <ol data-canvas-scroll="" className="flex gap-1 overflow-x-auto">
+        <ol className={cn("flex", clips.some(stillOf) ? "h-12" : "h-7")} style={{ gap: CLIP_GAP }}>
           {clips.map((clip) => {
             const code = shotCode(clip.number);
+            const still = stillOf(clip);
             return (
               <li
                 key={clip.number}
                 data-final-clip={clip.state}
                 title={clip.state === "ready" ? t("boardCards.final.clipReady", { code }) : t("boardCards.final.clipMissing", { code })}
-                className={cn("flex h-7 shrink-0 items-center gap-1 rounded-md bg-control px-1.5 font-mono text-[12px] leading-4", clip.state === "ready" ? "text-ink" : "text-ink-tertiary")}
+                style={{ flexGrow: clip.durationMs || UNTIMED_CLIP_MS, minWidth: labelled ? LABELLED_CLIP_MIN_WIDTH : 0 }}
+                className={cn("relative flex basis-0 overflow-hidden rounded-md font-mono text-[12px] leading-4", still ? "items-end p-0.5" : "items-center px-1.5", CLIP_LOOK[clip.state])}
               >
-                <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", CLIP_DOT[clip.state])} />
-                {code}
+                {still ? <img src={still} alt="" draggable={false} className="absolute inset-0 size-full object-cover" /> : null}
+                {labelled ? <span className={cn("truncate", still && "relative rounded-full bg-card px-1 text-[11px] text-ink-secondary")}>{code}</span> : null}
               </li>
             );
           })}
