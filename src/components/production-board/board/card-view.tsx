@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { episodeCode, type ProductionEpisodeStatus } from "../../../../shared/production";
+import { episodeCode, shotCode, type ProductionEpisodeStatus } from "../../../../shared/production";
 import type { CanvasBotState, CanvasFileRef, CanvasSnapshot } from "../../../../shared/project-canvas";
 import type { BoardCard, BoardVideoStatus, RetryTarget } from "@/lib/production-board/types";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
@@ -19,7 +19,6 @@ import {
   PlanCard,
   ResultCard,
   SceneCard,
-  shotCode,
   ShotCard,
   type BoardBotRef,
   type BoardCardKind as CardsKind,

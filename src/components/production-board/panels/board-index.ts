@@ -1,4 +1,4 @@
-import { EPISODE_JOBS, type EpisodeJob, type ProductionEpisodeWire } from "../../../../shared/production";
+import { EPISODE_JOBS, shotCode, type EpisodeJob, type ProductionEpisodeWire } from "../../../../shared/production";
 import { botNodeId, type CanvasBotState, type CanvasNode, type CanvasSnapshot } from "../../../../shared/project-canvas";
 import type { FlowStage } from "../../../../shared/team-pipeline";
 import { splitTeamByEpisode, type EpisodeBotPlace } from "@/lib/team-projects";
@@ -61,8 +61,6 @@ export interface BoardIndex {
 
 const WORK_ORDER: readonly FlowStage[] = ["lead", "script", "character", "scene", "storyboard", "post", "other"];
 const FILE_KINDS = new Set<CanvasNode["type"]>(["text", "image", "video", "audio", "file"]);
-
-export const shotCode = (place: number): string => `SH${String(place).padStart(2, "0")}`;
 
 function workRank(bot: CanvasBotState): number {
   if (bot.lead) return -1;

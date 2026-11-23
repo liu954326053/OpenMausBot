@@ -1,9 +1,9 @@
 import { ExternalLink, Film, Scissors } from "lucide-react";
-import { episodeCode } from "../../../../shared/production";
+import { episodeCode, shotCode } from "../../../../shared/production";
 import type { ProjectDraftWire } from "../../../../shared/project-draft";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardLabel, CardName, CardShell, clockLength, InlineVideo, PicturePlaceholder, shotCode } from "./parts";
+import { CardAction, CardLabel, CardName, CardShell, clockLength, InlineVideo, PicturePlaceholder } from "./parts";
 import { BOARD_CARD_SIZES } from "./sizes";
 
 /** One of the episode's shots, in the order the film plays. */

@@ -27,8 +27,6 @@ export interface BoardShotRef {
 /** The look of a bot whose own look the board does not have. */
 export const SILVER: CanvasBotLook = { color: "silver" };
 
-export const shotCode = (shot: number): string => `SH${String(shot).padStart(2, "0")}`;
-
 export function clockLength(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;

@@ -1,9 +1,9 @@
 import { ImageOff } from "lucide-react";
 import type { CanvasCardFacts } from "../../../../shared/project-canvas";
-import { episodeCode } from "../../../../shared/production";
+import { episodeCode, shotCode } from "../../../../shared/production";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, failureText, PicturePlaceholder, shotCode, type BoardGeneration, type BoardShotRef } from "./parts";
+import { CardAction, failureText, PicturePlaceholder, type BoardGeneration, type BoardShotRef } from "./parts";
 
 const COLOUR = /^#[0-9a-f]{6}$/i;
 

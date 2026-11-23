@@ -1,10 +1,10 @@
 import { Sparkles, Volume2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { episodeCode } from "../../../../shared/production";
+import { episodeCode, shotCode } from "../../../../shared/production";
 import type { CanvasShotDesign } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, clockLength, failureText, shotCode, StaleMark, StatusMark, type BoardGeneration } from "./parts";
+import { CardAction, CardName, CardShell, clockLength, failureText, StaleMark, StatusMark, type BoardGeneration } from "./parts";
 import type { BoardStatus } from "./tone";
 
 /** A character or a scene a shot is drawn with. */

@@ -1,9 +1,10 @@
 import { Check, Clapperboard, Sparkles } from "lucide-react";
 import { useId, useRef, useState } from "react";
+import { shotCode } from "../../../../shared/production";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder, shotCode, StaleMark, type BoardGeneration } from "./parts";
+import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder, StaleMark, type BoardGeneration } from "./parts";
 
 /** One video made of a shot. */
 export interface BoardTake {

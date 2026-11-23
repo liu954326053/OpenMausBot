@@ -118,3 +118,6 @@ export interface ProductionPlanInput {
 
 /** `EP01` for episode 1. */
 export const episodeCode = (episode: number): string => `EP${String(episode).padStart(2, "0")}`;
+
+/** `SH03` for an episode's shot 3. */
+export const shotCode = (shot: number): string => `SH${String(shot).padStart(2, "0")}`;
