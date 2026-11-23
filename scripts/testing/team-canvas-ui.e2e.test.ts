@@ -160,6 +160,8 @@ type BotRecord = {
     expect(await cardOrder("Engineering")).toEqual([fixture.botId, ben.id]);
     expect(await cardOrder("Research")).toEqual([cleo.id, dana.id]);
     expect(await snapshot()).not.toMatch(/Draw a line from|Line from|Being placed/);
+    receipts.leadsBesideMembers = `${fixture.logPath}.team-canvas-leads.png`;
+    await ui("screenshot", "--out", receipts.leadsBesideMembers as string);
 
     // The full-app fixture has no Boat credentials. The explicit + entry
     // explains paid creation, but cannot allocate anything until connected.
