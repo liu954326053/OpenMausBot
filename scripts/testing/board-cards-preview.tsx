@@ -111,6 +111,17 @@ const STEPS = [
   { text: "写 EP14 – EP60", state: "waiting" as const },
 ];
 
+const STORYBOARD_STEPS = [
+  { text: "读完 EP03 剧本", state: "done" as const, at: at(11, 2) },
+  { text: "拆成 6 个镜头", state: "done" as const, at: at(11, 9) },
+  { text: "SH01、SH02 出了视频", state: "done" as const, at: at(11, 20) },
+  { text: "正在生成 SH03", state: "working" as const, at: at(11, 24) },
+  { text: "SH04 – SH06", state: "waiting" as const },
+];
+
+const GATE_WAITING = { characters: { done: 4, total: 4 }, scenes: { done: 2, total: 5 }, script: false };
+const GATE_MET = { characters: { done: 4, total: 4 }, scenes: { done: 5, total: 5 }, script: true };
+
 const PLAN: PlanTask[] = [
   { job: "script", status: "done", bot: { name: "墨白", look: LOOKS.script }, count: 60 },
   { job: "character", status: "done", bot: { name: "云舟", look: LOOKS.character }, count: 4 },
@@ -121,8 +132,13 @@ const PLAN: PlanTask[] = [
 
 const SCRIPT = "第一场 旧码头 夜 外\n雾压在水面上，十年没亮过的灯一盏一盏黑着。\n青梧提着一盏蓝灯走上栈桥，把灯挂上锈住的铁钩。\n青梧：再撑一夜。";
 
-const CLIPS = (ready: number, total: number): FinalClip[] =>
-  Array.from({ length: total }, (_, index) => ({ number: index + 1, state: index < ready ? "ready" : index === ready ? "generating" : "missing" }));
+const STILLS = [SCENES.pier, PORTRAITS.qingwu, SCENES.tower, PORTRAITS.laoyan, SCENES.market, PORTRAITS.axiu];
+const CLIPS = (ready: number, total: number, stills = false): FinalClip[] =>
+  Array.from({ length: total }, (_, index) => ({
+    number: index + 1,
+    state: index < ready ? "ready" : index === ready ? "generating" : "missing",
+    ...(stills ? { posterUrl: STILLS[index % STILLS.length] } : {}),
+  }));
 
 const SHOT_DESIGN = { size: "近景", move: "缓推", audio: "青梧：再撑一夜。（远处汽笛）" };
 const REFERENCES = [
@@ -174,7 +190,7 @@ function FarView({ zoom }: { zoom: number }) {
 function Preview() {
   const [selected, setSelected] = useState("t2");
   const takes = [
-    { id: "t1", videoUrl: TAKE_ONE, durationMs: 5000, selected: selected === "t1" },
+    { id: "t1", videoUrl: TAKE_ONE, durationMs: 5000, selected: selected === "t1", stale: true },
     { id: "t2", videoUrl: TAKE_TWO, durationMs: 5200, selected: selected === "t2" },
     { id: "t3", videoUrl: TAKE_ONE, durationMs: 4800, selected: selected === "t3" },
   ];
@@ -194,7 +210,13 @@ function Preview() {
           <BotCard bot={bot({ botId: "scene", name: "青禾", title: "场景设计", stages: ["scene"] })} look={LOOKS.scene} job="scene" task="failed" progress={{ kind: "scenes", done: 2, total: 5 }} onOpen={noop} onRetry={noop} />
         </Shown>
         <Shown caption="episode bot, waiting on you">
-          <BotCard bot={bot({ botId: "jc-ep01", name: "境川 EP01", title: "分镜师", stages: ["storyboard"], episode: 1, status: "waiting", waiting: { threadId: "t", messageId: "m", card: { title: "SH05 用哪一版？", subtitle: "", options: ["V1", "V2"] } } })} look={LOOKS.storyboard} job="storyboard" task="working" progress={{ kind: "videos", done: 4, total: 6 }} onOpen={noop} />
+          <BotCard bot={bot({ botId: "jc-ep01", name: "境川 EP01", title: "分镜师", stages: ["storyboard"], episode: 1, status: "waiting", waiting: { threadId: "t", messageId: "m", card: { title: "SH05 用哪一版？", subtitle: "", options: ["V1", "V2"] } } })} look={LOOKS.storyboard} job="storyboard" task="working" progress={{ kind: "videos", done: 4, total: 6 }} gate={GATE_MET} onOpen={noop} />
+        </Shown>
+        <Shown caption="storyboard bot, waiting on its start conditions">
+          <BotCard bot={bot({ botId: "jc-ep02", name: "境川 EP02", title: "分镜师", stages: ["storyboard"], episode: 2 })} look={LOOKS.storyboard} job="storyboard" task="waiting" gate={GATE_WAITING} onOpen={noop} />
+        </Shown>
+        <Shown caption="storyboard bot, conditions met, steps">
+          <BotCard bot={bot({ botId: "jc-ep03", name: "境川 EP03", title: "分镜师", stages: ["storyboard"], episode: 3, status: "working", doing: "给 EP03 的 6 个镜头出视频" })} look={LOOKS.storyboard} job="storyboard" task="working" progress={{ kind: "videos", done: 2, total: 6 }} gate={GATE_MET} steps={STORYBOARD_STEPS} onOpen={noop} />
         </Shown>
         <Shown caption="episode bot, not started">
           <BotCard bot={bot({ botId: "jq-ep01", name: "剪秋 EP01", title: "后期", stages: ["post"], episode: 1 })} look={LOOKS.post} job="post" task="waiting" onOpen={noop} />
@@ -203,7 +225,7 @@ function Preview() {
           <BotCard bot={bot({ botId: "otto", name: "Otto", title: "Operations", output: { text: "Backed up the project folder at 10:00.\nNothing else to do.", threadId: "t", messageId: "m", at: at(10, 0) } })} onOpen={noop} />
         </Shown>
         <Shown caption="long text">
-          <BotCard bot={bot({ botId: "long", name: `${LONG} EP12`, title: LONG, stages: ["storyboard"], episode: 12, status: "working", doing: LONG })} look={LOOKS.storyboard} job="storyboard" task="working" progress={{ kind: "videos", done: 1, total: 24 }} steps={[{ text: LONG, state: "working", at: at(11, 5) }]} onOpen={noop} />
+          <BotCard bot={bot({ botId: "long", name: `${LONG} EP12`, title: LONG, stages: ["storyboard"], episode: 12, status: "working", doing: LONG })} look={LOOKS.storyboard} job="storyboard" task="working" progress={{ kind: "videos", done: 1, total: 24 }} gate={GATE_WAITING} steps={[{ text: LONG, state: "working", at: at(11, 5) }]} onOpen={noop} />
         </Shown>
       </Section>
 
@@ -224,16 +246,16 @@ function Preview() {
           <PlanCard tasks={PLAN.map(({ job }) => ({ job, status: "waiting" }))} onOpen={noop} />
         </Shown>
         <Shown caption="episode, making videos">
-          <EpisodeCard episode={{ episode: 1, nodeId: "ep1", title: "守灯人", status: "videos", shots: 6, ready: 4, generating: 1, failed: 0 }} logline="十年没亮过的港口灯塔，被一个女孩重新点亮。" text={SCRIPT} to={{ name: "境川 EP01", look: LOOKS.storyboard }} onOpen={noop} />
+          <EpisodeCard episode={{ episode: 1, nodeId: "ep1", title: "守灯人", status: "videos", shots: 6, ready: 4, generating: 1, failed: 0 }} logline="十年没亮过的港口灯塔，被一个女孩重新点亮。" text={SCRIPT} to={{ name: "境川 EP01", look: LOOKS.storyboard }} seconds={36} onOpen={noop} />
         </Shown>
         <Shown caption="episode, failed">
-          <EpisodeCard episode={{ episode: 2, nodeId: "ep2", title: "账本", status: "failed", shots: 5, ready: 2, generating: 0, failed: 1 }} logline="钟楼下藏着一本旧账。" text={SCRIPT} to={{ name: "境川 EP02", look: LOOKS.storyboard }} onOpen={noop} onRetry={noop} />
+          <EpisodeCard episode={{ episode: 2, nodeId: "ep2", title: "账本", status: "failed", shots: 5, ready: 2, generating: 0, failed: 1 }} logline="钟楼下藏着一本旧账。" text={SCRIPT} to={{ name: "境川 EP02", look: LOOKS.storyboard }} seconds={30} onOpen={noop} onRetry={noop} />
         </Shown>
         <Shown caption="episode, before production">
           <EpisodeCard episode={{ episode: 3, title: "第二盏蓝灯" }} onOpen={noop} />
         </Shown>
         <Shown caption="episode, long text">
-          <EpisodeCard episode={{ episode: 12, nodeId: "ep12", title: LONG, status: "done", shots: 24, ready: 24, generating: 0, failed: 0 }} logline={LONG + LONG} text={`${SCRIPT}\n`.repeat(6)} to={{ name: LONG, look: LOOKS.storyboard }} onOpen={noop} />
+          <EpisodeCard episode={{ episode: 12, nodeId: "ep12", title: LONG, status: "done", shots: 24, ready: 24, generating: 0, failed: 0 }} logline={LONG + LONG} text={`${SCRIPT}\n`.repeat(6)} to={{ name: LONG, look: LOOKS.storyboard }} seconds={288} onOpen={noop} />
         </Shown>
         <Shown caption="episode stack">
           <EpisodeStackCard first={4} last={60} count={57} titles={[{ episode: 4, title: "钟楼下的账本" }, { episode: 5, title: "第二盏蓝灯" }, { episode: 6, title: "行会的晚宴" }, { episode: 60, title: "雾散了" }]} statuses={{ done: 12, storyboard: 3, waiting: 41, failed: 1 }} onOpen={noop} />
@@ -257,7 +279,7 @@ function Preview() {
           <CharacterCard name={LONG} facts={{ badge: "主角", subtitle: LONG, tags: [LONG, "倔强", "心软", "怕水", "夜行", "左撇子"], rows: [["外形", LONG], ["声音", LONG], ["口头禅", LONG]] }} pictureUrl={PORTRAITS.axiu} shots={Array.from({ length: 14 }, (_, index) => ({ episode: 1 + (index % 3), number: index + 1 }))} onOpen={noop} />
         </Shown>
         <Shown caption="scene, refined">
-          <SceneCard name="旧码头" facts={{ subtitle: "夜 · 外 · 浓雾", tags: ["外景", "雾"] }} pictureUrl={SCENES.pier} shots={[{ episode: 1, number: 1 }, { episode: 1, number: 3 }]} refinedBy="境川 EP01" onOpen={noop} onGenerate={noop} />
+          <SceneCard name="旧码头" facts={{ subtitle: "夜 · 外 · 浓雾", tags: ["外景", "雾"], palette: ["#1f2a36", "#4a6a8a", "#9fc3e6", "#c9a36a", "#e8e2d6"] }} pictureUrl={SCENES.pier} shots={[{ episode: 1, number: 1 }, { episode: 1, number: 3 }]} refinedBy="境川 EP01" onOpen={noop} onGenerate={noop} />
         </Shown>
         <Shown caption="scene, making a new picture">
           <SceneCard name="灯塔顶层" facts={{ subtitle: "夜 · 内" }} pictureUrl={SCENES.tower} generation={{ status: "loading" }} shots={[{ episode: 2, number: 4 }]} onOpen={noop} />
@@ -269,25 +291,25 @@ function Preview() {
           <SceneCard name="鱼市" facts={{ subtitle: "清晨 · 外" }} generation={{ status: "error", errorDetails: "The image model refused the prompt" }} onOpen={noop} onGenerate={noop} />
         </Shown>
         <Shown caption="scene, long text">
-          <SceneCard name={LONG} facts={{ subtitle: LONG, tags: [LONG, "外景"] }} pictureUrl={SCENES.market} shots={Array.from({ length: 12 }, (_, index) => ({ episode: 1 + (index % 4), number: index + 1 }))} refinedBy={LONG} onOpen={noop} />
+          <SceneCard name={LONG} facts={{ subtitle: LONG, tags: [LONG, "外景"], palette: ["#5a3b2e", "#d98c4a"] }} pictureUrl={SCENES.market} shots={Array.from({ length: 12 }, (_, index) => ({ episode: 1 + (index % 4), number: index + 1 }))} refinedBy={LONG} onOpen={noop} />
         </Shown>
       </Section>
 
       <Section id="shots" title="Shots">
-        <Shown caption="no video yet">
-          <ShotCard number={3} episode={1} title="青梧点灯" design={SHOT_DESIGN} seconds={5} prompt="她拧动铜钥匙，火苗窜起，整片雾被染成蓝色。" references={REFERENCES} onOpen={noop} onGenerate={noop} />
+        <Shown caption="no video yet, references named">
+          <ShotCard number={3} episode={1} title="青梧点灯" design={SHOT_DESIGN} seconds={5} startsAt={12} prompt="她拧动铜钥匙，火苗窜起，整片雾被染成蓝色。" references={REFERENCES} referenceNames onOpen={noop} onGenerate={noop} />
         </Shown>
-        <Shown caption="generating">
-          <ShotCard number={4} episode={1} title="老严在窗后" design={{ size: "中景", move: "固定" }} seconds={4} prompt="港务所的窗后，老严放下望远镜。" references={REFERENCES.slice(1)} generation={{ status: "loading" }} onOpen={noop} onGenerate={noop} />
+        <Shown caption="generating, references named">
+          <ShotCard number={4} episode={1} title="老严在窗后" design={{ size: "中景", move: "固定" }} seconds={4} startsAt={17} prompt="港务所的窗后，老严放下望远镜。" references={REFERENCES.slice(1)} referenceNames generation={{ status: "loading" }} onOpen={noop} onGenerate={noop} />
         </Shown>
-        <Shown caption="video ready">
-          <ShotCard number={5} episode={1} title="灯光扫过海面" design={{ size: "远景", move: "横摇", audio: "海浪，低沉的弦乐" }} seconds={6} prompt="灯塔的光柱扫过海面，照出一艘没有灯的船。" references={REFERENCES.slice(2)} takes={2} onOpen={noop} onGenerate={noop} />
+        <Shown caption="video ready, outdated">
+          <ShotCard number={5} episode={1} title="灯光扫过海面" design={{ size: "远景", move: "横摇", audio: "海浪，低沉的弦乐" }} seconds={6} startsAt={21} prompt="灯塔的光柱扫过海面，照出一艘没有灯的船。" references={REFERENCES.slice(2)} takes={2} stale onOpen={noop} onGenerate={noop} />
         </Shown>
-        <Shown caption="failed">
-          <ShotCard number={6} episode={1} title="船靠岸" design={SHOT_DESIGN} seconds={5} prompt="船靠上栈桥，船上没有人。" generation={{ status: "error", errorKey: "serverError.projectGeneration.noVideoServer", errorDetails: "No video server" }} onOpen={noop} onGenerate={noop} />
+        <Shown caption="failed, so references stay pictures">
+          <ShotCard number={6} episode={1} title="船靠岸" design={SHOT_DESIGN} seconds={5} startsAt={27} prompt="船靠上栈桥，船上没有人。" references={REFERENCES} referenceNames generation={{ status: "error", errorKey: "serverError.projectGeneration.noVideoServer", errorDetails: "No video server" }} onOpen={noop} onGenerate={noop} />
         </Shown>
-        <Shown caption="long text, no description">
-          <ShotCard number={12} episode={1} title={LONG} design={{ size: LONG, move: LONG, audio: LONG }} seconds={12} references={[{ kind: "character", name: "Qingwu" }, { kind: "scene", name: "Old pier" }]} onOpen={noop} onGenerate={noop} />
+        <Shown caption="long text, names too long, no description">
+          <ShotCard number={12} episode={1} title={LONG} design={{ size: LONG, move: LONG, audio: LONG }} seconds={12} startsAt={125} references={[{ kind: "character", name: LONG }, { kind: "scene", name: "Old pier" }]} referenceNames stale onOpen={noop} onGenerate={noop} />
         </Shown>
       </Section>
 
@@ -310,23 +332,32 @@ function Preview() {
         <Shown caption="no take yet">
           <ResultCard number={8} title="收灯" takes={[]} onOpen={noop} onGenerate={noop} />
         </Shown>
-        <Shown caption="long title, five takes">
+        <Shown caption="the take in the film is outdated">
+          <ResultCard number={9} title="灯塔亮起" takes={[{ id: "o1", videoUrl: TAKE_TWO, durationMs: 6000, selected: true, stale: true }, { id: "o2", videoUrl: TAKE_ONE, durationMs: 6000 }]} onOpen={noop} onGenerate={noop} onSelectTake={noop} />
+        </Shown>
+        <Shown caption="eight takes, V2 in the film">
+          <ResultCard number={10} title="两人回头" takes={Array.from({ length: 8 }, (_, index) => ({ id: `m${index}`, videoUrl: index % 2 ? TAKE_TWO : TAKE_ONE, durationMs: 5000, selected: index === 1 }))} onOpen={noop} onGenerate={noop} onSelectTake={noop} />
+        </Shown>
+        <Shown caption="long title, five takes, none selected">
           <ResultCard number={12} title={LONG} takes={Array.from({ length: 5 }, (_, index) => ({ id: `l${index}`, videoUrl: TAKE_ONE, durationMs: 5000 }))} onOpen={noop} onGenerate={noop} onSelectTake={noop} />
         </Shown>
       </Section>
 
       <Section id="finals" title="Films">
+        <Shown caption="film ready, draft written">
+          <FinalCard episode={2} title="账本" videoUrl={FILM} durationMs={41_000} clips={CLIPS(8, 8, true)} draft={{ state: "written", name: "雾港灯塔 EP02", writtenAt: at(11, 30), exportFolder: "/tmp/out" }} onOpen={noop} onPlay={noop} onOpenDraft={noop} />
+        </Shown>
         <Shown caption="waiting for shots, draft not written">
           <FinalCard episode={1} title="守灯人" clips={CLIPS(4, 6)} draft={{ state: "none", exportFolder: "/tmp/out" }} onOpen={noop} onOpenDraft={noop} />
         </Shown>
-        <Shown caption="film ready, draft written">
-          <FinalCard episode={2} title="账本" videoUrl={FILM} durationMs={41_000} clips={CLIPS(8, 8)} draft={{ state: "written", name: "雾港灯塔 EP02", writtenAt: at(11, 30), exportFolder: "/tmp/out" }} onOpen={noop} onPlay={noop} onOpenDraft={noop} />
-        </Shown>
         <Shown caption="cover only, draft kept beside JianYing's copy">
-          <FinalCard episode={3} title="第二盏蓝灯" coverUrl={SCENES.tower} durationMs={38_000} clips={[...CLIPS(5, 7).slice(0, 6), { number: 7, state: "failed" }]} draft={{ state: "kept", name: "雾港灯塔 EP03（2）", exportFolder: "/tmp/out" }} onOpen={noop} onOpenDraft={noop} />
+          <FinalCard episode={3} title="第二盏蓝灯" coverUrl={SCENES.tower} durationMs={38_000} clips={[...CLIPS(5, 7, true).slice(0, 6), { number: 7, state: "failed" }]} draft={{ state: "kept", name: "雾港灯塔 EP03（2）", exportFolder: "/tmp/out" }} onOpen={noop} onOpenDraft={noop} />
+        </Shown>
+        <Shown caption="draft written, a long name given apart">
+          <FinalCard episode={4} title="最后一个冬天" coverUrl={SCENES.pier} durationMs={52_000} clips={CLIPS(9, 9, true)} draft={{ state: "written", writtenAt: at(12, 5), exportFolder: "/tmp/out" }} draftName="雾港灯塔：第二盏蓝灯亮起之前，守灯人和他的学徒在海港度过的最后一个冬天 EP04" onOpen={noop} onOpenDraft={noop} />
         </Shown>
         <Shown caption="no JianYing, many shots">
-          <FinalCard episode={12} title={LONG} clips={CLIPS(20, 24)} draft={{ state: "unavailable", reason: "not-installed", exportFolder: "/tmp/out" }} onOpen={noop} />
+          <FinalCard episode={12} title={LONG} clips={CLIPS(20, 24, true)} draft={{ state: "unavailable", reason: "not-installed", exportFolder: "/tmp/out" }} onOpen={noop} />
         </Shown>
       </Section>
 

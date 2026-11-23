@@ -24,8 +24,11 @@ export interface FinalCardProps {
   durationMs?: number;
   clips: readonly FinalClip[];
   draft?: ProjectDraftWire;
+  /** The draft's name in JianYing's draft list; `draft.name` when not given. */
+  draftName?: string;
   onOpen?: () => void;
   onPlay?: () => void;
+  /** JianYing cannot be told which draft to open, so this only brings JianYing to the front. */
   onOpenDraft?: () => void;
 }
 
@@ -41,10 +44,10 @@ const CLIP_GAP = 2;
 const LABELLED_CLIP_MIN_WIDTH = 40;
 const LABELLED_CLIPS_MAX = Math.floor((STRIP_WIDTH + CLIP_GAP) / (LABELLED_CLIP_MIN_WIDTH + CLIP_GAP));
 
-function draftText(draft: ProjectDraftWire): string {
+function draftText(draft: ProjectDraftWire): string | undefined {
   switch (draft.state) {
-    case "written": return draft.name ?? "";
-    case "kept": return t("boardCards.draft.kept", { name: draft.name ?? "" });
+    case "written": return undefined;
+    case "kept": return t("boardCards.draft.kept");
     case "none": return t("boardCards.draft.none");
     case "unavailable":
       return draft.reason === "remote" ? t("boardCards.draft.remote")
@@ -53,10 +56,35 @@ function draftText(draft: ProjectDraftWire): string {
   }
 }
 
-export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clips, draft, onOpen, onPlay, onOpenDraft }: FinalCardProps) {
+function DraftRow({ draft, draftName, onOpenDraft }: { draft: ProjectDraftWire; draftName?: string; onOpenDraft?: () => void }) {
+  const exists = draft.state === "written" || draft.state === "kept";
+  const name = exists ? draftName?.trim() || draft.name?.trim() : undefined;
+  const text = draftText(draft);
+  return (
+    <div data-final-draft="" className="mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-3">
+      <Scissors size={14} aria-hidden="true" className="shrink-0 text-ink-tertiary" />
+      <div className="min-w-0 flex-1">
+        <CardLabel>{t("boardCards.draft.label")}</CardLabel>
+        {name ? <div data-final-draft-name="" dir="auto" title={name} className="truncate text-[13px] leading-[18px] text-ink-secondary">{name}</div> : null}
+        {text ? (
+          <div data-final-draft-state="" dir="auto" title={text} className={cn("truncate", exists ? "text-[12px] leading-4 text-ink-tertiary" : "text-[13px] leading-[18px] text-ink")}>{text}</div>
+        ) : null}
+      </div>
+      {exists && onOpenDraft ? (
+        <CardAction
+          icon={<ExternalLink size={14} aria-hidden="true" />}
+          label={t("boardCards.draft.open")}
+          title={name ? t("boardCards.draft.findIn", { name }) : undefined}
+          onClick={onOpenDraft}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clips, draft, draftName, onOpen, onPlay, onOpenDraft }: FinalCardProps) {
   const name = t("boardCards.final.title", { episode: episodeCode(episode) });
   const ready = clips.filter((clip) => clip.state === "ready").length;
-  const opens = draft && (draft.state === "written" || draft.state === "kept") && onOpenDraft;
   const labelled = clips.length <= LABELLED_CLIPS_MAX;
   const stillOf = (clip: FinalClip) => (labelled && clip.state === "ready" ? clip.posterUrl : undefined);
   return (
@@ -102,16 +130,7 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
           })}
         </ol>
       </section>
-      {draft ? (
-        <div data-final-draft="" className="mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-3">
-          <Scissors size={14} aria-hidden="true" className="shrink-0 text-ink-tertiary" />
-          <div className="min-w-0 flex-1">
-            <CardLabel>{t("boardCards.draft.label")}</CardLabel>
-            <div data-final-draft-state="" dir="auto" title={draftText(draft)} className="truncate text-[13px] leading-[18px] text-ink">{draftText(draft)}</div>
-          </div>
-          {opens ? <CardAction icon={<ExternalLink size={14} aria-hidden="true" />} label={t("boardCards.draft.open")} onClick={onOpenDraft} /> : null}
-        </div>
-      ) : null}
+      {draft ? <DraftRow draft={draft} draftName={draftName} onOpenDraft={onOpenDraft} /> : null}
     </CardShell>
   );
 }
