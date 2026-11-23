@@ -1,3 +1,4 @@
+import { EPISODE_JOBS } from "../../shared/production";
 import type { ProjectTeamUnusable, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
 import type { LocaleKey } from "@/locales";
 
@@ -43,6 +44,12 @@ export function teamProjectSide(list: TeamProjectsListWire | null, creating: str
   const ofSection = (section: string | undefined) => (section ? bySection.get(section.trim()) : undefined);
   const of = (bot: SideBot) => byBot.get(bot.id) ?? ofSection(bot.section);
   const arriving = (section: string | undefined) => creating !== null && section?.trim() === creating;
+  const listedAt = new WeakMap<TeamProjectWire, Map<string, number>>();
+  const placesIn = (project: TeamProjectWire) => {
+    let places = listedAt.get(project);
+    if (!places) listedAt.set(project, (places = new Map(project.botIds.map((id, at) => [id, at]))));
+    return places;
+  };
   return {
     shown: list !== null,
     root: list?.root ?? null,
@@ -62,15 +69,37 @@ export function teamProjectSide(list: TeamProjectsListWire | null, creating: str
       return project && sourceId ? { sourceId, project } : undefined;
     },
     team: (project, bots) => {
-      const place = (bot: SideBot) => {
-        if (bot.id === project.leadBotId) return -1;
-        const listed = project.botIds.indexOf(bot.id);
-        return listed < 0 ? project.botIds.length : listed;
-      };
+      const places = placesIn(project);
+      const place = (bot: SideBot) => (bot.id === project.leadBotId ? -1 : places.get(bot.id) ?? project.botIds.length);
       return bots.filter((bot) => of(bot)?.id === project.id).sort((a, b) => place(a) - place(b));
     },
     teamRooms: (project, rooms) => rooms.filter((room) => room.section?.trim() === project.section),
   };
+}
+
+/** One episode of a drama, with the bots the production made for it: its storyboard bot first, then its post bot. */
+export interface EpisodeTeam<T> {
+  number: number;
+  bots: T[];
+}
+
+/** A drama's team, as `team` lists it, split into the bots of the whole drama, in their order, and each episode that
+ * has bots of its own, in order. */
+export function splitEpisodes<T extends SideBot>(project: Pick<TeamProjectWire, "episodeBots">, team: readonly T[]): { drama: T[]; episodes: EpisodeTeam<T>[] } {
+  const drama: T[] = [];
+  const byNumber = new Map<number, T[]>();
+  for (const bot of team) {
+    const episode = project.episodeBots[bot.id];
+    const bots = episode && byNumber.get(episode.number);
+    if (!episode) drama.push(bot);
+    else if (bots) bots.push(bot);
+    else byNumber.set(episode.number, [bot]);
+  }
+  const jobOrder = (bot: T) => EPISODE_JOBS.indexOf(project.episodeBots[bot.id]!.job);
+  const episodes = [...byNumber]
+    .sort(([a], [b]) => a - b)
+    .map(([number, bots]) => ({ number, bots: bots.sort((a, b) => jobOrder(a) - jobOrder(b)) }));
+  return { drama, episodes };
 }
 
 export const teamProjectSectionId = (projectId: string): string => `team-project:${projectId}`;
