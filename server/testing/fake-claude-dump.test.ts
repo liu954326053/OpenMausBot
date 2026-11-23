@@ -136,39 +136,3 @@ it("keeps a new bot's setup answers out of every turn and one-shot capture, fail
     await removeTempDir(home);
   }
 });
-
-it("keeps the judging of a team's stages out of every turn and one-shot capture, failing at once without a reply file", async () => {
-  const { parseTeamJudgeReply, teamJudgePrompt } = await import("../team-judge/model-judge.ts");
-  const { SCREENSHOT_STAGES, SCREENSHOT_TEAM } = await import("../team-judge/testing.ts");
-  const home = mkdtempSync(join(tmpdir(), "omb-claude-dump-"));
-  const dump = join(home, "capture.json");
-  const textDump = join(home, "text.json");
-  const textLog = join(home, "text.jsonl");
-  const judgeDump = join(home, "judge.json");
-  const judgeFile = join(home, "judge.txt");
-  const { prompt, keys } = teamJudgePrompt(SCREENSHOT_TEAM, SCREENSHOT_TEAM.pending);
-  const ask = async () => {
-    const child = spawn(process.execPath, [fileURLToPath(new URL("fake-claude-cli.ts", import.meta.url)), "-p", "--output-format", "text"], {
-      cwd: home,
-      env: { ...process.env, HOME: home, USERPROFILE: home, FAKE_CLAUDE_MODE: "happy", FAKE_CLAUDE_DUMP: dump, FAKE_CLAUDE_TEXT_DUMP: textDump,
-        FAKE_CLAUDE_TEXT_LOG: textLog, FAKE_CLAUDE_TEXT_FILE: join(home, "missing"), FAKE_CLAUDE_JUDGE_DUMP: judgeDump, FAKE_CLAUDE_JUDGE_FILE: judgeFile },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stdout = "";
-    child.stdout!.on("data", chunk => { stdout += chunk; });
-    child.stdin!.end(prompt);
-    await waitForExit(child);
-    return { code: child.exitCode, stdout };
-  };
-  try {
-    expect(await ask()).toEqual({ code: 1, stdout: "" });
-    writeFileSync(judgeFile, '{"m2":["script"],"m3":["character","storyboard"],"m4":["post"]}');
-    const answered = await ask();
-    expect(answered.code).toBe(0);
-    expect(parseTeamJudgeReply(answered.stdout, keys)).toEqual(SCREENSHOT_STAGES);
-    for (const file of [dump, textDump, textLog]) expect(existsSync(file), file).toBe(false);
-    expect(JSON.parse(readFileSync(judgeDump, "utf8")).prompt).toBe(prompt);
-  } finally {
-    await removeTempDir(home);
-  }
-});

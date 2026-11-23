@@ -115,9 +115,8 @@ it("moves no main thread for a teammate's work or results or a team incident; re
     await api("PUT", "/api/config", { threads: { maxConcurrentPerBot: 1 } });
     const asker = (await cli("new-bot", "--name", "Asker", "--section", "Ops")).bot;
     const teammate = (await cli("new-bot", "--name", "Teammate", "--section", "Ops")).bot;
-    // Ops has no Chief of its own, so its bots are in no pipeline and Asker hands Teammate work; its incidents go to the Chief in charge of it.
-    const chief = (await cli("new-bot", "--name", "Chief", "--section", "Leadership")).bot;
-    await api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true, managedSections: ["Ops"], acknowledgePeerScope: true });
+    const chief = (await cli("new-bot", "--name", "Chief", "--section", "Ops")).bot;
+    await api("PATCH", `/api/bots/${chief.id}`, { chiefOfStaff: true });
     writeFileSync(join(dataDir, "room-plan.json"), JSON.stringify({
       [asker.id]: { script: [
         { key: "open", match: ["Open a side job that asks Teammate."],

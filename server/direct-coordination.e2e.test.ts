@@ -802,7 +802,7 @@ it("parks a message behind outstanding teammate work when the bot opts in, then 
 }), 60_000);
 
 it("runs a teammate's hand-off to the Chief in the Chief's work thread for that sender, cancelling no live coordination", () => fixture(async f => {
-  const ops = (await f.cli("new-bot", "--name", "Ops", "--section", "Operations")).bot;
+  const ops = (await f.cli("new-bot", "--name", "Ops", "--section", "Leadership")).bot;
   const assign = structuredClone(f.plan[f.chief.id].steps);
   f.plan[f.lead.id] = { delayMs: 6000, reply: "CSV export implemented" };
   // Turns whose order nothing pins pick their entry by what they were asked.

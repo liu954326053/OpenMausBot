@@ -57,23 +57,9 @@ proposes may have one of the bots it makes appointed Chief of Staff, and
 MausBot itself stays out of every department. The second case of
 `server/team-setup.e2e.test.ts` covers it.
 
-A plan may give each bot its place in the team's drama pipeline with
-`fields.stages` (`script`, `character`, `storyboard`, `post`, `other`; several
-for a bot that does several, none for the Chief). The card then shows each such
-team's pipeline as one line of names in the order work passes, in the
-conversation's language, and the stages are recorded with the team once the
-plan is applied, so its members are not judged afterwards. A bot the plan gives
-no stages is judged in the background like any other
-(`server/team-judge/`). The stages never reach `bots.json`.
-
-```sh
-pnpm exec vitest run server/team-judge/proposal.e2e.test.ts
-pnpm exec vitest run server/team-judge server/team-setup-requests.test.ts
-```
-
-The integration test has MausBot propose the four-bot team of the pipeline
-design through its own tools on the scripted fake engine, reads the card, and
-confirms it. Which stages a real model gives a team is not proven by it.
+A plan for a team that makes dramas names its members and its Chief of Staff,
+the team's lead, like any other plan. It gives them no stages: a plan with
+`fields.stages` is refused as one with any other unknown field.
 
 For deletion, ask separately:
 

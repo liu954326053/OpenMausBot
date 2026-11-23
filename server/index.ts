@@ -127,7 +127,7 @@ import { createSideJobs, helperSelection } from "./side-jobs.ts";
 import type { CaptureTurn, RoomLine } from "./memory-capture.ts";
 import { createAboutMe } from "./about-me.ts"; import { createPersonPreference } from "./host/person-preference.ts";
 import { botMemoryUpdate, ownersOwnAsk } from "./memory-forget.ts";
-import { canManage, canReach, departmentRefusal, flowPlace, flowRelation, pipelineRosterWire, hasTeamAuthority, inChargeOfEvery, isMainBot, livePeerRoster, livePeerRosterBlock, peerName, peerRosterPrompt, peerRosterSystemPrompt, peerStatus, peerStatusWords, reachablePeers, reachesOnlyHere, resolveTeammate, roomPeerRosterSystemPrompt, roomRosterLine, teamProjectAllows, teamProjectRoomChange, teamProjectRoomConflict } from "./peer-roster.ts"; import { roomPostRefusal, sharedNamesNote, unreachedMentionLines } from "./same-name-mentions.ts";
+import { canManage, canReach, departmentRefusal, hasTeamAuthority, inChargeOfEvery, isMainBot, livePeerRoster, livePeerRosterBlock, peerName, peerRosterPrompt, peerRosterSystemPrompt, peerStatus, peerStatusWords, reachablePeers, reachesOnlyHere, resolveTeammate, roomPeerRosterSystemPrompt, roomRosterLine, teamProjectAllows, teamProjectRoomChange, teamProjectRoomConflict } from "./peer-roster.ts"; import { roomPostRefusal, sharedNamesNote, unreachedMentionLines } from "./same-name-mentions.ts";
 import {
   containerComputerAction,
   containerComputerFrame,
@@ -591,7 +591,7 @@ import { createGroupOrderRoutes } from "./routes/group-order.ts";
 import { createBotLifecycleRoutes } from "./routes/bot-lifecycle.ts";
 import { createBotSkillsRoutes } from "./routes/bot-skills.ts";
 import { createTeamProjectProposals } from "./team-project-proposal-routes.ts";
-import { createTeamProjectsHost } from "./team-projects/host.ts"; import { createProjectGeneration } from "./project-generation/host.ts"; import { createTeamFlowsHost } from "./team-flow/host.ts";
+import { createTeamProjectsHost } from "./team-projects/host.ts"; import { createProjectGeneration } from "./project-generation/host.ts";
 import { createSkillShareRoutes } from "./routes/skill-share.ts";
 import { createTeamContextRoutes } from "./routes/team-context.ts";
 import { createAppSuggestions } from "./host/app-suggestions.ts"; import { createAppFindRoute, createAppSuggestionRoutes } from "./routes/app-suggestions.ts"; import { appPickAvailable } from "./decider/app-picks.ts"; import { managedConnectorUnavailableReason } from "../shared/connector-availability.ts"; import { createDeciderRoutes } from "./routes/decider.ts"; import { createCloudSendRoutes } from "./routes/cloud-send.ts"; import { claudeCodeSkillInputs } from "./setup-import.ts"; import { createCloudConnectionsHost } from "./cloud-connections-host.ts";
@@ -2915,7 +2915,7 @@ function previewSystemPrompt(bot: BotRecord) {
   const coordination = chiefLevel(bot)
     ? chiefOfStaffSystemPrompt(bot.id, store.bots, true, undefined, store.sections)
     : peers.length > 0
-      ? peerRosterSystemPrompt(peers, bot, store.bots)
+      ? peerRosterSystemPrompt(peers, bot)
       : "";
   const agentsMounted = caps?.agentsMcp === true;
   const previewPlan = resolveSurface({
@@ -6881,7 +6881,7 @@ function coordinateBotsFor(internalCapability: InternalCapability, internalSende
     if (destination && destination.id !== source?.id && !outsideLineage.mayReach(address.threadId, destination.threadId)) return refuse(403, OUTSIDE_STAYS_HERE);
     const botIds: string[] = [];
     for (const raw of call.botIds) {
-      const resolved = resolveTeammate(store.bots, internalSender, raw, placesElsewhere.explain, (bot) => (CLOUD_TEAM ? lookedAfterBy(bot, teamHost.personName) : null), { reaches: (bot) => personalReach.listed(internalSender, bot, address.threadId), hides: (bot) => personalReach.hides(internalSender, bot), refusal: (bot) => personalReach.refusal(internalSender, bot, address.threadId) }, call.consult || call.answers ? "question" : "work");
+      const resolved = resolveTeammate(store.bots, internalSender, raw, placesElsewhere.explain, (bot) => (CLOUD_TEAM ? lookedAfterBy(bot, teamHost.personName) : null), { reaches: (bot) => personalReach.listed(internalSender, bot, address.threadId), hides: (bot) => personalReach.hides(internalSender, bot), refusal: (bot) => personalReach.refusal(internalSender, bot, address.threadId) });
       if ("error" in resolved) return refuse(403, resolved.error);
       botIds.push(resolved.id);
     }
@@ -8345,7 +8345,7 @@ async function beginTurn(
       const teamPrompt = chiefLevel(bot)
         ? chiefOfStaffPrompt(bot.id, store.bots, Boolean(integrations.agents), (peer) => personalReach.listed(bot, peer, threadId), store.sections)
         : integrations.agents && sectionPeers.length > 0
-          ? peerRosterPrompt(sectionPeers, bot, store.bots)
+          ? peerRosterPrompt(sectionPeers, bot)
           : { rules: "", roster: "" }; const coordinationPrompt = teamPrompt.rules + (integrations.agents ? personalReach.prompt(bot, threadId, sectionPeers) : "");
       const credentialPrompt = integrations.agents ? CREDENTIAL_PROMPT + botLogins.secretsPrompt(bot.id, vaultReaders.turn(threadId)) + THREADS_PROMPT + WIDGET_PROMPT : "";
       const routinePrompt = integrations.agents ? TRIGGER_PROMPT : "";
@@ -10150,7 +10150,7 @@ async function runClaimedGroupMemberTurn(
     `Room members: ${roster}, and ${typeof userName === "string" ? `${userName} (the human)` : roomPeople(threadId, userName)}.`,
     readyGroup.bulletin.trim() && `Room bulletin (shared instructions for everyone):\n${readyGroup.bulletin.trim()}`,
     `Reply as yourself, briefly and conversationally. To bring a teammate in, mention them like @Name — they'll see the conversation and respond.${readyGroup.dm ? "" : ` To get ${typeof userName === "string" ? `${userName}'s` : "a person's"} attention or ask them something blocking, write @you.`} A "[reacted 👍 to …]" line is that person's whole reply to the message it names: 👍 means yes, go ahead when that message asked them something or offered to do something, and only got it (start no new work) when it just told them something; 👎 means no.`,
-    outsideRoom.length > 0 && roomPeerRosterSystemPrompt(outsideRoom, bot), sharedNamesNote(roomMembers.filter((member) => member.id !== bot.id), Boolean(integrations.agents)),
+    outsideRoom.length > 0 && roomPeerRosterSystemPrompt(outsideRoom), sharedNamesNote(roomMembers.filter((member) => member.id !== bot.id), Boolean(integrations.agents)),
     integrations.agents && (CREDENTIAL_PROMPT + botLogins.secretsPrompt(bot.id, vaultReaders.turn(threadId)) + (orchestration && !orchestration.roomHandoffId ? THREADS_PROMPT : "")).trim(),
     integrations.agents && (!orchestration || orchestration.roomHandoffId) && "For actual MagicBot teamwork, discover IDs with list_room_targets and use coordinate_bots for advice or work in this or another room. Do not substitute native coding helpers for these named bots. Consult only when needed to make a decision; no discussion step is mandatory. Give concrete responsibilities, exact accessible paths and acceptance checks. End your turn after assigning; busy teammates queue and results automatically resume you. When they return, finish the requested verification and give the user one final answer. Native helper names are not evidence that an MagicBot teammate participated. Plain @mentions are only for conversational replies in this room." + requesterRule,
     integrations.agents && TRIGGER_PROMPT.trim(),
@@ -12195,8 +12195,6 @@ const teamProjects = createTeamProjectsHost({ store, routines: () => routines, t
 const projectGeneration = createProjectGeneration({ dataDir: DATA_DIR, lookup: teamProjects.lookup, storedServers: () => cfg.mcpServers ?? {}, keys: mcpKeys, oauth: mcpOAuth, personMcp: teamConnections.personMcp, policyRefusal: mcpPolicyRefusal, probeAs: (server) => mcpServersHost.probeAs(server) }); ROUTES.push(projectGeneration.routes);
 import { createProjectCanvasHost } from "./project-canvas/host.ts"; import { resumeCanvasGeneration } from "./project-canvas/generation-card.ts"; import { sendToRoom, type RoomSendDeps } from "./team-projects/room-send.ts"; import { inOwnProjectRoom } from "./team-projects/project-rooms.ts"; const roomSend: RoomSendDeps = { working: groupThreadIsWorking, queue: queueChannelMessage, start: (groupId, text, line) => startGroupTurn(groupId, text, undefined, undefined, "chat", undefined, line), withinBudget: () => { assertWithinBudget(cfg, DATA_DIR); } }; const projectCanvas = createProjectCanvasHost({ store, projects: teamProjects.api, broadcast: (event) => broadcast({ ...event }, { adminOnly: true }), visibleFor: (auth) => visibleTo(viewerFor(auth)), threadBusy, mainThread: botMainThread, send: (auth, message) => acceptDirectSend({ ...message, sender: messageSender(auth), trigger: usageTriggerFor(auth), personPresent: true, admin: runActor(auth).admin }), sendToRoom: (auth, message) => sendToRoom(roomSend, { ...message, sender: messageSender(auth), trigger: usageTriggerFor(auth) }), roomSpeaker: (threadId) => groupSpeakers.get(threadId)?.botId, roomWorking: (threadId) => { const room = store.groupByThread(threadId); return Boolean(room && groupThreadIsWorking(room.id, threadId)); }, generation: projectGeneration.api, answerCard: answerCardNode, language: appLanguage }); ROUTES.push(projectCanvas.routes);
 import { createProjectDraftHost } from "./project-draft/host.ts"; import { startProductions } from "./production/host.ts"; const projectDraft = createProjectDraftHost({ projects: teamProjects.api, store, onPersonsComputer: DESKTOP_MANAGED }); ROUTES.push(projectDraft.routes, startProductions({ store, projects: teamProjects.api, canvas: projectCanvas, draft: projectDraft, generation: projectGeneration.api, mainThread: botMainThread, language: appLanguage, deliver: ({ leadBotId, ...message }) => acceptDirectSend({ ...message, trigger: { kind: "bot", botId: leadBotId }, personPresent: false, followUp: "queue" }), sendToRoom: (message) => sendToRoom(roomSend, message) }).routes);
-ROUTES.push(createTeamFlowsHost({ store }).routes);
-import { startTeamJudge } from "./team-judge/host.ts"; startTeamJudge({ decider, config: () => cfg, mainBotText: () => sideJobs.text("team-judge", store.bots.find(isMainBot)?.id ?? "") });
 ROUTES.push(createBotSettingsRoutes({
   store, cfg, registry, commandAllowlist, commandAllowlistDrivers: COMMAND_ALLOWLIST_DRIVERS,
   cloudHome: Boolean(CLOUD_HOME), cloudOwnerProfileFields: CLOUD_OWNER_PROFILE_FIELDS,
@@ -13235,10 +13233,10 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
               status,
               statusText: peerStatusWords(status),
               title: b.title || undefined,
-              description: b.description || undefined, ...flowRelation(sender, b),
+              description: b.description || undefined,
             };
           });
-        return json(res, 200, { bots: [...bots, ...(reachesOnlyHere(sender) ? [] : botLink.link.agents())], ...flowPlace(sender), ...pipelineRosterWire(sender, store.bots) });
+        return json(res, 200, { bots: [...bots, ...(reachesOnlyHere(sender) ? [] : botLink.link.agents())] });
       }
       if (await dispatchRoutes([createInternalThreadRoutes({
         store, coordinator, from: internalSender, fromThreadId: internalCapability.threadId,
