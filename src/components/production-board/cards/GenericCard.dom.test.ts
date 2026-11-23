@@ -40,8 +40,12 @@ describe("the generic card", () => {
     expect([play.mock.calls.length, onPlay.mock.calls.length, onOpen.mock.calls.length]).toEqual([1, 1, 0]);
   });
 
-  it("gives a sound its player and a file its name", () => {
-    expect(draw({ type: "audio", title: "Theme" }, { fileUrl: "/files/theme.mp3" }).querySelector("audio")!.getAttribute("src")).toBe("/files/theme.mp3");
+  it("gives a sound its player, whose controls leave the card closed, and a file its name", () => {
+    const onOpen = vi.fn();
+    const audio = draw({ type: "audio", title: "Theme" }, { fileUrl: "/files/theme.mp3", onOpen }).querySelector("audio")!;
+    expect(audio.getAttribute("src")).toBe("/files/theme.mp3");
+    click(audio);
+    expect(onOpen).not.toHaveBeenCalled();
     expect(textOf(draw({ type: "file", title: "script.pdf" }).querySelector("[data-card-name]"))).toBe("script.pdf");
   });
 

@@ -1,7 +1,7 @@
 import { File, FileText, Image, Music, Sparkles, Video } from "lucide-react";
 import type { CanvasNode, CanvasNodeType } from "../../../../shared/project-canvas";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder } from "./parts";
+import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, keepClosed, PicturePlaceholder } from "./parts";
 
 export interface GenericCardProps {
   node: Pick<CanvasNode, "type" | "title" | "metadata">;
@@ -50,7 +50,7 @@ export function GenericCard(props: GenericCardProps) {
         </div>
       ) : node.type === "audio" && fileUrl ? (
         <div className="flex flex-1 items-center px-3 pb-3">
-          <audio src={fileUrl} controls preload="metadata" className="w-full" />
+          <audio src={fileUrl} controls preload="metadata" className="w-full" onClick={keepClosed} />
         </div>
       ) : node.type === "text" || text ? (
         <p data-generic-text="" dir="auto" className="mb-3 min-h-0 flex-1 overflow-hidden whitespace-pre-line px-3 pt-2 text-[13px] leading-[18px] text-ink-secondary">

@@ -71,6 +71,9 @@ const alone = (action: () => void) => (event: MouseEvent) => {
   action();
 };
 
+/** For a player's own controls: using them leaves the card closed. */
+export const keepClosed = (event: MouseEvent) => event.stopPropagation();
+
 /** The card's name, which opens it from the keyboard too. */
 export function CardName({ text, title = text, onOpen, className, data = "card-name" }: {
   text: string;
@@ -149,7 +152,7 @@ export function InlineVideo({ src, posterUrl, label, onPlay, className }: {
   };
   return (
     <div className={cn("relative overflow-hidden bg-black", className)}>
-      <video ref={video} src={src} poster={posterUrl} preload="metadata" playsInline controls={playing} className="size-full object-cover" />
+      <video ref={video} src={src} poster={posterUrl} preload="metadata" playsInline controls={playing} className="size-full object-cover" onClick={keepClosed} />
       {playing ? null : (
         <button type="button" aria-label={label} title={label} className="absolute inset-0 m-auto flex size-10 items-center justify-center rounded-full bg-black/55 text-white" onClick={alone(play)}>
           <Play size={16} aria-hidden="true" className="translate-x-px" />

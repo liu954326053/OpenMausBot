@@ -61,6 +61,8 @@ describe("the result card", () => {
     expect(onPlay).toHaveBeenCalledWith("t2");
     expect(onOpen).not.toHaveBeenCalled();
     expect(card.querySelector("video")!.hasAttribute("controls")).toBe(true);
+    click(card.querySelector("video"));
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("says a take is being made without inventing how far along it is", () => {
