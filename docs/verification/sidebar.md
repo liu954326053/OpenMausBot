@@ -44,39 +44,65 @@ a Chief through `/api/team-projects`, then check:
 
 1. Simple, Advanced, the icons rail and the phone drawer keep that order, with
    two projects and with none.
-2. A project is one row, with no chevron and no members under it, and opens
-   the project's canvas. Its mark stays on and counts all the project's bots
-   and group chats.
-3. The search, named Search projects, keeps the projects whose name holds what
-   is typed, in any case, each still one row with nothing under it that opens
-   the canvas; the main bot and Inbox stay. A bot's or group chat's name or a
-   message's words find no project, and one muted line says so. Clearing the
-   search gives the plain list back.
-4. The + menu offers exactly New project, New bot and Add department. A bot or
+2. A click on a project's row opens its group chat, else its lead's
+   conversation, else its canvas, and shows under the row the group chat and
+   then the bots of the whole drama, the lead first, each with its role after
+   its name. A click on the row of the project on screen folds it again. The
+   row's mark stays on, folded or not, and counts all the project's bots and
+   group chats.
+3. Under the whole drama's bots, one Episodes row, folded at first, unfolds
+   into a row per episode from EP01 in order, each folded at first. An
+   episode's row unfolds into the bots the production made for that episode,
+   the storyboard bot then the post bot, each with its role after its name, or
+   Storyboard or Post when it has none. A folded row is marked by what goes on
+   among the bots under it. A drama with no such bots has no Episodes row.
+4. The project's group chat lists only the bots of the whole drama as its
+   members, and its Manage members does not offer the bots made for one
+   episode.
+5. The search, named Search projects, keeps the projects whose name holds what
+   is typed, in any case, each still one row with nothing under it; the main
+   bot and Inbox stay. A bot's or group chat's name or a message's words find
+   no project, and one muted line says so. Clearing the search gives the plain
+   list back.
+6. The + menu offers exactly New project, New bot and Add department. A bot or
    department made there, or a bot made from the team map's Add menu, opens the
    team map and is brought into view.
-5. The team map leaves out the projects' teams, says when a department has no
+7. The team map leaves out the projects' teams, says when a department has no
    Chief, puts a dot on a card with unread output and on the footer's Team map
    entry, and does not take the main bot into a department.
-6. A project copy's chat locks its model picker and says why.
-7. While a project copy's or a project group chat's conversation is open, the
-   project's row is the selected one, unless the copy is pinned and has a row
-   of its own.
-8. Archiving a project from its row's menu offers Undo in the bottom-left
-   corner, clear of the composer.
-9. Renaming a project's folder away shows Project folder not found under its
-   row and on its open canvas within a few seconds, with no reload, and
-   renaming it back takes both away.
-10. In Simple mode, Settings shows Data with the projects folder and the
+8. A project copy's chat locks its model picker and says why.
+9. While a project's canvas is open, its row is the selected one, and so it is
+   while one of its conversations is open and the project is folded, unless
+   that conversation is a copy's that is pinned and has a row of its own.
+   Unfolded, the row listing that conversation is the selected one or, while
+   it is folded away, the nearest folded row above it: its episode's or
+   Episodes.
+10. Archiving a project from its row's menu offers Undo in the bottom-left
+    corner, clear of the composer.
+11. Renaming a project's folder away shows Project folder not found under its
+    row and on its open canvas within a few seconds, with no reload, and
+    renaming it back takes both away.
+12. In Simple mode, Settings shows Data with the projects folder and the
     archived projects, and restoring one there leaves the app in Simple mode.
-11. ⌘1 opens the main bot's chat, and ⌘2 to ⌘9 open the first eight projects'
-    canvases in the sidebar's order; while a search is on, in the order of the
-    projects it leaves.
+13. ⌘1 opens the main bot's chat, and ⌘2 to ⌘9 open the first eight projects
+    as a click on their rows does, in the sidebar's order; while a search is
+    on, in the order of the projects it leaves.
+
+A drama has bots made for one episode only once its production has reached
+that episode. To check steps 3 and 9 without a production run,
+`node --experimental-strip-types scripts/testing/sidebar-episodes-shots.ts OUT_DIR`,
+with the browser variables `ui launch` needs, mounts the real sidebar over
+dramas of 60 episodes with no server behind it and photographs each step in
+both reference skins, at 1440×900 and in a small window.
 
 `src/lib/sidebar-shortcut-order.test.ts`,
 `src/components/Sidebar.projects.test.ts`, `src/lib/sidebar-projects.test.ts`,
 `src/components/Sidebar.search.dom.test.ts`,
 `src/components/team-projects/SidebarTeamProjects.dom.test.ts`,
+`src/components/team-projects/SidebarProjectEpisodes.dom.test.ts`,
+`src/lib/team-projects.test.ts`, `src/components/CommandPalette.dom.test.ts`,
+`src/components/project-view/ProjectChat.dom.test.ts`,
+`src/components/ManageMembersPanel.dom.test.ts`,
 `src/state/team-projects.test.ts`, `server/team-projects/folder-watch.test.ts`,
 `server/team-project-folder-live.e2e.test.ts`,
 `src/components/settings/SettingsWindow.test.ts`,

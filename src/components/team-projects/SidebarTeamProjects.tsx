@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 import { useRememberedDisclosure } from "@/lib/remembered-disclosure";
 import { sidebarSectionAttention, type SidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
-import { teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
+import { splitEpisodes, teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { openProject, projectDisclosure, projectRoomOf } from "@/state/project-open";
 import type { Bot, Group } from "@/state/store";
@@ -22,6 +22,7 @@ import { MENU_ITEM, MENU_SHEET } from "../menu-recipe";
 import { useHeldMenuMotion } from "../MenuMotion";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
 import { SIMPLE_RAIL_BUTTON } from "../SidebarSimpleTop";
+import { SidebarProjectEpisodes } from "./SidebarProjectEpisodes";
 import { SidebarProjectBot, SidebarProjectRoom, SidebarProjectRow, SidebarProjectTile } from "./SidebarProjectRow";
 import { TeamChangesDialog } from "./TeamChangesDialog";
 import { dataSettingsPlace } from "./where-in-settings";
@@ -230,8 +231,8 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   );
 }
 
-/** A project in the list: its row, its group chat and its bots under it while it is open, and what to say about its
- * folder and its team. */
+/** A project in the list: its row; while it is open, its group chat, the bots of the whole drama and its episodes under
+ * it; and what to say about its folder and its team. */
 function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, listOnly, onScreen, menuOpen, onMenu, onReview, onOpen, onOpenRoom, onOpenBot }: {
   project: TeamProjectWire;
   attention: SidebarSectionAttention;
@@ -257,6 +258,7 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
 }) {
   const [open, setOpen] = useRememberedDisclosure(projectDisclosure(project.id));
   const expanded = !listOnly && open && (room !== undefined || bots.length > 0);
+  const { drama, episodes } = splitEpisodes(project, expanded ? bots : []);
   const click = () => {
     if (expanded && onScreen !== null) setOpen(false);
     else onOpen();
@@ -267,9 +269,10 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
         selected={onScreen === "canvas" || onScreen === "other" || (onScreen === "listed" && !expanded)} menuOpen={menuOpen}
         onOpen={click} onMenu={onMenu} />
       {expanded && room && <SidebarProjectRoom room={room} simple={simple} selected={openChat === room.id} onOpen={() => onOpenRoom(room)} />}
-      {expanded && bots.map((bot) => (
+      {drama.map((bot) => (
         <SidebarProjectBot key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} selected={openChat === bot.id} onOpen={() => onOpenBot(bot)} />
       ))}
+      {episodes.length > 0 && <SidebarProjectEpisodes project={project} episodes={episodes} simple={simple} gap={gap} openChat={openChat} onOpenBot={onOpenBot} />}
       {project.folderState === "missing" && (
         <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
           <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>

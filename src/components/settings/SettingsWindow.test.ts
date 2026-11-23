@@ -113,7 +113,7 @@ describe("the Settings window", () => {
   describe("Data on a place with projects", () => {
     const archived: TeamProjectWire = {
       id: "p-heir", name: "The heir", folder: "/dramas/The heir", section: "The heir", team: { key: "team:urban", name: "Urban romance" }, follows: {},
-      leadBotId: "heir-lead", createdAt: 1, archivedAt: 5, folderState: "ready", botIds: ["heir-lead"],
+      leadBotId: "heir-lead", createdAt: 1, archivedAt: 5, folderState: "ready", botIds: ["heir-lead"], episodeBots: {},
     };
     beforeEach(() => setTeamProjects({ root: "/dramas", projects: [archived] }));
     afterEach(() => setTeamProjects(null));

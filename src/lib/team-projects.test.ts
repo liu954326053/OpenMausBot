@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectTeamUnusable, TeamProjectRefusal, TeamProjectWire } from "../../shared/team-projects";
 import { en } from "@/locales";
-import { refusalKey, refusalPlace, teamProjectFolder, teamProjectSectionId, teamProjectSide, teamProjectsVersion, unusableKey } from "./team-projects";
+import { refusalKey, refusalPlace, splitEpisodes, teamProjectFolder, teamProjectSectionId, teamProjectSide, teamProjectsVersion, unusableKey } from "./team-projects";
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban drama team" }, follows: {},
-  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`, `${id}-writer`, `${id}-shots`], ...extra,
+  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`, `${id}-writer`, `${id}-shots`], episodeBots: {}, ...extra,
 });
 const bot = (id: string, section?: string, pinned?: boolean) => ({ id, section, pinned });
 const ids = (items: Array<{ id: string }>) => items.map((item) => item.id);
@@ -72,6 +72,53 @@ describe("a project's team", () => {
     expect(following.source("bride-writer")).toEqual({ sourceId: "writer", project: expect.objectContaining({ id: "bride" }) });
     expect(following.source("bride-lead")).toBeUndefined();
     expect(following.source("writer")).toBeUndefined();
+  });
+});
+
+describe("a drama's team", () => {
+  const lamp = project("lamp", {
+    botIds: ["lamp-lead", "lamp-writer", "ep2-post", "ep1-shots", "ep10-shots", "ep2-shots", "ep1-post", "lamp-scenes"],
+    episodeBots: {
+      "ep1-shots": { number: 1, job: "storyboard" }, "ep1-post": { number: 1, job: "post" },
+      "ep2-shots": { number: 2, job: "storyboard" }, "ep2-post": { number: 2, job: "post" },
+      "ep10-shots": { number: 10, job: "storyboard" },
+    },
+  });
+  const team = teamProjectSide({ root: "/dramas", projects: [lamp] }).team(lamp, lamp.botIds.map((id) => bot(id, "lamp")));
+
+  it("keeps the whole drama's bots apart, in the team's order", () => {
+    expect(ids(splitEpisodes(lamp, team).drama)).toEqual(["lamp-lead", "lamp-writer", "lamp-scenes"]);
+  });
+
+  it("holds each episode's bots under its episode, the episodes in order and the storyboard bot before the post bot", () => {
+    expect(splitEpisodes(lamp, team).episodes.map(({ number, bots }) => [number, ids(bots)])).toEqual([
+      [1, ["ep1-shots", "ep1-post"]],
+      [2, ["ep2-shots", "ep2-post"]],
+      [10, ["ep10-shots"]],
+    ]);
+  });
+
+  it("has no episodes before the production makes their bots", () => {
+    const side = teamProjectSide(list);
+    expect(splitEpisodes(bride, side.team(bride, bots))).toEqual({ drama: side.team(bride, bots), episodes: [] });
+  });
+
+  it("orders 60 episodes' bots among 300 bots by the server's list, the lead first", () => {
+    const numbers = Array.from({ length: 60 }, (_, index) => index + 1);
+    const episodeIds = numbers.flatMap((number) => [`ep${number}-post`, `ep${number}-shots`]);
+    const big = project("big", {
+      botIds: ["big-lead", "big-writer", ...episodeIds],
+      episodeBots: Object.fromEntries(numbers.flatMap((number) => [
+        [`ep${number}-shots`, { number, job: "storyboard" as const }],
+        [`ep${number}-post`, { number, job: "post" as const }],
+      ])),
+    });
+    const others = Array.from({ length: 178 }, (_, index) => bot(`other-${index}`, "Sales"));
+    const everyone = [...others, ...[...episodeIds].reverse().map((id) => bot(id, "big")), bot("big-writer", "big"), bot("big-lead", "big")];
+    const bigTeam = teamProjectSide({ root: "/dramas", projects: [big] }).team(big, everyone);
+    expect(ids(bigTeam)).toEqual(["big-lead", "big-writer", ...episodeIds]);
+    const { drama, episodes } = splitEpisodes(big, bigTeam);
+    expect([ids(drama), episodes.length, ids(episodes[59]!.bots)]).toEqual([["big-lead", "big-writer"], 60, ["ep60-shots", "ep60-post"]]);
   });
 });
 

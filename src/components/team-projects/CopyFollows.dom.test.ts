@@ -31,7 +31,7 @@ const copy = bot("quill-copy", "Quill", { section: "Bride" });
 const own = bot("helper", "Helper", { section: "Bride" });
 const project = (follows: Record<string, string>): TeamProjectWire => ({
   id: "bride", name: "Bride", folder: "/dramas/Bride", section: "Bride", team: { key: "team:drama", name: "Drama team" }, follows,
-  leadBotId: "quill-copy", createdAt: 1, folderState: "ready", botIds: ["quill-copy", "helper"],
+  leadBotId: "quill-copy", createdAt: 1, folderState: "ready", botIds: ["quill-copy", "helper"], episodeBots: {},
 });
 
 let host: HTMLDivElement;

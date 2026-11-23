@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { track } from "@/lib/analytics";
 import { useStore, type Group } from "@/state/store";
+import { useTeamProjectSide } from "@/state/team-projects";
 import { BotPickerList } from "./BotPickerList";
 import { RoomFarMembers, farMembersOf } from "./RoomFarMembers";
 import { nextMemberIds } from "@/lib/room-members";
@@ -16,15 +17,18 @@ export function ManageMembersPanel({
   triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
   const { state, dispatch } = useStore();
+  const side = useTeamProjectSide();
   const [picked, setPicked] = useState<Set<string>>(() => new Set(group.memberIds));
   const [saveError, setSaveError] = useState<string | null>(null);
   const openedMemberIds = useRef([...group.memberIds]);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Archived bots stay listed while still members, or a room could keep a member you cannot remove.
+  const episodeBots = [...side.projects, ...side.archived].find((project) => project.roomId === group.id)?.episodeBots;
+  // Archived bots, and the bots made for one episode of the drama whose group chat this is, stay listed while still
+  // members, or a room could keep a member you cannot remove.
   const bots = useMemo(
-    () => state.bots.filter((b) => !b.hidden || group.memberIds.includes(b.id)),
-    [state.bots, group.memberIds],
+    () => state.bots.filter((b) => group.memberIds.includes(b.id) || (!b.hidden && !episodeBots?.[b.id])),
+    [state.bots, group.memberIds, episodeBots],
   );
 
   useEffect(() => {

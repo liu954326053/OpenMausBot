@@ -32,7 +32,7 @@ const mainLed: ProjectTeamWire = {
 const empty: ProjectTeamWire = { name: "Empty room", context: "", chief: null, members: [], unusable: "empty" };
 const made: TeamProjectWire = {
   id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban romance" },
-  leadBotId: "lead-1", createdAt: 1, folderState: "ready", botIds: ["lead-1", "writer-1"], follows: { "lead-1": "head", "writer-1": "writer" },
+  leadBotId: "lead-1", createdAt: 1, folderState: "ready", botIds: ["lead-1", "writer-1"], follows: { "lead-1": "head", "writer-1": "writer" }, episodeBots: {},
 };
 const LEAD = { id: "lead-1", threadId: "lead-1-thread", name: "Head writer", tasks: [] };
 

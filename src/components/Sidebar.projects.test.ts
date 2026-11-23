@@ -73,7 +73,7 @@ const room: Group = {
 };
 const work = {
   id: "p1", name: "Work", folder: "/dramas/Work", section: "Work", team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: "dodo", createdAt: 1, folderState: "ready" as const, botIds: ["dodo", "echo"],
+  leadBotId: "dodo", createdAt: 1, folderState: "ready" as const, botIds: ["dodo", "echo"], episodeBots: {},
 };
 const withProject = () => setTeamProjects({ root: "/dramas", projects: [work] });
 
