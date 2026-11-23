@@ -60,6 +60,9 @@ export interface CanvasPipelineApi {
   /** `listener` hears, for every project, a node that newly has a role, the end of a take's generation, and a shot's
    * selected take changing. Returns the way to stop listening. */
   on(listener: (event: CanvasPipelineEvent) => void): () => void;
+  /** `listener` hears the id of every project whose canvas changed in what `view` answers, or cannot be read after a
+   * change. Moving or resizing nodes changes nothing in it. Returns the way to stop listening. */
+  onViewChange(listener: (projectId: string) => void): () => void;
 }
 
 function without(metadata: CanvasNodeMetadata | undefined, ...keys: Array<keyof CanvasNodeMetadata>): CanvasNodeMetadata {
@@ -96,6 +99,10 @@ export function createCanvasPipeline(service: ProjectCanvasService): CanvasPipel
     return project;
   };
   const read = (projectId: string) => service.document(service.project(projectId));
+  const view = (projectId: string): PipelineView => {
+    const document = read(projectId);
+    return { episodes: episodesIn(document), shots: listShots(document), profiles: profilesIn(document) };
+  };
 
   return {
     shots: (projectId) => listShots(read(projectId)),
@@ -104,10 +111,7 @@ export function createCanvasPipeline(service: ProjectCanvasService): CanvasPipel
 
     profiles: (projectId) => profilesIn(read(projectId)),
 
-    view(projectId) {
-      const document = read(projectId);
-      return { episodes: episodesIn(document), shots: listShots(document), profiles: profilesIn(document) };
-    },
+    view,
 
     setBrief(projectId, leadBotId, rows, titles) {
       const project = open(projectId);
@@ -198,5 +202,22 @@ export function createCanvasPipeline(service: ProjectCanvasService): CanvasPipel
     },
 
     on: (listener) => service.onPipeline(listener),
+
+    onViewChange(listener) {
+      const seen = new Map<string, string>();
+      return service.onChange((projectId) => {
+        let now: string;
+        try {
+          now = JSON.stringify(view(projectId));
+        } catch {
+          seen.delete(projectId);
+          listener(projectId);
+          return;
+        }
+        if (seen.get(projectId) === now) return;
+        seen.set(projectId, now);
+        listener(projectId);
+      });
+    },
   };
 }

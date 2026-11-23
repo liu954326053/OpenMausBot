@@ -120,7 +120,7 @@ export function startProductions(deps: ProductionHostDeps): { routes: RouteHandl
     if (!production) return {};
     return { production, drafts: deps.draft.draftWires(projectId, auth, production.episodes.map(({ episode }) => episode)) };
   });
-  service.onChange((projectId) => productions.poke(projectId));
+  pipeline.onViewChange((projectId) => productions.poke(projectId));
   pipeline.on((event) => {
     if (event.kind !== "selected") return;
     const episode = pipeline.shots(event.projectId).find((shot) => shot.shotId === event.shotId)?.episode;
