@@ -8,7 +8,8 @@ import type {
   CanvasUploadResponse,
   ProjectCanvasEvent,
 } from "../../../shared/project-canvas";
-import type { ProjectDraftOpenResult } from "../../../shared/project-draft";
+import type { ProductionWire } from "../../../shared/production";
+import type { ProjectDraftOpenResult, ProjectTimelineWire } from "../../../shared/project-draft";
 import type { GenerationFailure, GenerationModelsWire, GenerationSettingsWire, Refused } from "../../../shared/project-generation";
 import { api, ApiError } from "../../state/api";
 import type { Bot, Group, Message } from "../../state/store";
@@ -228,9 +229,9 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
 
     selectTake: (projectId, nodeId) => canvasCall<{ revision: number }>(`${canvasPath(projectId)}/select-take`, { method: "POST", body: JSON.stringify({ nodeId }) }),
 
-    async answerVideos(projectId, input) {
-      await canvasCall(`${projectPath(projectId)}/pipeline/videos`, { method: "POST", body: JSON.stringify(input) });
-    },
+    retryProduction: (projectId, input) => canvasCall<ProductionWire>(`${projectPath(projectId)}/production/retry`, { method: "POST", body: JSON.stringify(input) }),
+
+    readTimeline: (projectId, episode) => api<ProjectTimelineWire>(`${projectPath(projectId)}/timeline${episode === undefined ? "" : `?episode=${episode}`}`),
 
     openDraft: (projectId) => api<ProjectDraftOpenResult>(`${projectPath(projectId)}/draft/open`, { method: "POST" }),
 

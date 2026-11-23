@@ -177,6 +177,8 @@ export interface CanvasNode {
   createdBy?: CanvasNodeCreator;
   /** The group node this node sits in. */
   groupId?: string;
+  /** The person moved it on the production board, which then draws it at `position` instead of laying it out. */
+  arranged?: true;
 }
 
 /** `content`: the upstream node is reference material for the downstream one. `dispatch`: a line of the project's
@@ -291,6 +293,8 @@ export interface CanvasBotState {
   status: CanvasBotStatus;
   /** While working: the step it is on, in the words of its chat's activity line. */
   doing?: string;
+  /** Its latest steps in its open conversation, oldest first, in the words of its chat's activity lines. */
+  steps?: Array<{ text: string; at: number }>;
   /** Its newest reply, secrets redacted, at most `CANVAS_OUTPUT_MAX_CHARS` characters. */
   output?: { text: string; truncated?: true; threadId: string; messageId: string; at: number };
   /** The question or approval card it waits on the person with. */
@@ -358,6 +362,9 @@ export interface CanvasTaskRequest {
    * as its panel labels them: the references `mentionReferences` gives it and the other nodes connected into it. Its
    * own text, its first reference, goes first, with `text` as the request to revise it. */
   targetNodeId?: string;
+  /** Content nodes of this canvas the person named for the task. Each goes with it as if it were connected into the
+   * node the task was written in: words quoted, pictures as the model's input. */
+  references?: string[];
   /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
    * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
   language?: string;

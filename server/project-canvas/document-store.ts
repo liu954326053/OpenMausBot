@@ -38,6 +38,7 @@ const nodeSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
   createdBy: creator.optional(),
   groupId: z.string().optional(),
+  arranged: z.literal(true).optional(),
 });
 const role = z.enum(["brief", "plan", "episode", "script", "character", "scene", "creation", "take", "final"]);
 const removedSchema = z.object({

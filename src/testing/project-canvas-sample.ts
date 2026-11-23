@@ -1,7 +1,6 @@
-import { botNodeId, dispatchConnectionId, type CanvasBotState, type CanvasConnection, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas";
+import { botNodeId, dispatchConnectionId, type CanvasBotState, type CanvasConnection, type CanvasNode, type CanvasPoint, type CanvasSnapshot } from "../../shared/project-canvas";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationModel, type ProjectGenerationSettings } from "../../shared/project-generation";
 import { createMemoryCanvasBackend, type MemoryCanvasOptions } from "../lib/project-canvas/memory-backend";
-import { layoutPipeline } from "../lib/project-canvas/stage-layout";
 import type { CanvasBotLook, CanvasExchangeMessage } from "../lib/project-canvas/types";
 
 export const SAMPLE_PROJECT_ID = "rain-city";
@@ -38,14 +37,16 @@ export const SAMPLE_LOOKS: Record<string, CanvasBotLook> = {
   otto: { color: "teal" },
 };
 
-const botNodes = Object.values(SAMPLE_BOTS).map((state): CanvasNode => ({ id: botNodeId(state.botId), type: "bot", title: state.name, position: { x: 0, y: 0 }, width: 300, height: 180 }));
+const BOT_PLACES: Record<string, CanvasPoint> = { mira: { x: 0, y: 0 }, kai: { x: 380, y: 0 }, lena: { x: 1180, y: 0 }, otto: { x: 2900, y: 0 } };
+
+const botNodes = Object.values(SAMPLE_BOTS).map((state): CanvasNode => ({ id: botNodeId(state.botId), type: "bot", title: state.name, position: BOT_PLACES[state.botId]!, width: 300, height: 180 }));
 
 const contentNodes: CanvasNode[] = [
   {
     id: "logline",
     type: "text",
     title: "Logline",
-    position: { x: 0, y: 0 },
+    position: { x: 760, y: 0 },
     width: 340,
     height: 240,
     createdBy: { kind: "bot", botId: "kai" },
@@ -55,7 +56,7 @@ const contentNodes: CanvasNode[] = [
     id: "shot-1",
     type: "shot",
     title: "Shot 1 · Rooftop",
-    position: { x: 0, y: 0 },
+    position: { x: 1560, y: 0 },
     width: 340,
     height: 240,
     createdBy: { kind: "bot", botId: "lena" },
@@ -65,7 +66,7 @@ const contentNodes: CanvasNode[] = [
     id: "shot-1-creation",
     type: "config",
     title: "Shot 1 · Rooftop",
-    position: { x: 0, y: 0 },
+    position: { x: 1980, y: 0 },
     width: 340,
     height: 240,
     createdBy: { kind: "bot", botId: "lena" },
@@ -75,7 +76,7 @@ const contentNodes: CanvasNode[] = [
     id: "shot-1-take-1",
     type: "video",
     title: "Shot 1 · Rooftop",
-    position: { x: 0, y: 0 },
+    position: { x: 2400, y: 0 },
     width: 420,
     height: 236,
     createdBy: { kind: "person" },
@@ -105,9 +106,9 @@ const connections: CanvasConnection[] = [
   { id: "c-take-otto", fromNodeId: "shot-1-take-1", toNodeId: botNodeId("otto"), kind: "content", pipeline: true },
 ];
 
-/** The sample canvas, with bots and what they made where the server's default layout puts them. */
+/** The sample canvas: a small team and what it made, before any production. */
 export function sampleCanvasSnapshot(): CanvasSnapshot {
-  const base: CanvasSnapshot = {
+  return structuredClone<CanvasSnapshot>({
     projectId: SAMPLE_PROJECT_ID,
     revision: 1,
     nodes: [...botNodes, ...contentNodes],
@@ -116,9 +117,7 @@ export function sampleCanvasSnapshot(): CanvasSnapshot {
     backgroundMode: "dots",
     project: { id: SAMPLE_PROJECT_ID, name: "Rain City", leadBotId: "mira", archived: false, folderState: "ready" },
     bots: SAMPLE_BOTS,
-  };
-  const positions = layoutPipeline(base);
-  return structuredClone({ ...base, nodes: base.nodes.map((node) => ({ ...node, position: positions.get(node.id) ?? node.position })) });
+  });
 }
 
 export const SAMPLE_MODELS: Record<string, GenerationModel[]> = {
@@ -133,10 +132,11 @@ export const SAMPLE_MODELS: Record<string, GenerationModel[]> = {
 };
 
 export function sampleGenerationSettings(): ProjectGenerationSettings {
-  const { image, video } = DEFAULT_GENERATION_SETTINGS;
+  const { image, video, concurrency } = DEFAULT_GENERATION_SETTINGS;
   return {
     image: { server: "studio-images", tools: { ...image.tools }, defaults: { ...image.defaults, model: "flux-pro", aspect: "16:9" } },
     video: { server: "studio-video", tools: { ...video.tools }, defaults: { ...video.defaults, model: "kling-2" } },
+    concurrency: { ...concurrency },
   };
 }
 

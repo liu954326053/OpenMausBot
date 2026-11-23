@@ -19,6 +19,13 @@ describe("what one conversation shows on its bot's node", () => {
     expect(read.failed).toBe(false);
   });
 
+  it("keeps its newest turn's last steps, oldest first, without a failed turn's line", () => {
+    const read = readThread([step("Old"), line({ role: "user", text: "Go" }), step("Read", "Read a.md"), step("Write", "Write b.md"), failure(), step("Grep"), step("Edit"), step("Bash", "Ran tests")]);
+    expect(read.steps?.map((one) => one.text)).toEqual(["Write b.md", "Grep", "Edit", "Ran tests"]);
+    expect(read.steps?.at(-1)?.at).toBe(at);
+    expect(readThread([step("Old"), line({ role: "user", text: "Go" }), reply("Hi")])).not.toHaveProperty("steps");
+  });
+
   it("failed when a failed turn came after its last reply, and not once a reply came after it", () => {
     expect(readThread([reply("Done"), failure()]).failed).toBe(true);
     expect(readThread([failure(), reply("Recovered")]).failed).toBe(false);

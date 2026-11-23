@@ -28,24 +28,30 @@ const TAIL_MESSAGES = 80;
 /** A group chat holds every member's lines: a member's own are read from this many of its newest. */
 const ROOM_TAIL_MESSAGES = 200;
 const DOING_MAX_CHARS = 200;
+const STEPS_KEPT = 4;
 
 export interface ThreadRead {
   reply?: NonNullable<ThreadFacts["reply"]>;
   doing?: string;
+  steps?: NonNullable<ThreadFacts["steps"]>;
   failed: boolean;
 }
 
 const isReply = (message: Message) => message.role === "bot" && message.kind === "text" && message.turnTerminal === true && Boolean(message.text?.trim());
 const isFailedTurn = (message: Message) => message.kind === "activity" && message.tool !== undefined && message.tool.partial !== true && failedTurnCause(message.tool.name) !== null;
+const isStep = (message: Message) => message.kind === "activity" && message.tool !== undefined && failedTurnCause(message.tool.name) === null;
+const wordsOf = (message: Message) => [...(message.tool?.label ?? message.tool?.name ?? "")].slice(0, DOING_MAX_CHARS).join("");
 
 export function readThread(messages: readonly Message[]): ThreadRead {
   const replyAt = messages.findLastIndex(isReply);
   const reply = messages[replyAt];
-  const step = messages.findLast((message) => message.kind === "activity" && message.tool !== undefined && failedTurnCause(message.tool.name) === null);
-  const words = step?.tool?.label ?? step?.tool?.name;
+  const step = messages.findLast(isStep);
+  const turn = messages.slice(messages.findLastIndex((message) => message.role === "user") + 1);
+  const steps = turn.filter(isStep).slice(-STEPS_KEPT).map((message) => ({ text: wordsOf(message), at: message.at }));
   return {
     ...(reply ? { reply: { messageId: reply.id, text: reply.text!, at: reply.at } } : {}),
-    ...(words ? { doing: [...words].slice(0, DOING_MAX_CHARS).join("") } : {}),
+    ...(step && wordsOf(step) ? { doing: wordsOf(step) } : {}),
+    ...(steps.length ? { steps } : {}),
     failed: messages.findLastIndex(isFailedTurn) > replyAt,
   };
 }
@@ -121,6 +127,7 @@ export class BotFactsReader {
           failed: read.failed,
           lastAt: lastAt(task),
           ...(read.doing ? { doing: read.doing } : {}),
+          ...(read.steps ? { steps: read.steps } : {}),
           ...(read.reply ? { reply: read.reply } : {}),
         };
       });
@@ -134,6 +141,7 @@ export class BotFactsReader {
           failed: read.failed,
           lastAt: read.lastAt,
           ...(read.doing ? { doing: read.doing } : {}),
+          ...(read.steps ? { steps: read.steps } : {}),
           ...(read.reply ? { reply: read.reply } : {}),
         });
       }

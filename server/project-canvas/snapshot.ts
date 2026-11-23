@@ -31,6 +31,8 @@ export interface ThreadFacts {
   lastAt: number;
   /** While busy: the words of its newest activity row. */
   doing?: string;
+  /** The words of its newest turn's last activity rows, oldest first. */
+  steps?: Array<{ text: string; at: number }>;
   /** Its newest reply. */
   reply?: { messageId: string; text: string; at: number };
   /** Its newest question or approval card nobody answered. */
@@ -57,7 +59,7 @@ export interface SnapshotInput {
   sees(threadId: string): boolean;
 }
 
-export type PlacedFrame = CanvasFrame & { placed: boolean };
+export type PlacedFrame = CanvasFrame & { placed: boolean; arranged?: true };
 
 /** Each bot node's frame by node id: where it is stored, or where the default layout puts it, moved down clear of the
  * nodes on the canvas and of the bots before it. */
@@ -69,7 +71,7 @@ export function botFrames(document: CanvasDocument, flow: CanvasFlow): Map<strin
   return new Map(flow.botIds.map((botId): [string, PlacedFrame] => {
     const id = botNodeId(botId);
     const own = stored.get(id);
-    if (own) return [id, { position: own.position, width: own.width, height: own.height, placed: true }];
+    if (own) return [id, { position: own.position, width: own.width, height: own.height, placed: true, ...(own.arranged ? { arranged: true as const } : {}) }];
     const frame = clearBelow(defaults.get(id)!, taken);
     taken.push(frame);
     return [id, { ...frame, placed: false }];
@@ -99,6 +101,7 @@ function botState(bot: BotFacts, lead: boolean, stages: FlowStage[], episode: nu
   const reply = newest(visible.filter((one) => one.reply), (one) => one.reply!.at);
   const card = newest(visible.filter((one) => one.card), (one) => one.card!.at);
   const doing = newest(visible.filter((one) => one.busy && one.doing), (one) => one.lastAt);
+  const stepping = newest(visible.filter((one) => one.busy && one.steps?.length), (one) => one.lastAt) ?? newest(visible.filter((one) => one.steps?.length), (one) => one.lastAt);
   return {
     botId: bot.id,
     name: bot.name,
@@ -108,6 +111,7 @@ function botState(bot: BotFacts, lead: boolean, stages: FlowStage[], episode: nu
     ...(episode === undefined ? {} : { episode }),
     status: statusOf(bot.threads),
     ...(doing ? { doing: redactSecretsInText(doing.doing!) } : {}),
+    ...(stepping ? { steps: stepping.steps!.map((step) => ({ text: redactSecretsInText(step.text), at: step.at })) } : {}),
     ...(reply ? { output: { ...boundedOutput(reply.reply!.text), threadId: reply.threadId, messageId: reply.reply!.messageId, at: reply.reply!.at } } : {}),
     ...(card ? { waiting: { threadId: card.threadId, messageId: card.card!.messageId, card: redactSecrets(card.card!.card) as OptionCardData } } : {}),
     placed,
@@ -127,7 +131,7 @@ export function buildSnapshot(input: SnapshotInput): CanvasSnapshot {
   const frames = botFrames(document, flow);
   const botNodes: CanvasNode[] = input.bots.map((one) => {
     const frame = frames.get(botNodeId(one.id))!;
-    return { id: botNodeId(one.id), type: "bot", title: one.name, position: frame.position, width: frame.width, height: frame.height };
+    return { id: botNodeId(one.id), type: "bot", title: one.name, position: frame.position, width: frame.width, height: frame.height, ...(frame.arranged ? { arranged: true as const } : {}) };
   });
   const content = document.nodes.filter((node) => botIdOfNode(node.id) === null);
   const nodes = [...botNodes, ...content];
