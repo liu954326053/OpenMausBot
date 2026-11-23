@@ -160,6 +160,7 @@ describe("sidebar footer places", () => {
 
   it("lists the skills library and MCP servers after Published apps, and opens each", () => {
     fixture.advanced = true;
+    fixture.state = { ...fixture.state, config: { features: { publishedApps: true } } };
     const { nodes: tree, html } = render("comfortable");
     const at = (id: string) => html.indexOf(`data-sidebar-nav="${id}"`);
     expect(at("published-apps")).toBeGreaterThan(-1);
@@ -172,6 +173,15 @@ describe("sidebar footer places", () => {
     expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "showSkillsLibrary" });
     press("mcp");
     expect(fixture.dispatch).toHaveBeenLastCalledWith({ type: "togglePlugins", open: true, surface: "mcp" });
+  });
+
+  it("keeps Published apps out of the Tools until the config asks for it", () => {
+    fixture.advanced = true;
+    const without = render("comfortable").html;
+    expect(without).not.toContain('data-sidebar-nav="published-apps"');
+    expect(without).toContain('data-sidebar-nav="mcp"');
+    fixture.state = { ...fixture.state, config: { features: { publishedApps: true } } };
+    expect(render("comfortable").html).toContain('data-sidebar-nav="published-apps"');
   });
 
   it("marks the skills library current on its page, and MCP servers while the panel shows them", () => {
@@ -313,7 +323,7 @@ describe("toolbar tools layout", () => {
 
   it("toolbar keeps tour anchors and aria-current", () => {
     fixture.advanced = true;
-    fixture.state.activeView = "routines";
+    fixture.state = { ...fixture.state, activeView: "routines", config: { features: { publishedApps: true } } };
     const { html } = render("comfortable", { toolsLayout: "toolbar" });
     expect(html).toContain('data-tour="tools"');
     expect(html).toMatch(/data-tour="nav-automations" data-sidebar-nav="automations"/);
@@ -339,9 +349,15 @@ describe("toolbar tools layout", () => {
 
   it("toolbar applies to Advanced mode's five places; Simple mode keeps them in the bottom bar instead", () => {
     fixture.advanced = true;
+    fixture.state = { ...fixture.state, config: { features: { publishedApps: true } } };
     expect(render("comfortable", { toolsLayout: "toolbar" }).html.match(/data-sidebar-nav="/g)).toHaveLength(5);
     fixture.advanced = false;
     expect(render("comfortable", { toolsLayout: "toolbar" }).html).toBe("");
+  });
+
+  it("puts four places in the toolbar without Published apps", () => {
+    fixture.advanced = true;
+    expect(render("comfortable", { toolsLayout: "toolbar" }).html.match(/data-sidebar-nav="/g)).toHaveLength(4);
   });
 
   it("icons density ignores the tools layout", () => {
