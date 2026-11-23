@@ -27,6 +27,11 @@ export interface OverlayHarness {
   update(next: Partial<BoardOverlayProps>): Promise<void>;
   /** The board panned or zoomed. */
   moveView(): Promise<void>;
+  /** The board panned or zoomed, and nothing has happened since. */
+  tick(): void;
+  nextFrame(): Promise<void>;
+  /** How many listeners follow the board's view now. */
+  viewListeners(): number;
   /** Lets pending reads and sends finish. */
   settle(): Promise<void>;
   unmount(): void;
@@ -43,6 +48,8 @@ function sizedObserver(size: LayerSize) {
     disconnect() {}
   };
 }
+
+const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
 /** Renders the overlay as the board does: it holds `opened`, which `open` and `close` change. */
 export async function renderOverlay(overrides: Partial<BoardOverlayProps> = {}, layer: LayerSize = { width: 1440, height: 900 }, fake = fakeBackend()): Promise<OverlayHarness> {
@@ -105,6 +112,11 @@ export async function renderOverlay(overrides: Partial<BoardOverlayProps> = {}, 
     moveView: () => act(async () => {
       for (const listener of listeners) listener();
     }),
+    tick: () => {
+      for (const listener of listeners) listener();
+    },
+    nextFrame: () => act(frame),
+    viewListeners: () => listeners.size,
     settle,
     unmount: () => {
       act(() => root.unmount());

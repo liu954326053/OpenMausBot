@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
 import { ArrowUp, Crown, ExternalLink, LoaderCircle, Square, X } from "lucide-react";
 import { botNodeId, type CanvasBotState, type CanvasFileRef } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
@@ -8,7 +8,7 @@ import { canvasErrorText } from "@/lib/project-canvas/backend";
 import type { CanvasBotLook, CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { sendsMessage, useSendKey } from "@/lib/send-key";
 import type { BoardAsset, BoardIndex } from "./board-index";
-import { CHAT_SHEET_BELOW, placeChat, type ChatPlacement, type PlacementInput } from "./chat-placement";
+import { CHAT_SHEET_BELOW, placeChat, type PlacementInput } from "./chat-placement";
 import { ChatExchange } from "./ChatExchange";
 import { ChatWaiting } from "./ChatWaiting";
 import type { OverlayBackend } from "./overlay-backend";
@@ -25,7 +25,7 @@ export interface ChatSession {
   removed: readonly string[];
 }
 
-export const NEW_CHAT: ChatSession = { draft: "", added: [], removed: [] };
+const NEW_CHAT: ChatSession = { draft: "", added: [], removed: [] };
 
 export interface BotChatWindowProps {
   projectId: string;
@@ -36,23 +36,24 @@ export interface BotChatWindowProps {
   readOnly: boolean;
   /** Node ids it was opened with, added to the tray once each time they come. */
   references: readonly string[] | undefined;
-  session: ChatSession;
-  onSession(botId: string, session: ChatSession): void;
+  /** By bot id: what each window left, which the next window for that bot starts from. */
+  sessions: Map<string, ChatSession>;
   pictureUrl(file: CanvasFileRef): string;
   layer: PlacementInput["layer"];
   reserved: number;
   anchorOf(nodeId: string): BoardAnchor | null;
   subscribeView(listener: () => void): () => void;
   onClose(): void;
+  locale: string;
 }
 
 /** A bot's chat beside its card: its latest exchange, the question it waits on, and a task to send with references. */
-export function BotChatWindow(props: BotChatWindowProps) {
-  const { projectId, bot, look, index, backend, readOnly, pictureUrl, onClose } = props;
+export const BotChatWindow = memo(function BotChatWindow(props: BotChatWindowProps) {
+  const { projectId, bot, look, index, backend, readOnly, pictureUrl, onClose, locale } = props;
   const botId = bot.botId;
   const windowRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const placement = usePlacement(windowRef, props);
+  const sheet = usePlacement(windowRef, props);
   const [session, setSession] = useSession(props);
   const connected = useMemo(() => index.connectedInto(botId), [index, botId]);
   const library = useMemo(() => index.libraryFor(botId), [index, botId]);
@@ -117,12 +118,11 @@ export function BotChatWindow(props: BotChatWindowProps) {
       role="dialog"
       aria-label={t("boardPanels.chat.label", { name: bot.name })}
       data-board-chat=""
-      data-placement={placement}
-      style={placement === "sheet" ? undefined : { left: 0, top: 0 }}
-      className={cn("pointer-events-auto absolute flex", placement === "sheet" ? "inset-x-0 bottom-0 max-h-[70%]" : "max-h-[min(640px,calc(100%-24px))] w-96")}
+      style={sheet ? undefined : { left: 0, top: 0 }}
+      className={cn("pointer-events-auto absolute flex", sheet ? "inset-x-0 bottom-0 max-h-[70%]" : "max-h-[min(640px,calc(100%-24px))] w-96")}
       onKeyDown={onKeyDown}
     >
-      <div className={cn("popover-surface flex min-h-0 w-full animate-pop-in flex-col overflow-hidden border border-hairline/50 bg-menu motion-reduce:animate-none", placement === "sheet" ? "rounded-t-xl border-b-0" : "rounded-xl")}>
+      <div className={cn("popover-surface flex min-h-0 w-full animate-pop-in flex-col overflow-hidden border border-hairline/50 bg-menu motion-reduce:animate-none", sheet ? "rounded-t-xl border-b-0" : "rounded-xl")}>
         <header className="flex items-center gap-2.5 border-b border-hairline/50 px-4 py-3">
           <BotFace name={bot.name} look={look} size={32} />
           <div className="min-w-0 flex-1">
@@ -143,7 +143,7 @@ export function BotChatWindow(props: BotChatWindowProps) {
           <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
             <ReferencePicker index={index} taken={taken} pictureUrl={pictureUrl} onAdd={add} onDone={closePicker} />
           </div>
-        ) : <ChatExchange messages={messages} botName={bot.name} readError={readError} />}
+        ) : <ChatExchange messages={messages} botName={bot.name} readError={readError} locale={locale} />}
         <div className="flex flex-col gap-2 border-t border-hairline/50 px-4 pb-3 pt-2.5">
           {bot.waiting ? <ChatWaiting bot={bot} waiting={bot.waiting} onOpenChat={() => backend.openChat(projectId, botId, bot.waiting!.threadId)} /> : null}
           <ReferenceTray connected={connected} extras={extras} botName={bot.name} pictureUrl={pictureUrl} pickerOpen={picking} onPick={() => (picking ? closePicker() : setPicking(true))} onRemove={remove} />
@@ -187,19 +187,21 @@ export function BotChatWindow(props: BotChatWindowProps) {
       </div>
     </section>
   );
-}
+});
 
-/** Beside the card, docked or a sheet, set again whenever the board moves, the window resizes or the layer does. */
-function usePlacement(windowRef: RefObject<HTMLElement | null>, { bot, layer, reserved, anchorOf, subscribeView }: BotChatWindowProps): ChatPlacement["mode"] {
-  const [mode, setMode] = useState<ChatPlacement["mode"]>(layer.width < CHAT_SHEET_BELOW ? "sheet" : "docked");
-  const anchorId = botNodeId(bot.botId);
+/** Beside the card, docked or a sheet: set on the element itself whenever the board moves, the window resizes or the
+ * layer does, so a move of the board draws nothing. True for a sheet. */
+function usePlacement(windowRef: RefObject<HTMLElement | null>, { bot, layer, reserved, anchorOf, subscribeView }: BotChatWindowProps): boolean {
+  const input = useRef({ anchorId: botNodeId(bot.botId), layer, reserved, anchorOf });
   const place = useCallback(() => {
     const element = windowRef.current!;
+    const { anchorId, layer, reserved, anchorOf } = input.current;
     const placement = placeChat({ anchor: anchorOf(anchorId), size: { width: element.offsetWidth, height: element.offsetHeight }, layer, reserved });
     element.style.transform = placement.mode === "sheet" ? "" : `translate(${Math.round(placement.x)}px, ${Math.round(placement.y)}px)`;
-    setMode(placement.mode);
-  }, [windowRef, anchorOf, anchorId, layer, reserved]);
+    element.dataset.placement = placement.mode;
+  }, [windowRef]);
   useLayoutEffect(() => {
+    input.current = { anchorId: botNodeId(bot.botId), layer, reserved, anchorOf };
     place();
   });
   useEffect(() => subscribeView(place), [subscribeView, place]);
@@ -208,12 +210,14 @@ function usePlacement(windowRef: RefObject<HTMLElement | null>, { bot, layer, re
     observer.observe(windowRef.current!);
     return () => observer.disconnect();
   }, [windowRef, place]);
-  return mode;
+  return layer.width < CHAT_SHEET_BELOW;
 }
 
-function useSession({ bot, index, references, session: kept, onSession }: BotChatWindowProps): [ChatSession, Dispatch<SetStateAction<ChatSession>>] {
-  const [session, setSession] = useState(kept);
-  useEffect(() => onSession(bot.botId, session), [onSession, bot.botId, session]);
+function useSession({ bot, index, references, sessions }: BotChatWindowProps): [ChatSession, Dispatch<SetStateAction<ChatSession>>] {
+  const [session, setSession] = useState(() => sessions.get(bot.botId) ?? NEW_CHAT);
+  useEffect(() => {
+    sessions.set(bot.botId, session);
+  }, [sessions, bot.botId, session]);
   const merged = useRef<readonly string[] | undefined>(undefined);
   useEffect(() => {
     if (!references || merged.current === references) return;

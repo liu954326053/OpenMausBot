@@ -1,14 +1,14 @@
-import { memo, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { memo, useCallback, useId, useRef, useState, type KeyboardEvent } from "react";
 import { AlertCircle, CheckCircle2, ChevronRight, Crown, Film, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { episodeCode } from "../../../../shared/production";
-import type { CanvasBotState, CanvasFileRef } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import type { LocaleKey } from "@/locales";
 import { EPISODE_STATUS_KEYS, episodeProgress } from "./asset-words";
-import type { BoardAsset, BoardIndex, EpisodeRow } from "./board-index";
+import type { EpisodeRow } from "./board-index";
 import { BotFace, BotStatus, EmptyLine, NO_LOOK, PANEL_ROW, ROW_META, RowGroup } from "./panel-parts";
+import type { AssetFacts, EpisodeShotsFacts, PanelRows, ShotFacts, TeamFacts } from "./panel-rows";
 
 const TABS = ["team", "assets", "episodes"] as const;
 type Tab = (typeof TABS)[number];
@@ -21,19 +21,20 @@ export const SIDE_PANEL_ROOM = { open: 16 + 288 + 16, folded: 16 + 36 + 16 } as 
 const FLOATING = "popover-surface pointer-events-auto absolute end-4 top-4 rounded-xl border border-hairline/50 bg-menu";
 
 export interface SidePanelProps {
-  index: BoardIndex;
+  rows: PanelRows;
   looks: Record<string, CanvasBotLook>;
-  pictureUrl(file: CanvasFileRef): string;
   open: boolean;
   onOpenChange(open: boolean): void;
   /** The bot whose chat window is open. */
   chatBotId?: string;
   onBot(botId: string): void;
-  onAsset(asset: BoardAsset): void;
+  /** With the card id of the asset. */
+  onAsset(cardId: string): void;
   onEpisode(episode: number): void;
+  locale: string;
 }
 
-export function SidePanel({ index, looks, pictureUrl, open, onOpenChange, chatBotId, onBot, onAsset, onEpisode }: SidePanelProps) {
+export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChange, chatBotId, onBot, onAsset, onEpisode, locale }: SidePanelProps) {
   const id = useId();
   const [tab, setTab] = useState<Tab>("team");
   const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
@@ -110,19 +111,27 @@ export function SidePanel({ index, looks, pictureUrl, open, onOpenChange, chatBo
         </div>
         {open ? (
           <div role="tabpanel" id={`${id}-tabpanel`} aria-labelledby={`${id}-tab-${tab}`} className="-mx-1.5 min-h-0 flex-1 overflow-y-auto px-1.5">
-            {tab === "team" ? <TeamTab team={index.team} looks={looks} chatBotId={chatBotId} onBot={onBot} /> : null}
-            {tab === "assets" ? <AssetsTab index={index} pictureUrl={pictureUrl} onAsset={onAsset} /> : null}
-            {tab === "episodes" ? <EpisodesTab episodes={index.episodes} onEpisode={onEpisode} /> : null}
+            {tab === "team" ? <TeamTab team={rows.team} looks={looks} chatBotId={chatBotId} onBot={onBot} locale={locale} /> : null}
+            {tab === "assets" ? <AssetsTab characters={rows.characters} scenes={rows.scenes} shots={rows.shots} finals={rows.finals} onAsset={onAsset} locale={locale} /> : null}
+            {tab === "episodes" ? <EpisodesTab episodes={rows.episodes} onEpisode={onEpisode} locale={locale} /> : null}
           </div>
         ) : null}
       </aside>
     </>
   );
+});
+
+interface TeamTabProps {
+  team: PanelRows["team"];
+  looks: Record<string, CanvasBotLook>;
+  chatBotId?: string;
+  onBot(botId: string): void;
+  locale: string;
 }
 
-function TeamTab({ team, looks, chatBotId, onBot }: { team: BoardIndex["team"]; looks: Record<string, CanvasBotLook>; chatBotId?: string; onBot(botId: string): void }) {
-  const row = (bot: CanvasBotState) => (
-    <TeamRow key={bot.botId} botId={bot.botId} name={bot.name} title={bot.title} status={bot.status} lead={bot.lead} look={looks[bot.botId] ?? NO_LOOK} active={bot.botId === chatBotId} onBot={onBot} />
+const TeamTab = memo(function TeamTab({ team, looks, chatBotId, onBot, locale }: TeamTabProps) {
+  const row = (bot: TeamFacts) => (
+    <TeamRow key={bot.botId} bot={bot} look={looks[bot.botId] ?? NO_LOOK} active={bot.botId === chatBotId} onBot={onBot} locale={locale} />
   );
   if (!team.episodes.length) return <RowGroup>{team.drama.map(row)}</RowGroup>;
   return (
@@ -131,20 +140,17 @@ function TeamTab({ team, looks, chatBotId, onBot }: { team: BoardIndex["team"]; 
       <RowGroup label={t("boardPanels.team.eachEpisode")}>{team.episodes.map(row)}</RowGroup>
     </>
   );
-}
+});
 
 interface TeamRowProps {
-  botId: string;
-  name: string;
-  title: string;
-  status: CanvasBotState["status"];
-  lead: boolean;
+  bot: TeamFacts;
   look: CanvasBotLook;
   active: boolean;
   onBot(botId: string): void;
+  locale: string;
 }
 
-const TeamRow = memo(function TeamRow({ botId, name, title, status, lead, look, active, onBot }: TeamRowProps) {
+const TeamRow = memo(function TeamRow({ bot: { botId, name, title, status, lead }, look, active, onBot }: TeamRowProps) {
   return (
     <li>
       <button type="button" data-team-row={botId} aria-current={active ? "true" : undefined} className={cn(PANEL_ROW, active && "bg-ink/[0.08]")} onClick={() => onBot(botId)}>
@@ -162,120 +168,129 @@ const TeamRow = memo(function TeamRow({ botId, name, title, status, lead, look, 
   );
 });
 
-function AssetsTab({ index, pictureUrl, onAsset }: { index: BoardIndex; pictureUrl(file: CanvasFileRef): string; onAsset(asset: BoardAsset): void }) {
+interface AssetsTabProps {
+  characters: readonly AssetFacts[];
+  scenes: readonly AssetFacts[];
+  shots: readonly EpisodeShotsFacts[];
+  finals: readonly AssetFacts[];
+  onAsset(cardId: string): void;
+  locale: string;
+}
+
+const AssetsTab = memo(function AssetsTab({ characters, scenes, shots, finals, onAsset, locale }: AssetsTabProps) {
   const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set());
-  const { characters, scenes, shotsByEpisode, finals } = index;
-  if (!characters.length && !scenes.length && !shotsByEpisode.length && !finals.length) return <EmptyLine text={t("boardPanels.assets.empty")} />;
-  const titles = new Map(index.episodes.map((row) => [row.episode, row.title]));
-  const toggle = (episode: number) => setUnfolded((current) => {
+  const toggle = useCallback((episode: number) => setUnfolded((current) => {
     const next = new Set(current);
     if (!next.delete(episode)) next.add(episode);
     return next;
-  });
-  const profileRow = (asset: BoardAsset) => {
-    const file = asset.media?.metadata?.file;
-    return (
-      <AssetRow key={asset.cardId} asset={asset} meta={asset.node.metadata?.card?.subtitle} onAsset={onAsset}>
-        {file ? <img src={pictureUrl(file)} alt="" loading="lazy" className="size-7 shrink-0 rounded-md bg-inset object-cover" /> : <span aria-hidden="true" className="size-7 shrink-0 rounded-md bg-ink/[0.06]" />}
-      </AssetRow>
-    );
-  };
+  }), []);
+  if (!characters.length && !scenes.length && !shots.length && !finals.length) return <EmptyLine text={t("boardPanels.assets.empty")} />;
   return (
     <>
-      {characters.length ? <RowGroup label={t("boardPanels.assets.characters")} count={characters.length}>{characters.map(profileRow)}</RowGroup> : null}
-      {scenes.length ? <RowGroup label={t("boardPanels.assets.scenes")} count={scenes.length}>{scenes.map(profileRow)}</RowGroup> : null}
-      {shotsByEpisode.length ? (
-        <RowGroup label={t("boardPanels.assets.shots")} count={shotsByEpisode.reduce((total, group) => total + group.shots.length, 0)}>
-          {shotsByEpisode.map((group) => (
-            <EpisodeShots key={group.episode} episode={group.episode} title={titles.get(group.episode) ?? ""} shots={group.shots} open={unfolded.has(group.episode)} onToggle={toggle} onAsset={onAsset} />
+      {characters.length ? <RowGroup label={t("boardPanels.assets.characters")} count={characters.length}>{characters.map((asset) => <AssetRow key={asset.cardId} asset={asset} onAsset={onAsset} />)}</RowGroup> : null}
+      {scenes.length ? <RowGroup label={t("boardPanels.assets.scenes")} count={scenes.length}>{scenes.map((asset) => <AssetRow key={asset.cardId} asset={asset} onAsset={onAsset} />)}</RowGroup> : null}
+      {shots.length ? (
+        <RowGroup label={t("boardPanels.assets.shots")} count={shots.reduce((total, group) => total + group.shots.length, 0)}>
+          {shots.map((group) => (
+            <EpisodeShots
+              key={group.episode}
+              episode={group.episode}
+              title={group.title}
+              count={group.shots.length}
+              shots={unfolded.has(group.episode) ? group.shots : undefined}
+              onToggle={toggle}
+              onAsset={onAsset}
+              locale={locale}
+            />
           ))}
         </RowGroup>
       ) : null}
       {finals.length ? (
         <RowGroup label={t("boardPanels.assets.finals")} count={finals.length}>
-          {finals.map((asset) => (
-            <AssetRow key={asset.cardId} asset={asset} meta={episodeCode(asset.episode!)} onAsset={onAsset}>
-              <Film size={16} aria-hidden="true" className="shrink-0 text-ink-secondary" />
-            </AssetRow>
-          ))}
+          {finals.map((asset) => <AssetRow key={asset.cardId} asset={asset} film onAsset={onAsset} />)}
         </RowGroup>
       ) : null}
     </>
   );
-}
+});
 
-function AssetRow({ asset, meta, onAsset, children }: { asset: BoardAsset; meta?: string; onAsset(asset: BoardAsset): void; children: ReactNode }) {
+const AssetRow = memo(function AssetRow({ asset, film = false, onAsset }: { asset: AssetFacts; film?: boolean; onAsset(cardId: string): void }) {
+  const picture = asset.picture
+    ? <img src={asset.picture} alt="" loading="lazy" className="size-7 shrink-0 rounded-md bg-inset object-cover" />
+    : <span aria-hidden="true" className="size-7 shrink-0 rounded-md bg-ink/[0.06]" />;
   return (
     <li>
-      <button type="button" className={PANEL_ROW} onClick={() => onAsset(asset)}>
-        {children}
+      <button type="button" className={PANEL_ROW} onClick={() => onAsset(asset.cardId)}>
+        {film ? <Film size={16} aria-hidden="true" className="shrink-0 text-ink-secondary" /> : picture}
         <span className="min-w-0 flex-1">
           <span title={asset.title} className="block truncate text-[13px] leading-[18px] text-ink">{asset.title}</span>
-          {meta ? <span title={meta} className={ROW_META}>{meta}</span> : null}
+          {asset.meta ? <span title={asset.meta} className={ROW_META}>{asset.meta}</span> : null}
         </span>
       </button>
     </li>
   );
-}
+});
 
 interface EpisodeShotsProps {
   episode: number;
   title: string;
-  shots: BoardAsset[];
-  open: boolean;
+  count: number;
+  /** Given only while the episode is unfolded, as its rows show them. */
+  shots: readonly ShotFacts[] | undefined;
   onToggle(episode: number): void;
-  onAsset(asset: BoardAsset): void;
+  onAsset(cardId: string): void;
+  locale: string;
 }
 
-function EpisodeShots({ episode, title, shots, open, onToggle, onAsset }: EpisodeShotsProps) {
+const EpisodeShots = memo(function EpisodeShots({ episode, title, count, shots, onToggle, onAsset, locale }: EpisodeShotsProps) {
   const listId = useId();
+  const open = shots !== undefined;
   return (
     <li>
       <button type="button" className={PANEL_ROW} aria-expanded={open} aria-controls={listId} onClick={() => onToggle(episode)}>
         <ChevronRight size={16} aria-hidden="true" className={cn("shrink-0 text-ink-tertiary transition-transform duration-[120ms] motion-reduce:transition-none rtl:-scale-x-100", open && "rotate-90 rtl:-rotate-90")} />
         <span className="shrink-0 text-[12px] font-medium leading-4 tabular-nums text-ink-secondary">{episodeCode(episode)}</span>
         <span title={title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink">{title}</span>
-        <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{shots.length}</span>
+        <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{count}</span>
       </button>
       <ul id={listId} hidden={!open} className="flex flex-col">
-        {open ? shots.map((shot) => {
-          const seconds = shot.node.metadata?.settings?.seconds;
-          return (
-            <li key={shot.cardId}>
-              <button type="button" className={cn(PANEL_ROW, "ps-8")} onClick={() => onAsset(shot)}>
-                <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{shot.code}</span>
-                <span title={shot.title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink">{shot.title}</span>
-                {seconds ? <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{t("boardPanels.fact.seconds", { count: seconds })}</span> : null}
-              </button>
-            </li>
-          );
-        }) : null}
+        {shots?.map((shot) => <ShotRow key={shot.cardId} shot={shot} onAsset={onAsset} locale={locale} />)}
       </ul>
     </li>
   );
-}
+});
 
-function EpisodesTab({ episodes, onEpisode }: { episodes: readonly EpisodeRow[]; onEpisode(episode: number): void }) {
-  if (!episodes.length) return <EmptyLine text={t("boardPanels.episodes.empty")} />;
+const ShotRow = memo(function ShotRow({ shot, onAsset }: { shot: ShotFacts; onAsset(cardId: string): void; locale: string }) {
   return (
-    <RowGroup>
-      {episodes.map((row) => {
-        const progress = episodeProgress(row);
-        const meta = row.status ? `${t(EPISODE_STATUS_KEYS[row.status])} · ${progress}` : progress;
-        return (
-          <li key={row.episode}>
-            <button type="button" className={PANEL_ROW} onClick={() => onEpisode(row.episode)}>
-              <span className="w-9 shrink-0 text-[12px] font-medium leading-4 tabular-nums text-ink-secondary">{episodeCode(row.episode)}</span>
-              <span className="min-w-0 flex-1">
-                {row.title ? <span title={row.title} className="block truncate text-[13px] leading-[18px] text-ink">{row.title}</span> : null}
-                <span title={meta} className={ROW_META}>{meta}</span>
-              </span>
-              {row.status === "done" ? <CheckCircle2 size={16} aria-hidden="true" className="shrink-0 text-success" /> : null}
-              {row.status === "failed" ? <AlertCircle size={16} aria-hidden="true" className="shrink-0 text-danger" /> : null}
-            </button>
-          </li>
-        );
-      })}
-    </RowGroup>
+    <li>
+      <button type="button" className={cn(PANEL_ROW, "ps-8")} onClick={() => onAsset(shot.cardId)}>
+        <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{shot.code}</span>
+        <span title={shot.title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink">{shot.title}</span>
+        {shot.seconds ? <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{t("boardPanels.fact.seconds", { count: shot.seconds })}</span> : null}
+      </button>
+    </li>
   );
-}
+});
+
+const EpisodesTab = memo(function EpisodesTab({ episodes, onEpisode, locale }: { episodes: readonly EpisodeRow[]; onEpisode(episode: number): void; locale: string }) {
+  if (!episodes.length) return <EmptyLine text={t("boardPanels.episodes.empty")} />;
+  return <RowGroup>{episodes.map((row) => <EpisodeLine key={row.episode} row={row} onEpisode={onEpisode} locale={locale} />)}</RowGroup>;
+});
+
+const EpisodeLine = memo(function EpisodeLine({ row, onEpisode }: { row: EpisodeRow; onEpisode(episode: number): void; locale: string }) {
+  const progress = episodeProgress(row);
+  const meta = row.status ? `${t(EPISODE_STATUS_KEYS[row.status])} · ${progress}` : progress;
+  return (
+    <li>
+      <button type="button" className={PANEL_ROW} onClick={() => onEpisode(row.episode)}>
+        <span className="w-9 shrink-0 text-[12px] font-medium leading-4 tabular-nums text-ink-secondary">{episodeCode(row.episode)}</span>
+        <span className="min-w-0 flex-1">
+          {row.title ? <span title={row.title} className="block truncate text-[13px] leading-[18px] text-ink">{row.title}</span> : null}
+          <span title={meta} className={ROW_META}>{meta}</span>
+        </span>
+        {row.status === "done" ? <CheckCircle2 size={16} aria-hidden="true" className="shrink-0 text-success" /> : null}
+        {row.status === "failed" ? <AlertCircle size={16} aria-hidden="true" className="shrink-0 text-danger" /> : null}
+      </button>
+    </li>
+  );
+});

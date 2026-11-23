@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { AttachmentGallery } from "@/components/AttachmentGallery";
 import { FOLDED_SENT_TEXT, foldsSentText } from "@/components/chat-bubble";
@@ -19,10 +19,11 @@ export interface ChatExchangeProps {
   messages: readonly CanvasExchangeMessage[] | null;
   botName: string;
   readError: string | null;
+  locale: string;
 }
 
 /** The bot's latest exchange, kept scrolled to its end while the person reads at the end. */
-export function ChatExchange({ messages, botName, readError }: ChatExchangeProps) {
+export const ChatExchange = memo(function ChatExchange({ messages, botName, readError }: ChatExchangeProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -48,7 +49,7 @@ export function ChatExchange({ messages, botName, readError }: ChatExchangeProps
       </div>
     </div>
   );
-}
+});
 
 /** A person's message as the chat shows it: its pictures and files, then its words, folded when long. */
 function SentMessage({ text }: { text: string }) {
