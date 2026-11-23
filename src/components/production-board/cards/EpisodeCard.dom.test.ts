@@ -36,6 +36,7 @@ describe("the episode card", () => {
 
   it("says how long its shots run together", () => {
     expect(textOf(draw({ seconds: 36 }).querySelector("[data-episode-length]"))).toBe("36s");
+    expect(textOf(draw({ seconds: 288 }).querySelector("[data-episode-length]"))).toBe("04:48");
     expect(draw().querySelector("[data-episode-length]")).toBeNull();
     const alone = draw({ episode: { episode: 1, title: "The whole drama" }, to: undefined, seconds: 36 });
     expect(textOf(alone.querySelector("[data-episode-length]"))).toBe("36s");

@@ -2,7 +2,7 @@ import { Clock, RotateCcw } from "lucide-react";
 import { episodeCode, type ProductionEpisodeWire } from "../../../../shared/production";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { BotChip, CardAction, CardName, CardShell, StatusMark, type BoardBotRef } from "./parts";
+import { BotChip, CardAction, CardName, CardShell, clockLength, StatusMark, type BoardBotRef } from "./parts";
 import { episodeStatus } from "./tone";
 
 export interface EpisodeCardProps {
@@ -46,7 +46,7 @@ export function EpisodeCard({ episode, logline, text, to, seconds, onOpen, onRet
           {seconds ? (
             <span data-episode-length="" className="inline-flex shrink-0 items-center gap-1 text-[12px] leading-4 text-ink-tertiary tabular-nums">
               <Clock size={14} aria-label={t("boardCards.shot.length")} className="shrink-0" />
-              {t("boardCards.shot.seconds", { count: seconds })}
+              {seconds < 60 ? t("boardCards.shot.seconds", { count: seconds }) : clockLength(seconds * 1000)}
             </span>
           ) : null}
           <span className="flex min-w-0 flex-1 justify-end">{to ? <BotChip bot={to} label={t("boardCards.episode.to", { name: to.name })} /> : null}</span>
