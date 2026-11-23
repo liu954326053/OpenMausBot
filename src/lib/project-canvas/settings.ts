@@ -1,4 +1,5 @@
 import type { CanvasNode, CanvasNodeSettings } from "../../../shared/project-canvas";
+import { DEFAULT_PRODUCTION_CONCURRENCY, PRODUCTION_CONCURRENCY_MAX, type ProductionConcurrency } from "../../../shared/production";
 import {
   COMMON_CHOICES,
   modelOffers,
@@ -92,4 +93,22 @@ export function overrideSetting(node: CanvasNode, key: SettingKey, value: Settin
 export function restoreSetting(node: CanvasNode, key: SettingKey): CanvasNodeSettings | null {
   const { [key]: _removed, ...rest } = node.metadata?.settings ?? {};
   return Object.keys(rest).length ? rest : null;
+}
+
+export const CONCURRENCY_KEYS = ["videos", "images", "episodes"] as const satisfies readonly (keyof ProductionConcurrency)[];
+
+export type ConcurrencyKey = (typeof CONCURRENCY_KEYS)[number];
+
+/** What the person typed for one of the production's counts, as a whole number from 1 to the most the server takes;
+ * null for anything else. */
+export function concurrencyCount(typed: string): number | null {
+  const plain = typed.normalize("NFKC").trim();
+  if (!/^\d+$/.test(plain)) return null;
+  const count = Number(plain);
+  return count >= 1 && count <= PRODUCTION_CONCURRENCY_MAX ? count : null;
+}
+
+/** The settings with every count of the production's concurrency: a server older than the production sends none. */
+export function withConcurrency(settings: Omit<ProjectGenerationSettings, "concurrency"> & { concurrency?: Partial<ProductionConcurrency> }): ProjectGenerationSettings {
+  return { ...settings, concurrency: { ...DEFAULT_PRODUCTION_CONCURRENCY, ...settings.concurrency } };
 }
