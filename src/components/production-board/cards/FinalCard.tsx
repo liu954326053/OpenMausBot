@@ -33,6 +33,8 @@ const CLIP_LOOK: Readonly<Record<FinalClip["state"], string>> = {
   missing: "border border-dashed border-ink-tertiary/60 text-ink-tertiary",
 };
 const UNTIMED_CLIP_MS = 5000;
+/** The most clips whose codes fit on the strip, each at least `min-w-10`. */
+const LABELLED_CLIPS_MAX = 12;
 
 function draftText(draft: ProjectDraftWire): string {
   switch (draft.state) {
@@ -50,6 +52,7 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
   const name = t("boardCards.final.title", { episode: episodeCode(episode) });
   const ready = clips.filter((clip) => clip.state === "ready").length;
   const opens = draft && (draft.state === "written" || draft.state === "kept") && onOpenDraft;
+  const labelled = clips.length <= LABELLED_CLIPS_MAX;
   return (
     <CardShell kind="final" label={name} onOpen={onOpen}>
       <header className="flex min-w-0 items-center gap-2 px-3 pt-3">
@@ -58,7 +61,7 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
         <span data-final-title="" dir="auto" title={title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink-secondary">{title}</span>
         {durationMs ? <span data-final-length="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary tabular-nums">{clockLength(durationMs)}</span> : null}
       </header>
-      <div data-final-media="" className="mx-3 mt-2 h-[236px] shrink-0 overflow-hidden rounded-lg">
+      <div data-final-media="" className="mx-3 mt-2 h-59 shrink-0 overflow-hidden rounded-lg">
         {videoUrl ? (
           <InlineVideo src={videoUrl} posterUrl={coverUrl} label={t("boardCards.result.play", { name })} onPlay={onPlay} className="size-full" />
         ) : coverUrl ? (
@@ -83,9 +86,9 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
                 data-final-clip={clip.state}
                 title={clip.state === "ready" ? t("boardCards.final.clipReady", { code }) : t("boardCards.final.clipMissing", { code })}
                 style={{ flexGrow: clip.durationMs || UNTIMED_CLIP_MS }}
-                className={cn("flex min-w-0 basis-0 items-center overflow-hidden rounded-[4px] px-1.5 font-mono text-[12px] leading-4", CLIP_LOOK[clip.state])}
+                className={cn("flex basis-0 items-center overflow-hidden rounded-md px-1.5 font-mono text-[12px] leading-4", labelled ? "min-w-10" : "min-w-0", CLIP_LOOK[clip.state])}
               >
-                <span className="truncate">{code}</span>
+                {labelled ? <span className="truncate">{code}</span> : null}
               </li>
             );
           })}

@@ -32,6 +32,14 @@ describe("the final card", () => {
     expect(textOf(card.querySelector("[data-final-progress]"))).toBe("Waiting for shots 2 / 4");
   });
 
+  it("draws an episode of many shots as a strip of colours, each shot still named on hover", () => {
+    const many: FinalClip[] = Array.from({ length: 24 }, (_, index) => ({ number: index + 1, state: index < 20 ? "ready" : "missing" }));
+    const clips = [...draw({ clips: many }).querySelectorAll<HTMLElement>("[data-final-clip]")];
+    expect(clips).toHaveLength(24);
+    expect(clips.every((clip) => textOf(clip) === "")).toBe(true);
+    expect([clips[0]!.title, clips[23]!.title]).toEqual(["SH01: ready", "SH24: not ready yet"]);
+  });
+
   it("shows no film until there is one", () => {
     expect(textOf(draw().querySelector("[data-final-media]"))).toBe("No film yet");
     expect(draw({ coverUrl: "/files/cover.png" }).querySelector("[data-final-media] img")!.getAttribute("src")).toBe("/files/cover.png");
