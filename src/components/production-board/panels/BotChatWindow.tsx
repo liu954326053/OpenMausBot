@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
 import { ArrowUp, Crown, ExternalLink, LoaderCircle, Square, X } from "lucide-react";
-import { botNodeId, type CanvasBotState, type CanvasFileRef } from "../../../../shared/project-canvas";
+import { botNodeId, CANVAS_TASK_REFERENCES_MAX, type CanvasBotState, type CanvasFileRef } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
 import type { BoardAnchor } from "@/lib/production-board/overlay";
@@ -14,7 +14,6 @@ import { ChatWaiting } from "./ChatWaiting";
 import type { OverlayBackend } from "./overlay-backend";
 import { BotFace, BotStatus } from "./panel-parts";
 import { ReferencePicker, ReferenceTray } from "./ReferenceTray";
-import { taskText } from "./task-text";
 
 /** What the person was writing to a bot and the references they added or took away, kept while its window is closed. */
 export interface ChatSession {
@@ -69,14 +68,16 @@ export function BotChatWindow(props: BotChatWindowProps) {
   useEffect(() => composerRef.current!.focus({ preventScroll: true }), []);
   const words = session.draft.trim();
   const busy = bot.status === "working" || bot.status === "queued";
+  const overReferences = extras.length - CANVAS_TASK_REFERENCES_MAX;
+  const sendable = Boolean(words) && !sending && !readOnly && overReferences <= 0;
 
   const send = async () => {
-    if (!words || sending || readOnly) return;
+    if (!sendable) return;
     setSending(true);
     setProblem(null);
     setNotice(null);
     try {
-      const response = await backend.sendTask(projectId, { botId, text: taskText(words, extras), language: activeLocale() });
+      const response = await backend.sendTask(projectId, { botId, text: words, references: extras.map((asset) => asset.node.id), language: activeLocale() });
       setSession((current) => ({ ...current, draft: "" }));
       if (response.queued) setNotice(t("boardPanels.chat.queued", { name: bot.name }));
       setSent((count) => count + 1);
@@ -147,6 +148,7 @@ export function BotChatWindow(props: BotChatWindowProps) {
         <div className="flex flex-col gap-2 border-t border-hairline/50 px-4 pb-3 pt-2.5">
           {bot.waiting ? <ChatWaiting bot={bot} waiting={bot.waiting} onOpenChat={() => backend.openChat(projectId, botId, bot.waiting!.threadId)} /> : null}
           <ReferenceTray connected={connected} extras={extras} botName={bot.name} pictureUrl={pictureUrl} pickerOpen={picking} onPick={() => (picking ? closePicker() : setPicking(true))} onRemove={remove} />
+          {overReferences > 0 ? <p className="text-[12px] leading-4 text-danger">{t("boardPanels.chat.tooManyReferences", { max: CANVAS_TASK_REFERENCES_MAX, over: overReferences })}</p> : null}
           <textarea
             ref={composerRef}
             dir="auto"
@@ -178,7 +180,7 @@ export function BotChatWindow(props: BotChatWindowProps) {
                 {t("boardPanels.chat.stop")}
               </button>
             ) : null}
-            <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={readOnly || sending || !words} onClick={() => void send()}>
+            <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={!sendable} onClick={() => void send()}>
               {sending ? <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={14} aria-hidden="true" />}
               {t("boardPanels.chat.send")}
             </button>
@@ -228,8 +230,8 @@ function useSession({ bot, index, references, session: kept, onSession }: BotCha
   return [session, setSession];
 }
 
-/** What goes into the task's words: the bot's offered references the person kept, then what they added, leaving out
- * what is connected into the bot, which the server sends by itself. */
+/** What the task names as its references: the bot's offered references the person kept, then what they added, leaving
+ * out what is connected into the bot, which the server sends by itself. */
 function trayExtras(index: BoardIndex, connected: readonly BoardAsset[], library: readonly BoardAsset[], session: ChatSession): BoardAsset[] {
   const taken = new Set(connected.map((asset) => asset.cardId));
   const removed = new Set(session.removed);

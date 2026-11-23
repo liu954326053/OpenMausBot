@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { CanvasSnapshot } from "../../../../shared/project-canvas";
+import type { CanvasNode, CanvasSnapshot } from "../../../../shared/project-canvas";
 import { setLocale } from "@/lib/i18n";
 import { renderOverlay, type OverlayHarness } from "./testing/render-overlay";
 
@@ -118,7 +118,7 @@ describe("a bot's chat window", () => {
     await typeInto(composer(), "把第三集写得更紧凑。");
     await click(named("Send")!);
     await harness.settle();
-    expect(harness.fake.calls.sent).toEqual([{ botId: "writer", text: "把第三集写得更紧凑。", language: "en" }]);
+    expect(harness.fake.calls.sent).toEqual([{ botId: "writer", text: "把第三集写得更紧凑。", references: [], language: "en" }]);
     expect(composer().value).toBe("");
     expect(chat()!.textContent).toContain("把第三集写得更紧凑。");
   });
@@ -136,12 +136,31 @@ describe("a bot's chat window", () => {
     await typeInto(composer(), "雾再浓一点");
     await click(named("Send")!);
     await harness.settle();
-    const { text } = harness.fake.calls.sent[0]!;
-    expect(text.startsWith("雾再浓一点\n\nAlso work from these on the project's canvas")).toBe(true);
-    expect(text).toContain("- Character \"陆沉舟\" (node profile-chenzhou)");
-    expect(text).toContain("- Scene \"栈桥尽头\" (node profile-pier-end)");
-    expect(text).not.toContain("profile-qingwu");
-    expect(text).not.toContain("episode-2");
+    expect(harness.fake.calls.sent).toEqual([{
+      botId: "board-2",
+      text: "雾再浓一点",
+      references: ["profile-chenzhou", "profile-baixiansheng", "profile-aman", "profile-pier", "profile-shop", "profile-lighthouse", "profile-street", "profile-pier-end"],
+      language: "en",
+    }]);
+  });
+
+  it("sends at most 50 references with a task, and says how many to remove before it goes", async () => {
+    harness = await renderOverlay();
+    const { snapshot } = harness.current();
+    const scene = snapshot.nodes.find((node) => node.id === "profile-pier")!;
+    const more = Array.from({ length: 42 }, (_, n): CanvasNode => ({ ...scene, id: `profile-more-${n}`, title: `码头 ${n}`, groupId: undefined }));
+    await harness.update({ snapshot: { ...snapshot, nodes: [...snapshot.nodes, ...more] } });
+    await openChat("board-2");
+    await typeInto(composer(), "雾再浓一点");
+    expect(chat()!.textContent).toContain("Besides what is connected, a task takes at most 50 references. Remove 1 to send it.");
+    expect(named("Send")!.disabled).toBe(true);
+    await press(composer(), { key: "Enter" });
+    expect(harness.fake.calls.sent).toEqual([]);
+    await click(named("Remove 沈青梧")!);
+    expect(chat()!.textContent).not.toContain("Remove 1 to send it.");
+    await click(named("Send")!);
+    await harness.settle();
+    expect(harness.fake.calls.sent.map((task) => task.references?.length)).toEqual([50]);
   });
 
   it("takes the references it opens with, and keeps a bot's draft and references while it is closed", async () => {
