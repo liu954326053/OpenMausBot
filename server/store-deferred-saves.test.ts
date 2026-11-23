@@ -2,6 +2,7 @@ import { readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { OwnedFile } from "./atomic.ts";
 import { DATA_DIR } from "./config.ts";
 import type { ModelSelection } from "./contracts.ts";
 import { RESTART_EXIT_CODE } from "./restart.ts";
@@ -11,7 +12,9 @@ import { Store, type BotRecord } from "./store.ts";
 const selection = (): ModelSelection => ({ instanceId: "claude", model: "claude-sonnet-5" });
 const file = join(DATA_DIR, "bots.json");
 const onDisk = (botId: string) => (JSON.parse(readFileSync(file, "utf8")) as BotRecord[]).find((bot) => bot.id === botId)!;
+const taskOf = (saved: BotRecord, threadId: string) => saved.tasks!.find((candidate) => candidate.threadId === threadId)!;
 const written = () => statSync(file).ino;
+const endOfIteration = () => vi.advanceTimersByTimeAsync(0);
 
 describe("what bots.json holds, and when", () => {
   beforeEach(() => {
@@ -55,17 +58,11 @@ describe("what bots.json holds, and when", () => {
   it("holds everything else before the call returns, with the end-of-turn changes that were waiting", () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Maus" }, { seedMessages: false }), threadId = bot.threadId;
-    const task = (saved: BotRecord) => saved.tasks!.find((candidate) => candidate.threadId === threadId)!;
+    const task = (saved: BotRecord) => taskOf(saved, threadId);
     const durable: Array<[string, () => void, (saved: BotRecord) => void]> = [
-      ["an engine session", () => store.setResumeCursor(bot.id, "claude", { sessionId: "s-1" }, threadId),
-        (saved) => expect(task(saved).resumeCursors).toEqual({ claude: { sessionId: "s-1" } })],
-      ["which engine has the thread", () => store.markTaskDispatched(bot.id, threadId, "claude"), (saved) => expect(task(saved).lastInstanceId).toBe("claude")],
-      ["what was handed to the engine", () => store.setHandedMessages(bot.id, threadId, "claude", { session: { sessionId: "s-1" }, lastMessageId: "m-1" } as never),
-        (saved) => expect(task(saved).handedMessages).toMatchObject({ claude: { lastMessageId: "m-1" } })],
       ["a result posted into the chat (context changed elsewhere)", () => store.patchTask(bot.id, threadId, { resumeCursors: {}, lastInstanceId: "external:1" }),
         (saved) => expect(task(saved)).toMatchObject({ resumeCursors: {}, lastInstanceId: "external:1" })],
       ["a context reset", () => store.patchTask(bot.id, threadId, { resumeCursors: {} }), (saved) => expect(task(saved).resumeCursors).toEqual({})],
-      ["when the person last wrote", () => store.setTaskAskedAt(bot.id, threadId, 5_000), (saved) => expect(task(saved).askedAt).toBe(5_000)],
       ["a read mark", () => store.patchTask(bot.id, threadId, { unread: false, lastReadMessageId: "m-9" }),
         (saved) => expect(task(saved)).toMatchObject({ unread: false, lastReadMessageId: "m-9" })],
       ["a person's own unread mark", () => store.patchTask(bot.id, threadId, { unread: true }), (saved) => expect(task(saved).unread).toBe(true)],
@@ -86,6 +83,71 @@ describe("what bots.json holds, and when", () => {
     });
   });
 
+  it("holds an engine's bookkeeping by the end of the event-loop iteration, with the end-of-turn changes that were waiting", async () => {
+    const store = new Store(selection);
+    const bot = store.createBot({ name: "Maus" }, { seedMessages: false }), threadId = bot.threadId;
+    const task = (saved: BotRecord) => taskOf(saved, threadId);
+    const bookkeeping: Array<[string, () => void, (saved: BotRecord) => void]> = [
+      ["an engine session", () => store.setResumeCursor(bot.id, "claude", { sessionId: "s-1" }, threadId),
+        (saved) => expect(task(saved).resumeCursors).toEqual({ claude: { sessionId: "s-1" } })],
+      ["which engine has the thread", () => store.markTaskDispatched(bot.id, threadId, "claude"), (saved) => expect(task(saved).lastInstanceId).toBe("claude")],
+      ["what was handed to the engine", () => store.setHandedMessages(bot.id, threadId, "claude", { session: { sessionId: "s-1" }, lastMessageId: "m-1" } as never),
+        (saved) => expect(task(saved).handedMessages).toMatchObject({ claude: { lastMessageId: "m-1" } })],
+      ["when the person last wrote", () => store.setTaskAskedAt(bot.id, threadId, 5_000), (saved) => expect(task(saved).askedAt).toBe(5_000)],
+    ];
+    for (const [n, [what, change, check]] of bookkeeping.entries()) {
+      turnEnd(store, bot.id, threadId);
+      const before = written();
+      change();
+      expect(written(), `${what}: not before the iteration ends`).toBe(before);
+      await endOfIteration();
+      const saved = onDisk(bot.id);
+      check(saved);
+      expect(task(saved).usage, `${what}: the waiting changes ride along`).toMatchObject({ turns: n + 1 });
+      expect(waitingSaves(), `${what}: nothing is left waiting`).toBe(0);
+    }
+  });
+
+  it("writes waiting bookkeeping with a change that must be on disk before its call returns, or a deletion, and nothing older after it", async () => {
+    const store = new Store(selection);
+    const bot = store.createBot({ name: "Maus" }, { seedMessages: false });
+    const other = store.createBot({ name: "Other" }, { seedMessages: false });
+    const mine = () => taskOf(onDisk(bot.id), bot.threadId);
+    const steps: Array<[string, () => void, () => void, () => void]> = [
+      ["a thread's folder", () => store.markTaskDispatched(bot.id, bot.threadId, "claude"), () => store.pinTaskCwd(other.id, other.threadId, "/tmp/other"),
+        () => expect(mine().lastInstanceId).toBe("claude")],
+      ["a change put back if its write fails", () => store.setResumeCursor(bot.id, "claude", { sessionId: "s-1" }, bot.threadId),
+        () => store.patchTask(other.id, other.threadId, { title: "Renamed" }), () => expect(mine().resumeCursors).toEqual({ claude: { sessionId: "s-1" } })],
+      ["a deletion", () => store.setHandedMessages(bot.id, bot.threadId, "claude", { session: { sessionId: "s-1" }, lastMessageId: "m-1" } as never),
+        () => store.deleteBot(other.id), () => expect(mine().handedMessages).toMatchObject({ claude: { lastMessageId: "m-1" } })],
+    ];
+    for (const [what, waiting, atOnce, check] of steps) {
+      waiting();
+      atOnce();
+      check();
+      const last = written();
+      await endOfIteration();
+      expect(written(), `${what}: nothing is left to write after it`).toBe(last);
+    }
+    expect((JSON.parse(readFileSync(file, "utf8")) as BotRecord[]).map((saved) => saved.id)).toEqual([bot.id]);
+  });
+
+  it("writes the engine bookkeeping of many conversations starting together once", async () => {
+    const store = new Store(selection);
+    const bots = Array.from({ length: 34 }, (_, i) => store.createBot({ name: `Episode ${i}` }, { seedMessages: false }));
+    const write = vi.spyOn(OwnedFile.prototype, "write");
+    for (const bot of bots) {
+      store.markTaskDispatched(bot.id, bot.threadId, "claude");
+      store.setHandedMessages(bot.id, bot.threadId, "claude", { session: { sessionId: `s-${bot.id}` }, lastMessageId: "m-1" } as never);
+      store.setResumeCursor(bot.id, "claude", { sessionId: `s-${bot.id}` }, bot.threadId);
+    }
+    expect(write).not.toHaveBeenCalled();
+    await endOfIteration();
+    expect(write.mock.results.filter((result) => result.value === true)).toHaveLength(1);
+    write.mockRestore();
+    for (const bot of bots) expect(taskOf(onDisk(bot.id), bot.threadId)).toMatchObject({ lastInstanceId: "claude", resumeCursors: { claude: { sessionId: `s-${bot.id}` } } });
+  });
+
   it("does not hold back the unread mark that wakes a snoozed thread", () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Maus" }, { seedMessages: false });
@@ -101,15 +163,18 @@ describe("what bots.json holds, and when", () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Maus" }, { seedMessages: false });
     turnEnd(store, bot.id, bot.threadId);
+    store.markTaskDispatched(bot.id, bot.threadId, "claude");
     expect(onDisk(bot.id).tasks![0]!.usage).toBeUndefined();
     // 1: an uncaught exception; 70: the crash guard's fatal exit (server/crash-guard.ts).
     for (const fatal of [1, 70]) flushAtCleanExit(fatal);
     expect(onDisk(bot.id).tasks![0]!.usage, "a fatal exit leaves the last whole file").toBeUndefined();
+    expect(onDisk(bot.id).tasks![0]!.lastInstanceId).toBeUndefined();
     flushAtCleanExit(RESTART_EXIT_CODE);
-    expect(onDisk(bot.id).tasks![0]).toMatchObject({ usage: { turns: 1 } });
+    expect(onDisk(bot.id).tasks![0]).toMatchObject({ usage: { turns: 1 }, lastInstanceId: "claude" });
     turnEnd(store, bot.id, bot.threadId);
+    store.setTaskAskedAt(bot.id, bot.threadId, 7_000);
     flushLaterSaves();
-    expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.usage?.turns).toBe(2);
+    expect(new Store(selection).taskByThread(bot.id, bot.threadId)).toMatchObject({ usage: { turns: 2 }, askedAt: 7_000 });
   });
 
   it("names the changed thread on each bookkeeping event, so its frame can carry that thread alone", () => {

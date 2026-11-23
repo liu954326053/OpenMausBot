@@ -122,19 +122,20 @@ describe("bots.json save failures", () => {
     expect(new Store(selection).messagesFor(second.threadId)).toEqual([]);
   });
 
-  it("keeps what already happened in memory and saves it with the next write", () => {
+  it("keeps what already happened in memory when its write at the end of the iteration fails, and saves it with the next write", async () => {
     const { store, bot, first, second } = storeWithTwoThreads();
+    await new Promise((done) => setImmediate(done));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     failNextSave(store);
 
-    expect(() => store.setResumeCursor(bot.id, "claude", "session-three"))
-      .toThrow("Couldn't save the conversation's engine session: another program is holding MagicBot's bots.json, or its folder is read-only.");
+    store.setResumeCursor(bot.id, "claude", "session-three");
+    store.setHandedMessages(bot.id, second.threadId, "claude", { session: "session-three", ids: [] });
+    store.setTaskAskedAt(bot.id, second.threadId, 1_234);
+    await new Promise((done) => setImmediate(done));
+    expect(error).toHaveBeenCalledOnce();
+    error.mockRestore();
     expect(second.resumeCursors.claude).toBe("session-three");
-    failNextSave(store);
-    expect(() => store.setHandedMessages(bot.id, second.threadId, "claude", { session: "session-three", ids: [] }))
-      .toThrow("Couldn't save what this conversation handed its engine");
     expect(second.handedMessages?.claude).toEqual({ session: "session-three", ids: [] });
-    failNextSave(store);
-    expect(() => store.setTaskAskedAt(bot.id, second.threadId, 1_234)).toThrow("Couldn't save when you last wrote in this thread");
     expect(second.askedAt).toBe(1_234);
 
     store.patchTask(bot.id, first.threadId, { title: "Next write" });

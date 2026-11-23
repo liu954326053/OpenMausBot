@@ -1,5 +1,6 @@
 import { approvalModeFor, approvalModeWidens, type ApprovalFields } from "../shared/approval-mode.ts";
 import { registrySaveFailure, type RegistryFile } from "../shared/registry-save-failure.ts";
+import { saveBeforeReturning } from "./save-batch.ts";
 import type { TaskPatch } from "./store.ts";
 
 export class RegistrySaveError extends Error {
@@ -17,7 +18,7 @@ export function commitRegistryChange(record: { tasks?: object[] }, file: Registr
   change: () => void, onRollback?: () => void): void {
   const rollback = snapshot(record);
   change();
-  try { save(); } catch (error) {
+  try { saveBeforeReturning(save); } catch (error) {
     rollback();
     onRollback?.();
     throw new RegistrySaveError(action, file, error);
@@ -53,8 +54,9 @@ const PERMISSION_FIELDS = ["approvalMode", "autoApprove", "alwaysAllow"] as cons
  * - `unread: true` set by a turn's own end (`turnEnd`): lost, a thread that just answered shows as read.
  * - `usage` (addTaskUsage, not a patch): lost, the thread's token counters are short by the last turn. Plan limits and
  *   billing read their own ledgers, not these.
- * Everything else is saved before the call returns: an engine session set or cleared, which engine has the thread, what
- * was handed to it, when the person last wrote, read marks, a person's own unread mark, titles, grants.
+ * Everything else is saved by the end of the event-loop iteration, most of it before the call returns: an engine
+ * session set or cleared, which engine has the thread, what was handed to it, when the person last wrote, read marks, a
+ * person's own unread mark, titles, grants.
  */
 const DEFERRABLE_FIELDS: ReadonlySet<string> = new Set(["lastContextModel"]);
 

@@ -1,6 +1,7 @@
-// Whole-file saves of bots.json and routines.json: fewer writes, and at every point the server yields to the event loop
-// (where a crash or an exit can land) the files hold what one write per change would have left, except a routine run's
-// progress, which may lag by one window (server/routine-progress-save.ts).
+// Whole-file saves of bots.json and routines.json: fewer writes, and the files hold what one write per change would have
+// left at every point the server yields to the event loop (where a crash or an exit can land), except a routine run's
+// progress, which may lag by one window (server/routine-progress-save.ts), and a turn's bookkeeping in bots.json, which
+// may lag by the rest of its event-loop iteration.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -22,6 +23,7 @@ const selection = () => ({ instanceId: "claude", model: "claude-sonnet-5" });
 const writesOf = (name: string) => vi.mocked(fs.renameSync).mock.calls.filter(([, to]) => basename(String(to)) === name).length;
 const reads = (name: string) => vi.mocked(fs.readFileSync).mock.calls.filter(([path]) => basename(String(path)) === name).length;
 const bots = () => readFileSync(join(DATA_DIR, "bots.json"), "utf8");
+const endOfIteration = () => new Promise<void>((done) => setImmediate(done));
 
 describe("bots.json saves", () => {
   beforeEach(() => {
@@ -30,7 +32,7 @@ describe("bots.json saves", () => {
     vi.mocked(fs.renameSync).mockClear();
   });
 
-  it("are compact, and skip an unchanged save without reading the file back", () => {
+  it("are compact, and skip an unchanged save without reading the file back", async () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Pepper" });
     expect(bots()).not.toContain("\n");
@@ -39,12 +41,14 @@ describe("bots.json saves", () => {
     const before = reads("bots.json");
     store.patchTask(bot.id, bot.threadId, { lastContextModel: "claude:claude-sonnet-5" });
     store.setResumeCursor(bot.id, "claude", "session-1", bot.threadId);
+    await endOfIteration();
     store.setResumeCursor(bot.id, "claude", "session-1", bot.threadId);
+    await endOfIteration();
     expect(writesOf("bots.json")).toBe(writes + 1);
     expect(reads("bots.json")).toBe(before);
   });
 
-  it("land once per batch, and the file holds every change when the batch returns", () => {
+  it("land once per event-loop iteration, and the file holds every change when it ends", async () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Pepper" });
     const writes = writesOf("bots.json");
@@ -56,8 +60,9 @@ describe("bots.json saves", () => {
       store.markTaskDispatched(bot.id, bot.threadId, "claude");
       store.addTaskUsage(bot.id, bot.threadId, { input: 10, output: 5, costUsd: 0.01 });
       store.patchTask(bot.id, bot.threadId, { unread: true });
-      expect(writesOf("bots.json")).toBe(writes);
     });
+    expect(writesOf("bots.json")).toBe(writes);
+    await endOfIteration();
     expect(writesOf("bots.json")).toBe(writes + 1);
     // A crash here, with no exit handler run, starts from exactly this.
     const task = new Store(selection).taskByThread(bot.id, bot.threadId)!;
@@ -74,16 +79,29 @@ describe("bots.json saves", () => {
     });
   });
 
-  it("keep a change whose batched save failed, and the next save writes it", () => {
+  it("keep a change whose save at the end of the iteration failed, and the next save writes it", async () => {
     const store = new Store(selection);
     const bot = store.createBot({ name: "Pepper" });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    vi.mocked(fs.renameSync).mockImplementationOnce(() => { throw Object.assign(new Error("disk full"), { code: "ENOSPC" }); });
+    const { renameSync } = await vi.importActual<typeof import("node:fs")>("node:fs");
+    let full = true;
+    vi.mocked(fs.renameSync).mockImplementation((from, to) => {
+      if (full && basename(String(to)) === "bots.json") {
+        full = false;
+        throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+      }
+      renameSync(from, to);
+    });
     batchSaves(() => store.setTaskAskedAt(bot.id, bot.threadId, 2_000));
+    await endOfIteration();
+    vi.mocked(fs.renameSync).mockImplementation(renameSync);
+    expect(full).toBe(false);
     expect(error).toHaveBeenCalled();
     error.mockRestore();
-    expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.askedAt).toBeUndefined();
+    const saved = (JSON.parse(bots()) as Array<{ id: string; tasks: Array<{ threadId: string; askedAt?: number }> }>).find((candidate) => candidate.id === bot.id)!;
+    expect(saved.tasks.find((task) => task.threadId === bot.threadId)!.askedAt).toBeUndefined();
     store.setTaskAskedAt(bot.id, bot.threadId, 3_000);
+    await endOfIteration();
     expect(new Store(selection).taskByThread(bot.id, bot.threadId)?.askedAt).toBe(3_000);
   });
 });
