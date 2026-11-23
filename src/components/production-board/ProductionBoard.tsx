@@ -62,7 +62,8 @@ const KEY_ZOOM = 1.2;
 const GRID = 24;
 const FOCUS_ZOOM = 0.8;
 const CHROME = "[data-board-chrome], [data-board-overlay]";
-const PRESSABLE = "button, a, input, textarea, select, video, audio, [contenteditable], [role=button]";
+/** Controls that use a pressed pointer's movement themselves: a field selects text, a player scrubs, a link starts the browser's own drag. */
+const HOLDS_POINTER = "a[href], input, textarea, select, video[controls], audio[controls], [contenteditable]";
 const TYPING = "input, textarea, select, [contenteditable], [role=dialog], [role=menu], [data-canvas-shortcuts-ignore]";
 
 const sameSet = (set: ReadonlySet<string>, ids: readonly string[]) => set.size === ids.length && ids.every((id) => set.has(id));
@@ -360,7 +361,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     const cardElement = event.button === 0 ? target.closest<HTMLElement>("[data-board-card-id]") : null;
     if (cardElement) {
       const card = cards.get(cardElement.dataset.boardCardId ?? "");
-      if (card && !target.closest(PRESSABLE)) press.current = { kind: "card", pointerId: event.pointerId, start, origin: camera.view, card, dragging: false };
+      if (card && !target.closest(HOLDS_POINTER)) press.current = { kind: "card", pointerId: event.pointerId, start, origin: camera.view, card, dragging: false };
       return;
     }
     event.preventDefault();

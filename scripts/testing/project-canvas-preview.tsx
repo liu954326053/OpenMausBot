@@ -1,18 +1,15 @@
-// The project canvas on the in-memory backend with a sample project, for screenshots: it wears the daylight skin unless
-// ?skin= names another, speaks ?lang=, and ?bot=<id> opens the canvas on that bot. ?sample=drama is the drama project
-// with its whole pipeline, at ?moment=confirm|generating|failed|finished, with ?film=1 for the finished film on the
-// canvas and ?draft=none|written|kept|not-installed|unsupported-version|remote for the post bot's draft; ?opens=app has
-// JianYing come up without the draft, ?name= names the draft, and ?pick=1 lets the page tell where a picked file is, as
-// the desktop app does. ?view=x,y,k opens either sample on that view instead of fitting it.
-// Images are painted and videos recorded in the page, so the preview needs no server and no files.
+// The project canvas on the in-memory backend, for screenshots and timing: the production board's sample drama part-way
+// through its production, ?episodes= long (60 unless named), or ?empty=1 before its plan; ?sample=basic is a project
+// made before productions. It wears the daylight skin unless ?skin= names another, speaks ?lang=, and ?bot=<id> opens
+// the board on that bot. window.boardOpenedMs is how long the board took from being mounted to its first painted cards.
+// Pictures are painted and clips recorded in the page, so the preview needs no server and no files.
 import { createRoot } from "react-dom/client";
-import type { CanvasSnapshot } from "../../shared/project-canvas";
-import type { ProjectDraftWire } from "../../shared/project-draft";
+import type { CanvasFileRef, CanvasSnapshot } from "../../shared/project-canvas";
 import type { StartGenerationInput } from "../../shared/project-generation";
 import { ProjectCanvas } from "../../src/components/project-canvas/ProjectCanvas";
 import { loadLocale } from "../../src/lib/i18n";
-import type { MemoryCanvasOptions, MemoryGenerationOutput } from "../../src/lib/project-canvas/memory-backend";
-import { DRAMA_EXPORT_FOLDER, dramaCanvasBackend, dramaCanvasSnapshot, type DramaMoment } from "../../src/testing/project-canvas-drama-sample";
+import type { MemoryGenerationOutput } from "../../src/lib/project-canvas/memory-backend";
+import { productionBoardBackend, productionBoardSample } from "../../src/testing/production-board-sample";
 import { SAMPLE_IMAGE_PATH, SAMPLE_VIDEO_PATH, sampleCanvasBackend, sampleCanvasSnapshot } from "../../src/testing/project-canvas-sample";
 import "../../src/styles.css";
 
@@ -88,64 +85,41 @@ async function recordVideo(hue: number, seconds: number): Promise<string> {
 
 const firstTake = await recordVideo(220, 1.2);
 const secondTake = await recordVideo(280, 1.2);
+const pictures = [200, 247, 294, 341].map((hue) => paintImage(384, 256, hue));
 let made = 0;
 const output = (input: StartGenerationInput, index: number): MemoryGenerationOutput => {
   made += 1;
   if (input.kind === "video") {
     return { file: { path: `产出/视频/${input.name ?? "shot"}-${made}.webm`, mime: "video/webm", bytes: 480_000, name: `${input.name ?? "shot"}-${made}.webm` }, url: secondTake, naturalWidth: 640, naturalHeight: 360, durationMs: 5000 };
   }
-  return { file: { path: `产出/图片/${input.name ?? "image"}-${made}.png`, mime: "image/png", bytes: 900_000, name: `${input.name ?? "image"}-${made}.png` }, url: paintImage(768, 432, 200 + index * 40), naturalWidth: 768, naturalHeight: 432 };
+  return { file: { path: `产出/图片/${input.name ?? "image"}-${made}.png`, mime: "image/png", bytes: 900_000, name: `${input.name ?? "image"}-${made}.png` }, url: pictures[index % pictures.length]!, naturalWidth: 384, naturalHeight: 256 };
 };
 
-function draftOf(state: string | null): Omit<ProjectDraftWire, "exportFolder"> | undefined {
-  switch (state) {
-    case "none": return { state: "none" };
-    case "written": return { state: "written", name: params.get("name") ?? "雨城 · 第一集", writtenAt: Date.UTC(2026, 10, 22, 9, 58) };
-    case "kept": return { state: "kept", name: params.get("name") ?? "雨城 · 第一集 2", writtenAt: Date.UTC(2026, 10, 22, 10, 30) };
-    case "not-installed":
-    case "unsupported-version":
-    case "remote": return { state: "unavailable", reason: state };
-    default: return undefined;
-  }
-}
-
-/** The file a page picks as the finished film, which the page can then play. */
-const FILM_NAME = "雨城 · 第一集.mp4";
-
-function viewed(snapshot: CanvasSnapshot): CanvasSnapshot {
-  const [x, y, k] = (params.get("view") ?? "").split(",").map(Number);
-  return x !== undefined && y !== undefined && k ? { ...snapshot, viewport: { x, y, k } } : snapshot;
+function fileUrls(snapshot: CanvasSnapshot): Record<string, string> {
+  const files = snapshot.nodes.flatMap((node): CanvasFileRef[] => (node.metadata?.file ? [node.metadata.file] : []));
+  return Object.fromEntries(files.map((file, index) => [file.path, file.mime.startsWith("image/") ? pictures[index % pictures.length]! : index % 2 ? secondTake : firstTake]));
 }
 
 function dramaBackend() {
-  const sample = { moment: (params.get("moment") ?? "finished") as DramaMoment, draft: draftOf(params.get("draft")), film: params.has("film") };
-  const snapshot = viewed(dramaCanvasSnapshot(sample));
-  const files = snapshot.nodes.flatMap((node) => (node.metadata?.file ? [node.metadata.file] : []));
-  const fileUrls = Object.fromEntries(files.map((file, index) => [file.path, file.mime.startsWith("image/") ? paintImage(768, 512, 200 + index * 47) : index % 2 ? secondTake : firstTake]));
-  const options: Partial<MemoryCanvasOptions> = { snapshot, fileUrls: { [`产出/${FILM_NAME}`]: firstTake, ...fileUrls }, output, delayMs: 1500 };
-  if (params.get("opens") === "app") options.draftOpens = "app";
-  if (params.has("pick")) options.localPathOf = (file) => `${file.name.startsWith("out-") ? "/Users/demo/Movies" : DRAMA_EXPORT_FOLDER}/${file.name}`;
-  return dramaCanvasBackend(sample, options);
+  const snapshot = productionBoardSample({ episodes: Number(params.get("episodes") ?? 60), empty: params.has("empty") });
+  return productionBoardBackend({}, { snapshot, fileUrls: fileUrls(snapshot), output, delayMs: 1500 });
 }
 
-const drama = params.get("sample") === "drama";
-const backend = drama
-  ? dramaBackend()
-  : sampleCanvasBackend({
-    snapshot: viewed(sampleCanvasSnapshot()),
-    fileUrls: { [SAMPLE_IMAGE_PATH]: paintImage(1536, 1024, 230), [SAMPLE_VIDEO_PATH]: firstTake },
-    output,
-    delayMs: 1500,
-  });
+const basic = params.get("sample") === "basic";
+const backend = basic
+  ? sampleCanvasBackend({ snapshot: sampleCanvasSnapshot(), fileUrls: { [SAMPLE_IMAGE_PATH]: paintImage(1536, 1024, 230), [SAMPLE_VIDEO_PATH]: firstTake }, output, delayMs: 1500 })
+  : dramaBackend();
 Object.assign(window, { projectCanvasBackend: backend });
 
-createRoot(document.getElementById("root")!).render(
+const root = document.getElementById("root")!;
+const mounted = performance.now();
+new MutationObserver((_, observer) => {
+  if (!root.querySelector("[data-board-card-id]")) return;
+  observer.disconnect();
+  requestAnimationFrame(() => requestAnimationFrame(() => Object.assign(window, { boardOpenedMs: performance.now() - mounted })));
+}).observe(root, { childList: true, subtree: true });
+createRoot(root).render(
   <div style={{ height: "100vh" }}>
-    <ProjectCanvas
-      projectId={backend.current().project.id}
-      backend={backend}
-      selectedBotId={params.get("bot") ?? undefined}
-      topBarSlot={drama ? undefined : <span className="ui-chip">Team changed: Otto joined</span>}
-    />
+    <ProjectCanvas projectId={backend.current().project.id} backend={backend} selectedBotId={params.get("bot") ?? undefined} />
   </div>,
 );

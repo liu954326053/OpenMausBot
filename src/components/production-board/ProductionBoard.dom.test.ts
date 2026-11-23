@@ -232,7 +232,7 @@ describe("the production board", () => {
     expect(page.querySelector("[data-board-edge-label]")).toBeNull();
   });
 
-  it("moves a card the person drags to where they let go, takes a press that hardly moves as a click, and pans from anywhere else", async () => {
+  it("moves a card the person drags, by its name too, to where they let go, takes a press that hardly moves as a click, and pans from anywhere else", async () => {
     await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
     const before = view();
     const brief = cardElement("brief")!;
@@ -248,11 +248,19 @@ describe("the production board", () => {
     expect(onOpened).not.toHaveBeenCalled();
     expect(view()).toEqual(before);
 
+    const name = brief.querySelector("[data-card-name]")!;
+    pointer(name, "pointerdown", 400, 300);
+    pointer(stage(), "pointermove", 400, 340);
+    pointer(stage(), "pointerup", 400, 340);
+    await click(name);
+    expect(host.move.mock.calls[1]).toEqual(["brief", { x: Math.round(left), y: Math.round(top + 40 / before.k) }]);
+    expect(onOpened).not.toHaveBeenCalled();
+
     pointer(article, "pointerdown", 400, 300);
     pointer(stage(), "pointermove", 402, 301);
     pointer(stage(), "pointerup", 402, 301);
     await click(article);
-    expect(host.move).toHaveBeenCalledTimes(1);
+    expect(host.move).toHaveBeenCalledTimes(2);
     expect(onOpened.mock.calls).toEqual([[{ kind: "asset", nodeId: "brief" }]]);
 
     pointer(stage(), "pointerdown", 20, 20);
