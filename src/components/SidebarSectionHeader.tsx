@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal, Share2, Trash2 } from "lucide-react";
-import type { DragEvent, KeyboardEvent, MouseEvent } from "react";
+import { memo, type DragEvent, type KeyboardEvent, type MouseEvent } from "react";
 
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -52,6 +52,7 @@ export function SidebarSectionHeader({
   const reorderable = canReorder;
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const attentionLabel = attention ? sidebarAttentionLabel(attention) : "";
+  const alertLabel = alert ? t("computer.routines.needsYou") : undefined;
   const onHeaderKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!reorderable || !event.altKey) return;
     if (event.key === "ArrowUp") {
@@ -98,7 +99,7 @@ export function SidebarSectionHeader({
             className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
           >
             <span className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink-secondary">{name}</span>
-            {collapsed && <SectionAttention attention={attention} label={attentionLabel} alert={alert} />}
+            {collapsed && <SectionAttention attention={attention} label={attentionLabel} alertLabel={alertLabel} />}
             {tail}
           </button>
         ) : (
@@ -142,7 +143,7 @@ export function SidebarSectionHeader({
             {name}
           </span>
           <Chevron size={13} className="shrink-0 text-ink-secondary" aria-hidden="true" />
-          <SectionAttention attention={attention} label={attentionLabel} alert={alert} />
+          <SectionAttention attention={attention} label={attentionLabel} alertLabel={alertLabel} />
         </button>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-0.5">
@@ -222,8 +223,21 @@ function sectionMark(attention: SidebarSectionAttention | undefined): SectionMar
   return null;
 }
 
-export function SectionAttention({ attention, label, alert }: { attention?: SidebarSectionAttention; label: string; alert?: boolean }) {
-  const mark = alert ? null : sectionMark(attention);
+interface SectionAttentionProps {
+  attention?: SidebarSectionAttention;
+  label: string;
+  /** Present while the section needs the person: said beside a red dot, which takes the place of the counts' mark. */
+  alertLabel?: string;
+}
+
+const sameCounts = (a: SidebarSectionAttention | undefined, b: SidebarSectionAttention | undefined): boolean =>
+  a === b || (a !== undefined && b !== undefined && (Object.keys(a) as (keyof SidebarSectionAttention)[]).every((key) => a[key] === b[key]));
+
+const sameSectionAttention = (before: SectionAttentionProps, after: SectionAttentionProps): boolean =>
+  before.label === after.label && before.alertLabel === after.alertLabel && sameCounts(before.attention, after.attention);
+
+export const SectionAttention = memo(function SectionAttention({ attention, label, alertLabel }: SectionAttentionProps) {
+  const mark = alertLabel ? null : sectionMark(attention);
   return (
     <>
       {mark && (
@@ -232,12 +246,12 @@ export function SectionAttention({ attention, label, alert }: { attention?: Side
         </span>
       )}
       {label && <span className="sr-only">{label}</span>}
-      {alert && (
+      {alertLabel && (
         <>
           <span data-testid="section-alert" aria-hidden="true" className="size-2 shrink-0 rounded-full bg-danger" />
-          <span className="sr-only">{t("computer.routines.needsYou")}</span>
+          <span className="sr-only">{alertLabel}</span>
         </>
       )}
     </>
   );
-}
+}, sameSectionAttention);

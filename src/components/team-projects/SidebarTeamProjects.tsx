@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
-import { t } from "@/lib/i18n";
+import { activeLocale, t } from "@/lib/i18n";
 import { useRememberedDisclosure } from "@/lib/remembered-disclosure";
 import { sidebarSectionAttention, type SidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
@@ -75,6 +75,8 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   const [reviewing, setReviewing] = useState<TeamProjectWire | null>(null);
   const forget = useCallback(() => setArchived(null), []);
   const labelId = useId();
+  const openRoom = useCallback((room: Group) => dispatch({ type: "select", id: room.id }), [dispatch]);
+  const openProjectBot = useCallback((bot: Bot) => openBot(dispatch, bot, showThreads), [dispatch, showThreads]);
 
   const listedBots = all.bots.filter((bot) => !bot.hidden);
   const shownProjects = side.projects
@@ -220,8 +222,7 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
               <ProjectBlock key={project.id} project={project} attention={attention} {...listedUnder(project)} openChat={openChat} simple={simple} gap={gap}
                 listOnly={query !== ""} onScreen={onScreen(project)} menuOpen={menu?.project.id === project.id} onMenu={openMenu?.(project)}
                 onReview={changesOf(project) ? () => review(project) : undefined} onOpen={() => show(project)}
-                onOpenRoom={(room) => dispatch({ type: "select", id: room.id })}
-                onOpenBot={(bot) => openBot(dispatch, bot, showThreads)} />
+                onOpenRoom={openRoom} onOpenBot={openProjectBot} />
             ))}
           </div>
         </>
@@ -259,6 +260,7 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
   const [open, setOpen] = useRememberedDisclosure(projectDisclosure(project.id));
   const expanded = !listOnly && open && (room !== undefined || bots.length > 0);
   const { drama, episodes } = splitEpisodes(project, expanded ? bots : []);
+  const locale = activeLocale();
   const click = () => {
     if (expanded && onScreen !== null) setOpen(false);
     else onOpen();
@@ -268,9 +270,10 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
       <SidebarProjectRow project={project} attention={attention} simple={simple} expanded={listOnly ? undefined : expanded}
         selected={onScreen === "canvas" || onScreen === "other" || (onScreen === "listed" && !expanded)} menuOpen={menuOpen}
         onOpen={click} onMenu={onMenu} />
-      {expanded && room && <SidebarProjectRoom room={room} simple={simple} selected={openChat === room.id} onOpen={() => onOpenRoom(room)} />}
+      {expanded && room && <SidebarProjectRoom room={room} simple={simple} selected={openChat === room.id} locale={locale} onOpen={onOpenRoom} />}
       {drama.map((bot) => (
-        <SidebarProjectBot key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} selected={openChat === bot.id} onOpen={() => onOpenBot(bot)} />
+        <SidebarProjectBot key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} selected={openChat === bot.id} locale={locale}
+          onOpen={onOpenBot} />
       ))}
       {episodes.length > 0 && <SidebarProjectEpisodes project={project} episodes={episodes} simple={simple} gap={gap} openChat={openChat} onOpenBot={onOpenBot} />}
       {project.folderState === "missing" && (
