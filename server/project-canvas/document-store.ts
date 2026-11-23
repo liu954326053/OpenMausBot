@@ -152,6 +152,13 @@ export interface CanvasChangeOutcome {
   connectionIds: string[];
 }
 
+function deepFreeze<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
+  Object.freeze(value);
+  for (const child of Object.values(value)) deepFreeze(child);
+  return value;
+}
+
 const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.length && !set.viewport && !set.backgroundMode;
 const sameStages = (a: SettledStages | undefined, b: SettledStages) => a !== undefined && JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
 
@@ -194,9 +201,9 @@ export class CanvasDocuments {
     return read.data;
   }
 
-  /** A copy: changing it changes nothing stored. */
+  /** The canvas as stored, frozen, shared by every reader. A change stores a new one, so a read stays as it was. */
   read(projectId: string): CanvasDocument {
-    return structuredClone(this.load(projectId).document);
+    return deepFreeze(this.load(projectId).document);
   }
 
   /** Undefined for a canvas stored before the pipeline, or not stored yet. */
