@@ -33,8 +33,9 @@ export interface EpisodeRow {
 }
 
 export interface BoardIndex {
-  /** The lead, the bots of the drama's jobs in their order, then each episode's bots. */
-  team: CanvasBotState[];
+  /** `drama`: the lead, then the bots of the drama's jobs in the order the work goes. `episodes`: each episode's bots,
+   * by episode, storyboard before post. */
+  team: { drama: CanvasBotState[]; episodes: CanvasBotState[] };
   characters: BoardAsset[];
   scenes: BoardAsset[];
   shotsByEpisode: Array<{ episode: number; shots: BoardAsset[] }>;
@@ -68,12 +69,12 @@ function workRank(bot: CanvasBotState): number {
   return ranks.length ? Math.min(...ranks) : WORK_ORDER.length;
 }
 
-function teamInOrder(bots: readonly CanvasBotState[]): CanvasBotState[] {
+function teamInOrder(bots: readonly CanvasBotState[]): BoardIndex["team"] {
   const drama = bots.filter((bot) => bot.episode === undefined || bot.lead);
   const episodes = bots.filter((bot) => bot.episode !== undefined && !bot.lead);
   drama.sort((a, b) => workRank(a) - workRank(b));
   episodes.sort((a, b) => a.episode! - b.episode! || workRank(a) - workRank(b));
-  return [...drama, ...episodes];
+  return { drama, episodes };
 }
 
 function push<Key, Value>(map: Map<Key, Value[]>, key: Key, value: Value): void {
@@ -184,8 +185,8 @@ export function boardIndex(snapshot: CanvasSnapshot): BoardIndex {
   }
 
   const jobBot = (job: FlowStage, episode?: number): string | undefined =>
-    (episode === undefined ? undefined : team.find((bot) => bot.episode === episode && bot.stages.includes(job)))?.botId
-    ?? team.find((bot) => bot.episode === undefined && bot.stages.includes(job))?.botId;
+    (episode === undefined ? undefined : team.episodes.find((bot) => bot.episode === episode && bot.stages.includes(job)))?.botId
+    ?? team.drama.find((bot) => bot.stages.includes(job))?.botId;
   const madeByStoryboard = (node: CanvasNode): string | undefined => {
     const maker = node.createdBy?.kind === "bot" ? snapshot.bots[node.createdBy.botId] : undefined;
     return maker?.stages.includes("storyboard") ? maker.botId : undefined;

@@ -38,9 +38,9 @@ function legacySnapshot(): CanvasSnapshot {
 
 describe("boardIndex", () => {
   it("orders the team as the work goes: the lead, the drama's jobs, then each episode's storyboard and post", () => {
-    expect(boardIndex(boardSnapshot()).team.map((bot) => bot.botId)).toEqual([
-      "lead", "writer", "designer", "scenery", "board", "post", "publicist", "board-1", "post-1", "board-2", "board-3",
-    ]);
+    const { team } = boardIndex(boardSnapshot());
+    expect(team.drama.map((bot) => bot.botId)).toEqual(["lead", "writer", "designer", "scenery", "board", "post", "publicist"]);
+    expect(team.episodes.map((bot) => bot.botId)).toEqual(["board-1", "post-1", "board-2", "board-3"]);
   });
 
   it("finds a character and a scene by their group, their profile or a picture in the group", () => {
@@ -128,7 +128,8 @@ describe("boardIndex", () => {
     expect(index.shotsByEpisode.map((group) => [group.episode, group.shots.length])).toEqual([[1, 6]]);
     expect(index.ownerOf(index.assetOf("shot-1-2")!)).toBe("board");
     expect(index.ownerOf(index.assetOf("group-pier-end")!)).toBe("scenery");
-    expect(index.team.map((bot) => bot.botId)).toEqual(["lead", "writer", "designer", "scenery", "board", "post"]);
+    expect(index.team.drama.map((bot) => bot.botId)).toEqual(["lead", "writer", "designer", "scenery", "board", "post"]);
+    expect(index.team.episodes).toEqual([]);
   });
 
   it("indexes a drama of 60 episodes quickly", () => {
@@ -137,7 +138,7 @@ describe("boardIndex", () => {
     const started = performance.now();
     const index = boardIndex(snapshot);
     const elapsed = performance.now() - started;
-    expect(index.team).toHaveLength(127);
+    expect(index.team.drama.length + index.team.episodes.length).toBe(127);
     expect(index.episodes).toHaveLength(60);
     expect(index.shotsByEpisode.flatMap((group) => group.shots)).toHaveLength(360);
     expect(elapsed).toBeLessThan(50);
