@@ -651,42 +651,8 @@ describe("background engine calls across bots", () => {
     expect(await Promise.all([...memory, summary])).toEqual(["ok", "ok", "ok"]);
     expect(most).toBe(2);
   });
-});
 
-describe("judging a team's stages", () => {
-  const catalog: SideJobInstance["models"] = { default: "x-large", options: [{ id: "x-large", label: "X large" }, { id: "x-mini", label: "X mini" }] };
-
-  it("is one tool-free text call on the bot's engine, on its fastest model, booked to the bot", async () => {
-    const { jobs, state } = setup({ helper: null });
-    const api = textEngine("api", "openai-compat", undefined, catalog);
-    state.instances.set("api", api.instance);
-    state.bots.set("api", { ...bot("api", "api"), modelSelection: { instanceId: "api", model: "x-large" } });
-    const judge = jobs.text("team-judge", "api");
-    expect(judge?.via).toBe("engine");
-    await judge!.generateText("judge prompt", { timeoutMs: 30_000 });
-    expect(api.calls.map((call) => [call.prompt, call.options?.model, call.options?.timeoutMs])).toEqual([["judge prompt", "x-mini", 30_000]]);
-    expect(state.booked.map((entry) => [entry.row.threadId, entry.row.trigger])).toEqual([[expect.stringMatching(/^team-judge-/), { kind: "bot", botId: "api" }]]);
-  });
-
-  it("never starts a whole agent process: an engine without a one-off call leaves it to the helper, or to nobody", async () => {
-    const { jobs, state, claude, codex } = setup({ helper: { instanceId: "claude" } });
-    const judge = jobs.text("team-judge", "codex");
-    expect(judge?.via).toBe("helper");
-    await judge!.generateText("judge prompt");
-    expect(codex.calls).toEqual([]);
-    expect(claude.calls.map((call) => call.prompt)).toEqual(["judge prompt"]);
-    expect(state.booked[0]!.row.trigger).toEqual({ kind: "helper", botId: "codex", job: "team-judge" });
-    expect(setup({ helper: null }).jobs.text("team-judge", "codex")).toBeNull();
-  });
-
-  it("stops at the spend limit", async () => {
-    const { jobs, state, claude } = setup();
-    state.overBudget = true;
-    await expect(jobs.text("team-judge", "claude")!.generateText("judge prompt")).rejects.toThrow("spend limit");
-    expect(claude.calls).toEqual([]);
-  });
-
-  it("waits for a free background slot, ahead of the jobs nobody sees", async () => {
+  it("let a new bot's suggestions card wait for a free slot ahead of the jobs nobody sees", async () => {
     const order: string[] = [];
     const releases: Array<() => void> = [];
     const { jobs, state } = setup({ slots: createJobSlots(1) });
@@ -696,11 +662,11 @@ describe("judging a team's stages", () => {
       return "ok";
     } });
     const all = [jobs.text("memory", "claude")!.generateText("first upkeep"), jobs.text("memory", "claude")!.generateText("second upkeep"),
-      jobs.text("team-judge", "claude")!.generateText("judge")];
+      jobs.text("setup-suggestions", "claude")!.generateText("suggestions")];
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(order).toEqual(["first upkeep"]);
     while (order.length < 3 || releases.length) { releases.shift()?.(); await new Promise((resolve) => setTimeout(resolve, 5)); }
     await Promise.all(all);
-    expect(order).toEqual(["first upkeep", "judge", "second upkeep"]);
+    expect(order).toEqual(["first upkeep", "suggestions", "second upkeep"]);
   });
 });

@@ -13,8 +13,6 @@ import { MAX_MCP_SERVERS, mcpServerNameError } from "./mcp-registry.ts";
 import { redactSecretsInText } from "./redact.ts"; import { chiefLevel } from "./chief-level.ts"; import { defaultBotRefusal } from "./default-bot.ts";
 import type { BotRecord, OptionCardData } from "./store.ts"; import { departmentOpenTo, outsideDepartmentReason, sameTeamProject, teamProjectSetupRefusal } from "./peer-roster.ts";
 import type { TeamSetupFields, TeamSetupOperation, TeamSetupRequest, TeamSetupResult, TeamSetupUndo } from "../shared/team-setup.ts";
-import { conversationLanguage } from "./server-lines.ts";
-import { pipelineCardLines, plannedStages, planStagesSchema, recordPlannedStages } from "./team-judge/proposal.ts";
 
 const section = (value?: string) => value?.trim() || "";
 const teamName = z.string().trim().min(1).max(60).refine(fitsOnOneLine).refine((value) => redactSecretsInText(value) === value, "Team names cannot contain credentials");
@@ -32,7 +30,6 @@ const fieldsSchema = z.object({
   section: z.string().trim().max(60).refine(fitsOnOneLine).refine((value) => redactSecretsInText(value) === value, "Team names cannot contain credentials").optional(),
   modelSelection: z.object({ instanceId: z.string().trim().min(1), model: z.string().trim().min(1), effort: z.string().optional(), variant: z.string().optional() }).strict().optional(),
   mcpServers: z.array(z.string()).max(MAX_MCP_SERVERS, `Select at most ${MAX_MCP_SERVERS} MCP servers.`).optional(),
-  stages: planStagesSchema,
 }).strict();
 /** The card says which execution permission a plan changes when it changes a bot's MCP servers. */
 const touchesMcp = (request: TeamSetupRequest) => request.operations.some((operation) => operation.fields.mcpServers !== undefined);
@@ -144,7 +141,7 @@ export class TeamSetupRequestService {
     return scope;
   }
 
-  private fields(input: Omit<z.infer<typeof fieldsSchema>, "stages">, current?: BotRecord): TeamSetupFields {
+  private fields(input: z.infer<typeof fieldsSchema>, current?: BotRecord): TeamSetupFields {
     const { section: targetSection, modelSelection, chiefOfStaff, cwd: rawCwd, mcpServers, ...profile } = input;
     const safe = Object.fromEntries(Object.entries(profile).map(([key, value]) => [key, redactSecretsInText(value!)]));
     const parsed = parseBotProfilePatch(safe, true);
@@ -250,7 +247,7 @@ export class TeamSetupRequestService {
     const operations: TeamSetupOperation[] = entries.map((operation) => {
       const found = operation.action === "update" ? this.options.store.bot(operation.botId) : undefined;
       const target = found && sameTeamProject(chief, found) ? found : undefined;
-      const { soulAppend, stages: givenStages, ...requested } = operation.fields;
+      const { soulAppend, ...requested } = operation.fields;
       if (soulAppend !== undefined) {
         if (operation.action === "create") throw new TeamSetupError("soulAppend only adds to an existing bot's instructions; give a new bot its full soul");
         if (requested.soul !== undefined) throw new TeamSetupError("Use either soul or soulAppend for a bot, not both");
@@ -265,12 +262,10 @@ export class TeamSetupRequestService {
         }
       }
       const fields = this.fields({ ...requested, section: requested.section ?? target?.section ?? chief.section ?? "" }, target ?? undefined);
-      const stages = plannedStages(givenStages, fields.chiefOfStaff ?? Boolean(target?.chiefOfStaff));
       return { action: operation.action, botId: operation.action === "create" ? newId() : operation.botId,
         ...(operation.action === "create" ? { threadId: newId() } : {}),
         fields,
         ...(target ? { expectedRevision: teamSetupRevision(target, fields) } : {}),
-        ...(stages ? { stages } : {}),
       };
     });
     const requesterScope: TeamSetupFields = {};
@@ -321,7 +316,6 @@ export class TeamSetupRequestService {
         lines.push(`Authorize @${chief.name} to coordinate and propose setup changes in these new departments.`);
       }
     }
-    lines.push(...pipelineCardLines(request, this.options.store.bots, conversationLanguage(request.threadId)));
     for (const operation of request.operations) {
       const current = this.options.store.bot(operation.botId);
       lines.push(`\n${operation.action === "create" ? "Create" : "Update"} @${operation.fields.name ?? current?.name} (${operation.action === "create" ? "new bot" : operation.botId})`);
@@ -385,7 +379,6 @@ export class TeamSetupRequestService {
       const bot = this.options.store.bot(id);
       if (bot) recordProfileChange(id, actor, via, profile, profileSnapshot(bot));
     }
-    recordPlannedStages(request, result);
     return result;
   }
 

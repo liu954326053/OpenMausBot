@@ -99,7 +99,6 @@ Use only mapped, tested commands:
 - [The organization library](org-library.md)
 - [Preset bots](presets.md)
 - [Teams and shared instructions](teams.md)
-- [A team's pipeline on the team map](team-pipeline-map.md)
 - [Full workspace backups](workspace-backups.md)
 - [Optional company cloud backups](company-backups.md)
 - [Organization library: the desktop channel](desktop-library.md)

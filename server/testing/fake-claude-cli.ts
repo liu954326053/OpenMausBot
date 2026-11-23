@@ -523,16 +523,6 @@ if (["text", "json"].includes(argAfter("--output-format") ?? "")) {
     process.stderr.write("fake setup answers failed\n");
     process.exit(1);
   }
-  // Every team with members to judge asks for their stages (server/team-judge/model-judge.ts), so that call stays out of
-  // the captures below too: FAKE_CLAUDE_JUDGE_DUMP records it, FAKE_CLAUDE_JUDGE_FILE holds its reply, and without one
-  // it fails at once.
-  if (prompt.startsWith("Sort the members of a team into the stages of a pipeline that makes a short drama.")) {
-    if (process.env.FAKE_CLAUDE_JUDGE_DUMP) writeDumpAtomic(process.env.FAKE_CLAUDE_JUDGE_DUMP, JSON.stringify({ argv, env: process.env, prompt }, null, 2));
-    const file = process.env.FAKE_CLAUDE_JUDGE_FILE;
-    if (file && existsSync(file)) replyText(readFileSync(file, "utf8"));
-    process.stderr.write("fake team judgement failed\n");
-    process.exit(1);
-  }
   // Every new thread asks its engine for a title (server/thread-title-generate.ts), so that call stays out of the captures
   // below unless a test answers it: by FAKE_CLAUDE_TEXT_FILE or a FAKE_CLAUDE_TEXT_ROUTES marker. Otherwise it fails at
   // once and the thread keeps its first-message title. Answered, it still never overwrites the turn dump.

@@ -189,8 +189,6 @@
   "server.teamProjectProposal.refused.teamChanged": "Dieses Team wurde geändert, nachdem diese Karte erstellt wurde. Frag noch einmal, um das Team so zu sehen, wie es jetzt ist.",
   "server.teamProjectProposal.handOver.held": "Die Anfrage ist nicht bei {lead} angekommen. {why} Öffne danach das Projekt und sag {lead}, was du möchtest.",
   "server.teamProjectProposal.handOver.failed": "Die Anfrage ist nicht bei {lead} angekommen. Öffne das Projekt und sag {lead}, was du möchtest.",
-  "server.teamJudge.card.pipeline": "Pipeline von „{team}“: {line}",
-  "server.teamJudge.card.outside": "Außerhalb der Pipeline, direkt bei {lead}: {names}",
   "server.production.job.script": "Drehbuch",
   "server.production.job.character": "Figurendesign",
   "server.production.job.scene": "Szenendesign",

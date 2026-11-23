@@ -7,7 +7,7 @@ import { isSkillSwitchAction, skillSwitchVerb } from "../../shared/skill-request
 import { EMAIL_CREDENTIAL } from "../../shared/email.ts";
 import { noCloudComputerNote } from "../../shared/team-setup.ts";
 
-import { peerName, pipelineListText } from "../peer-roster.ts";
+import { peerName } from "../peer-roster.ts";
 import { callCardTool, CARD_TOOL_NAMES } from "./agents-call-cards.ts";
 import { callTriggerTool, TRIGGER_TOOL_NAMES } from "./agents-call-triggers.ts";
 import { catalogProfileFromEnv, fullInputSchema, SHARED_COMPUTER_TOOL_NAMES } from "./agents-catalog.ts";
@@ -358,8 +358,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
   if (name === "list_bots") {
     const r = await api(`/api/internal/agents?self=${encodeURIComponent(BOT_ID)}`);
     const bots = (r.bots as Array<Json>) ?? [];
-    const whole = pipelineListText(r.pipeline);
-    if (!bots.length) return { text: `No other bots you can reach yet.${whole}` };
+    if (!bots.length) return { text: "No other bots you can reach yet." };
     const lines = bots.map((b) => {
       const role = b.title ? ` — ${b.title}` : "";
       const about = b.description ? ` (${String(b.description).slice(0, 120)})` : "";
@@ -367,19 +366,8 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         ? (b.status === "available" ? "" : b.statusText)
         : (b.busy ? "busy" : "");
       const team = typeof b.section === "string" ? `, department: ${peerName(b.section) || "General"}` : "";
-      const line = b.flow === "upstream" || b.flow === "downstream" ? `, ${b.flow} of you` : "";
-      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${team}${line}${state ? `, ${state}` : ""}]`;
+      return `- ${b.name}${role}${about} [id: ${b.id}, model: ${b.model}${team}${state ? `, ${state}` : ""}]`;
     });
-    if (r.flow === "member") {
-      return {
-        text: `Bots you can reach in your team's pipeline (the ones upstream and downstream of you, and no other bot):\n${lines.join("\n")}\n\nYou can only ask them a question: coordinate_bots with consult: true, then end your turn, and the answer resumes you. You cannot hand your work to another bot.${whole}`,
-      };
-    }
-    if (r.flow === "lead") {
-      return {
-        text: `Bots you can reach: in your own team only the bots downstream of you, marked so, and every other bot listed outside your team:\n${lines.join("\n")}\n\nIn your team hand work only to a bot downstream of you with coordinate_bots, never to one further down the pipeline; outside it, use coordinate_bots for concrete work or, with consult: true, for advice. Then end your turn: busy teammates queue and results resume you automatically.${whole}`,
-      };
-    }
     return {
       text: `Bots you can reach (every department; you can contact any of them):\n${lines.join("\n")}\n\nUse coordinate_bots for concrete work or, with consult: true, for advice, then end your turn. Busy teammates queue and results resume you automatically.`,
     };
