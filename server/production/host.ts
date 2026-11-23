@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import { DEFAULT_PRODUCTION_CONCURRENCY } from "../../shared/production.ts";
 import type { ProjectGenerationApi } from "../../shared/project-generation.ts";
-import type { ProjectDraftWire } from "../../shared/project-draft.ts";
 import type { TeamProjectsApi } from "../../shared/team-projects.ts";
 import { DATA_DIR } from "../config.ts";
 import type { DirectSendReceipt } from "../direct-send.ts";
@@ -24,7 +23,7 @@ export interface ProductionHostDeps {
   store: Store;
   projects: Pick<TeamProjectsApi, "list" | "episodeBot">;
   canvas: Pick<ProjectCanvasHost, "service" | "pipeline">;
-  draft: Pick<ProjectDraftHost, "drafts" | "connectCanvas" | "draftWire" | "writeDraftIfReady" | "onTimelineChange" | "onDraftChange">;
+  draft: Pick<ProjectDraftHost, "drafts" | "connectCanvas" | "draftWires" | "writeDraftIfReady" | "onTimelineChange" | "onDraftChange">;
   generation: Pick<ProjectGenerationApi, "settings">;
   deliver: ProductionDeps["deliver"];
   /** A line into a room, for the bots it names, from the lead. */
@@ -56,6 +55,7 @@ export function startProductions(deps: ProductionHostDeps): { routes: RouteHandl
       episodes: (projectId) => pipeline.episodes(projectId),
       shots: (projectId) => pipeline.shots(projectId),
       profiles: (projectId) => pipeline.profiles(projectId),
+      view: (projectId) => pipeline.view(projectId),
       setBrief: (projectId, leadBotId, rows, titles) => void pipeline.setBrief(projectId, leadBotId, rows, titles),
       taskFor: (project, botId, request, language) => service.pipelineTask(project, botId, request, language),
       generate: async (project, nodeId) => {
@@ -118,14 +118,9 @@ export function startProductions(deps: ProductionHostDeps): { routes: RouteHandl
   service.showAlso((projectId, auth) => {
     const production = productions.wire(projectId);
     if (!production) return {};
-    const episodeDrafts: Record<number, ProjectDraftWire> = {};
-    for (const { episode } of production.episodes) {
-      const draft = deps.draft.draftWire(projectId, auth, episode);
-      if (draft) episodeDrafts[episode] = draft;
-    }
-    return { production, drafts: episodeDrafts };
+    return { production, drafts: deps.draft.draftWires(projectId, auth, production.episodes.map(({ episode }) => episode)) };
   });
-  service.onChange((projectId) => productions.poke(projectId));
+  pipeline.onViewChange((projectId) => productions.poke(projectId));
   pipeline.on((event) => {
     if (event.kind !== "selected") return;
     const episode = pipeline.shots(event.projectId).find((shot) => shot.shotId === event.shotId)?.episode;

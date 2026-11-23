@@ -45,8 +45,9 @@ function installation(options: { onPersonsComputer?: boolean; jianying?: boolean
   const stages: Record<string, FlowStage[]> = { lead: ["lead"], post: ["post"] };
   const launched: JianyingInstall[] = [];
   const lines: string[] = [];
+  const listed = { times: 0 };
   const host = createProjectDraftHost({
-    projects: { list: () => [project] },
+    projects: { list: () => { listed.times += 1; return [project]; } },
     store: { bot: (id: string) => (project.botIds.includes(id) ? { teamProject: { id: "p1", role: id } } : id === "main" ? {} : undefined) },
     onPersonsComputer: options.onPersonsComputer ?? true,
     dataDir: join(base, "data"),
@@ -60,7 +61,7 @@ function installation(options: { onPersonsComputer?: boolean; jianying?: boolean
   const canvas = new MemoryDraftCanvas();
   for (const shotId of ["s1", "s2"]) writeFileSync(join(folder, "产出", "视频", `${shotId}.mp4`), fakeMp4());
   canvas.set("p1", ["s1", "s2"].map((shotId) => ({ shotId, title: shotId, take: { nodeId: `take-${shotId}`, title: shotId, file: fileRef(`产出/视频/${shotId}.mp4`) } })));
-  return { base, folder, draftRoot, project, host, canvas, launched, lines };
+  return { base, folder, draftRoot, project, host, canvas, launched, lines, listed };
 }
 
 async function tool(botId: string, path: string, body: unknown = {}): Promise<{ status: number; body: Record<string, any> }> {
@@ -100,6 +101,19 @@ describe("the draft host", () => {
   it("answers the snapshot for a project it does not know with nothing, never with a throw", async () => {
     const { host } = installation();
     expect(host.draftWire("gone", OWNER)).toBeUndefined();
+    expect(host.draftWires("gone", OWNER, [1, 2])).toEqual({});
+  });
+
+  it("answers the drafts of a drama's episodes for the snapshot from one look at the project, each as it answers it alone", async () => {
+    const { host, canvas, folder, listed } = installation();
+    host.connectCanvas(canvas);
+    await host.writeDraftIfReady("p1");
+    const before = listed.times;
+    const drafts = host.draftWires("p1", OWNER, [1, 2, 3]);
+    expect(listed.times - before).toBe(1);
+    expect(drafts).toEqual({ 1: host.draftWire("p1", OWNER, 1), 2: host.draftWire("p1", OWNER, 2), 3: host.draftWire("p1", OWNER, 3) });
+    expect(drafts[1]).toEqual({ state: "none", exportFolder: join(folder, "产出") });
+    expect(host.draftWires("p1", PAIRED, [1])).toEqual({ 1: { state: "unavailable", reason: "remote", exportFolder: join(folder, "产出") } });
   });
 
   it("says JianYing is not installed once it has looked and not found it", async () => {

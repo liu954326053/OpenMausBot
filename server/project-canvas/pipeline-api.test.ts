@@ -580,3 +580,32 @@ describe("the production's links on a canvas when who does a job changes", () =>
     expect(service.snapshot("p1", auth).revision).toBe(revision + 1);
   });
 });
+
+describe("what the production reads of a canvas", () => {
+  it("is told changed, in order, by every change to an episode, a shot or a profile, and not by moving nodes or by a job getting its id", async () => {
+    const { service, pipeline, project, jobs, creationOf, addShot } = setup(structuredClone(EPISODES.pipeline), EPISODES.episodeBots);
+    const changes: number[] = [];
+    const heard: number[] = [];
+    const quiet: number[] = [];
+    service.onChange((projectId) => changes.push(service.revisionOf(projectId)!));
+    pipeline.onViewChange((projectId) => heard.push(service.revisionOf(projectId)!));
+    const moved = (...ops: unknown[]) => {
+      service.apply(project, person, opsOf(...ops));
+      quiet.push(service.revisionOf("p1")!);
+    };
+    const [episode] = service.apply(project, bot("writer"), opsOf({ type: "add_node", nodeType: "text", title: "The swap", metadata: { content: "Script", role: "episode", episode: 1 } })).nodeIds as [string];
+    const shotId = addShot("Shot 1", "Veil, dawn", bot("boards-1"));
+    moved({ type: "update_node", id: shotId, patch: { position: { x: 900, y: 40 } } }, { type: "update_node", id: episode, patch: { position: { x: -400, y: 40 } } });
+    moved({ type: "update_node", id: creationOf(shotId).id, patch: { position: { x: 1400, y: 40 }, width: 400 } });
+    service.apply(project, person, opsOf({ type: "update_node", id: shotId, patch: { title: "Shot one" } }));
+    service.apply(project, bot("faces"), opsOf({ type: "add_node", nodeType: "text", title: "Mei", metadata: { content: "The bride", role: "character" } }));
+    await service.generate(project, person, shotId);
+    quiet.push(service.revisionOf("p1")!);
+    service.jobChanged({ ...jobs.get("job-1")!, status: "done", files: [video("job-1.mp4")] });
+    moved({ type: "update_node", id: episode, patch: { position: { x: -800, y: 40 } } });
+    expect(quiet).toHaveLength(4);
+    expect(changes).toEqual(expect.arrayContaining(quiet));
+    expect(heard).toEqual(changes.filter((revision) => !quiet.includes(revision)));
+    expect(heard.length).toBeGreaterThanOrEqual(6);
+  });
+});
