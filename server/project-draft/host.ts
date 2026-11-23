@@ -40,6 +40,8 @@ export interface ProjectDraftHost {
   connectCanvas(canvas: ProjectDraftCanvas): void;
   /** For the canvas's snapshot: an episode's draft as `auth` sees it. Undefined for a project that is not there; never throws. */
   draftWire(projectId: string, auth: RequestAuth, episode?: number): ProjectDraftWire | undefined;
+  /** For the canvas's snapshot: the drafts of these episodes as `auth` sees them. None for a project that is not there; never throws. */
+  draftWires(projectId: string, auth: RequestAuth, episodes: readonly number[]): Record<number, ProjectDraftWire>;
   /** Writes an episode's draft now if every shot of it that plays has a selected take, and again only when its clips
    * changed. Never throws. */
   writeDraftIfReady(projectId: string, episode?: number): Promise<void>;
@@ -118,6 +120,13 @@ export function createProjectDraftHost(deps: ProjectDraftHostDeps): ProjectDraft
         return drafts.draftWire(projectId, auth, episode);
       } catch {
         return undefined;
+      }
+    },
+    draftWires: (projectId, auth, episodes) => {
+      try {
+        return drafts.draftWires(projectId, auth, episodes);
+      } catch {
+        return {};
       }
     },
     writeDraftIfReady: async (projectId, episode) => {

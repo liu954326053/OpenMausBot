@@ -10,7 +10,7 @@ import type { TeamProjectsApi, TeamProjectWire } from "../../shared/team-project
 import type { DirectSendReceipt } from "../direct-send.ts";
 import { intlLocale } from "../language.ts";
 import type { ProjectPipeline } from "../project-canvas/flow.ts";
-import type { CanvasEpisode, CanvasProfile, PipelineShot } from "../project-canvas/pipeline-api.ts";
+import type { CanvasEpisode, CanvasProfile, PipelineShot, PipelineView } from "../project-canvas/pipeline-api.ts";
 import { CanvasRefusal, readOnlyRefusal } from "../project-canvas/service.ts";
 import { replyText, roomTurnClosedBy } from "../project-canvas/task-targets.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
@@ -27,6 +27,8 @@ export interface ProductionCanvas {
   episodes(projectId: string): CanvasEpisode[];
   shots(projectId: string): PipelineShot[];
   profiles(projectId: string): CanvasProfile[];
+  /** The three above from one reading of the canvas. */
+  view(projectId: string): PipelineView;
   /** Puts the brief the lead agreed on and the node that stands for its split of the work on the canvas, as the lead's. */
   setBrief(projectId: string, leadBotId: string, rows: ReadonlyArray<readonly [string, string]>, titles: { brief: string; plan: string }): void;
   /** The message a task gives a bot: `request`, then what is connected to its node. */
@@ -129,16 +131,16 @@ export class Productions {
   wire(projectId: string): ProductionWire | undefined {
     const production = this.get(projectId);
     if (!production) return undefined;
+    const { episodes, shots, profiles } = this.view(projectId);
     const jobs = DRAMA_JOBS.flatMap((job) => {
       const botId = production.plan.assignments[job];
-      return botId ? [{ job, botId, status: this.jobStatus(projectId, production, job) }] : [];
+      return botId ? [{ job, botId, status: this.jobStatus(projectId, production, job, profiles) }] : [];
     });
-    const shots = this.shots(projectId);
     return {
       plan: { assignments: { ...production.plan.assignments }, ...(production.plan.episodes ? { episodes: production.plan.episodes } : {}), plannedAt: production.plan.plannedAt },
       jobs,
-      ready: this.ready(projectId, production),
-      episodes: this.episodes(projectId).map((episode) => this.episodeWire(production, episode, shots)),
+      ready: this.ready(projectId, production, profiles),
+      episodes: episodes.map((episode) => this.episodeWire(production, episode, shots)),
       tasks: production.tasks.slice(-TASKS_ON_THE_WIRE).map(({ id, job, botId, episode, at, outcome, endedAt }) => ({
         id, job, botId, ...(episode === undefined ? {} : { episode }), status: outcome === "ok" ? "done" as const : outcome === "failed" ? "failed" as const : "working" as const,
         ...(at === undefined ? {} : { at }), ...(endedAt === undefined ? {} : { endedAt }),
@@ -358,6 +360,14 @@ export class Productions {
     }
   }
 
+  private view(projectId: string): PipelineView {
+    try {
+      return this.deps.canvas.view(projectId);
+    } catch {
+      return { episodes: [], shots: [], profiles: [] };
+    }
+  }
+
   private names(botIds: readonly string[]): string {
     return new Intl.ListFormat(intlLocale(this.deps.language()), { type: "conjunction" }).format(botIds.map((botId) => this.deps.store.bot(botId)?.name ?? botId));
   }
@@ -366,21 +376,21 @@ export class Productions {
     return production.tasks.findLast((task) => sameTask(task, job, episode));
   }
 
-  private jobStatus(projectId: string, production: StoredProduction, job: DramaJob): ProductionTaskStatus {
+  private jobStatus(projectId: string, production: StoredProduction, job: DramaJob, profiles?: readonly CanvasProfile[]): ProductionTaskStatus {
     const task = this.latest(production, job);
     if (!task) return "waiting";
     if (!task.outcome) return "working";
     if (task.outcome === "failed" || (job === "script" && production.noEpisodes)) return "failed";
     if (job === "script") return "done";
-    const pictures = this.profiles(projectId).filter((profile) => profile.role === job).flatMap((profile) => profile.pictures);
+    const pictures = (profiles ?? this.profiles(projectId)).filter((profile) => profile.role === job).flatMap((profile) => profile.pictures);
     const refused = this.refusedPictures.get(projectId);
     if (pictures.some((picture) => picture.state === "empty" && refused?.has(picture.nodeId))) return "failed";
     return pictures.some((picture) => picture.state === "loading" || picture.state === "empty") ? "working" : "done";
   }
 
   /** Every whole-drama job that has a bot is done, the pictures of its characters and scenes included. */
-  private ready(projectId: string, production: StoredProduction): boolean {
-    return DRAMA_JOBS.every((job) => !production.plan.assignments[job] || this.jobStatus(projectId, production, job) === "done");
+  private ready(projectId: string, production: StoredProduction, profiles?: readonly CanvasProfile[]): boolean {
+    return DRAMA_JOBS.every((job) => !production.plan.assignments[job] || this.jobStatus(projectId, production, job, profiles) === "done");
   }
 
   private episodeStatus(production: StoredProduction, episode: number): ProductionEpisodeStatus {
@@ -599,14 +609,16 @@ export class Productions {
     }
     let free = this.deps.concurrency(project.id).videos - all.filter((shot) => shot.status === "loading").length;
     const refused = new Map<string, string>();
+    let asked = false;
     for (const shot of missing) {
       if (free <= 0) break;
       if (shot.status === "loading" || shot.status === "error") continue;
+      asked = true;
       const why = await this.generate(project, shot);
       if (why === null) free -= 1;
       else refused.set(shot.shotId, why);
     }
-    const after = this.shots(project.id).filter((shot) => shot.episode === episode.episode && !shot.take);
+    const after = (asked ? this.shots(project.id) : all).filter((shot) => shot.episode === episode.episode && !shot.take);
     const stopped = (shot: PipelineShot) => shot.status === "error" || (refused.has(shot.shotId) && shot.status !== "loading");
     if (after.length && after.every(stopped)) await this.episodeFailed(project, production, episode.episode, "videos", [...new Set(refused.values())].join(" ") || undefined);
   }

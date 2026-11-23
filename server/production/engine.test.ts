@@ -71,7 +71,11 @@ function setup(options: { members?: string[]; dataDir?: string; room?: string[];
     drafts: {} as Record<number, ProjectDraftWire>,
     refreshed: 0,
     lines: [] as string[],
+    reads: { episodes: 0, shots: 0, profiles: 0, view: 0 },
   };
+  const episodesNow = () => state.episodes.map((one) => ({ ...one }));
+  const shotsNow = () => state.shots.map((one) => ({ ...one }));
+  const profilesNow = () => state.profiles.map((one) => ({ ...one, pictures: one.pictures.map((picture) => ({ ...picture })) }));
   const templateOf = (botId: string) => botId.replace(/-ep\d+$/, "");
   const botOf = (botId: string) => {
     const member = project.botIds.includes(botId) ? TEAM[templateOf(botId)] : undefined;
@@ -86,9 +90,22 @@ function setup(options: { members?: string[]; dataDir?: string; room?: string[];
       appendMessage: (threadId: string, message: Row) => append(threadId, message),
     } as unknown as ProductionDeps["store"],
     canvas: {
-      episodes: () => state.episodes.map((one) => ({ ...one })),
-      shots: () => state.shots.map((one) => ({ ...one })),
-      profiles: () => state.profiles.map((one) => ({ ...one, pictures: one.pictures.map((picture) => ({ ...picture })) })),
+      episodes: () => {
+        state.reads.episodes += 1;
+        return episodesNow();
+      },
+      shots: () => {
+        state.reads.shots += 1;
+        return shotsNow();
+      },
+      profiles: () => {
+        state.reads.profiles += 1;
+        return profilesNow();
+      },
+      view: () => {
+        state.reads.view += 1;
+        return { episodes: episodesNow(), shots: shotsNow(), profiles: profilesNow() };
+      },
       setBrief: (_projectId, leadBotId, rows, titles) => void state.briefs.push({ leadBotId, rows, titles }),
       taskFor: async (_project, botId, request) => `${request}\n\n[what is connected to ${botId}]`,
       generate: async (_project, nodeId) => {
@@ -589,5 +606,53 @@ describe("a production after a restart", () => {
     await flush();
     expect(world.sent).toEqual([]);
     expect(canvasRefusalOf(await world.productions.retry("p1", { job: "script" }).catch((error: unknown) => error))).toMatchObject({ status: 409 });
+  });
+});
+
+describe("what a production reads of the canvas", () => {
+  /** Two episodes in their videos, one of them with a failed shot, and one waiting. */
+  async function midway() {
+    const world = setup({ concurrency: { episodes: 2, videos: 2 } });
+    await library(world, 3);
+    world.state.profiles = [{ nodeId: "mei", role: "character", title: "Mei", pictures: [{ nodeId: "mei-1", state: "ready" }] }];
+    world.shots(1, 3);
+    await world.reply("boarder-ep1", "Three shots.");
+    await world.taken(["s1-1"]);
+    await world.taken(["s1-2"], false);
+    world.shots(2, 1);
+    await world.reply("boarder-ep2", "One shot.");
+    return world;
+  }
+
+  it("draws the production from one reading", async () => {
+    const world = await midway();
+    world.state.reads = { episodes: 0, shots: 0, profiles: 0, view: 0 };
+    const wire = world.productions.wire("p1");
+    expect(world.state.reads).toEqual({ episodes: 0, shots: 0, profiles: 0, view: 1 });
+    const ended = (id: string, job: string, botId: string, at: number, endedAt: number, episode?: number) => ({ id, job, botId, ...(episode ? { episode } : {}), status: "done", at, endedAt });
+    expect(wire).toEqual({
+      plan: { assignments: { script: "writer", character: "faces", scene: "sets", storyboard: "boarder", post: "cutter" }, episodes: 3, plannedAt: 1000 },
+      jobs: [{ job: "script", botId: "writer", status: "done" }, { job: "character", botId: "faces", status: "done" }, { job: "scene", botId: "sets", status: "done" }],
+      ready: true,
+      episodes: [
+        { episode: 1, nodeId: "ep-1", title: "Episode 1", status: "videos", storyboardBotId: "boarder-ep1", shots: 3, ready: 1, generating: 1, failed: 1 },
+        { episode: 2, nodeId: "ep-2", title: "Episode 2", status: "videos", storyboardBotId: "boarder-ep2", shots: 1, ready: 0, generating: 1, failed: 0 },
+        { episode: 3, nodeId: "ep-3", title: "Episode 3", status: "waiting", shots: 0, ready: 0, generating: 0, failed: 0 },
+      ],
+      tasks: [
+        ended("task-2", "script", "writer", 1020, 1040), ended("task-6", "character", "faces", 1050, 1090), ended("task-9", "scene", "sets", 1070, 1100),
+        ended("task-14", "storyboard", "boarder-ep1", 1110, 1150, 1), ended("task-17", "storyboard", "boarder-ep2", 1130, 1160, 2),
+      ],
+      startedAt: 1000,
+    });
+  });
+
+  it("reads an episode's shots once in an advance that starts nothing", async () => {
+    const world = await midway();
+    expect(world.state.generated).toEqual(["s1-1-make", "s1-2-make", "s1-3-make", "s2-1-make"]);
+    world.state.reads = { episodes: 0, shots: 0, profiles: 0, view: 0 };
+    await world.poke();
+    expect(world.state.generated).toEqual(["s1-1-make", "s1-2-make", "s1-3-make", "s2-1-make"]);
+    expect(world.state.reads.shots).toBe(2);
   });
 });

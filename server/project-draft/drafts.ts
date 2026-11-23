@@ -156,6 +156,12 @@ export class ProjectDrafts {
     return this.wireOf(this.project(projectId), atThisComputer(auth), episode);
   }
 
+  draftWires(projectId: string, auth: RequestAuth, episodes: readonly number[]): Record<number, ProjectDraftWire> {
+    const project = this.project(projectId);
+    const here = atThisComputer(auth);
+    return Object.fromEntries(episodes.map((episode) => [episode, this.wireOf(project, here, episode)]));
+  }
+
   /** The draft as the person at this computer sees it: what a bot of the project is told. */
   draftAtThisComputer(projectId: string, episode?: number): ProjectDraftWire {
     return this.wireOf(this.project(projectId), true, episode);

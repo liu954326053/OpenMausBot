@@ -1,4 +1,4 @@
-import { botNodeId, CANVAS_MAX_NODES, CANVAS_NODE_SIZE, canvasFileNodeType, type CanvasFileRef, type CanvasNode, type CanvasNodeMetadata } from "../../shared/project-canvas.ts";
+import { botNodeId, CANVAS_MAX_NODES, CANVAS_NODE_SIZE, canvasFileNodeType, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeMetadata } from "../../shared/project-canvas.ts";
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
 import { userError } from "../user-errors.ts";
 import { botsAt } from "./flow.ts";
@@ -29,6 +29,12 @@ export interface CanvasProfile {
   pictures: Array<{ nodeId: string; state: "ready" | "loading" | "error" | "empty" }>;
 }
 
+export interface PipelineView {
+  episodes: CanvasEpisode[];
+  shots: PipelineShot[];
+  profiles: CanvasProfile[];
+}
+
 /** What the rest of the server asks of the production's nodes on a project's canvas. Every call that changes a canvas
  * is refused for an archived project, as a change to its canvas is, and answers the canvas's revision after it. */
 export interface CanvasPipelineApi {
@@ -38,6 +44,8 @@ export interface CanvasPipelineApi {
   episodes(projectId: string): CanvasEpisode[];
   /** The characters and scenes in the order they were added. */
   profiles(projectId: string): CanvasProfile[];
+  /** The episodes, the shots and the profiles from one reading of the canvas. */
+  view(projectId: string): PipelineView;
   /** The brief's rows go on the canvas as the lead's brief, made or brought up to date, and the node that stands for
    * the lead's split of the work is there with it. */
   setBrief(projectId: string, leadBotId: string, rows: ReadonlyArray<readonly [string, string]>, titles: { brief: string; plan: string }): { revision: number };
@@ -67,29 +75,38 @@ function setMetadata(node: CanvasNode, metadata: CanvasNodeMetadata): void {
 
 const missing = () => new CanvasRefusal(404, { code: "not_found", ...userError("serverError.projectCanvas.nodeMissing") });
 
+const episodesIn = (document: CanvasDocument): CanvasEpisode[] => episodesOf(document).map((node) => ({ episode: node.metadata!.episode!, nodeId: node.id, title: node.title }));
+
+function profilesIn({ nodes }: CanvasDocument): CanvasProfile[] {
+  return nodes.filter(isProfile).map((profile): CanvasProfile => {
+    const pictures = profile.groupId === undefined ? [] : nodes.filter((node) => node.type === "image" && node.groupId === profile.groupId).flatMap((node) => {
+      const { file, status, prompt } = node.metadata ?? {};
+      const state = file ? "ready" as const : status === "loading" ? "loading" as const : status === "error" ? "error" as const : prompt?.trim() ? "empty" as const : null;
+      return state ? [{ nodeId: node.id, state }] : [];
+    });
+    const subtitle = profile.metadata?.card?.subtitle;
+    return { nodeId: profile.id, role: profile.metadata!.role as CanvasProfile["role"], title: profile.title, ...(subtitle ? { subtitle } : {}), pictures };
+  });
+}
+
 export function createCanvasPipeline(service: ProjectCanvasService): CanvasPipelineApi {
   const open = (projectId: string): TeamProjectWire => {
     const project = service.project(projectId);
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     return project;
   };
+  const read = (projectId: string) => service.document(service.project(projectId));
 
   return {
-    shots: (projectId) => listShots(service.document(service.project(projectId))),
+    shots: (projectId) => listShots(read(projectId)),
 
-    episodes: (projectId) => episodesOf(service.document(service.project(projectId))).map((node) => ({ episode: node.metadata!.episode!, nodeId: node.id, title: node.title })),
+    episodes: (projectId) => episodesIn(read(projectId)),
 
-    profiles(projectId) {
-      const { nodes } = service.document(service.project(projectId));
-      return nodes.filter(isProfile).map((profile): CanvasProfile => {
-        const pictures = profile.groupId === undefined ? [] : nodes.filter((node) => node.type === "image" && node.groupId === profile.groupId).flatMap((node) => {
-          const { file, status, prompt } = node.metadata ?? {};
-          const state = file ? "ready" as const : status === "loading" ? "loading" as const : status === "error" ? "error" as const : prompt?.trim() ? "empty" as const : null;
-          return state ? [{ nodeId: node.id, state }] : [];
-        });
-        const subtitle = profile.metadata?.card?.subtitle;
-        return { nodeId: profile.id, role: profile.metadata!.role as CanvasProfile["role"], title: profile.title, ...(subtitle ? { subtitle } : {}), pictures };
-      });
+    profiles: (projectId) => profilesIn(read(projectId)),
+
+    view(projectId) {
+      const document = read(projectId);
+      return { episodes: episodesIn(document), shots: listShots(document), profiles: profilesIn(document) };
     },
 
     setBrief(projectId, leadBotId, rows, titles) {
