@@ -172,6 +172,16 @@ describe("a bot's chat window", () => {
     expect(picker()).toBeNull();
   });
 
+  it("keeps the way to add a reference outside the list, which scrolls when it is long", async () => {
+    harness = await renderOverlay();
+    await openChat("board-2");
+    expect(named("Add a reference")!.closest("ul")).toBeNull();
+    await openChat("lead");
+    expect(chipIds()).toEqual([]);
+    expect(chat()!.querySelector("ul")).toBeNull();
+    expect(named("Add a reference")).toBeDefined();
+  });
+
   it("closes the picker before the window with Escape", async () => {
     harness = await renderOverlay();
     await openChat("writer");

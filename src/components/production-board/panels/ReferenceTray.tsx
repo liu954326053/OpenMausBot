@@ -37,11 +37,17 @@ export function ReferenceTray({ connected, extras, botName, pictureUrl, pickerOp
   const count = connected.length + extras.length;
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2 text-[12px] leading-4 text-ink-tertiary">
-        <span id={labelId} className="font-medium">{t("boardPanels.chat.references")}</span>
-        {count ? <span className="tabular-nums">{count === 1 ? t("boardPanels.chat.referenceCount.one") : t("boardPanels.chat.referenceCount", { count })}</span> : null}
+      <div className="flex items-center gap-2 text-[12px] leading-4 text-ink-tertiary">
+        <span id={labelId} className="shrink-0 font-medium">{t("boardPanels.chat.references")}</span>
+        <span className="min-w-0 flex-1 truncate tabular-nums">
+          {count ? (count === 1 ? t("boardPanels.chat.referenceCount.one") : t("boardPanels.chat.referenceCount", { count })) : null}
+        </span>
+        <button type="button" className="ui-pill min-h-[22px] shrink-0 gap-1 px-2 text-[12px] leading-4" aria-expanded={pickerOpen} onClick={onPick}>
+          <Plus size={14} aria-hidden="true" />
+          {t("boardPanels.chat.addReference")}
+        </button>
       </div>
-      <ul aria-labelledby={labelId} className="flex max-h-[76px] flex-wrap items-center gap-1.5 overflow-y-auto">
+      {count ? <ul aria-labelledby={labelId} className="flex max-h-[76px] flex-wrap items-center gap-1.5 overflow-y-auto">
         {connected.map((asset) => (
           <li key={asset.cardId} data-reference={asset.node.id} title={`${assetKindLabel(asset)} · ${asset.title}\n${t("boardPanels.chat.connected", { name: botName })}`} className={CHIP}>
             <Link2 size={14} aria-hidden="true" className="shrink-0" />
@@ -62,13 +68,7 @@ export function ReferenceTray({ connected, extras, botName, pictureUrl, pickerOp
             </button>
           </li>
         ))}
-        <li>
-          <button type="button" className="ui-pill min-h-[22px] px-2 text-[12px] leading-4" aria-expanded={pickerOpen} onClick={onPick}>
-            <Plus size={14} aria-hidden="true" />
-            {t("boardPanels.chat.addReference")}
-          </button>
-        </li>
-      </ul>
+      </ul> : null}
     </div>
   );
 }
