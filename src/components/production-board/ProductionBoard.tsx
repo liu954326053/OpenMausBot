@@ -61,6 +61,7 @@ const PAN_STEP = 80;
 const KEY_ZOOM = 1.2;
 const GRID = 24;
 const FOCUS_ZOOM = 0.8;
+const MINIMAP_UNFOLDS_FROM = 900;
 const CHROME = "[data-board-chrome], [data-board-overlay]";
 /** Controls that use a pressed pointer's movement themselves: a field selects text, a player scrubs, a link starts the browser's own drag. */
 const HOLDS_POINTER = "a[href], input, textarea, select, video[controls], audio[controls], [contenteditable]";
@@ -115,7 +116,9 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
   const [drag, setDrag] = useState<{ cardId: string; dx: number; dy: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [showRefs, setShowRefs] = useState(false);
-  const [minimap, setMinimap] = useState(true);
+  const [wide, setWide] = useState(false);
+  const [minimapChoice, setMinimapChoice] = useState<boolean | null>(null);
+  const minimap = minimapChoice ?? wide;
   const [stackMenu, setStackMenu] = useState<CanvasPoint | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [shown, setShown] = useState<Shown>(NOTHING_SHOWN);
@@ -254,6 +257,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     if (!root) return;
     const resize = (width: number, height: number) => {
       if (!width || !height) return;
+      setWide(width >= MINIMAP_UNFOLDS_FROM);
       camera.size = { width, height };
       if (!placed.current) {
         placed.current = true;
@@ -510,7 +514,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
           showRefs={showRefs}
           minimap={minimap}
           onRefs={() => setShowRefs((on) => !on)}
-          onMinimap={() => setMinimap((on) => !on)}
+          onMinimap={() => setMinimapChoice(!minimap)}
           onZoom={(factor) => camera.glide(zoomAt(camera.view, factor, { x: camera.size.width / 2, y: camera.size.height / 2 }))}
           onFit={fitAll}
         />

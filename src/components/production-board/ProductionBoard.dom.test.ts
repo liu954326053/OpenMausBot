@@ -24,14 +24,29 @@ import { ProductionBoard, type BoardHost } from "./ProductionBoard";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let size = { width: 1280, height: 800 };
+const observers = new Set<SizedObserver>();
 
 class SizedObserver {
+  private target: Element | null = null;
   constructor(private readonly callback: ResizeObserverCallback) {}
   observe(target: Element) {
-    this.callback([{ target, contentRect: { ...size } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+    this.target = target;
+    observers.add(this);
+    this.report();
+  }
+  report() {
+    this.callback([{ target: this.target, contentRect: { ...size } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
   }
   unobserve() {}
-  disconnect() {}
+  disconnect() {
+    observers.delete(this);
+  }
+}
+
+async function resizeBoard(width: number) {
+  size = { ...size, width };
+  await act(async () => { for (const observer of observers) observer.report(); });
+  await settle();
 }
 
 let root: Root;
@@ -83,6 +98,8 @@ const drawnIds = () => [...page.querySelectorAll<HTMLElement>("[data-board-card-
 const edge = (id: string) => page.querySelector<SVGGElement>(`[data-board-edge="${id}"]`);
 const buttonNamed = (scope: ParentNode, name: string) =>
   [...scope.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === name);
+const minimap = () => page.querySelector('svg[role="img"][aria-label="Minimap"]');
+const minimapButton = () => buttonNamed(page, "Minimap")!;
 const layoutOf = (snapshot: CanvasSnapshot, opened: number[] = []) => layoutBoard(buildBoard(snapshot, { opened: new Set(opened) }), cardSize);
 
 function view(): BoardView {
@@ -230,6 +247,42 @@ describe("the production board", () => {
     expect(page.querySelector("[data-board-card]")).toBeNull();
     expect(page.querySelector("[data-board-edge]")).not.toBeNull();
     expect(page.querySelector("[data-board-edge-label]")).toBeNull();
+  });
+
+  it("starts with its minimap folded on a board narrower than 900 and follows the board's width, until the person opens it", async () => {
+    size = { width: 899, height: 620 };
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    expect(minimap()).toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("false");
+    await resizeBoard(900);
+    expect(minimap()).not.toBeNull();
+    await resizeBoard(580);
+    expect(minimap()).toBeNull();
+
+    await click(minimapButton());
+    expect(minimap()).not.toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("true");
+    await resizeBoard(1280);
+    await resizeBoard(580);
+    expect(minimap()).not.toBeNull();
+  });
+
+  it("starts with its minimap open on a board 900 wide, and keeps it as the person leaves it whatever the width", async () => {
+    size = { width: 900, height: 620 };
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    expect(minimap()).not.toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("true");
+
+    await click(minimapButton());
+    expect(minimap()).toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("false");
+    await resizeBoard(580);
+    await resizeBoard(1440);
+    expect(minimap()).toBeNull();
+    await click(minimapButton());
+    expect(minimap()).not.toBeNull();
+    await resizeBoard(580);
+    expect(minimap()).not.toBeNull();
   });
 
   it("moves a card the person drags, by its name too, to where they let go, takes a press that hardly moves as a click, and pans from anywhere else", async () => {

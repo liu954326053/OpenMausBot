@@ -9,9 +9,10 @@
 // and goes back, a click on the open project folds it, the top bar reaches the project's group chats and team changes,
 // a bot who joins is drawn at once clear of the others, a search for a part of the project's name keeps its one row and
 // one for the writer finds no project, a project archived while open gives way to the main bot, and the project's
-// settings cover the whole board while a terminal's sign-in card stays above them. Last, the sixty-episode sample on
-// the in-memory backend draws only what is in view; how long it takes to open, and the frames of a zoom and a pan, are
-// kept as evidence. Nothing here reaches the user's data, JianYing or port 8799.
+// settings cover the whole board while a terminal's sign-in card stays above them; at the app's smallest window, in both
+// skins, the minimap starts folded until its button opens it, and the board's bars neither overlap nor leave the board.
+// Last, the sixty-episode sample on the in-memory backend draws only what is in view; how long it takes to open, and the
+// frames of a zoom and a pan, are kept as evidence. Nothing here reaches the user's data, JianYing or port 8799.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -551,6 +552,44 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
       await clickAt(20, 20);
       await waitFor(`!document.querySelector(${JSON.stringify(settingsDialog)})`, "the project settings closed from their scrim");
       evidence.overlays = { underSettings, cliLogin: { code: login.code } };
+
+      type Chrome = { boardWidth: number; sidebarWidth: number; minimapPressed: string | null; overlapping: string[]; clipped: string[]; cornerShare: number };
+      const chromeAtSmallest = () => evaluate<Chrome>(`(() => {
+        const rectOf = (selector) => document.querySelector(selector)?.getBoundingClientRect() ?? null;
+        const board = rectOf(${JSON.stringify(`${view} [data-production-board]`)});
+        const layers = Object.entries(${JSON.stringify({ topBar: boardLayers.topBar, stages: boardLayers.stages, toolbar: boardLayers.toolbar, minimap: boardLayers.minimap })})
+          .map(([name, selector]) => [name, rectOf(selector)]).filter(([, r]) => r);
+        const meet = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+        const overlapping = layers.flatMap(([name, r], at) => layers.slice(at + 1).filter(([, other]) => meet(r, other)).map(([other]) => name + "/" + other));
+        const clipped = layers.filter(([name, r]) => {
+          const room = name === "topBar" ? { left: 0, top: 0, right: innerWidth, bottom: innerHeight } : board;
+          return r.left < room.left - 1 || r.top < room.top - 1 || r.right > room.right + 1 || r.bottom > room.bottom + 1;
+        }).map(([name]) => name);
+        const corner = layers.filter(([name]) => name === "toolbar" || name === "minimap").reduce((sum, [, r]) => sum + r.width * r.height, 0);
+        return { boardWidth: Math.round(board.width), sidebarWidth: Math.round(rectOf("[data-sidebar]")?.width ?? 0),
+          minimapPressed: document.querySelector(${JSON.stringify(`${boardLayers.toolbar} button[aria-label="Minimap"]`)})?.getAttribute("aria-pressed") ?? null,
+          overlapping, clipped, cornerShare: Math.round((corner / (board.width * board.height)) * 1000) / 10 };
+      })()`);
+      await browser("set", "viewport", "840", "620");
+      const smallest: Record<string, { folded: Chrome; opened: Chrome }> = {};
+      for (const skin of SKINS) {
+        await evaluate(`localStorage.setItem("omb-skin", ${JSON.stringify(skin)}); true`);
+        await browser("open", preview.previewUrl);
+        await openProject();
+        await settle();
+        const folded = await chromeAtSmallest();
+        expect(folded).toMatchObject({ minimapPressed: "false", overlapping: [], clipped: [] });
+        expect(folded.sidebarWidth).toBeGreaterThan(0);
+        expect(folded.boardWidth).toBeLessThan(900);
+        await shot(`26-smallest-window-${skin}.png`);
+        await clickSelector(`${boardLayers.toolbar} button[aria-label="Minimap"]`);
+        await waitFor(`document.querySelector(${JSON.stringify(boardLayers.minimap)})`, "the minimap its button opens at the smallest window");
+        const opened = await chromeAtSmallest();
+        expect(opened).toMatchObject({ minimapPressed: "true", overlapping: [], clipped: [] });
+        await shot(`27-smallest-window-minimap-opened-${skin}.png`);
+        smallest[skin] = { folded, opened };
+      }
+      evidence.smallestWindow = smallest;
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {
       await shot("failed-app.png").catch(() => {});
