@@ -202,8 +202,8 @@ function usePlacement(windowRef: RefObject<HTMLElement | null>, { bot, layer, re
   useLayoutEffect(() => {
     place();
   });
-  useEffect(() => subscribeView(place), [subscribeView, place]);
-  useEffect(() => {
+  useLayoutEffect(() => subscribeView(place), [subscribeView, place]);
+  useLayoutEffect(() => {
     const observer = new ResizeObserver(() => place());
     observer.observe(windowRef.current!);
     return () => observer.disconnect();
