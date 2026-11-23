@@ -87,7 +87,7 @@ describe("the bot card", () => {
     expect(gate.getAttribute("aria-label")).toBe("Start conditions");
     const items = [...gate.querySelectorAll<HTMLElement>("[data-gate-item]")];
     expect(items.map((item) => item.dataset.gateItem)).toEqual(["characters", "scenes", "script"]);
-    expect(items.map((item) => `${textOf(item.querySelector("[data-gate-label]"))} ${textOf(item.querySelector("[data-gate-value]"))}`)).toEqual(["Cast 4/4", "Scenes 2/4", "Script EP01"]);
+    expect(items.map((item) => [textOf(item.querySelector("[data-gate-label]")), textOf(item.querySelector("[data-gate-value]"))])).toEqual([["Cast", "4/4"], ["Scenes", "2/4"], ["Script", ""]]);
     expect(items.map((item) => item.dataset.gateReady)).toEqual(["true", "false", "true"]);
     expect(items.map((item) => item.title)).toEqual(["Cast 4/4 · Ready", "Scenes 2/4 · Not ready yet", "Script EP01 · Ready"]);
   });
