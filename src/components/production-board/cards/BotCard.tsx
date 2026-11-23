@@ -7,7 +7,7 @@ import { formatTime } from "@/lib/clock-time";
 import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { CardAction, CardLabel, CardName, CardShell, Meter, percentOf, SILVER, StatusMark } from "./parts";
-import { botStatus } from "./tone";
+import { botStatus, TONE_TEXT } from "./tone";
 
 export type BoardProgressKind = "tasks" | "episodes" | "characters" | "scenes" | "videos";
 
@@ -25,6 +25,22 @@ export interface BoardStep {
   at?: number;
 }
 
+/** The ones made of a whole. */
+export interface BoardCount {
+  done: number;
+  total: number;
+}
+
+/** What an episode's storyboard bot waits for before it starts. A condition the production does not wait for is left
+ * out. */
+export interface BoardGate {
+  /** The drama's characters that are ready, of all of them. */
+  characters?: BoardCount;
+  scenes?: BoardCount;
+  /** Its episode's script is written. */
+  script?: boolean;
+}
+
 export interface BotCardProps {
   bot: CanvasBotState;
   look?: CanvasBotLook;
@@ -33,8 +49,10 @@ export interface BotCardProps {
   /** How that job's task stands: the whole-drama job's, or the task of its episode. */
   task?: ProductionTaskStatus;
   progress?: BoardProgress;
-  /** Its newest steps, oldest first; the card shows the last four. */
+  /** Its newest steps, oldest first; the card shows the last four, or as many of them as fit. */
   steps?: readonly BoardStep[];
+  /** For an episode's storyboard bot. */
+  gate?: BoardGate;
   onOpen?: () => void;
   onRetry?: () => void;
 }
@@ -63,7 +81,60 @@ const STEP_ICON = {
   waiting: <Circle size={14} aria-hidden="true" className="mt-px shrink-0 text-ink-tertiary" />,
 };
 
-export function BotCard({ bot, look, job, task, progress, steps, onOpen, onRetry }: BotCardProps) {
+interface GateItem {
+  key: "characters" | "scenes" | "script";
+  value: string;
+  ready: boolean;
+}
+
+function gateItems(gate: BoardGate, episode: number | undefined): GateItem[] {
+  const counted = (key: "characters" | "scenes", count: BoardCount | undefined): GateItem[] =>
+    count ? [{ key, value: `${count.done}/${count.total}`, ready: count.total > 0 && count.done >= count.total }] : [];
+  const script: GateItem[] = gate.script === undefined ? [] : [{ key: "script", value: episode === undefined ? "" : episodeCode(episode), ready: gate.script }];
+  return [...counted("characters", gate.characters), ...counted("scenes", gate.scenes), ...script];
+}
+
+function GateTags({ gate, episode }: { gate: BoardGate; episode: number | undefined }) {
+  return (
+    <ul data-bot-gate="" aria-label={t("boardCards.gate.label")} className="flex min-w-0 gap-1 px-3 pt-2.5">
+      {gateItems(gate, episode).map(({ key, value, ready }) => {
+        const label = t(`boardCards.gate.${key}`);
+        const state = ready ? t("boardCards.gate.ready") : t("boardCards.gate.notReady");
+        return (
+          <li
+            key={key}
+            data-gate-item={key}
+            data-gate-ready={String(ready)}
+            title={`${[label, value].filter(Boolean).join(" ")} · ${state}`}
+            className={cn("ui-chip px-1.5", ready ? "bg-success/10" : "bg-control", TONE_TEXT[ready ? "done" : "idle"])}
+          >
+            {ready ? <Check size={14} aria-hidden="true" className="shrink-0" /> : <Circle size={14} aria-hidden="true" className="shrink-0" />}
+            <span data-gate-label="" className="min-w-0 truncate">{label}</span>
+            {value ? <span data-gate-value="" className="shrink-0 font-mono">{value}</span> : null}
+            <span className="sr-only">{state}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The steps, as many as fit whole, the newest kept. */
+function Steps({ steps }: { steps: readonly BoardStep[] }) {
+  return (
+    <ol aria-label={t("boardCards.bot.steps")} className="flex min-h-0 flex-1 flex-col-reverse flex-wrap content-start justify-end gap-x-4 gap-y-1 overflow-hidden px-3 pt-3">
+      {steps.map((step, index) => (
+        <li key={index} data-step={step.state} style={{ order: steps.length - index }} className={cn("flex w-full items-start gap-2 text-[12px] leading-4", step.state === "waiting" ? "text-ink-tertiary" : step.state === "working" ? "text-ink" : "text-ink-secondary")}>
+          {STEP_ICON[step.state]}
+          <span data-step-text="" dir="auto" title={step.text} className="min-w-0 flex-1 truncate">{step.text}</span>
+          {step.at !== undefined ? <time dateTime={new Date(step.at).toISOString()} className="shrink-0 text-ink-tertiary tabular-nums">{formatTime(step.at)}</time> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+export function BotCard({ bot, look, job, task, progress, steps, gate, onOpen, onRetry }: BotCardProps) {
   const status = botStatus(bot, task);
   const name = ownName(bot.name, bot.episode);
   const planned = taskText(bot, job);
@@ -91,6 +162,8 @@ export function BotCard({ bot, look, job, task, progress, steps, onOpen, onRetry
         <StatusMark status={status} className="self-start pt-1" />
       </header>
 
+      {gate ? <GateTags gate={gate} episode={bot.episode} /> : null}
+
       <section className="flex flex-col gap-1.5 px-3 pt-3">
         <CardLabel>{t("boardCards.bot.currentTask")}</CardLabel>
         <p data-current-task="" dir="auto" title={current} className={cn("line-clamp-2 text-[13px] leading-[18px]", planned || doing ? "text-ink" : "text-ink-tertiary")}>{current}</p>
@@ -109,19 +182,9 @@ export function BotCard({ bot, look, job, task, progress, steps, onOpen, onRetry
       {!steps?.length && reply ? (
         <section className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 pt-3">
           <span data-bot-output-label=""><CardLabel>{t("boardCards.bot.output")}</CardLabel></span>
-          <p data-bot-output="" dir="auto" title={reply} className="line-clamp-3 whitespace-pre-line text-[12px] leading-4 text-ink-secondary">{reply}</p>
+          <p data-bot-output="" dir="auto" title={reply} className={cn("whitespace-pre-line text-[12px] leading-4 text-ink-secondary", gate ? "line-clamp-2" : "line-clamp-3")}>{reply}</p>
         </section>
-      ) : steps?.length ? (
-        <ol aria-label={t("boardCards.bot.steps")} className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-3 pt-3">
-          {steps.slice(-STEPS_SHOWN).map((step, index) => (
-            <li key={index} data-step={step.state} className={cn("flex items-start gap-2 text-[12px] leading-4", step.state === "waiting" ? "text-ink-tertiary" : step.state === "working" ? "text-ink" : "text-ink-secondary")}>
-              {STEP_ICON[step.state]}
-              <span data-step-text="" dir="auto" title={step.text} className="min-w-0 flex-1 truncate">{step.text}</span>
-              {step.at !== undefined ? <time dateTime={new Date(step.at).toISOString()} className="shrink-0 text-ink-tertiary tabular-nums">{formatTime(step.at)}</time> : null}
-            </li>
-          ))}
-        </ol>
-      ) : <div className="flex-1" />}
+      ) : steps?.length ? <Steps steps={steps.slice(-STEPS_SHOWN)} /> : <div className="flex-1" />}
 
       {bot.waiting ? (
         <div data-bot-asking="" role="status" className="mx-3 mb-3 mt-2 flex items-center gap-2 rounded-lg bg-warning/10 px-2.5 py-2">

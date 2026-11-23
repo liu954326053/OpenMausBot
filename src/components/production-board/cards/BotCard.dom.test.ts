@@ -81,6 +81,24 @@ describe("the bot card", () => {
     expect(rows[3]!.querySelector("time")).toBeNull();
   });
 
+  it("shows a storyboard bot's start conditions as tags, each ready or still awaited", () => {
+    const card = draw({ gate: { characters: { done: 4, total: 4 }, scenes: { done: 2, total: 4 }, script: true } });
+    const gate = card.querySelector<HTMLElement>("[data-bot-gate]")!;
+    expect(gate.getAttribute("aria-label")).toBe("Start conditions");
+    const items = [...gate.querySelectorAll<HTMLElement>("[data-gate-item]")];
+    expect(items.map((item) => item.dataset.gateItem)).toEqual(["characters", "scenes", "script"]);
+    expect(items.map((item) => `${textOf(item.querySelector("[data-gate-label]"))} ${textOf(item.querySelector("[data-gate-value]"))}`)).toEqual(["Cast 4/4", "Scenes 2/4", "Script EP01"]);
+    expect(items.map((item) => item.dataset.gateReady)).toEqual(["true", "false", "true"]);
+    expect(items.map((item) => item.title)).toEqual(["Cast 4/4 · Ready", "Scenes 2/4 · Not ready yet", "Script EP01 · Ready"]);
+  });
+
+  it("shows only the start conditions it is given, and counts one with nothing made as not ready", () => {
+    const items = [...draw({ gate: { script: false } }).querySelectorAll<HTMLElement>("[data-gate-item]")];
+    expect(items.map((item) => [item.dataset.gateItem, item.dataset.gateReady])).toEqual([["script", "false"]]);
+    expect(draw({ gate: { characters: { done: 0, total: 0 } } }).querySelector<HTMLElement>("[data-gate-item]")!.dataset.gateReady).toBe("false");
+    expect(draw().querySelector("[data-bot-gate]")).toBeNull();
+  });
+
   it("shows its newest reply where it has no steps to show", () => {
     const output = { text: "All six shots of EP01 are split.", threadId: "t1", messageId: "m1", at: 1 };
     const card = draw({ bot: bot({ status: "idle", output }) });
