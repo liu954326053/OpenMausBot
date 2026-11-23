@@ -157,6 +157,9 @@ type BotRecord = {
     for (const name of ["Ada", "Ben", "Cleo", "Dana"]) expect(await snapshot()).toContain(`Change default model for ${name}`);
     expect(await evaluate("[...document.querySelectorAll('[data-team-key] article span')].some(span => span.textContent.trim() === 'Ready')")).toBe(false);
     expect(await evaluate("document.querySelectorAll('[data-team-canvas] [aria-label^=\"Desktop for \"]').length")).toBe(0);
+    expect(await cardOrder("Engineering")).toEqual([fixture.botId, ben.id]);
+    expect(await cardOrder("Research")).toEqual([cleo.id, dana.id]);
+    expect(await snapshot()).not.toMatch(/Draw a line from|Line from|Being placed/);
 
     // The full-app fixture has no Boat credentials. The explicit + entry
     // explains paid creation, but cannot allocate anything until connected.
@@ -217,6 +220,7 @@ type BotRecord = {
     expect(await messages(ben.id)).toEqual(transcript);
     for (const before of beforeBots) expect(identity(await savedBot(before.id))).toEqual(identity(before));
     await manage("Engineering");
+    expect(await snapshot()).not.toContain("Judge again");
     await click("Move bots to Engineering");
     await click("Cleo", "checkbox");
     await click("Dana", "checkbox");
