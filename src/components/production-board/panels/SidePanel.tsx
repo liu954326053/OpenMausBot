@@ -6,7 +6,8 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import type { LocaleKey } from "@/locales";
-import { EPISODE_STATUS_KEYS, episodeProgress } from "./asset-words";
+import { episodeStatus } from "../cards";
+import { episodeProgress } from "./asset-words";
 import type { BoardAsset, BoardIndex, EpisodeRow } from "./board-index";
 import { BotFace, BotStatus, EmptyLine, NO_LOOK, PANEL_ROW, ROW_META, RowGroup } from "./panel-parts";
 
@@ -261,7 +262,8 @@ function EpisodesTab({ episodes, onEpisode }: { episodes: readonly EpisodeRow[];
     <RowGroup>
       {episodes.map((row) => {
         const progress = episodeProgress(row);
-        const meta = row.status ? `${t(EPISODE_STATUS_KEYS[row.status])} · ${progress}` : progress;
+        const status = episodeStatus(row.status);
+        const meta = status ? `${status.label} · ${progress}` : progress;
         return (
           <li key={row.episode}>
             <button type="button" className={PANEL_ROW} onClick={() => onEpisode(row.episode)}>

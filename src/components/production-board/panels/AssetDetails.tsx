@@ -9,7 +9,8 @@ import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { assetCode, EPISODE_STATUS_KEYS, episodeProgress, KIND_KEYS } from "./asset-words";
+import { episodeStatus } from "../cards";
+import { assetCode, episodeProgress, KIND_KEYS } from "./asset-words";
 import type { AssetKind, BoardAsset, BoardIndex } from "./board-index";
 
 const KIND_ICONS: Record<AssetKind, LucideIcon> = {
@@ -194,9 +195,10 @@ function factsOf(asset: BoardAsset, index: BoardIndex, drafts: AssetDetailsProps
     }
     case "episode": {
       const row = index.episodes.find((each) => each.episode === asset.episode);
+      const status = episodeStatus(row?.status);
       return [
         ...(metadata?.card?.subtitle ? [[t("boardPanels.fact.logline"), metadata.card.subtitle] satisfies Fact] : []),
-        ...(row?.status ? [[t("boardPanels.fact.status"), t(EPISODE_STATUS_KEYS[row.status])] satisfies Fact] : []),
+        ...(status ? [[t("boardPanels.fact.status"), status.label] satisfies Fact] : []),
         ...(row ? [[t("boardPanels.fact.shots"), episodeProgress(row)] satisfies Fact] : []),
       ];
     }

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import type { CanvasSnapshot } from "../../../../shared/project-canvas";
 import { setLocale } from "@/lib/i18n";
 import { bigBoardSnapshot } from "./testing/board-sample";
 import { renderOverlay, type OverlayHarness } from "./testing/render-overlay";
@@ -124,5 +125,32 @@ describe("the board's side panel", () => {
     harness = await renderOverlay();
     expect([...harness.host.querySelectorAll("[role=tab]")].map((each) => each.textContent)).toEqual(["团队", "素材分类", "分集"]);
     expect(row("镜川 EP03").textContent).toContain("等你回答");
+  });
+
+  const inTrouble = (snapshot: CanvasSnapshot): CanvasSnapshot => ({
+    ...snapshot,
+    production: { ...snapshot.production!, episodes: snapshot.production!.episodes.map((one) => (one.episode === 3 ? { ...one, status: "failed" as const } : one)) },
+    bots: { ...snapshot.bots, writer: { ...snapshot.bots.writer!, status: "error" } },
+  });
+
+  it("says what the team and the episodes are doing in the words of the board's cards", async () => {
+    harness = await renderOverlay();
+    await harness.update({ snapshot: inTrouble(harness.current().snapshot) });
+    expect(row("阿策").textContent).toContain("Idle");
+    expect(row("墨白").textContent).toContain("Error");
+    await click(tab("Episodes"));
+    expect(row("EP03").textContent).toContain("Failed");
+    expect(row("EP04").textContent).toContain("Not started");
+  });
+
+  it("says them in the words of the board's cards in the person's language too", async () => {
+    setLocale("zh");
+    harness = await renderOverlay();
+    await harness.update({ snapshot: inTrouble(harness.current().snapshot) });
+    expect(row("阿策").textContent).toContain("空闲");
+    expect(row("墨白").textContent).toMatch(/出错$/);
+    await click(tab("分集"));
+    expect(row("EP03").textContent).toContain("失败");
+    expect(row("EP04").textContent).toContain("待开工");
   });
 });
