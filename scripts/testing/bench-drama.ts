@@ -198,9 +198,14 @@ async function roster(context: DramaContext, request: Request, probe: () => Prom
   return { serverMs: fixed(median(serverMs), 2), calls: serverMs.length, listed };
 }
 
+interface FanOutRun {
+  patchMs: number; frames: number; kb: number; byKind: Record<string, number>; cpuMs: number; loopMaxMs: number;
+  botsJsonWrites: number; botsJsonMb: number; saveBots: number; saveBotsMs: number; list: number; advances: number;
+}
+
 /** One bot's description changes: what the open app is sent within `waitMs`, and what that costs the server. */
 async function fanOut(context: DramaContext, request: Request, probe: () => Promise<Probe>, botId: string, waitMs: number) {
-  const runs = [];
+  const runs: FanOutRun[] = [];
   for (let run = 0; run < context.repeats; run += 1) {
     await probe();
     const before = new Map([...context.frames()].map(([kind, tally]) => [kind, { ...tally }]));
@@ -220,7 +225,7 @@ async function fanOut(context: DramaContext, request: Request, probe: () => Prom
       saveBots: seen.methods["Store.saveBots"]?.calls ?? 0, saveBotsMs: seen.methods["Store.saveBots"]?.totalMs ?? 0,
       list: seen.methods["TeamProjects.list"]?.calls ?? 0, advances: seen.methods["Productions.advance"]?.calls ?? 0 });
   }
-  const pick = (key: keyof typeof runs[number]) => fixed(median(runs.map((run) => Number(run[key]))));
+  const pick = (key: Exclude<keyof FanOutRun, "byKind">) => fixed(median(runs.map((run) => run[key])));
   return {
     patchMs: pick("patchMs"), frames: pick("frames"), kb: pick("kb"), byKind: runs.at(-1)!.byKind, cpuMs: pick("cpuMs"), loopMaxMs: pick("loopMaxMs"),
     botsJsonWrites: pick("botsJsonWrites"), botsJsonMb: pick("botsJsonMb"), saveBots: pick("saveBots"), saveBotsMs: pick("saveBotsMs"), list: pick("list"), advances: pick("advances"),

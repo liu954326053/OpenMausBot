@@ -23,6 +23,8 @@ const BOTS = Number(arg("bots", "34")), THREADS = Number(arg("threads", "200")),
 /** How many of the bots each round sends work to, and how often the server is started on the seeded data. */
 const SEND = Math.min(BOTS, Number(arg("send", String(BOTS)))), STARTS = Number(arg("starts", "1"));
 const DRAMA = Number(arg("drama", "0")), REPEATS = Number(arg("repeats", "5"));
+/** A folder where each start of the server leaves a V8 CPU profile of its whole run, written when it stops. */
+const CPU_PROFILES = arg("cpu-prof", "");
 const SECTIONS = ["Sales", "Support", "Engineering", "Research", "Operations", "Marketing", "Finance", "People"];
 /** What the measuring client tells the server it understands: "whole" is a client from before thread frames. */
 const FRAMES = arg("frames", "whole");
@@ -31,7 +33,8 @@ const quantile = (values: number[], q: number): number | null => values.length
 
 const WAIT_MS = Number(arg("wait", "90")) * 1_000;
 
-const server = await launchRestartableServer(DRAMA ? { scripted: true, nodeArgs: PROBE_ARGS } : {});
+const profiling = CPU_PROFILES ? ["--cpu-prof", `--cpu-prof-dir=${CPU_PROFILES}`] : [];
+const server = await launchRestartableServer(DRAMA ? { scripted: true, nodeArgs: [...PROBE_ARGS, ...profiling] } : { nodeArgs: profiling });
 const generation = DRAMA ? await startFakeGenerationMcp({ key: GENERATION_KEY, taskMs: 3_600_000 }) : null;
 const dramaFolder = DRAMA ? realpathSync(mkdtempSync(join(tmpdir(), "openmausbot-bench-drama-"))) : null;
 const closeAll = async () => {

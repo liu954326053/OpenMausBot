@@ -2,8 +2,8 @@
 // The desktop app's performance baseline, on isolated fixtures only: a temporary HOME and data folder per server, the
 // fake engine, and a headless Chrome with its own profile. Prints one JSON object, so a change can show before/after.
 //   node --experimental-strip-types scripts/bench-desktop.ts [--only bundle,server,start,screens,idle,stream,big,routines]
-//     [--chrome PATH] [--idle-seconds 30] [--bots 150] [--threads 300] [--messages 2000] [--advanced] [--out FILE] [--keep]
-//     [--screenshots DIR]
+//     [--chrome PATH] [--idle-seconds 30] [--bots 150] [--threads 300] [--messages 2000] [--drama EPISODES] [--advanced]
+//     [--out FILE] [--keep] [--screenshots DIR]
 // bundle: the production build's first-load JavaScript and which libraries it pulls in eagerly.
 // server: fixture server spawn to /api/health, from source and as the packaged bundle with its compile cache; timer
 //   callbacks and CPU with no page open; child processes each engine-list read (a window focus) starts.
@@ -12,10 +12,11 @@
 // stream: one long streamed reply with tool calls: commits, components rendered per commit, main-thread time per
 //   server frame, long tasks, server frames and file writes, on a React profiling build of the same app.
 // big: a seeded workspace (bots, threads, one long conversation): start-up routes, page load, scrolling, memory,
-//   thread switch and read-marker writes, and a streamed reply there.
+//   thread switch and read-marker writes, and a streamed reply there. With --drama, also a drama of that many episodes
+//   in the sidebar: its chat opened, then its board, zoomed out and in.
 // routines: routines.json with a full run history: its route, and the bytes one run rewrites.
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readdirSync, readFileSync, statSync, writeFileSync, createReadStream } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync, createReadStream } from "node:fs";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { cpus, tmpdir, totalmem } from "node:os";
@@ -27,8 +28,11 @@ import { gzipSync } from "node:zlib";
 import { runControlOmb, verificationServerArgs, verificationServerEnvironment } from "./control-omb.ts";
 import { installedChrome } from "./testing/control-omb-ui.ts";
 import { botEntry, FRAMES_START, FRAMES_STOP, launchChrome, revealRowExpression, switchExpression, TRANSCRIPT_BOX, type BenchBot, type Chrome, type Page } from "./testing/bench-desktop-page.ts";
+import { seedDrama, type DramaSeed } from "./testing/bench-drama.ts";
 import { removeTempDir, waitForExit } from "../server/testing/cleanup.ts";
+import { startFakeGenerationMcp } from "../server/testing/fake-generation-mcp-server.ts";
 import { freePortBlock } from "../server/testing/ports.ts";
+import { GENERATION_KEY } from "../server/testing/project-generation-harness.ts";
 import { LAST_CONVERSATION_KEY } from "../src/lib/last-conversation.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,6 +45,7 @@ const { values } = parseArgs({
     bots: { type: "string", default: "150" },
     threads: { type: "string", default: "300" },
     messages: { type: "string", default: "2000" },
+    drama: { type: "string", default: "0" },
     advanced: { type: "boolean", default: false },
     out: { type: "string" },
     keep: { type: "boolean", default: false },
@@ -350,6 +355,8 @@ async function pageLoad(page: Page, url: string, timeoutMs = 60_000) {
       commits: b.commits, componentsMounted: Object.values(b.mounts).reduce((a, n) => a + n, 0),
       longTasks: b.longTasks.length, longTaskMs: b.longTasks.reduce((a, t) => a + t[1], 0), longestTaskMs: Math.max(0, ...b.longTasks.map((t) => t[1])),
       rows: document.querySelectorAll("[data-mid]").length, domNodes: document.getElementsByTagName("*").length,
+      sidebarBotRows: document.querySelectorAll("[data-sidebar-bot-row]").length, sidebarProjectRows: document.querySelectorAll("[data-sidebar-project-row]").length,
+      sidebarProjectBots: document.querySelectorAll("[data-sidebar-project-bot]").length,
       opened: document.querySelector("[role=log]")?.getAttribute("aria-label") ?? null,
     };
   })()`);
@@ -378,12 +385,20 @@ const COMPONENT_GROUPS: Record<string, RegExp> = {
   transcript: /^(ChatView|ChatRows?|MessagesList|Bubble|MessageActions|ReactionChips|AttachmentGallery|ActivityChip|TurnPresence|CallRecordRow)/,
   markdown: /Markdown/,
   avatars: /Avatar/,
+  board: /^(ProjectView|ProjectTopBar|ServerProjectCanvas|ProjectCanvas|Canvas)/,
 };
 function componentGroups(renders: Record<string, number>, selfMs: Record<string, number>) {
   return Object.fromEntries(Object.entries(COMPONENT_GROUPS).map(([group, pattern]) => {
     const names = Object.keys(renders).filter((name) => pattern.test(name));
     return [group, { renders: names.reduce((sum, name) => sum + renders[name]!, 0), selfMs: Math.round(names.reduce((sum, name) => sum + (selfMs[name] ?? 0), 0)) }];
   }));
+}
+/** What a profiling build's page spent since its probe was reset: commits, mounts, and the components that cost most. */
+function profiledCost(snapshot: Awaited<ReturnType<typeof benchSnapshot>>) {
+  const topSelf = Object.entries(snapshot.selfMs).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  return { reactCommits: snapshot.commits, renderMs: Math.round(snapshot.commitMs), mounts: Object.values(snapshot.mounts).reduce((sum, n) => sum + n, 0),
+    groups: componentGroups({ ...snapshot.renders, ...Object.fromEntries(Object.entries(snapshot.mounts).map(([name, n]) => [name, n + (snapshot.renders[name] ?? 0)])) }, snapshot.selfMs),
+    topSelfMs: Object.fromEntries(topSelf.map(([name, ms]) => [name, Math.round(ms)])), longestTaskMs: Math.max(0, ...snapshot.longTasks.map((task) => task[1])) };
 }
 const RUNNING_ANIMATIONS = `(() => {
   const named = {};
@@ -669,9 +684,23 @@ async function main() {
     const bigBot = { id: seeded.bigBotId, name: seeded.bigBotName };
     const otherBot = { id: seeded.otherBotId, name: seeded.otherBotName };
     const bigStorage = { ...STORAGE, [LAST_CONVERSATION_KEY]: seeded.bigBotId };
-    const fixture = await startFixture({ dataDir, staticDir: dist, fake: STREAM_ENV });
+    let fixture = await startFixture({ dataDir, staticDir: dist, fake: STREAM_ENV });
+    let drama: DramaSeed | undefined;
+    if (Number(values.drama) > 0) {
+      log(`seeding a drama of ${values.drama} episodes`);
+      const generation = await startFakeGenerationMcp({ key: GENERATION_KEY, taskMs: 3_600_000 });
+      cleanups.push(() => generation.close());
+      await fixture.api("POST", "/api/mcp/servers", { name: "gen", type: "http", url: generation.url, headers: { Authorization: `Bearer ${GENERATION_KEY}` } });
+      await fixture.api("PATCH", "/api/mcp/servers/gen", { enabled: true });
+      await fixture.close(true);
+      const folder = realpathSync(mkdtempSync(join(tmpdir(), "openmausbot-bench-drama-")));
+      cleanups.push(() => removeTempDir(folder));
+      drama = seedDrama(dataDir, Number(new URL(fixture.url).port), folder, Number(values.drama));
+      fixture = await startFixture({ dataDir, staticDir: dist, fake: STREAM_ENV });
+    }
     const booted = await fixture.tally();
     const big: Record<string, unknown> = { seeded: { bots: seeded.bots, threads: seeded.threads, messages: seeded.bigMessages, botsJsonKb: kb(statSync(join(dataDir, "bots.json")).size), messagesDbKb: kb(statSync(join(dataDir, "messages.db")).size) }, serverReadyMs: Math.round(fixture.readyMs) };
+    if (drama) big.drama = { bots: drama.bots, projectBots: drama.projectBots, canvas: drama.canvas };
     const routes: Record<string, unknown> = {};
     for (const path of ["/api/bots?messages=200", "/api/bots?messages=0", "/api/config", "/api/instances", "/api/routines", "/api/notifications", "/api/live/call", "/api/auth/session", "/api/brand"]) {
       const samples = [];
@@ -761,6 +790,7 @@ async function main() {
     await pageLoad(profiled, preview.url);
     await profiled.waitFor(`document.querySelector('[data-mid="${seeded.bigLastMessageId}"]')`, 30_000);
     await sleep(1_500);
+    big.loadProfiled = profiledCost(await benchSnapshot(profiled));
     const profiledSwitch = async (bot: BenchBot, lastId: string | null) => {
       await profiled.evaluate(revealRowExpression(bot));
       await profiled.evaluate("window.__bench.reset()");
@@ -769,11 +799,7 @@ async function main() {
       await profiled.waitFor(lastId ? `document.querySelector('[data-mid="${lastId}"]')` : "document.querySelector('[data-mid]')", 30_000);
       const ms = performance.now() - at;
       await sleep(1_000);
-      const snapshot = await benchSnapshot(profiled);
-      const topSelf = Object.entries(snapshot.selfMs).sort((a, b) => b[1] - a[1]).slice(0, 12);
-      return { ms: Math.round(ms), reactCommits: snapshot.commits, renderMs: Math.round(snapshot.commitMs), mounts: Object.values(snapshot.mounts).reduce((sum, n) => sum + n, 0),
-        groups: componentGroups({ ...snapshot.renders, ...Object.fromEntries(Object.entries(snapshot.mounts).map(([name, n]) => [name, n + (snapshot.renders[name] ?? 0)])) }, snapshot.selfMs),
-        topSelfMs: Object.fromEntries(topSelf.map(([name, ms]) => [name, Math.round(ms)])), longestTaskMs: Math.max(0, ...snapshot.longTasks.map((task) => task[1])) };
+      return { ms: Math.round(ms), ...profiledCost(await benchSnapshot(profiled)) };
     };
     log("big workspace: switching conversations");
     const awayProfiled = await profiledSwitch(otherBot, null);
@@ -781,6 +807,48 @@ async function main() {
     const awayAgainProfiled = await profiledSwitch(otherBot, null);
     const backAgainProfiled = await profiledSwitch(bigBot, seeded.bigLastMessageId);
     big.switchProfiled = { toSmall: awayProfiled, backToBig: backProfiled, toSmallAgain: awayAgainProfiled, backToBigAgain: backAgainProfiled };
+    if (drama) {
+      log("big workspace: opening the drama, then its board");
+      const canvasMode = `document.querySelector('[data-project-mode-option="canvas"]')`;
+      await profiled.evaluate("window.__bench.reset()");
+      let at = performance.now();
+      await profiled.evaluate(`document.querySelector('[data-sidebar-project-row="${drama.projectId}"]')?.click()`);
+      const chatShown = await profiled.waitFor(canvasMode, 30_000);
+      const chatMs = performance.now() - at;
+      await sleep(1_000);
+      big.dramaChat = { shown: chatShown, ms: Math.round(chatMs),
+        sidebarProjectBots: await profiled.evaluate<number>("document.querySelectorAll('[data-sidebar-project-bot]').length"), ...profiledCost(await benchSnapshot(profiled)) };
+      await profiled.evaluate("window.__bench.reset()");
+      at = performance.now();
+      await profiled.evaluate(`${canvasMode}?.click()`);
+      const shown = await profiled.waitFor("document.querySelector('[data-canvas-node]')", 30_000);
+      const ms = performance.now() - at;
+      await sleep(2_000);
+      big.dramaBoard = { shown, ms: Math.round(ms), canvasNodesInDom: await profiled.evaluate<number>("document.querySelectorAll('[data-canvas-node]').length"),
+        domNodes: await profiled.evaluate<number>("document.getElementsByTagName('*').length"), ...profiledCost(await benchSnapshot(profiled)) };
+      if (values.screenshots) {
+        const shot = await profiled.send("Page.captureScreenshot", { format: "png" }) as { data: string };
+        writeFileSync(join(values.screenshots, "big-drama-board.png"), Buffer.from(shot.data, "base64"));
+      }
+      const stage = await profiled.evaluate<{ x: number; y: number } | null>(
+        "(() => { const r = document.querySelector('[data-project-view]')?.getBoundingClientRect(); return r ? { x: r.x + r.width / 3, y: r.y + r.height / 2 } : null; })()");
+      if (stage) {
+        await profiled.evaluate("window.__bench.reset()");
+        await profiled.evaluate(FRAMES_START);
+        for (let i = 0; i < 120; i++) {
+          await profiled.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: stage.x, y: stage.y, deltaX: 0, deltaY: i % 40 < 20 ? 100 : -100 });
+          await sleep(16);
+        }
+        await sleep(500);
+        const zoom = await profiled.evaluate<{ frames: number[]; longTasks: Array<[number, number]>; nodes: number }>(FRAMES_STOP);
+        big.dramaBoardZoom = { wheelEvents: 120, frames: zoom.frames.length, frameMsP50: round(percentile(zoom.frames, 50)), frameMsP95: round(percentile(zoom.frames, 95)),
+          frameMsMax: round(Math.max(...zoom.frames)), framesOver33ms: zoom.frames.filter((ms) => ms > 33.4).length, longTasks: zoom.longTasks.length, domNodesAfter: zoom.nodes,
+          canvasNodesInDom: await profiled.evaluate<number>("document.querySelectorAll('[data-canvas-node]').length"), ...profiledCost(await benchSnapshot(profiled)) };
+      }
+      await profiled.evaluate(revealRowExpression(bigBot));
+      await profiled.evaluate(`${botEntry(bigBot)}?.click()`);
+      await profiled.waitFor(`document.querySelector('[data-mid="${seeded.bigLastMessageId}"]')`, 30_000);
+    }
     log("streaming a reply, big workspace");
     big.stream = await streamTurn(chrome, profiled, fixture, seeded.bigBotId);
     await profiled.close();
