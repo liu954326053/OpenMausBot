@@ -9102,6 +9102,7 @@
   "boardCards.stale.take": "Algo em que este take se baseia mudou depois que ele foi gerado. Gere de novo para atualizar.",
   "boardCards.result.moreTakes": "Mais {count} takes",
   "boardCards.result.otherTakes": "Outros takes",
+  "boardCards.shot.time": "Em {time} no {episode}",
   "call.turns.releaseToSend": "Solte {keys} para enviar…",
   "call.turns.saySomething": "Diga alguma coisa…",
   "call.turns.tryMicrophone": "Tentar usar o microfone novamente",

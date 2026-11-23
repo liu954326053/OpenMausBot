@@ -9102,6 +9102,7 @@
   "boardCards.stale.take": "这一版生成之后，它依据的内容又改过了。重新生成一版就能跟上。",
   "boardCards.result.moreTakes": "另外 {count} 版",
   "boardCards.result.otherTakes": "其他版本",
+  "boardCards.shot.time": "{episode} 的 {time}",
   "call.turns.releaseToSend": "松开 {keys} 即可发送…",
   "call.turns.saySomething": "说点什么…",
   "call.turns.tryMicrophone": "重试麦克风",

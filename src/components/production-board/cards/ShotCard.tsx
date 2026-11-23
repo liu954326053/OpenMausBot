@@ -3,7 +3,7 @@ import { episodeCode } from "../../../../shared/production";
 import type { CanvasShotDesign } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, failureText, shotCode, StaleMark, StatusMark, type BoardGeneration } from "./parts";
+import { CardAction, CardName, CardShell, clockLength, failureText, shotCode, StaleMark, StatusMark, type BoardGeneration } from "./parts";
 import type { BoardStatus } from "./tone";
 
 /** A character or a scene a shot is drawn with. */
@@ -19,6 +19,8 @@ export interface ShotCardProps {
   title: string;
   design?: CanvasShotDesign;
   seconds?: number;
+  /** Where it starts in its episode, in seconds. */
+  startsAt?: number;
   /** What the shot shows. */
   prompt?: string;
   references?: readonly BoardReference[];
@@ -92,9 +94,15 @@ function References({ references, named }: { references: readonly BoardReference
   );
 }
 
-export function ShotCard({ number, episode, title, design, seconds, prompt, references, referenceNames, takes = 0, generation, stale, onOpen, onGenerate }: ShotCardProps) {
+function timeIn(startsAt: number, seconds: number | undefined): string {
+  const start = clockLength(startsAt * 1000);
+  return seconds ? `${start} – ${clockLength((startsAt + seconds) * 1000)}` : start;
+}
+
+export function ShotCard({ number, episode, title, design, seconds, startsAt, prompt, references, referenceNames, takes = 0, generation, stale, onOpen, onGenerate }: ShotCardProps) {
   const status = videoStatus(generation, takes);
   const code = shotCode(number);
+  const time = startsAt === undefined ? undefined : timeIn(startsAt, seconds);
   const facts: Array<[label: string, value: string | undefined]> = [
     [t("boardCards.shot.size"), design?.size?.trim()],
     [t("boardCards.shot.move"), design?.move?.trim()],
@@ -107,6 +115,11 @@ export function ShotCard({ number, episode, title, design, seconds, prompt, refe
       <header className="flex items-center gap-2 px-3 pt-3">
         <span data-shot-code="" title={episode === undefined ? code : `${episodeCode(episode)} ${code}`} className="ui-chip shrink-0 bg-control font-mono text-ink-secondary">{code}</span>
         <CardName text={title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6" />
+        {time ? (
+          <span data-shot-time="" title={episode === undefined ? time : t("boardCards.shot.time", { time, episode: episodeCode(episode) })} className="shrink-0 font-mono text-[12px] leading-4 text-ink-tertiary">
+            {time}
+          </span>
+        ) : null}
         {stale ? <StaleMark reason={t("boardCards.stale.shot")} /> : null}
         <StatusMark status={status} />
       </header>

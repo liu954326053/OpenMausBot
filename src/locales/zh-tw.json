@@ -8684,6 +8684,7 @@
   "boardCards.stale.take": "這一版生成之後，它依據的內容又改過了。重新生成一版就能跟上。",
   "boardCards.result.moreTakes": "另外 {count} 版",
   "boardCards.result.otherTakes": "其他版本",
+  "boardCards.shot.time": "{episode} 的 {time}",
   "call.turns.releaseToSend": "放開 {keys} 以傳送…",
   "call.turns.saySomething": "說點什麼…",
   "call.turns.tryMicrophone": "再試一次麥克風",
