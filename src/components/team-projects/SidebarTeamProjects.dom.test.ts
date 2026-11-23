@@ -71,8 +71,8 @@ const expandedOf = (id: string) => row(id)!.getAttribute("aria-expanded");
 const botRow = (id: string) => q(`[data-sidebar-project-bot="${id}"]`);
 const roomRow = (id: string) => q(`[data-sidebar-project-room="${id}"]`);
 const shownUnder = (id: string) => under(id).map((one) => {
-  const { sidebarProjectRoom, sidebarProjectBot } = (one as HTMLElement).dataset;
-  return sidebarProjectRoom ? `room:${sidebarProjectRoom}` : sidebarProjectBot ? `bot:${sidebarProjectBot}` : one.tagName;
+  const { sidebarProjectRoom, sidebarProjectBot, sidebarProjectEpisodes } = (one as HTMLElement).dataset;
+  return sidebarProjectRoom ? `room:${sidebarProjectRoom}` : sidebarProjectBot ? `bot:${sidebarProjectBot}` : sidebarProjectEpisodes ? `episodes:${sidebarProjectEpisodes}` : one.tagName;
 });
 const BRIDE_UNDER = ["room:bride-room", "bot:bride-lead", "bot:bride-writer", "bot:bride-editor"];
 const mark = (id: string) => row(id)!.querySelector<HTMLElement>("[data-section-mark]");
@@ -314,6 +314,54 @@ describe("the projects in the sidebar", () => {
     await draw();
     expect([mark("The bride")!.getAttribute("data-section-mark"), mark("The bride")!.title, mark("The heir")]).toEqual(["unread", "2 unread", null]);
     expect(row("The bride")!.textContent).toBe("The bride2 unread");
+  });
+});
+
+describe("a drama's episodes", () => {
+  const EPISODE_BOTS = { "ep1-shots": { number: 1, job: "storyboard" }, "ep1-post": { number: 1, job: "post" }, "ep2-shots": { number: 2, job: "storyboard" } } as const;
+  const episodesRow = () => q("[data-sidebar-project-episodes-row]");
+  beforeEach(() => {
+    list = { root: "/dramas", projects: [{ ...bride, botIds: [...bride.botIds, ...Object.keys(EPISODE_BOTS)], episodeBots: EPISODE_BOTS }, heir] };
+    bots = [...team(), ...Object.keys(EPISODE_BOTS).map((id) => bot(id, { section: "The bride" }))];
+    fixture.state = { ...fixture.state, bots };
+  });
+
+  it("are one folded row under the project's group chat and the bots of the whole drama", async () => {
+    await draw();
+    await click(row("The bride"));
+    expect(shownUnder("The bride")).toEqual([...BRIDE_UNDER, "episodes:The bride"]);
+    expect([episodesRow()!.getAttribute("aria-expanded"), q('[data-sidebar-project-bot^="ep"]')]).toEqual(["false", null]);
+  });
+
+  it("are no row at all in a project whose production made no episode bots yet", async () => {
+    list = { root: "/dramas", projects: [bride, heir] };
+    bots = team();
+    fixture.state = { ...fixture.state, bots };
+    await draw();
+    await click(row("The bride"));
+    expect([shownUnder("The bride"), episodesRow()]).toEqual([BRIDE_UNDER, null]);
+  });
+
+  it("count in the project's mark", async () => {
+    bots = bots.map((one) => (one.id === "ep2-shots" ? { ...one, unread: true } : one));
+    await draw();
+    expect(mark("The bride")!.title).toBe("1 unread");
+  });
+
+  it("mark their folded row, not the project's open row, when an episode bot's conversation is open", async () => {
+    await draw();
+    await click(row("The bride"));
+    fixture.state = { ...fixture.state, activeView: "chat", selectedId: "ep1-post" };
+    await draw();
+    expect([row("The bride")!.getAttribute("aria-current"), episodesRow()!.getAttribute("aria-current")]).toEqual([null, "page"]);
+  });
+
+  it("are not under a drama a search finds", async () => {
+    await draw();
+    await click(row("The bride"));
+    query = "bride";
+    await draw();
+    expect([under("The bride"), episodesRow()]).toEqual([[], null]);
   });
 });
 

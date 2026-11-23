@@ -46,6 +46,8 @@ const state: AppState = {
     bot("atlas", "Atlas", { messages: [{ id: "z", role: "bot", kind: "text", text: "The striped zebra is drafted", at: 1 }] }),
     bot("dodo", "Dodo", { section: "Work launch" }),
     bot("echo", "Echo writer", { section: "Work launch" }),
+    bot("frame-1", "Frame EP01", { section: "The bride" }),
+    bot("cut-1", "Cut EP01", { section: "The bride" }),
   ],
   groups: [room("launch", "Launch room"), room("set", "On set", "Work launch")],
   sections: ["Work launch", "The bride"],
@@ -88,7 +90,8 @@ beforeEach(async () => {
   setLocale("en");
   vi.stubGlobal("fetch", fetched);
   fetched.mockClear();
-  setTeamProjects({ root: "/dramas", projects: [project("work", "Work launch", ["dodo", "echo"]), project("bride", "The bride", [])] });
+  const bride = { ...project("bride", "The bride", []), botIds: ["frame-1", "cut-1"], episodeBots: { "frame-1": { number: 1, job: "storyboard" as const }, "cut-1": { number: 1, job: "post" as const } } };
+  setTeamProjects({ root: "/dramas", projects: [project("work", "Work launch", ["dodo", "echo"]), bride] });
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -129,6 +132,13 @@ describe.each([["Advanced", true], ["Simple", false]] as const)("the sidebar's s
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(fetched.mock.calls.filter(([path]) => String(path).includes("/api/search"))).toEqual([]);
+  });
+
+  it("finds no drama by the name of a bot an episode has, and lists a drama it finds without its episodes", async () => {
+    await search("Frame EP01");
+    expect([projects(), noMatch()]).toEqual([[], "No project matches “Frame EP01”"]);
+    await search("bride");
+    expect([projects(), q("[data-sidebar-project-episodes]"), q("[data-sidebar-project-bot]")]).toEqual([["bride"], null, null]);
   });
 
   it("gives the plain list back when it is cleared", async () => {
