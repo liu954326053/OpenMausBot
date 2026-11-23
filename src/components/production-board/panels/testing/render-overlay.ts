@@ -12,6 +12,10 @@ export interface LayerSize {
 
 export interface OverlayHarness {
   host: HTMLElement;
+  /** Around the overlay, with handlers like the board's own: React ones for pointers, double and right clicks, a native one for the wheel. */
+  board: HTMLElement;
+  /** The types of the events that reached the board's handlers. */
+  boardHeard: string[];
   fake: FakeBackend;
   /** Card rectangles by node id, as the board would report them. */
   anchors: Map<string, BoardAnchor>;
@@ -48,9 +52,11 @@ export async function renderOverlay(overrides: Partial<BoardOverlayProps> = {}, 
   const root = createRoot(host);
   const anchors = new Map<string, BoardAnchor>();
   const listeners = new Set<() => void>();
+  const boardHeard: string[] = [];
+  const hear = (event: { type: string }) => boardHeard.push(event.type);
   let props: BoardOverlayProps;
   const render = () => act(async () => {
-    root.render(createElement(ProductionBoardOverlay, props));
+    root.render(createElement("div", { "data-test-board": "", onPointerDown: hear, onDoubleClick: hear, onContextMenu: hear }, createElement(ProductionBoardOverlay, props)));
   });
   const update = async (next: Partial<BoardOverlayProps>) => {
     props = { ...props, ...next };
@@ -78,12 +84,16 @@ export async function renderOverlay(overrides: Partial<BoardOverlayProps> = {}, 
     ...overrides,
   };
   await render();
+  const board = host.querySelector<HTMLElement>("[data-test-board]")!;
+  board.addEventListener("wheel", hear);
   const settle = () => act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   await settle();
   return {
     host,
+    board,
+    boardHeard,
     fake,
     anchors,
     open,
