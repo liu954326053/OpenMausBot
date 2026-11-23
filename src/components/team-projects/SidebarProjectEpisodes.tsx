@@ -77,7 +77,7 @@ const sameRows = (before: EpisodeRowsProps, after: EpisodeRowsProps) =>
   && before.episode.bots.length === after.episode.bots.length && before.episode.bots.every((bot, at) => bot === after.episode.bots[at]);
 
 /** One episode: its row and, unfolded, its bots with their role after their name, their job's name when they have none. */
-const EpisodeRows = memo(function EpisodeRows({ project, episode, simple, gap, openHere, onOpenBot }: EpisodeRowsProps) {
+const EpisodeRows = memo(function EpisodeRows({ project, episode, simple, gap, locale, openHere, onOpenBot }: EpisodeRowsProps) {
   const [open, setOpen] = useRememberedDisclosure(`project-episode:${project.id}:${episode.number}`);
   const botsId = useId();
   const code = episodeCode(episode.number);
@@ -93,7 +93,7 @@ const EpisodeRows = memo(function EpisodeRows({ project, episode, simple, gap, o
           const job = jobOf(bot);
           return (
             <SidebarProjectBot key={bot.id} bot={bot} role={bot.title.trim() || (job ? t(JOB_NAMES[job]) : "")} depth={2} simple={simple}
-              selected={openHere === bot.id} onOpen={() => onOpenBot(bot)} />
+              selected={openHere === bot.id} locale={locale} onOpen={onOpenBot} />
           );
         })}
       </div>
