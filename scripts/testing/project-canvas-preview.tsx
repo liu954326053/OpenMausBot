@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import type { CanvasFileRef, CanvasSnapshot } from "../../shared/project-canvas";
 import type { StartGenerationInput } from "../../shared/project-generation";
 import { ProjectCanvas } from "../../src/components/project-canvas/ProjectCanvas";
+import { ProductionBoardOverlay } from "../../src/components/production-board/panels/ProductionBoardOverlay";
 import { loadLocale } from "../../src/lib/i18n";
 import type { MemoryGenerationOutput } from "../../src/lib/project-canvas/memory-backend";
 import { productionBoardBackend, productionBoardSample } from "../../src/testing/production-board-sample";
@@ -120,6 +121,6 @@ new MutationObserver((_, observer) => {
 }).observe(root, { childList: true, subtree: true });
 createRoot(root).render(
   <div style={{ height: "100vh" }}>
-    <ProjectCanvas projectId={backend.current().project.id} backend={backend} selectedBotId={params.get("bot") ?? undefined} />
+    <ProjectCanvas projectId={backend.current().project.id} backend={backend} selectedBotId={params.get("bot") ?? undefined} overlay={ProductionBoardOverlay} />
   </div>,
 );
