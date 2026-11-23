@@ -1,4 +1,5 @@
 import { Sparkles, Volume2 } from "lucide-react";
+import type { ReactNode } from "react";
 import { episodeCode } from "../../../../shared/production";
 import type { CanvasShotDesign } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
@@ -103,10 +104,15 @@ export function ShotCard({ number, episode, title, design, seconds, startsAt, pr
   const status = videoStatus(generation, takes);
   const code = shotCode(number);
   const time = startsAt === undefined ? undefined : timeIn(startsAt, seconds);
-  const facts: Array<[label: string, value: string | undefined]> = [
+  const timeMark = time ? (
+    <span data-shot-time="" title={episode === undefined ? time : t("boardCards.shot.time", { time, episode: episodeCode(episode) })} className={cn("text-[12px] text-ink-tertiary tabular-nums", seconds && "ms-1.5")}>
+      {time}
+    </span>
+  ) : undefined;
+  const facts: Array<[label: string, value: string | undefined, after?: ReactNode]> = [
     [t("boardCards.shot.size"), design?.size?.trim()],
     [t("boardCards.shot.move"), design?.move?.trim()],
-    [t("boardCards.shot.length"), seconds ? t("boardCards.shot.seconds", { count: seconds }) : undefined],
+    [t("boardCards.shot.length"), seconds ? t("boardCards.shot.seconds", { count: seconds }) : undefined, timeMark],
   ];
   const audio = design?.audio?.trim();
   const text = prompt?.trim();
@@ -115,19 +121,17 @@ export function ShotCard({ number, episode, title, design, seconds, startsAt, pr
       <header className="flex items-center gap-2 px-3 pt-3">
         <span data-shot-code="" title={episode === undefined ? code : `${episodeCode(episode)} ${code}`} className="ui-chip shrink-0 bg-control font-mono text-ink-secondary">{code}</span>
         <CardName text={title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6" />
-        {time ? (
-          <span data-shot-time="" title={episode === undefined ? time : t("boardCards.shot.time", { time, episode: episodeCode(episode) })} className="shrink-0 font-mono text-[12px] leading-4 text-ink-tertiary">
-            {time}
-          </span>
-        ) : null}
         {stale ? <StaleMark reason={t("boardCards.stale.shot")} /> : null}
         <StatusMark status={status} />
       </header>
       <dl className="grid grid-cols-3 gap-3 px-3 pt-2">
-        {facts.map(([label, value]) => (
+        {facts.map(([label, value, after]) => (
           <div key={label} data-shot-fact="" className="min-w-0">
             <dt className="truncate text-[12px] leading-4 text-ink-tertiary">{label}</dt>
-            <dd dir="auto" title={value} className={cn("truncate text-[13px] leading-[18px]", value ? "text-ink" : "text-ink-tertiary")}>{value ?? DASH}</dd>
+            <dd dir="auto" title={value} className={cn("truncate text-[13px] leading-[18px]", value ? "text-ink" : "text-ink-tertiary")}>
+              {value ?? (after ? null : DASH)}
+              {after}
+            </dd>
           </div>
         ))}
       </dl>
