@@ -2,7 +2,7 @@
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ResultCard, type BoardTake, type ResultCardProps } from "./ResultCard";
-import { buttonNamed, click, render, textOf, useCardPage } from "./dom-test-kit";
+import { buttonNamed, click, press, render, textOf, useCardPage } from "./dom-test-kit";
 
 useCardPage();
 afterEach(() => vi.restoreAllMocks());
@@ -49,6 +49,46 @@ describe("the result card", () => {
     expect(onOpen).not.toHaveBeenCalled();
     click(versions(card)[1]);
     expect(buttonNamed(card, "Use this take")).toBeUndefined();
+  });
+
+  describe("with more takes than fit", () => {
+    const MANY: BoardTake[] = Array.from({ length: 8 }, (_, index) => ({ id: `m${index + 1}`, videoUrl: `/files/m${index + 1}.mp4`, selected: index === 1 }));
+    const strip = (card: HTMLElement) => [...card.querySelectorAll("[data-result-strip] > [data-result-take]")].map(textOf);
+    const more = (card: HTMLElement) => card.querySelector<HTMLButtonElement>("[data-result-more]")!;
+    const panelOf = (button: HTMLElement) => document.getElementById(button.getAttribute("aria-controls")!)!;
+
+    it("keeps the selected and the newest takes in view, and reaches the rest from one button", () => {
+      const onOpen = vi.fn();
+      const card = draw({ takes: MANY, onOpen });
+      expect(strip(card)).toEqual(["V2", "V6", "V7", "V8"]);
+      const button = more(card);
+      expect([textOf(button), button.getAttribute("aria-label"), button.getAttribute("aria-expanded"), panelOf(button).hidden]).toEqual(["+4", "4 more takes", "false", true]);
+      click(button);
+      expect([button.getAttribute("aria-expanded"), panelOf(button).hidden]).toEqual(["true", false]);
+      const others = [...panelOf(button).querySelectorAll<HTMLButtonElement>("[data-result-take]")];
+      expect(others.map(textOf)).toEqual(["V1", "V3", "V4", "V5"]);
+      click(others[2]);
+      expect(shown(card)).toBe("/files/m4.mp4");
+      expect([button.getAttribute("aria-expanded"), document.activeElement]).toEqual(["false", button]);
+      expect(strip(card)).toEqual(["V2", "V4", "V7", "V8"]);
+      expect(onOpen).not.toHaveBeenCalled();
+    });
+
+    it("closes the other takes on Escape and gives the focus back to the button that opened them", () => {
+      const card = draw({ takes: MANY });
+      const button = more(card);
+      click(button);
+      const first = panelOf(button).querySelector<HTMLButtonElement>("[data-result-take]")!;
+      first.focus();
+      press(first, "Escape");
+      expect([button.getAttribute("aria-expanded"), panelOf(button).hidden, document.activeElement]).toEqual(["false", true, button]);
+    });
+
+    it("shows every take when they all fit", () => {
+      const card = draw({ takes: MANY.slice(0, 5) });
+      expect(strip(card)).toEqual(["V1", "V2", "V3", "V4", "V5"]);
+      expect(card.querySelector("[data-result-more]")).toBeNull();
+    });
   });
 
   it("plays the take it shows in place", () => {

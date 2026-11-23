@@ -9100,6 +9100,8 @@
   "boardCards.stale.label": "Outdated",
   "boardCards.stale.shot": "Something this shot was made from changed after it was made.",
   "boardCards.stale.take": "Something this take was made from changed after it was made. Generate it again to bring it up to date.",
+  "boardCards.result.moreTakes": "{count} more takes",
+  "boardCards.result.otherTakes": "Other takes",
   "call.turns.releaseToSend": "Release {keys} to send…",
   "call.turns.saySomething": "Say something…",
   "call.turns.tryMicrophone": "Try microphone again",

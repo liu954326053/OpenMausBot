@@ -34,6 +34,11 @@ export function click(element: Element | null | undefined): void {
   act(() => element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })));
 }
 
+export function press(element: Element | null | undefined, key: string): void {
+  if (!element) throw new Error("nothing to press on");
+  act(() => element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })));
+}
+
 export const buttonNamed = (scope: ParentNode, name: string): HTMLButtonElement | undefined =>
   [...scope.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === name);
 

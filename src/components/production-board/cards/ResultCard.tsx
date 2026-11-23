@@ -1,5 +1,6 @@
 import { Check, Clapperboard, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
+import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder, shotCode, StaleMark, type BoardGeneration } from "./parts";
@@ -27,6 +28,87 @@ export interface ResultCardProps {
   onGenerate?: () => void;
   onPlay?: (takeId: string) => void;
   onSelectTake?: (takeId: string) => void;
+}
+
+const TAKE_BUTTONS_MAX = 5;
+
+/** All the takes when they fit; else the selected, the shown and the newest, then the newest of the rest, leaving room
+ * for the button that opens the others. */
+function takesInView(takes: readonly BoardTake[], shown: BoardTake | undefined): Set<string> {
+  if (takes.length <= TAKE_BUTTONS_MAX) return new Set(takes.map((one) => one.id));
+  const inView = new Set([takes.find((one) => one.selected), shown].flatMap((one) => (one ? [one.id] : [])));
+  for (let index = takes.length - 1; index >= 0 && inView.size < TAKE_BUTTONS_MAX - 1; index -= 1) inView.add(takes[index]!.id);
+  return inView;
+}
+
+function TakeButton({ index, pressed, onShow }: { index: number; pressed: boolean; onShow: () => void }) {
+  return (
+    <button
+      type="button"
+      data-result-take=""
+      aria-pressed={pressed}
+      title={t("boardCards.result.take", { n: index + 1 })}
+      className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", pressed ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
+      onClick={(event) => {
+        event.stopPropagation();
+        onShow();
+      }}
+    >
+      {`V${index + 1}`}
+    </button>
+  );
+}
+
+function TakeStrip({ takes, shown, onShow }: { takes: readonly BoardTake[]; shown: BoardTake | undefined; onShow: (takeId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLButtonElement>(null);
+  usePopoverDismiss(open, rootRef, () => setOpen(false));
+  const inView = takesInView(takes, shown);
+  const others = takes.flatMap((one, index) => (inView.has(one.id) ? [] : [{ one, index }]));
+  const showOther = (takeId: string) => {
+    onShow(takeId);
+    setOpen(false);
+    moreRef.current?.focus();
+  };
+  return (
+    <div data-result-strip="" className="flex min-w-0 items-center gap-0.5">
+      {takes.map((one, index) => (inView.has(one.id) ? <TakeButton key={one.id} index={index} pressed={one.id === shown?.id} onShow={() => onShow(one.id)} /> : null))}
+      {others.length ? (
+        <div ref={rootRef} className="contents">
+          <button
+            ref={moreRef}
+            type="button"
+            data-result-more=""
+            aria-expanded={open}
+            aria-controls={panelId}
+            aria-label={t("boardCards.result.moreTakes", { count: others.length })}
+            title={t("boardCards.result.moreTakes", { count: others.length })}
+            className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", open ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen((was) => !was);
+            }}
+          >
+            {`+${others.length}`}
+          </button>
+          <div
+            id={panelId}
+            role="group"
+            aria-label={t("boardCards.result.otherTakes")}
+            hidden={!open}
+            className="popover-surface absolute bottom-full start-3 mb-1 flex w-max max-w-[calc(100%-1.5rem)] flex-wrap gap-0.5 rounded-lg p-1"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") moreRef.current?.focus();
+            }}
+          >
+            {others.map(({ one, index }) => <TakeButton key={one.id} index={index} pressed={false} onShow={() => showOther(one.id)} />)}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ResultCard({ number, title, takes, generation, onOpen, onGenerate, onPlay, onSelectTake }: ResultCardProps) {
@@ -67,29 +149,8 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
         {takes.length > 0 ? <span data-result-count="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary">{t("boardCards.result.takes", { count: takes.length })}</span> : null}
         {take?.durationMs ? <span data-result-length="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary tabular-nums">{clockLength(take.durationMs)}</span> : null}
       </header>
-      <footer className="mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-2">
-        {takes.length > 0 ? (
-          <>
-            <div className="flex min-w-0 items-center gap-0.5 overflow-hidden">
-              {takes.map((one, index) => (
-                <button
-                  key={one.id}
-                  type="button"
-                  data-result-take=""
-                  aria-pressed={one.id === take?.id}
-                  title={t("boardCards.result.take", { n: index + 1 })}
-                  className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", one.id === take?.id ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setShownId(one.id);
-                  }}
-                >
-                  {`V${index + 1}`}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : null}
+      <footer className="relative mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-2">
+        {takes.length > 0 ? <TakeStrip takes={takes} shown={take} onShow={setShownId} /> : null}
         <span className="flex-1" />
         {take?.selected ? (
           <span data-result-selected="" className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium leading-4 text-success">
