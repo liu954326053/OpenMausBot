@@ -20,6 +20,8 @@ interface Shot {
   only?: string;
   lang?: string;
   size?: [number, number];
+  /** Only what the window shows, not the whole page. */
+  windowOnly?: boolean;
   /** Elements clicked with the real pointer before the picture. */
   clicks?: string[];
 }
@@ -30,6 +32,7 @@ const WORDY = ["bots", "documents", "assets", "shots", "results", "finals"];
 const SHOTS: Shot[] = [
   { name: "all" },
   { name: "all-small", size: [760, 560] },
+  ...["bots", "assets", "results", "finals"].map((only) => ({ name: `section-${only}-small`, only, size: [760, 560] as [number, number], windowOnly: true })),
   ...SECTIONS.map((only) => ({ name: `section-${only}`, only })),
   ...WORDY.map((only) => ({ name: `section-${only}-en`, only, lang: "en" })),
   { name: "result-playing", only: "results", clicks: ['[aria-label="播放 SH03 青梧点灯"]'] },
@@ -109,7 +112,7 @@ try {
         }
         await browser(["wait", "500"]);
         const file = join(out, `${shot.name}-${skin}.png`);
-        await browser(["screenshot", file, "--full"], 60_000);
+        await browser(["screenshot", file, ...(shot.windowOnly ? [] : ["--full"])], 60_000);
         process.stdout.write(`${file} ${statSync(file).size}\n`);
       }
     }
