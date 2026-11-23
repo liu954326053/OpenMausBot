@@ -34,6 +34,13 @@ describe("the episode card", () => {
     expect([textOf(to.querySelector("[data-bot-chip-name]")), to.title]).toEqual(["Jingchuan EP01", "Went to Jingchuan EP01"]);
   });
 
+  it("says how long its shots run together", () => {
+    expect(textOf(draw({ seconds: 36 }).querySelector("[data-episode-length]"))).toBe("36s");
+    expect(draw().querySelector("[data-episode-length]")).toBeNull();
+    const alone = draw({ episode: { episode: 1, title: "The whole drama" }, to: undefined, seconds: 36 });
+    expect(textOf(alone.querySelector("[data-episode-length]"))).toBe("36s");
+  });
+
   it("draws an episode before the production opened it, or a script from before episodes", () => {
     const card = draw({ episode: { episode: 1, title: "The whole drama" }, logline: undefined, text: undefined, to: undefined });
     expect(card.querySelector("[data-board-status]")).toBeNull();
