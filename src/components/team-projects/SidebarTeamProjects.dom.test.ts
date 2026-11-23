@@ -168,6 +168,20 @@ describe("the projects in the sidebar", () => {
     expect(fixture.dispatch.mock.calls).toEqual([[opened("bride-room")], [opened("bride-room")], [opened("bride-writer")]]);
   });
 
+  it("puts each bot's role after its name and marks the project's lead", async () => {
+    const titled = (id: string, title: string) => (one: Bot): Bot => (one.id === id ? { ...one, title } : one);
+    bots = team().map(titled("bride-lead", "Director")).map(titled("bride-writer", "Screenwriter"));
+    fixture.state = { ...fixture.state, bots };
+    await draw();
+    await click(row("The bride"));
+    const role = (id: string) => botRow(id)!.querySelector<HTMLElement>("[data-sidebar-project-bot-title]")?.textContent ?? null;
+    expect([role("bride-lead"), role("bride-writer"), role("bride-editor")]).toEqual(["Director", "Screenwriter", null]);
+    const leadMark = (id: string) => botRow(id)!.querySelector<HTMLElement>("[data-sidebar-project-bot-lead]");
+    expect([Boolean(leadMark("bride-lead")), Boolean(leadMark("bride-writer"))]).toEqual([true, false]);
+    expect(leadMark("bride-lead")!.textContent).toBe("Lead");
+    expect([botRow("bride-lead")!.title, botRow("bride-writer")!.title]).toEqual(["bride-lead · Director · Lead", "bride-writer · Screenwriter"]);
+  });
+
   it("opens the lead's conversation of a project with no group chat, with its bots under the row", async () => {
     await draw();
     await click(row("The heir"));

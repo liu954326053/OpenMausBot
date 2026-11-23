@@ -961,6 +961,10 @@ async function wheelAt(browserUrl: string, at: { x: number; y: number }, deltaY:
       expect(await text(`${chatBar} [data-project-folder]`)).toBe(project.folder);
       expect(await evaluate(`document.querySelector(${JSON.stringify(`${chatBar} main[data-look="chat"]`)}) !== null`)).toBe(true);
       expect(await underProject()).toEqual(["room", lead.id, writer.id]);
+      const roleOf = (id: string) => evaluate<string | null>(`document.querySelector(${JSON.stringify(botRow(id))}).querySelector("[data-sidebar-project-bot-title]")?.textContent ?? null`);
+      expect([await roleOf(lead.id), await roleOf(writer.id)]).toEqual([lead.title, writer.title]);
+      const marked = (id: string) => evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(botRow(id))}).querySelector("[data-sidebar-project-bot-lead]"))`);
+      expect([await marked(lead.id), await marked(writer.id)]).toEqual([true, false]);
       await shot("25a-project-row-opens-its-group-chat.png");
       await clickSelector(botRow(writer.id));
       await waitFor(`document.querySelector(${JSON.stringify(`${botRow(writer.id)}[aria-current="page"]`)}) && document.querySelector(${JSON.stringify(onChat)})

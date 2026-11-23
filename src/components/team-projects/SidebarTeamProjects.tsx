@@ -268,7 +268,7 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
         onOpen={click} onMenu={onMenu} />
       {expanded && room && <SidebarProjectRoom room={room} simple={simple} selected={openChat === room.id} onOpen={() => onOpenRoom(room)} />}
       {expanded && bots.map((bot) => (
-        <SidebarProjectBot key={bot.id} bot={bot} simple={simple} selected={openChat === bot.id} onOpen={() => onOpenBot(bot)} />
+        <SidebarProjectBot key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} selected={openChat === bot.id} onOpen={() => onOpenBot(bot)} />
       ))}
       {project.folderState === "missing" && (
         <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>

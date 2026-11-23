@@ -11105,6 +11105,7 @@
   "teamProjects.team": "團隊",
   "teamProjects.teamMembers": "幕僚長：{chief} · 成員：{members}",
   "teamProjects.teamChiefOnly": "幕僚長：{chief}",
+  "teamProjects.lead": "負責人",
   "teamProjects.pickTeam": "請先為這個專案選一個團隊。",
   "teamProjects.folder": "專案資料夾",
   "teamProjects.folderHint": "建立專案時會新增這個資料夾。",

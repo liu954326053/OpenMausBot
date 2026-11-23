@@ -7173,6 +7173,7 @@
   "teamProjects.team": "Team",
   "teamProjects.teamMembers": "Chief of Staff: {chief} · Members: {members}",
   "teamProjects.teamChiefOnly": "Chief of Staff: {chief}",
+  "teamProjects.lead": "Lead",
   "teamProjects.pickTeam": "Choose a team for this project.",
   "teamProjects.folder": "Project folder",
   "teamProjects.folderHint": "A new folder, made when you create the project.",
