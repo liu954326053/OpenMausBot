@@ -499,12 +499,16 @@ export class Productions {
 
     const { episodes: atOnce } = this.deps.concurrency(project.id);
     const open = () => episodes.filter((one) => ["storyboard", "videos", "post"].includes(this.episodeStatus(production, one.episode))).length;
-    for (const episode of episodes) {
-      const status = this.episodeStatus(production, episode.episode);
-      if (status === "waiting" && open() < atOnce) await this.openEpisode(project, production, episode);
-      else if (status === "storyboard") await this.storyboardEnded(project, production, episode);
+    const goOn = async (episode: CanvasEpisode) => {
+      if (this.episodeStatus(production, episode.episode) === "storyboard") await this.storyboardEnded(project, production, episode);
       if (this.episodeStatus(production, episode.episode) === "videos") await this.videos(project, production, episode);
       if (this.episodeStatus(production, episode.episode) === "post") await this.postEnded(project, production, episode);
+    };
+    for (const episode of episodes) await goOn(episode);
+    for (const episode of episodes) {
+      if (this.episodeStatus(production, episode.episode) !== "waiting" || open() >= atOnce) continue;
+      await this.openEpisode(project, production, episode);
+      await goOn(episode);
     }
     if (episodes.every((one) => this.episodeStatus(production, one.episode) === "done")) {
       production.endedAt = this.deps.now();
