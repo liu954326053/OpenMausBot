@@ -22,8 +22,9 @@ const EPISODE_STATUS_KEYS: Record<NonNullable<EpisodeRow["status"]>, LocaleKey> 
   failed: "boardPanels.episodeStatus.failed",
 };
 
-/** The panel's width with the gap to the layer's edge: what a chat window keeps clear of. */
-export const SIDE_PANEL_ROOM = 288 + 16;
+/** What a chat window keeps clear of at the layer's right edge: the gap to the edge, the open panel or its folded
+ * button, and a gap beside it. */
+export const SIDE_PANEL_ROOM = { open: 16 + 288 + 16, folded: 16 + 36 + 16 } as const;
 
 const FLOATING = "popover-surface pointer-events-auto absolute end-4 top-4 rounded-xl border border-hairline/50 bg-menu";
 

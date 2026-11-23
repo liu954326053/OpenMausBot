@@ -407,6 +407,8 @@ export interface FakeBackend {
   calls: BackendCalls;
   /** The next `sendTask` rejects with this message. */
   failNextSend(message: string): void;
+  /** The next task waits in the bot's queue. */
+  queueNextSend(): void;
   /** `sendTask` waits until this is called. */
   holdSends(): () => void;
 }
@@ -416,6 +418,7 @@ export function fakeBackend(options: { exchanges?: Record<string, CanvasExchange
   const exchanges = new Map(Object.entries(options.exchanges ?? SAMPLE_EXCHANGES).map(([botId, list]) => [botId, [...list]]));
   const calls: BackendCalls = { sent: [], stopped: [], chats: [], read: [], exchanges: [] };
   let failure: string | null = null;
+  let queueNext = false;
   let hold: Promise<void> | null = null;
   let sentCount = 0;
   const used: OverlayBackend = {
@@ -432,6 +435,10 @@ export function fakeBackend(options: { exchanges?: Record<string, CanvasExchange
         const message = failure;
         failure = null;
         throw new Error(message);
+      }
+      if (queueNext) {
+        queueNext = false;
+        return { threadId: `thread-${task.botId}`, queued: true, references: 0 };
       }
       sentCount += 1;
       const messageId = `sent-${sentCount}`;
@@ -458,6 +465,9 @@ export function fakeBackend(options: { exchanges?: Record<string, CanvasExchange
     calls,
     failNextSend: (message) => {
       failure = message;
+    },
+    queueNextSend: () => {
+      queueNext = true;
     },
     holdSends: () => {
       let release = (): void => undefined;

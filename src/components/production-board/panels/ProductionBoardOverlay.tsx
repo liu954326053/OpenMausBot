@@ -3,8 +3,10 @@ import { botNodeId, type CanvasFileRef, type CanvasSnapshot } from "../../../../
 import type { BoardOverlayProps } from "@/lib/production-board/overlay";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { boardIndex, type BoardAsset } from "./board-index";
+import { BotChatWindow, NEW_CHAT, type ChatSession } from "./BotChatWindow";
 import type { OverlayBackend } from "./overlay-backend";
-import { SidePanel } from "./SidePanel";
+import { NO_LOOK } from "./panel-parts";
+import { SIDE_PANEL_ROOM, SidePanel } from "./SidePanel";
 
 /** Narrower than this, the side panel starts folded. */
 const PANEL_UNFOLDS_FROM = 900;
@@ -34,6 +36,15 @@ export function ProductionBoardOverlay(props: BoardOverlayProps) {
   const onAsset = useCallback((asset: BoardAsset) => latest.current.focusNode(asset.cardId), []);
   const onEpisode = useCallback((episode: number) => latest.current.focusEpisode(episode), []);
   const pictureUrl = useCallback((file: CanvasFileRef) => backend.fileUrl(projectId, file), [backend, projectId]);
+  const sessions = useRef(new Map<string, ChatSession>());
+  const keepSession = useCallback((botId: string, session: ChatSession) => {
+    sessions.current.set(botId, session);
+  }, []);
+  const chatOpened = opened?.kind === "bot" ? opened : null;
+  const chatBot = chatOpened ? snapshot.bots[chatOpened.botId] : undefined;
+  useEffect(() => {
+    if (chatOpened && !chatBot) latest.current.close();
+  }, [chatOpened, chatBot]);
   useStopsWheel(layerRef);
   return (
     <div
@@ -57,6 +68,26 @@ export function ProductionBoardOverlay(props: BoardOverlayProps) {
         onAsset={onAsset}
         onEpisode={onEpisode}
       />
+      {chatOpened && chatBot ? (
+        <BotChatWindow
+          key={chatBot.botId}
+          projectId={projectId}
+          bot={chatBot}
+          look={looks[chatBot.botId] ?? NO_LOOK}
+          index={index}
+          backend={backend}
+          readOnly={snapshot.readOnly !== undefined}
+          references={chatOpened.references}
+          session={sessions.current.get(chatBot.botId) ?? NEW_CHAT}
+          onSession={keepSession}
+          pictureUrl={pictureUrl}
+          layer={layer}
+          reserved={panelOpen ? SIDE_PANEL_ROOM.open : SIDE_PANEL_ROOM.folded}
+          anchorOf={props.anchorOf}
+          subscribeView={props.subscribeView}
+          onClose={props.close}
+        />
+      ) : null}
     </div>
   );
 }
