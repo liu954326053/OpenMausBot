@@ -35,7 +35,7 @@ export function ChatExchange({ messages, botName, readError }: ChatExchangeProps
         {messages === null && !readError ? <LoaderCircle size={16} role="img" aria-label={t("boardPanels.chat.loading")} className="animate-spin self-center text-ink-tertiary motion-reduce:animate-none" /> : null}
         {messages?.length === 0 ? <p className="text-[12px] leading-4 text-ink-tertiary">{t("boardPanels.chat.empty", { name: botName })}</p> : null}
         {messages?.map((message) => message.role === "person" ? (
-          <div key={message.id} dir="auto" className={cn(BUBBLE, "self-end bg-bubble-user text-bubble-user-ink")}>
+          <div key={message.id} dir="auto" className={cn(BUBBLE, "self-end bg-bubble-user")}>
             <span className="sr-only">{t("boardPanels.chat.you")}: </span>
             <SentMessage text={message.text} />
           </div>
