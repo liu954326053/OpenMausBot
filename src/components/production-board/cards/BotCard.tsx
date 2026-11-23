@@ -83,21 +83,25 @@ const STEP_ICON = {
 
 interface GateItem {
   key: "characters" | "scenes" | "script";
-  value: string;
+  onTag: string;
+  inTooltip: string;
   ready: boolean;
 }
 
 function gateItems(gate: BoardGate, episode: number | undefined): GateItem[] {
-  const counted = (key: "characters" | "scenes", count: BoardCount | undefined): GateItem[] =>
-    count ? [{ key, value: `${count.done}/${count.total}`, ready: count.total > 0 && count.done >= count.total }] : [];
-  const script: GateItem[] = gate.script === undefined ? [] : [{ key: "script", value: episode === undefined ? "" : episodeCode(episode), ready: gate.script }];
+  const counted = (key: "characters" | "scenes", count: BoardCount | undefined): GateItem[] => {
+    if (!count) return [];
+    const value = `${count.done}/${count.total}`;
+    return [{ key, onTag: value, inTooltip: value, ready: count.total > 0 && count.done >= count.total }];
+  };
+  const script: GateItem[] = gate.script === undefined ? [] : [{ key: "script", onTag: "", inTooltip: episode === undefined ? "" : episodeCode(episode), ready: gate.script }];
   return [...counted("characters", gate.characters), ...counted("scenes", gate.scenes), ...script];
 }
 
 function GateTags({ gate, episode }: { gate: BoardGate; episode: number | undefined }) {
   return (
     <ul data-bot-gate="" aria-label={t("boardCards.gate.label")} className="flex min-w-0 gap-1 px-3 pt-2.5">
-      {gateItems(gate, episode).map(({ key, value, ready }) => {
+      {gateItems(gate, episode).map(({ key, onTag, inTooltip, ready }) => {
         const label = t(`boardCards.gate.${key}`);
         const state = ready ? t("boardCards.gate.ready") : t("boardCards.gate.notReady");
         return (
@@ -105,12 +109,12 @@ function GateTags({ gate, episode }: { gate: BoardGate; episode: number | undefi
             key={key}
             data-gate-item={key}
             data-gate-ready={String(ready)}
-            title={`${[label, value].filter(Boolean).join(" ")} · ${state}`}
+            title={`${[label, inTooltip].filter(Boolean).join(" ")} · ${state}`}
             className={cn("ui-chip px-1.5", ready ? "bg-success/10" : "bg-control", TONE_TEXT[ready ? "done" : "idle"])}
           >
             {ready ? <Check size={14} aria-hidden="true" className="shrink-0" /> : <Circle size={14} aria-hidden="true" className="shrink-0" />}
             <span data-gate-label="" className="min-w-0 truncate">{label}</span>
-            {value ? <span data-gate-value="" className="shrink-0 font-mono">{value}</span> : null}
+            {onTag ? <span data-gate-value="" className="shrink-0 font-mono">{onTag}</span> : null}
             <span className="sr-only">{state}</span>
           </li>
         );

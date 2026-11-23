@@ -30,7 +30,7 @@ export interface ResultCardProps {
   onSelectTake?: (takeId: string) => void;
 }
 
-const TAKE_BUTTONS_MAX = 5;
+const TAKE_BUTTONS_MAX = 4;
 
 /** All the takes when they fit; else the selected, the shown and the newest, then the newest of the rest, leaving room
  * for the button that opens the others. */

@@ -35,8 +35,10 @@ const SHOTS: Shot[] = [
   ...["bots", "assets", "results", "finals"].map((only) => ({ name: `section-${only}-small`, only, size: [760, 560] as [number, number], windowOnly: true })),
   ...SECTIONS.map((only) => ({ name: `section-${only}`, only })),
   ...WORDY.map((only) => ({ name: `section-${only}-en`, only, lang: "en" })),
+  { name: "section-bots-pt-br", only: "bots", lang: "pt-br" },
   { name: "result-playing", only: "results", clicks: ['[aria-label="播放 SH03 青梧点灯"]'] },
   { name: "result-other-take", only: "results", clicks: ['[data-result-take][title="第 1 版"]'] },
+  { name: "result-more-takes", only: "results", clicks: ['[data-result-more][aria-label="另外 5 版"]'] },
 ];
 
 function lockOwner(): string | null {

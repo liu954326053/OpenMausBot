@@ -1,8 +1,8 @@
-import { RotateCcw } from "lucide-react";
+import { Clock, RotateCcw } from "lucide-react";
 import { episodeCode, type ProductionEpisodeWire } from "../../../../shared/production";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { BotChip, CardAction, CardName, CardShell, StatusMark, type BoardBotRef } from "./parts";
+import { BotChip, CardAction, CardName, CardShell, clockLength, StatusMark, type BoardBotRef } from "./parts";
 import { episodeStatus } from "./tone";
 
 export interface EpisodeCardProps {
@@ -13,11 +13,13 @@ export interface EpisodeCardProps {
   text?: string;
   /** The bot the episode went to. */
   to?: BoardBotRef;
+  /** How long its shots run together. */
+  seconds?: number;
   onOpen?: () => void;
   onRetry?: () => void;
 }
 
-export function EpisodeCard({ episode, logline, text, to, onOpen, onRetry }: EpisodeCardProps) {
+export function EpisodeCard({ episode, logline, text, to, seconds, onOpen, onRetry }: EpisodeCardProps) {
   const status = episodeStatus(episode.status);
   const shots = episode.shots ?? 0;
   const script = text?.trim();
@@ -34,11 +36,17 @@ export function EpisodeCard({ episode, logline, text, to, onOpen, onRetry }: Epi
       <p data-episode-text="" dir="auto" className={cn("min-h-0 flex-1 overflow-hidden whitespace-pre-line px-3 pt-2 text-[12px] leading-4", script ? "text-ink-tertiary" : "text-ink-tertiary/70")}>
         {script ? text : t("boardCards.episode.noText")}
       </p>
-      {shots > 0 || to || (status?.tone === "failed" && onRetry) ? (
+      {shots > 0 || seconds || to || (status?.tone === "failed" && onRetry) ? (
         <footer className="flex min-w-0 items-center gap-3 px-3 pb-3 pt-2">
           {shots > 0 ? (
             <span data-episode-shots="" className="shrink-0 text-[12px] leading-4 text-ink-secondary tabular-nums">
               {t("boardCards.episode.shotsReady", { ready: episode.ready ?? 0, shots })}
+            </span>
+          ) : null}
+          {seconds ? (
+            <span data-episode-length="" className="inline-flex shrink-0 items-center gap-1 text-[12px] leading-4 text-ink-tertiary tabular-nums">
+              <Clock size={14} aria-label={t("boardCards.shot.length")} className="shrink-0" />
+              {seconds < 60 ? t("boardCards.shot.seconds", { count: seconds }) : clockLength(seconds * 1000)}
             </span>
           ) : null}
           <span className="flex min-w-0 flex-1 justify-end">{to ? <BotChip bot={to} label={t("boardCards.episode.to", { name: to.name })} /> : null}</span>

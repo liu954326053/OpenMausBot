@@ -71,6 +71,13 @@ describe("the shot card", () => {
     expect(onGenerate).toHaveBeenCalledTimes(2);
   });
 
+  it("says where it plays in its episode", () => {
+    const time = draw({ startsAt: 12 }).querySelector<HTMLElement>("[data-shot-time]")!;
+    expect([textOf(time), time.title]).toEqual(["00:12 – 00:17", "At 00:12 – 00:17 in EP01"]);
+    expect(textOf(draw({ startsAt: 0, seconds: undefined, episode: undefined }).querySelector("[data-shot-time]"))).toBe("00:00");
+    expect(draw().querySelector("[data-shot-time]")).toBeNull();
+  });
+
   it("marks itself, quietly, when something it was made from changed after it was made", () => {
     const badge = draw({ stale: true }).querySelector<HTMLElement>("[data-stale]")!;
     expect(textOf(badge)).toBe("Outdated");

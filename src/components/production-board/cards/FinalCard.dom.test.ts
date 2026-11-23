@@ -38,6 +38,17 @@ describe("the final card", () => {
     expect(clips).toHaveLength(24);
     expect(clips.every((clip) => textOf(clip) === "")).toBe(true);
     expect([clips[0]!.title, clips[23]!.title]).toEqual(["SH01: ready", "SH24: not ready yet"]);
+    expect(textOf(draw({ clips: many.slice(0, 11) }).querySelector("[data-final-clip]"))).toBe("SH01");
+    expect(textOf(draw({ clips: many.slice(0, 12) }).querySelector("[data-final-clip]"))).toBe("");
+  });
+
+  it("draws a still of each ready shot on the strip while there is room, and colours alone when there is not", () => {
+    const stills = (card: HTMLElement) => [...card.querySelectorAll("[data-final-clip]")].map((clip) => clip.querySelector("img")?.getAttribute("src") ?? null);
+    const card = draw({ clips: CLIPS.map((clip) => ({ ...clip, posterUrl: `/files/sh0${clip.number}.jpg` })) });
+    expect(stills(card)).toEqual(["/files/sh01.jpg", "/files/sh02.jpg", null, null]);
+    expect(textOf(card.querySelector("[data-final-clip]"))).toBe("SH01");
+    const many: FinalClip[] = Array.from({ length: 12 }, (_, index) => ({ number: index + 1, state: "ready", posterUrl: "/files/still.jpg" }));
+    expect(stills(draw({ clips: many })).every((still) => still === null)).toBe(true);
   });
 
   it("shows no film until there is one", () => {

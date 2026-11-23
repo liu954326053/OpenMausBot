@@ -1,6 +1,6 @@
 import type { CanvasCardFacts } from "../../../../shared/project-canvas";
 import { t } from "@/lib/i18n";
-import { AssetPicture, AssetShots, AssetSubtitle, AssetTags } from "./asset-parts";
+import { AssetPicture, AssetShots, AssetSubtitle, AssetTags, paletteColours } from "./asset-parts";
 import { CardName, CardShell, type BoardGeneration, type BoardShotRef } from "./parts";
 
 export interface SceneCardProps {
@@ -17,9 +17,17 @@ export interface SceneCardProps {
 }
 
 export function SceneCard({ name, facts, pictureUrl, generation, shots, refinedBy, onOpen, onGenerate }: SceneCardProps) {
+  const palette = paletteColours(facts?.palette);
   return (
     <CardShell kind="scene" label={name} onOpen={onOpen}>
-      <AssetPicture name={name} pictureUrl={pictureUrl} generation={generation} onGenerate={onGenerate} className="h-38 w-full shrink-0" />
+      <div className="relative h-38 w-full shrink-0">
+        <AssetPicture name={name} pictureUrl={pictureUrl} generation={generation} onGenerate={onGenerate} className="size-full" />
+        {palette.length ? (
+          <div data-scene-palette="" className="absolute inset-x-0 bottom-0 flex h-1">
+            {palette.map((colour, index) => <span key={index} data-asset-swatch="" title={colour} className="flex-1" style={{ backgroundColor: colour }} />)}
+          </div>
+        ) : null}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-2.5">
         <CardName text={name} onOpen={onOpen} className="text-[17px] font-semibold leading-6" />
         <AssetSubtitle facts={facts} />
