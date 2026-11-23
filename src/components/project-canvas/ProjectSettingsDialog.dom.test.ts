@@ -35,15 +35,9 @@ const options = (label: string) => [...select(label).options].map((option) => op
 const alerts = () => [...dialog()!.querySelectorAll('[role="alert"], [role="alert"] > span')].filter((line) => !line.querySelector("span")).map((line) => line.textContent);
 const saved = async () => (await backend.readGenerationSettings(SAMPLE_PROJECT_ID)).settings;
 
-function pointer(target: Element, type: string) {
-  target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1 }));
-}
-
-async function clickNode(id: string) {
-  await act(async () => {
-    pointer(host.querySelector(`[data-canvas-node="${CSS.escape(id)}"]`)!, "pointerdown");
-    pointer(host.querySelector("[data-project-canvas-stage]")!, "pointerup");
-  });
+async function openCard(nodeId: string) {
+  await act(async () => host.querySelector<HTMLElement>(`[data-canvas-node="${CSS.escape(nodeId)}"] article`)!.click());
+  await settle();
 }
 
 async function choose(field: HTMLSelectElement, value: string) {
@@ -108,28 +102,28 @@ afterEach(() => {
 });
 
 describe("the project's settings", () => {
-  it("open on the first tab, and on the tab of the node whose panel they are opened from", async () => {
+  it("open on the first tab, and on the tab of the card open on the board", async () => {
     await mount();
     await openFromHeader();
     expect(tab()).toBe("Image");
     await click(buttonByText(dialog()!, "Cancel"));
 
-    await clickNode("shot-1");
+    await openCard("shot-1");
     await openFromHeader();
     expect(tab()).toBe("Video");
     await click(buttonByText(dialog()!, "Cancel"));
 
-    await clickNode("city-night");
+    await openCard("city-night");
     await openFromHeader();
     expect(tab()).toBe("Image");
   });
 
-  it("open on a creation node's tab from the node's own way to them when its kind has no server", async () => {
+  it("open on the tab of a shot's video open on the board when its kind has no server", async () => {
     const settings = sampleGenerationSettings();
     settings.video.server = null;
     await mount(settings);
-    await clickNode("shot-1-creation");
-    await click(buttonByText(host.querySelector("[data-node-panel]")!, "Project settings"));
+    await openCard("shot-1-creation");
+    await openFromHeader();
     expect(tab()).toBe("Video");
   });
 
@@ -143,7 +137,7 @@ describe("the project's settings", () => {
     expect(dialog()).toBeNull();
     expect((await saved()).image.defaults).toEqual({ model: "pixel-1", aspect: "16:9", quality: "standard", count: 1 });
 
-    await clickNode("shot-1");
+    await openCard("shot-1");
     await openFromHeader();
     await choose(select("Duration"), "10");
     await choose(select("Default model"), "veo-lite");
