@@ -344,14 +344,17 @@ function Preview() {
       </Section>
 
       <Section id="finals" title="Films">
-        <Shown caption="waiting for shots, draft not written">
-          <FinalCard episode={1} title="守灯人" clips={CLIPS(4, 6)} draft={{ state: "none", exportFolder: "/tmp/out" }} onOpen={noop} onOpenDraft={noop} />
-        </Shown>
         <Shown caption="film ready, draft written">
           <FinalCard episode={2} title="账本" videoUrl={FILM} durationMs={41_000} clips={CLIPS(8, 8, true)} draft={{ state: "written", name: "雾港灯塔 EP02", writtenAt: at(11, 30), exportFolder: "/tmp/out" }} onOpen={noop} onPlay={noop} onOpenDraft={noop} />
         </Shown>
+        <Shown caption="waiting for shots, draft not written">
+          <FinalCard episode={1} title="守灯人" clips={CLIPS(4, 6)} draft={{ state: "none", exportFolder: "/tmp/out" }} onOpen={noop} onOpenDraft={noop} />
+        </Shown>
         <Shown caption="cover only, draft kept beside JianYing's copy">
           <FinalCard episode={3} title="第二盏蓝灯" coverUrl={SCENES.tower} durationMs={38_000} clips={[...CLIPS(5, 7, true).slice(0, 6), { number: 7, state: "failed" }]} draft={{ state: "kept", name: "雾港灯塔 EP03（2）", exportFolder: "/tmp/out" }} onOpen={noop} onOpenDraft={noop} />
+        </Shown>
+        <Shown caption="draft written, a long name given apart">
+          <FinalCard episode={4} title="最后一个冬天" coverUrl={SCENES.pier} durationMs={52_000} clips={CLIPS(9, 9, true)} draft={{ state: "written", writtenAt: at(12, 5), exportFolder: "/tmp/out" }} draftName="雾港灯塔：第二盏蓝灯亮起之前，守灯人和他的学徒在海港度过的最后一个冬天 EP04" onOpen={noop} onOpenDraft={noop} />
         </Shown>
         <Shown caption="no JianYing, many shots">
           <FinalCard episode={12} title={LONG} clips={CLIPS(20, 24, true)} draft={{ state: "unavailable", reason: "not-installed", exportFolder: "/tmp/out" }} onOpen={noop} />

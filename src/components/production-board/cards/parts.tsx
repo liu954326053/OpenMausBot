@@ -88,10 +88,10 @@ export function CardName({ text, title = text, onOpen, className, data = "card-n
 }
 
 /** A button on a card that does its own thing and leaves the card closed. */
-export function CardAction({ onClick, label, icon, className }: { onClick: () => void; label: string; icon?: ReactNode; className?: string }) {
+export function CardAction({ onClick, label, title, icon, className }: { onClick: () => void; label: string; title?: string; icon?: ReactNode; className?: string }) {
   const act = alone(onClick);
   return (
-    <button type="button" data-board-card-action="" className={cn("ui-button ui-button-sm shrink-0 whitespace-nowrap", className)} onClick={act}>
+    <button type="button" data-board-card-action="" title={title} className={cn("ui-button ui-button-sm shrink-0 whitespace-nowrap", className)} onClick={act}>
       {icon}
       {label}
     </button>

@@ -1,6 +1,6 @@
 // Screenshots of every production board card, from scripts/testing/board-cards-preview.tsx in a headless Chrome, in
 // both skins at a normal and a small window. Nothing here reaches a server.
-//   node --experimental-strip-types scripts/testing/board-cards-shots.ts OUT_DIR
+//   node --experimental-strip-types scripts/testing/board-cards-shots.ts OUT_DIR [SHOT_NAME...]
 // needs OMB_AGENT_BROWSER_PATH and AGENT_BROWSER_EXECUTABLE_PATH, as `control-omb ui launch` does. Only one UI fixture
 // may be up at a time across worktrees: it holds /tmp/omb-ui-fixture.lock while its preview is up.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -84,7 +84,11 @@ const releaseLock = () => {
 };
 
 const out = resolve(process.argv[2] ?? "");
-if (!process.argv[2]) throw new Error("usage: board-cards-shots.ts OUT_DIR");
+if (!process.argv[2]) throw new Error("usage: board-cards-shots.ts OUT_DIR [SHOT_NAME...]");
+const named = process.argv.slice(3);
+const unknown = named.filter((name) => !SHOTS.some((shot) => shot.name === name));
+if (unknown.length > 0) throw new Error(`no such shot: ${unknown.join(", ")}`);
+const chosen = named.length > 0 ? SHOTS.filter((shot) => named.includes(shot.name)) : SHOTS;
 mkdirSync(out, { recursive: true });
 
 await takeLock();
@@ -100,7 +104,7 @@ try {
   const browser = (args: string[], timeoutMs?: number) => agentBrowser(binary, env, args, timeoutMs);
   try {
     for (const skin of ["midnight", "daylight"]) {
-      for (const shot of SHOTS) {
+      for (const shot of chosen) {
         const [width, height] = shot.size ?? [1440, 900];
         await browser(["set", "viewport", String(width), String(height)]);
         await browser(["open", `${preview.previewUrl}?skin=${skin}&lang=${shot.lang ?? "zh"}${shot.only ? `&only=${shot.only}` : ""}`], 120_000);
