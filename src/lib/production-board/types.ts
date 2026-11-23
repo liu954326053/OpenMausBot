@@ -30,6 +30,20 @@ export interface BoardProgress {
   total: number;
 }
 
+export interface BoardCount {
+  done: number;
+  total: number;
+}
+
+/** What an episode's storyboard waits for: only the whole-drama jobs that have a bot. */
+export interface BoardGate {
+  /** The drama's characters that have a picture, of all of them. */
+  characters?: BoardCount;
+  scenes?: BoardCount;
+  /** Its episode's script is written. */
+  script?: boolean;
+}
+
 export interface BoardBotCard extends CardBase<"bot"> {
   botId: string;
   lead: boolean;
@@ -41,6 +55,8 @@ export interface BoardBotCard extends CardBase<"bot"> {
   task?: { job: ProductionJob; episode?: number; status: ProductionTaskWire["status"]; at?: number };
   progress?: BoardProgress;
   retry?: RetryTarget;
+  /** On an episode's storyboard bot. */
+  gate?: BoardGate;
 }
 
 export interface BoardBriefCard extends CardBase<"brief"> {
@@ -71,6 +87,8 @@ export interface BoardEpisodeCard extends CardBase<"episode"> {
   storyboardBotId?: string;
   shots: number;
   ready: number;
+  /** How long its shots run together; absent while one of them has no length. */
+  seconds?: number;
 }
 
 export interface BoardStackCard extends CardBase<"stack"> {
@@ -117,6 +135,8 @@ export interface BoardShotCard extends CardBase<"shot"> {
   title: string;
   design?: CanvasShotDesign;
   seconds?: number;
+  /** Where it starts in its episode, in seconds; absent while a shot before it has no length. */
+  startsAt?: number;
   prompt?: string;
   /** The character and scene cards it uses. */
   characters: string[];
@@ -126,6 +146,8 @@ export interface BoardShotCard extends CardBase<"shot"> {
   takes: number;
   generation?: BoardGeneration;
   creationId?: string;
+  /** Its prompt changed after its videos were made. */
+  stale?: boolean;
 }
 
 export interface BoardTake {
@@ -133,6 +155,8 @@ export interface BoardTake {
   file?: CanvasFileRef;
   durationMs?: number;
   selected: boolean;
+  /** Made before what it was made from changed. */
+  stale?: boolean;
 }
 
 export interface BoardResultCard extends CardBase<"result"> {

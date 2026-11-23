@@ -10,6 +10,8 @@ import type {
   BoardCard,
   BoardCharacterCard,
   BoardClip,
+  BoardCount,
+  BoardGate,
   BoardGeneration,
   BoardPicture,
   BoardPlanTask,
@@ -100,6 +102,8 @@ export function indexSnapshot(snapshot: CanvasSnapshot): BoardIndex {
   return { snapshot, production, byId, episodeNodes, shots, creationOf, takesOf, finals, productionEpisodes, episodeOfBot, jobOfBot };
 }
 
+const shotSeconds = (index: BoardIndex, shot: CanvasNode) => shot.metadata?.settings?.seconds ?? index.creationOf.get(shot.id)?.metadata?.settings?.seconds;
+
 function videoStatus(creation: CanvasNode | undefined, takes: readonly CanvasNode[]): BoardVideoStatus {
   if (creation?.metadata?.status === "loading") return "generating";
   if (takes.some(isSelected)) return "done";
@@ -187,6 +191,22 @@ function planTasks(production: ProductionWire | undefined): BoardPlanTask[] {
   });
 }
 
+function madeProfiles(profiles: readonly Profile[], kind: "character" | "scene"): BoardCount {
+  const made = profiles.filter((one) => one.card.kind === kind && !one.card.refinedBy);
+  return { done: made.filter((one) => one.card.picture?.file).length, total: made.length };
+}
+
+function gateOf(index: BoardIndex, episode: number, profiles: readonly Profile[]): BoardGate | undefined {
+  const jobs = index.production?.jobs;
+  if (!jobs) return undefined;
+  const has = (job: DramaJob) => jobs.some((one) => one.job === job);
+  return {
+    ...(has("character") ? { characters: madeProfiles(profiles, "character") } : {}),
+    ...(has("scene") ? { scenes: madeProfiles(profiles, "scene") } : {}),
+    ...(has("script") ? { script: index.episodeNodes.has(episode) } : {}),
+  };
+}
+
 function botCard(index: BoardIndex, bot: CanvasBotState, lead: boolean, stage: BoardStage, tasks: readonly BoardPlanTask[], profiles: readonly Profile[]): BoardBotCard {
   const { production } = index;
   const job = index.jobOfBot.get(bot.botId);
@@ -202,8 +222,8 @@ function botCard(index: BoardIndex, bot: CanvasBotState, lead: boolean, stage: B
     if (lead) return tasks.length ? { unit: "tasks", done: tasks.filter((one) => one.status === "done").length, total: tasks.length } : undefined;
     if (job === "script") return production ? { unit: "episodes", done: production.episodes.length, total: production.plan.episodes ?? production.episodes.length } : undefined;
     if (job === "character" || job === "scene") {
-      const made = profiles.filter((one) => one.card.kind === job && !one.card.refinedBy);
-      return made.length ? { unit: job === "character" ? "characters" : "scenes", done: made.filter((one) => one.card.picture?.file).length, total: made.length } : undefined;
+      const made = madeProfiles(profiles, job);
+      return made.total ? { unit: job === "character" ? "characters" : "scenes", ...made } : undefined;
     }
     if ((job === "storyboard" || job === "post") && episode !== undefined) {
       const shots = index.shots.get(episode) ?? [];
@@ -213,6 +233,7 @@ function botCard(index: BoardIndex, bot: CanvasBotState, lead: boolean, stage: B
     return undefined;
   })();
   const retry: RetryTarget | undefined = dramaJob && jobStatus === "failed" ? { job: dramaJob } : productionEpisode?.status === "failed" ? { episode: productionEpisode.episode } : undefined;
+  const gate = job === "storyboard" && episode !== undefined ? gateOf(index, episode, profiles) : undefined;
   const id = botNodeId(bot.botId);
   return {
     kind: "bot", id, nodeIds: [id], stage,
@@ -226,6 +247,7 @@ function botCard(index: BoardIndex, bot: CanvasBotState, lead: boolean, stage: B
     ...(task ? { task: { job: task.job, ...(task.episode === undefined ? {} : { episode: task.episode }), status: task.status, ...(task.at === undefined ? {} : { at: task.at }) } } : {}),
     ...(progress ? { progress } : {}),
     ...(retry ? { retry } : {}),
+    ...(gate ? { gate } : {}),
   };
 }
 
@@ -276,28 +298,34 @@ export function buildBoard(snapshot: CanvasSnapshot, options: BoardOptions = {})
 
     const shotCards = new Map<string, BoardShotCard>();
     const uses = new Map<string, BoardShotUse>();
+    const episodeSeconds = new Map<number, number>();
     for (const [episode, shots] of index.shots) {
+      let clock: number | undefined = 0;
       shots.forEach((shot, at) => {
         const number = at + 1;
         const creation = index.creationOf.get(shot.id);
         const takes = index.takesOf.get(shot.id) ?? [];
+        const seconds = shotSeconds(index, shot);
+        const startsAt = clock;
+        clock = clock !== undefined && seconds ? clock + seconds : undefined;
         uses.set(shot.id, { shotId: shot.id, episode, number });
         for (const id of [shot.id, ...(creation ? [creation.id] : []), ...takes.map((take) => take.id)]) {
           consumed.add(id);
           episodeOfNode.set(id, episode);
         }
         if (!unfolded.has(episode)) return;
-        const seconds = shot.metadata?.settings?.seconds ?? creation?.metadata?.settings?.seconds;
         const status = videoStatus(creation, takes);
         const generation = generationOf(creation);
         const shotCard: BoardShotCard = {
           kind: "shot", id: shot.id, nodeIds: [shot.id], stage: "storyboard", episode, dragNodeId: shot.id, number, title: shot.title,
           ...(shot.metadata?.shot ? { design: shot.metadata.shot } : {}),
           ...(seconds ? { seconds } : {}),
+          ...(startsAt === undefined ? {} : { startsAt }),
           ...(shot.metadata?.prompt ? { prompt: shot.metadata.prompt } : {}),
           characters: [], scenes: [], references: [], status, takes: takes.length,
           ...(generation ? { generation } : {}),
           ...(creation ? { creationId: creation.id } : {}),
+          ...(shot.metadata?.stale || creation?.metadata?.stale ? { stale: true } : {}),
         };
         shotCards.set(shot.id, shotCard);
         cards.push(shotCard);
@@ -312,12 +340,14 @@ export function buildBoard(snapshot: CanvasSnapshot, options: BoardOptions = {})
             nodeId: take.id, selected: isSelected(take),
             ...(take.metadata?.file ? { file: take.metadata.file } : {}),
             ...(take.metadata?.durationMs ? { durationMs: take.metadata.durationMs } : {}),
+            ...(take.metadata?.stale ? { stale: true } : {}),
           })),
           ...(selected ? { selectedTakeId: selected.id } : {}),
           status,
           ...(generation ? { generation } : {}),
         });
       });
+      if (clock) episodeSeconds.set(episode, clock);
     }
 
     const profileOfNode = new Map<string, Profile>();
@@ -370,6 +400,7 @@ export function buildBoard(snapshot: CanvasSnapshot, options: BoardOptions = {})
           ...(wire?.storyboardBotId ? { storyboardBotId: wire.storyboardBotId } : {}),
           shots: wire?.shots ?? shots.length,
           ready: wire?.ready ?? shots.filter((shot) => (index.takesOf.get(shot.id) ?? []).some(isSelected)).length,
+          ...(episodeSeconds.has(episode) ? { seconds: episodeSeconds.get(episode)! } : {}),
         });
       }
       const film = index.finals.get(episode);
@@ -379,7 +410,7 @@ export function buildBoard(snapshot: CanvasSnapshot, options: BoardOptions = {})
         const takes = index.takesOf.get(shot.id) ?? [];
         const take = takes.find(isSelected);
         const status = videoStatus(index.creationOf.get(shot.id), takes);
-        const seconds = shot.metadata?.settings?.seconds ?? index.creationOf.get(shot.id)?.metadata?.settings?.seconds;
+        const seconds = shotSeconds(index, shot);
         const durationMs = take?.metadata?.durationMs ?? (seconds ? seconds * 1000 : undefined);
         const state = take ? "ready" : status === "generating" ? "generating" : status === "failed" ? "failed" : "missing";
         return { shotId: shot.id, number: at + 1, state, ...(durationMs ? { durationMs } : {}) };

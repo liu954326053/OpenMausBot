@@ -171,6 +171,27 @@ describe("the board's cards", () => {
     expect(card(cards, botNodeId("lead"))).toMatchObject({ lead: true, progress: { unit: "tasks", done: 3, total: 5 } });
   });
 
+  it("tells a storyboard bot what its episode waits for, where each shot starts, how long an episode runs, and what was made before a change", () => {
+    const snap = drama();
+    const changed: Record<string, NonNullable<CanvasNode["metadata"]>> = { sh2: { settings: { seconds: 4 } }, cr1: { stale: true }, t1b: { stale: true } };
+    snap.nodes = snap.nodes.map((one) => (changed[one.id] ? { ...one, metadata: { ...one.metadata, ...changed[one.id] } } : one));
+    const { cards } = buildBoard(snap);
+    expect(card(cards, botNodeId("boarder-1"))).toMatchObject({ gate: { characters: { done: 1, total: 1 }, scenes: { done: 0, total: 1 }, script: true } });
+    expect(card(cards, botNodeId("editor-1"))).not.toHaveProperty("gate");
+    expect(card(cards, botNodeId("writer"))).not.toHaveProperty("gate");
+    expect(card(cards, "sh1")).toMatchObject({ startsAt: 0, stale: true });
+    expect(card(cards, "sh2")).toMatchObject({ startsAt: 6, seconds: 4 });
+    expect(card(cards, "sh2")).not.toHaveProperty("stale");
+    expect(card(cards, "ep1")).toMatchObject({ seconds: 10 });
+    expect(card(cards, "sh3")).toMatchObject({ startsAt: 0 });
+    expect(card(cards, "ep2")).not.toHaveProperty("seconds");
+    expect(card(cards, "result:sh1")).toMatchObject({ takes: [{ nodeId: "t1a", selected: true }, { nodeId: "t1b", stale: true }] });
+    expect((card(cards, "result:sh1") as { takes: object[] }).takes[0]).not.toHaveProperty("stale");
+
+    const noCast = buildBoard(drama({ production: { jobs: [{ job: "script", botId: "writer", status: "done" }, { job: "scene", botId: "builder", status: "done" }] } }));
+    expect((card(noCast.cards, botNodeId("boarder-1")) as { gate?: object }).gate).toEqual({ scenes: { done: 0, total: 1 }, script: true });
+  });
+
   it("offers a retry on a bot whose job or episode stopped", () => {
     const snap = drama({ production: {
       jobs: [{ job: "script", botId: "writer", status: "done" }, { job: "character", botId: "painter", status: "failed" }, { job: "scene", botId: "builder", status: "done" }],

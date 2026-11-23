@@ -122,6 +122,7 @@ export const BoardCardView = memo(function BoardCardView({ card, snapshot, looks
           task={card.jobStatus}
           progress={card.progress && { kind: card.progress.unit, done: card.progress.done, total: card.progress.total }}
           steps={botSteps(bot)}
+          gate={card.gate}
           onOpen={open}
           onRetry={retry && actions.retry ? () => actions.retry!(retry) : undefined}
         />
@@ -140,6 +141,7 @@ export const BoardCardView = memo(function BoardCardView({ card, snapshot, looks
           logline={card.logline}
           text={card.text}
           to={botRef(card.storyboardBotId)}
+          seconds={card.seconds}
           onOpen={open}
           onRetry={card.status === "failed" && actions.retry ? () => actions.retry!({ episode }) : undefined}
         />
@@ -178,10 +180,13 @@ export const BoardCardView = memo(function BoardCardView({ card, snapshot, looks
           title={card.title}
           design={card.design}
           seconds={card.seconds}
+          startsAt={card.startsAt}
           prompt={card.prompt}
           references={references}
+          referenceNames
           takes={card.takes}
           generation={card.generation}
+          stale={card.stale}
           onOpen={open}
           onGenerate={generate(card.creationId, card.status === "generating")}
         />
@@ -192,7 +197,7 @@ export const BoardCardView = memo(function BoardCardView({ card, snapshot, looks
         <ResultCard
           number={card.number}
           title={card.title}
-          takes={card.takes.map((take) => ({ id: take.nodeId, selected: take.selected, ...(take.file ? { videoUrl: url(take.file)! } : {}), ...(take.durationMs ? { durationMs: take.durationMs } : {}) }))}
+          takes={card.takes.map((take) => ({ id: take.nodeId, selected: take.selected, ...(take.file ? { videoUrl: url(take.file)! } : {}), ...(take.durationMs ? { durationMs: take.durationMs } : {}), ...(take.stale ? { stale: true } : {}) }))}
           generation={card.generation}
           onOpen={open}
           onGenerate={generate(card.creationId, card.status === "generating")}
