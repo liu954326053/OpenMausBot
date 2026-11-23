@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamProjectWire } from "../../shared/team-projects.ts";
+import type { BotRecord } from "../store.ts";
 import { closeTeamProjectsInstallation, teamProjectsInstallation, type TeamProjectsTestApp } from "./testing.ts";
 
 let app: TeamProjectsTestApp | undefined;
@@ -22,6 +25,7 @@ async function installation() {
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await closeTeamProjectsInstallation(app);
   app = undefined;
 });
@@ -69,6 +73,31 @@ describe("a copy following its source", () => {
     app.store.patchBot(app.source("scout").id, { name: "Finder", title: "Lead finder" });
     expect(names()).toEqual(["Finder", "Finder EP01", "Finder EP12"]);
     expect(app.store.bot(second)).toMatchObject({ title: "Lead finder", teamProject: { episode: { number: 12, job: "storyboard" } } });
+  });
+
+  it("saves what every copy of a source takes from it in one write, however many episodes have their own bot", async () => {
+    const app = await installation();
+    const one = await app.project("Season one");
+    await app.project("Season two");
+    const template = app.copyOf(one, "scout").id;
+    for (const episode of [1, 2, 3, 4, 5, 6]) await app.projects.episodeBot(one.id, template, episode, "storyboard");
+    const scout = app.source("scout").id;
+    const followers = app.store.bots.filter((bot) => bot.teamProject?.source === scout).map((bot) => bot.id);
+    expect(followers).toHaveLength(8);
+    const { OwnedFile } = await import("../atomic.ts");
+    const write = vi.spyOn(OwnedFile.prototype, "write");
+    const botsWrites = () => write.mock.contexts.filter((file) => file instanceof OwnedFile && file.path === join(app.dataDir, "bots.json")).length;
+
+    app.store.patchBot(scout, { title: "Lead finder" });
+    expect(botsWrites(), "the source's own save, then one for all its copies").toBe(2);
+    app.store.patchBotProfile(scout, { soul: "You find leads." });
+    app.store.applyModelDefault(scout, { instanceId: "codex", model: "gpt-test" });
+    expect(botsWrites()).toBe(6);
+
+    const saved = JSON.parse(readFileSync(join(app.dataDir, "bots.json"), "utf8")) as BotRecord[];
+    for (const id of followers) {
+      expect(saved.find((bot) => bot.id === id)).toMatchObject({ title: "Lead finder", soul: "You find leads.", modelSelection: { instanceId: "codex", model: "gpt-test" } });
+    }
   });
 
   it("lets a busy copy finish its turn on its model, and gives it the new one when the turn ends", async () => {
