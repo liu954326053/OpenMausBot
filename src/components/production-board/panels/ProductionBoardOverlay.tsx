@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { botNodeId, type CanvasFileRef, type CanvasSnapshot } from "../../../../shared/project-canvas";
 import type { BoardOverlayProps } from "@/lib/production-board/overlay";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
+import { AssetDetails } from "./AssetDetails";
 import { boardIndex, type BoardAsset } from "./board-index";
 import { BotChatWindow, NEW_CHAT, type ChatSession } from "./BotChatWindow";
 import type { OverlayBackend } from "./overlay-backend";
@@ -42,9 +43,11 @@ export function ProductionBoardOverlay(props: BoardOverlayProps) {
   }, []);
   const chatOpened = opened?.kind === "bot" ? opened : null;
   const chatBot = chatOpened ? snapshot.bots[chatOpened.botId] : undefined;
+  const assetOpened = opened?.kind === "asset" ? opened : null;
+  const detailed = assetOpened ? index.assetOf(assetOpened.nodeId) : null;
   useEffect(() => {
-    if (chatOpened && !chatBot) latest.current.close();
-  }, [chatOpened, chatBot]);
+    if ((chatOpened && !chatBot) || (assetOpened && !detailed)) latest.current.close();
+  }, [chatOpened, chatBot, assetOpened, detailed]);
   useStopsWheel(layerRef);
   return (
     <div
@@ -85,6 +88,25 @@ export function ProductionBoardOverlay(props: BoardOverlayProps) {
           reserved={panelOpen ? SIDE_PANEL_ROOM.open : SIDE_PANEL_ROOM.folded}
           anchorOf={props.anchorOf}
           subscribeView={props.subscribeView}
+          onClose={props.close}
+        />
+      ) : null}
+      {detailed ? (
+        <AssetDetails
+          asset={detailed}
+          index={index}
+          owner={snapshot.bots[index.ownerOf(detailed)]}
+          drafts={snapshot.drafts}
+          fileUrl={pictureUrl}
+          onAsk={(owner) => {
+            props.focusNode(botNodeId(owner.botId));
+            props.open({ kind: "bot", botId: owner.botId, references: [detailed.node.id] });
+          }}
+          onLocate={() => {
+            props.focusNode(detailed.cardId);
+            props.close();
+          }}
+          onAsset={(nodeId) => props.open({ kind: "asset", nodeId })}
           onClose={props.close}
         />
       ) : null}
