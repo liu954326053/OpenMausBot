@@ -10,7 +10,7 @@ import { setTeamProjects } from "./team-projects";
 
 type Shown = Pick<AppState, "activeView" | "project" | "hydrated" | "selectedId">;
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
-  id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
+  id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {}, episodeBots: {},
   leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead"], ...extra,
 });
 

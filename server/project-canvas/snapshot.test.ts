@@ -40,6 +40,14 @@ describe("the bots on a project's canvas", () => {
     expect(snapshot.bots.writer).toMatchObject({ name: "Writer", title: "writer title", lead: false, placed: true });
     expect(snapshot.bots.lead).toMatchObject({ lead: true, placed: false });
     expect(snapshot.nodes[0]!.position).toEqual({ x: 0, y: 0 });
+    expect(snapshot.nodes[1]).not.toHaveProperty("arranged");
+  });
+
+  it("carry that the person moved one", () => {
+    const moved: CanvasNode = { id: "bot:writer", type: "bot", title: "", position: { x: 5, y: 600 }, width: 320, height: 200, arranged: true };
+    const snapshot = buildSnapshot(input({ document: canvas([moved]) }));
+    expect(snapshot.nodes.find((node) => node.id === "bot:writer")).toMatchObject({ position: { x: 5, y: 600 }, arranged: true });
+    expect(snapshot.nodes.find((node) => node.id === "bot:lead")).not.toHaveProperty("arranged");
   });
 
   it("go below a stored node where the default layout would lay one over it, a bot that left in nobody's way", () => {
@@ -129,6 +137,15 @@ describe("what a bot's node says", () => {
     expect(hidden.status).toBe("waiting");
     const none = buildSnapshot(input({ bots: [bot("lead", threads)], sees: () => false })).bots.lead!;
     expect(none).not.toHaveProperty("output");
+  });
+
+  it("carries the latest steps of the conversation it works in, else of its newest, redacted", () => {
+    const leadWith = (threads: ThreadFacts[]) => buildSnapshot(input({ bots: [bot("lead", threads), bot("writer"), bot("boards")] })).bots.lead!;
+    const working = leadWith([thread("a", { lastAt: 9, steps: [{ text: "Old", at: 1 }] }), thread("b", { busy: true, lastAt: 2, steps: [{ text: `Ran curl ${KEY}`, at: 2 }] })]);
+    expect(working.steps).toEqual([{ text: expect.not.stringContaining(KEY), at: 2 }]);
+    const idle = leadWith([thread("a", { lastAt: 9, steps: [{ text: "Read brief.md", at: 8 }] }), thread("b", { lastAt: 2, steps: [{ text: "Older", at: 2 }] })]);
+    expect(idle.steps).toEqual([{ text: "Read brief.md", at: 8 }]);
+    expect(buildSnapshot(input({ bots: [bot("lead", [thread("a", { steps: [{ text: "Hidden", at: 1 }] })])], sees: () => false })).bots.lead).not.toHaveProperty("steps");
   });
 
   it("carries what it is doing while it works and the card it waits with, redacted", () => {

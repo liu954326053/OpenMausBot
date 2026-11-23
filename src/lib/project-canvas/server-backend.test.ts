@@ -160,27 +160,36 @@ describe("the project canvas on the app's server", () => {
     expect(JSON.parse(String(sent[0]!.body))).toEqual({ nodeId: "shot-1", language: "zh" });
   });
 
-  it("selects a take, answers the run, opens the draft and names the finished film on the pipeline's routes, and leaves a refusal to the caller", async () => {
+  it("selects a take, has what stopped go on, reads an episode's timeline, opens the draft and names the finished film on the production's routes, and leaves a refusal to the caller", async () => {
     const { backend } = backendWith();
     const archived = { code: "canvas_read_only", error: "Archived.", errorKey: "serverError.projectCanvas.archived", reason: "archived" };
-    answers.push({ body: { revision: 9 } }, { status: 409, body: archived }, { status: 202, body: {} }, { status: 404, body: { error: "Not found" } }, { body: { opened: "app" } }, { body: { revision: 10 } }, { status: 400, body: { error: "That file is not a video." } });
+    const production = { jobs: [], ready: true, episodes: [], tasks: [] };
+    const timeline = { projectId: "p 1", episode: 3, clips: [], missingShots: ["s1"] };
+    answers.push(
+      { body: { revision: 9 } }, { status: 409, body: archived }, { body: production }, { status: 409, body: { error: "Nothing stopped there." } },
+      { body: timeline }, { body: { projectId: "p 1", clips: [], missingShots: [] } }, { body: { opened: "app" } }, { body: { revision: 10 } }, { status: 400, body: { error: "That file is not a video." } },
+    );
     expect(await backend.selectTake("p 1", "take-2")).toEqual({ revision: 9 });
     await expect(backend.selectTake("p 1", "take-2")).rejects.toMatchObject({ name: "CanvasBackendError", body: { reason: "archived" } });
-    await backend.answerVideos("p 1", { action: "start" });
-    await expect(backend.answerVideos("p 1", { action: "retry" })).rejects.toMatchObject({ status: 404 });
+    expect(await backend.retryProduction("p 1", { episode: 3 })).toEqual(production);
+    await expect(backend.retryProduction("p 1", { job: "script" })).rejects.toMatchObject({ status: 409, message: "Nothing stopped there." });
+    expect(await backend.readTimeline("p 1", 3)).toEqual(timeline);
+    await backend.readTimeline("p 1");
     expect(await backend.openDraft("p 1")).toEqual({ opened: "app" });
     await backend.setFinalFilm("p 1", { path: "产出/film.mp4" });
     await expect(backend.setFinalFilm("p 1", { path: "产出/notes.txt" })).rejects.toThrow("That file is not a video.");
     expect(sent.map(({ path, method }) => `${method} ${path}`)).toEqual([
       "POST /api/team-projects/p%201/canvas/select-take",
       "POST /api/team-projects/p%201/canvas/select-take",
-      "POST /api/team-projects/p%201/pipeline/videos",
-      "POST /api/team-projects/p%201/pipeline/videos",
+      "POST /api/team-projects/p%201/production/retry",
+      "POST /api/team-projects/p%201/production/retry",
+      "GET /api/team-projects/p%201/timeline?episode=3",
+      "GET /api/team-projects/p%201/timeline",
       "POST /api/team-projects/p%201/draft/open",
       "POST /api/team-projects/p%201/final",
       "POST /api/team-projects/p%201/final",
     ]);
-    expect([0, 2, 3, 5].map((index) => JSON.parse(String(sent[index]!.body)))).toEqual([{ nodeId: "take-2" }, { action: "start" }, { action: "retry" }, { path: "产出/film.mp4" }]);
+    expect([0, 2, 3, 7].map((index) => JSON.parse(String(sent[index]!.body)))).toEqual([{ nodeId: "take-2" }, { episode: 3 }, { job: "script" }, { path: "产出/film.mp4" }]);
   });
 
   it("knows where a picked file is only in the desktop app on its own computer", () => {
@@ -275,7 +284,7 @@ describe("the project canvas on the app's server", () => {
 
   it("reads a bot's part of the project's group chat when it is newer, opens a reply there in the group chat, and leaves it unread", async () => {
     setTeamProjects({ root: "/dramas", projects: [{
-      id: "p1", name: "p1", folder: "/dramas/p1", section: "p1", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {}, roomId: "room",
+      id: "p1", name: "p1", folder: "/dramas/p1", section: "p1", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {}, episodeBots: {}, roomId: "room",
     }] });
     const room = { id: "room", threadId: "room-thread", name: "p1 team chat", memberIds: ["lead", "writer"], unread: true, tasks: [] } as unknown as Group;
     const { backend, dispatch } = backendWith([bot({ id: "writer", name: "Ink", threadId: "t-open", mainThreadId: "t-main" })], [room]);
@@ -333,7 +342,7 @@ describe("the project canvas on the app's server", () => {
 
   it("stops the turn the bot is taking in the project's group chat, and leaves the other members' turns", async () => {
     setTeamProjects({ root: "/dramas", projects: [{
-      id: "p1", name: "p1", folder: "/dramas/p1", section: "p1", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer", "editor"], follows: {}, roomId: "room",
+      id: "p1", name: "p1", folder: "/dramas/p1", section: "p1", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer", "editor"], follows: {}, episodeBots: {}, roomId: "room",
     }] });
     const room = { id: "room", threadId: "room-thread", memberIds: ["lead", "writer", "editor"], busyBotId: "writer", tasks: [{ threadId: "room-thread", busyBotId: "writer" }, { threadId: "room-side", busyBotId: "editor" }] } as unknown as Group;
     const { backend, dispatch } = backendWith([bot({ id: "writer" }), bot({ id: "editor" }), bot({ id: "lead" })], [room]);

@@ -39,7 +39,7 @@ import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type Canvas
 import type { ProjectPathError } from "./paths.ts";
 import { canvasFlow, type CanvasFlow, type ProjectPipeline } from "./flow.ts";
 import { placeAfter, placeForActor } from "./placement.ts";
-import { taskMessage, taskReferences } from "./references.ts";
+import { TASK_REFERENCES_MAX, taskMessage, taskReferences, withNamedReferences } from "./references.ts";
 import { botFrames, buildSnapshot } from "./snapshot.ts";
 import { shownSoFar } from "./shown-so-far.ts";
 import { replyText, roomTurnClosedBy, TaskTargets, type TaskTarget } from "./task-targets.ts";
@@ -449,11 +449,12 @@ export class ProjectCanvasService {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     if (project.folderState !== "ready") throw refusal(409, "serverError.projectCanvas.folderMissing", { folder: project.folder });
     const request = record(body);
-    const { botId, text, targetNodeId } = request;
+    const { botId, text, targetNodeId, references: named } = request;
     const asked = request.threadId;
     if (typeof botId !== "string" || typeof text !== "string" || text.length > TASK_MAX_CHARS || (asked !== undefined && typeof asked !== "string")
-      || (targetNodeId !== undefined && typeof targetNodeId !== "string")) {
-      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, language? }, its text at most ${TASK_MAX_CHARS} characters` });
+      || (targetNodeId !== undefined && typeof targetNodeId !== "string")
+      || (named !== undefined && !(Array.isArray(named) && named.length <= TASK_REFERENCES_MAX && named.every((id) => typeof id === "string")))) {
+      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, references?, language? }, its text at most ${TASK_MAX_CHARS} characters and at most ${TASK_REFERENCES_MAX} references` });
     }
     const language = requestLanguage(request.language) ?? this.deps.language();
     if (!project.botIds.includes(botId)) throw refusal(404, "serverError.projectCanvas.notMember");
@@ -467,7 +468,8 @@ export class ProjectCanvasService {
     if (targetNodeId !== undefined && target?.type !== "text") {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
     }
-    const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
+    const writtenIn = targetNodeId ?? botNodeId(botId);
+    const references = await taskReferences(withNamedReferences(document, writtenIn, named ?? []), writtenIn, { folder: project.folder, saveImage: this.deps.saveImage, language });
     const quoted = room ? { ...references, text: quietMentions(references.text), ...(references.source ? { source: quietMentions(references.source) } : {}) } : references;
     const message = taskMessage(text, quoted, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });

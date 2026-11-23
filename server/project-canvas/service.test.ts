@@ -195,6 +195,21 @@ describe("a task sent from the canvas", () => {
     expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap." }]);
   });
 
+  it("carries the nodes the person named with it as if they were connected, each once, and refuses a list that is not one of ids", async () => {
+    const { service, project, sent } = setup();
+    const [brief, scene] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } },
+      { type: "add_node", nodeType: "text", title: "Scene", metadata: { content: "Rain on the steps." } },
+    )).nodeIds as [string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: brief, toNodeId: botNodeId("writer") }));
+    const answer = await service.task("p1", auth, { botId: "writer", text: "Write it", references: [scene, brief, scene, "gone", botNodeId("lead")] });
+    expect(answer).toMatchObject({ references: 2 });
+    expect(sent.at(-1)?.text).toBe("Write it\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap.\n\nText 2 \"Scene\":\n\n> Rain on the steps.");
+    expect(service.botView(service.project("p1")).connections.filter((one) => one.kind === "content" && one.toNodeId === botNodeId("writer"))).toHaveLength(1);
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", references: "scene" })).rejects.toMatchObject({ status: 400 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", references: [7] })).rejects.toMatchObject({ status: 400 });
+  });
+
   it("names the references in the language the person's request names, else in the server's", async () => {
     addServerLinePacks({ zh: { "server.projectCanvas.reference.text": "文本", "server.projectCanvas.task.connected": "项目画布上连到你的节点的内容：" } });
     let serverLanguage: string | undefined;

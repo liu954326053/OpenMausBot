@@ -39,7 +39,7 @@ const room = (id: string, section: string, extra: Partial<Group> = {}): Group =>
   id, threadId: `${id}-thread`, name: id, memberIds: [], messages: [], defaultResponder: { kind: "mentions" }, bulletin: "", unread: false, createdAt: 1, section, ...extra,
 });
 const bride: TeamProjectWire = {
-  id: "p-bride", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
+  id: "p-bride", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {}, episodeBots: {},
   leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"],
 };
 const teamChanges = { joined: [{ id: "colorist", name: "Colorist", title: "Grades the picture" }], left: [] };

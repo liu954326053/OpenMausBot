@@ -417,8 +417,10 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
         if (op.metadata || op.patch?.title !== undefined || op.patch?.groupId !== undefined) {
           throw new CanvasOpRefusal("invalid_op", "a bot's node can only be moved and sized", index, op.id);
         }
-        const frame = at >= 0 ? document.nodes[at]! : { id: op.id, type: "bot" as const, title: "", ...context.bots.get(op.id)! };
-        const next: CanvasNode = { id: op.id, type: "bot", title: "", position: op.patch?.position ?? frame.position, width: op.patch?.width ?? frame.width, height: op.patch?.height ?? frame.height };
+        const stored = at >= 0 ? document.nodes[at] : undefined;
+        const frame = stored ?? { id: op.id, type: "bot" as const, title: "", ...context.bots.get(op.id)! };
+        const arranged = stored?.arranged || (actor.kind === "person" && op.patch?.position !== undefined);
+        const next: CanvasNode = { id: op.id, type: "bot", title: "", position: op.patch?.position ?? frame.position, width: op.patch?.width ?? frame.width, height: op.patch?.height ?? frame.height, ...(arranged ? { arranged: true as const } : {}) };
         if (at >= 0) document.nodes[at] = next;
         else document.nodes.push(next);
         changedNodes.add(op.id);
@@ -430,6 +432,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
       const { groupId, ...frame } = op.patch ?? {};
       const next: CanvasNode = { ...current, ...frame };
       next.height = allowedNodeHeight(next.type, next.height);
+      if (actor.kind === "person" && frame.position) next.arranged = true;
       if (groupId === null) delete next.groupId;
       if (typeof groupId === "string") {
         if (actor.kind === "bot") throw new CanvasOpRefusal("not_allowed", "grouping is the person's", index);

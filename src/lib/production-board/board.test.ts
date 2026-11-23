@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ProductionEpisodeWire, ProductionWire } from "../../../shared/production";
 import { botNodeId, type CanvasBotState, type CanvasConnection, type CanvasNode, type CanvasSnapshot } from "../../../shared/project-canvas";
 import type { FlowStage } from "../../../shared/team-pipeline";
-import { buildBoard, type BoardCard, type BoardEdge } from "./board";
+import { buildBoard } from "./board";
+import type { BoardCard, BoardEdge } from "./types";
 import { visibleEdges } from "./edges";
 
 const bot = (botId: string, stages: FlowStage[], extra: Partial<CanvasBotState> = {}): CanvasBotState => ({ botId, name: botId, title: stages[0]!, lead: stages.includes("lead"), stages, status: "idle", placed: true, ...extra });
@@ -120,17 +121,17 @@ describe("the board's cards", () => {
 
   it("gives each card the nodes it stands for", () => {
     const { cards } = buildBoard(drama());
-    expect(card(cards, "hero")).toMatchObject({ kind: "character", stage: "library", nodeIds: ["hero", "g-hero", "hero-1"], badge: "Lead", picture: { nodeId: "hero-1" } });
+    expect(card(cards, "hero")).toMatchObject({ kind: "character", stage: "library", nodeIds: ["hero", "g-hero", "hero-1"], facts: { badge: "Lead" }, picture: { nodeId: "hero-1" }, appearsIn: [{ shotId: "sh1", episode: 1, number: 1 }] });
     expect(card(cards, "pier")).toMatchObject({ kind: "scene", stage: "library", nodeIds: ["pier", "g-pier"] });
     expect(card(cards, "pier-end")).toMatchObject({ kind: "scene", stage: "storyboard", episode: 1, refinedBy: "boarder-1", refinedFrom: "pier" });
-    expect(card(cards, "result:sh1")).toMatchObject({ kind: "result", nodeIds: ["cr1", "t1a", "t1b"], status: "done", selectedTakeId: "t1a", code: "SH01" });
-    expect(card(cards, "result:sh2")).toMatchObject({ status: "generating", code: "SH02" });
-    expect(card(cards, "sh3")).toMatchObject({ kind: "shot", episode: 2, code: "SH01", status: "idle" });
-    expect(card(cards, "sh1")).toMatchObject({ kind: "shot", seconds: 6, size: "wide", characters: ["hero"], scenes: ["pier"] });
+    expect(card(cards, "result:sh1")).toMatchObject({ kind: "result", nodeIds: ["cr1", "t1a", "t1b"], status: "done", selectedTakeId: "t1a", number: 1 });
+    expect(card(cards, "result:sh2")).toMatchObject({ status: "generating", number: 2, generation: { status: "loading" } });
+    expect(card(cards, "sh3")).toMatchObject({ kind: "shot", episode: 2, number: 1, status: "idle" });
+    expect(card(cards, "sh1")).toMatchObject({ kind: "shot", seconds: 6, design: { size: "wide" }, takes: 2, characters: ["hero"], scenes: ["pier"] });
     expect(card(cards, "sh2")).toMatchObject({ characters: [], scenes: ["pier-end"] });
-    expect(card(cards, "final:1")).toMatchObject({ kind: "final", episode: 1, nodeIds: [], postBotId: "editor-1" });
+    expect(card(cards, "final:1")).toMatchObject({ kind: "final", episode: 1, nodeIds: [], postBotId: "editor-1", clips: [{ number: 1, state: "ready", durationMs: 6000 }, { number: 2, state: "generating" }] });
     expect(card(cards, "note")).toMatchObject({ kind: "other", nodeIds: ["note"] });
-    expect(card(cards, "brief")).toMatchObject({ kind: "brief", stage: "brief", rows: [["Episodes", "4"]] });
+    expect(card(cards, "brief")).toMatchObject({ kind: "brief", stage: "brief", rows: [["Episodes", "4"]], by: "lead" });
     expect(card(cards, "plan")).toMatchObject({ kind: "plan", stage: "brief" });
   });
 
@@ -153,7 +154,7 @@ describe("the board's cards", () => {
     const board = buildBoard(legacy);
     expect(board.unfolded).toEqual([1]);
     expect(card(board.cards, "script")).toMatchObject({ kind: "episode", episode: 1, stage: "script" });
-    expect(card(board.cards, "sh1")).toMatchObject({ episode: 1, code: "SH01" });
+    expect(card(board.cards, "sh1")).toMatchObject({ episode: 1, number: 1 });
     expect(card(board.cards, "film")).toMatchObject({ kind: "final", episode: 1 });
     expect(card(board.cards, botNodeId("boarder"))).toMatchObject({ stage: "storyboard", episode: 1 });
     expect(edge(board.edges, "dispatch", "script", botNodeId("boarder"))).toMatchObject({ label: { kind: "dispatchEpisode", episode: 1 } });
@@ -165,7 +166,8 @@ describe("the board's cards", () => {
     const { cards } = buildBoard(snap);
     expect(card(cards, botNodeId("writer"))).toMatchObject({ progress: { unit: "episodes", done: 4, total: 4 } });
     expect(card(cards, botNodeId("boarder-1"))).toMatchObject({ progress: { unit: "videos", done: 1, total: 2 } });
-    expect(card(cards, botNodeId("boarder-2"))).toMatchObject({ task: { job: "storyboard", episode: 2, status: "working" } });
+    expect(card(cards, botNodeId("boarder-2"))).toMatchObject({ task: { job: "storyboard", episode: 2, status: "working" }, jobStatus: "working" });
+    expect(card(cards, botNodeId("painter"))).toMatchObject({ jobStatus: "done", progress: { unit: "characters", done: 1, total: 1 } });
     expect(card(cards, botNodeId("lead"))).toMatchObject({ lead: true, progress: { unit: "tasks", done: 3, total: 5 } });
   });
 

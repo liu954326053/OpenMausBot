@@ -69,6 +69,12 @@ describe("a project's canvas on disk", () => {
     expect(again.nodes.map((node) => node.title)).toEqual(["Brief"]);
   });
 
+  it("keeps across a restart that the person moved a node", () => {
+    change(store(), [{ type: "add_node", id: "brief", nodeType: "text" }]);
+    change(store(), [{ type: "update_node", id: "brief", patch: { position: { x: 40, y: 80 } } }]);
+    expect(store().read("p1").nodes[0]).toMatchObject({ position: { x: 40, y: 80 }, arranged: true });
+  });
+
   it("keeps the revision when nothing changed", () => {
     const documents = store();
     change(documents, [{ type: "add_node", id: "a", nodeType: "text" }, { type: "add_node", id: "b", nodeType: "text" }, { type: "connect_nodes", fromNodeId: "a", toNodeId: "b" }]);

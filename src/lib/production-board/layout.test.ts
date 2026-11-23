@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { botNodeId } from "../../../shared/project-canvas";
-import { buildBoard, type Board } from "./board";
-import { layoutBoard, PLACEHOLDER_CARD_SIZES, type BoardRect } from "./layout";
+import { buildBoard } from "./board";
+import type { Board } from "./types";
+import { layoutBoard, type BoardCardSizes, type BoardRect } from "./layout";
 import { BOARD_BOTS, productionBoardSample } from "@/testing/production-board-sample";
 
-const sizeOf = (card: Board["cards"][number]) => PLACEHOLDER_CARD_SIZES[card.kind];
+const SIZES: BoardCardSizes = {
+  bot: { width: 320, height: 280 },
+  brief: { width: 330, height: 300 },
+  plan: { width: 330, height: 260 },
+  episode: { width: 400, height: 320 },
+  stack: { width: 400, height: 220 },
+  character: { width: 400, height: 240 },
+  scene: { width: 340, height: 260 },
+  shot: { width: 470, height: 300 },
+  result: { width: 320, height: 230 },
+  final: { width: 620, height: 420 },
+  other: { width: 340, height: 240 },
+};
+const sizeOf = (card: Board["cards"][number]) => SIZES[card.kind];
 const LEAD = botNodeId(BOARD_BOTS.lead);
 const WRITER = botNodeId(BOARD_BOTS.writer);
 const overlap = (a: BoardRect, b: BoardRect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -18,7 +32,7 @@ describe("the board's layout", () => {
 
   it("places every card at its kind's size, none on another", () => {
     expect(layout.rects.size).toBe(board.cards.length);
-    for (const card of board.cards) expect(rect(card.id)).toMatchObject(PLACEHOLDER_CARD_SIZES[card.kind]);
+    for (const card of board.cards) expect(rect(card.id)).toMatchObject(SIZES[card.kind]);
     const rects = [...layout.rects.entries()];
     for (const [at, [id, one]] of rects.entries()) {
       for (const [other, two] of rects.slice(at + 1)) expect(overlap(one, two), `${id} on ${other}`).toBe(false);

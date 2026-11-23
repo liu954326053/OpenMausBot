@@ -1,5 +1,6 @@
 import type { ProductionTaskStatus } from "../../../shared/production";
-import type { BoardIndex, BoardStageState } from "./board";
+import type { BoardIndex } from "./board";
+import type { BoardStageState } from "./types";
 import type { BoardStage } from "./overlay";
 
 const taskStage = (status: ProductionTaskStatus | undefined): BoardStageState =>

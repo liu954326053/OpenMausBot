@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { connectedReferences, isReferenceNode, mentionReferences, REFERENCE_KIND_KEYS, referenceLabel, type CanvasReference } from "../../shared/project-canvas-references.ts";
-import { botIdOfNode, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeSettings } from "../../shared/project-canvas.ts";
+import { botIdOfNode, type CanvasConnection, type CanvasDocument, type CanvasFileRef, type CanvasNode, type CanvasNodeSettings } from "../../shared/project-canvas.ts";
 import { IMAGE_MAX_BYTES } from "../attachments.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import { TURN_IMAGE_MAX_BYTES, TURN_IMAGE_MAX_COUNT } from "../turn-images.ts";
@@ -21,6 +21,19 @@ export interface TaskReferences {
   source?: string;
   text: string;
   count: number;
+}
+
+export const TASK_REFERENCES_MAX = 50;
+
+/** The canvas as if each content node the person named with a task were connected into the node the task was written
+ * in, so it goes with the task as a connected one does. */
+export function withNamedReferences(document: CanvasDocument, nodeId: string, named: readonly string[]): CanvasDocument {
+  const content = new Set(document.nodes.filter((node) => botIdOfNode(node.id) === null).map((node) => node.id));
+  const connected = new Set(document.connections.flatMap((one) => (one.kind === "content" && one.toNodeId === nodeId ? [one.fromNodeId] : [])));
+  const added = [...new Set(named)]
+    .filter((id) => id !== nodeId && content.has(id) && !connected.has(id))
+    .map((id): CanvasConnection => ({ id: `named:${id}`, fromNodeId: id, toNodeId: nodeId, kind: "content" }));
+  return added.length ? { ...document, connections: [...document.connections, ...added] } : document;
 }
 
 const MODEL_IMAGES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

@@ -56,12 +56,3 @@ export function nextOutputFrame(source: CanvasNode, type: CanvasNodeType, nodes:
     frame.position = { x: frame.position.x, y: Math.max(...hits.map((one) => one.position.y + one.height)) + OUTPUT_GAP_Y };
   }
 }
-
-/** The frames the results of the generations running now will take, each with the node it comes from. */
-export function comingOutputs(nodes: readonly CanvasNode[], connections: readonly CanvasConnection[], taken: readonly OutputFrame[]): Array<{ sourceId: string; frame: OutputFrame }> {
-  return nodes.flatMap((node) => {
-    const kind = generationKindOf(node);
-    if (!kind || node.metadata?.status !== "loading" || takesResultInPlace(node)) return [];
-    return [{ sourceId: node.id, frame: nextOutputFrame(node, kind, nodes, connections, taken) }];
-  });
-}

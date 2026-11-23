@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { botNodeId, type CanvasGenerateRequest, type CanvasOpsRequest, type CanvasTaskRequest } from "../../../shared/project-canvas";
-import { SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "../../testing/project-canvas-sample";
+import type { CanvasGenerateRequest, CanvasOpsRequest, CanvasTaskRequest } from "../../../shared/project-canvas";
+import { BOARD_PROJECT_ID, productionBoardBackend, SAMPLE_FAILED_EPISODE } from "../../testing/production-board-sample";
+import { SAMPLE_LOOKS, SAMPLE_PROJECT_ID, sampleCanvasBackend } from "../../testing/project-canvas-sample";
 import { loadLocale, setLocale, t } from "../i18n";
 import { CanvasBackendError } from "./backend";
-import { CanvasController, VIEWPORT_SAVE_DELAY_MS } from "./controller";
+import { CanvasController } from "./controller";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -42,66 +43,29 @@ describe("the canvas controller", () => {
     expect(controller.getState().snapshot!.nodes.some((candidate) => candidate.title === "Note")).toBe(true);
     await controller.settled();
     await controller.refresh();
-    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([["update_node"], ["update_node", "update_node", "update_node", "update_node"], ["add_node"]]);
-    expect(sent[2]!.ops[0]).toMatchObject({ id: expect.any(String) });
+    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([["update_node"], ["add_node"]]);
+    expect(sent[1]!.ops[0]).toMatchObject({ id: expect.any(String) });
     expect(backend.current().nodes.find((candidate) => candidate.id === "logline")!.title).toBe("Logline v2");
     expect(controller.getState().snapshot!.revision).toBe(backend.current().revision);
   });
 
-  it("sends a change with the revision it was made on, never one older than its own last change, and arranging without one", async () => {
+  it("sends a change with the revision it was made on, never one older than its own last change, and a move without one", async () => {
     const { backend, controller, sent } = await started();
     const start = backend.current().revision;
     controller.apply([{ type: "update_node", id: "logline", patch: { title: "Logline v2" } }]);
     controller.apply([{ type: "add_node", nodeType: "text", title: "Note", position: { x: 10, y: 10 } }]);
     controller.apply([{ type: "update_node", id: "logline", patch: { position: { x: 5, y: 5 }, width: 300 } }]);
-    controller.setBackground("dots");
     await controller.settled();
-    expect(sent.map((request) => request.baseRevision)).toEqual([start, undefined, start + 2, undefined, undefined]);
+    expect(sent.map((request) => request.baseRevision)).toEqual([start, start + 1, undefined]);
   });
 
-  it("stores where each bot the server still lays out is before the first node is added, as its own change and out of undo", async () => {
-    const { backend, controller, sent } = await started();
-    const before = backend.current().nodes.filter((candidate) => candidate.type === "bot");
-    controller.apply([{ type: "add_node", nodeType: "text", title: "Note", position: { x: 10, y: 10 } }]);
-    controller.apply([{ type: "add_node", nodeType: "text", title: "Another", position: { x: 10, y: 400 } }]);
+  it("shows a node the person moved as theirs to place at once, before the server says so", async () => {
+    const { controller } = await started();
+    controller.apply([{ type: "update_node", id: "logline", patch: { position: { x: 640, y: 80 } } }]);
+    expect(node(controller, "logline")).toMatchObject({ position: { x: 640, y: 80 }, arranged: true });
     await controller.settled();
     await controller.refresh();
-    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([before.map(() => "update_node"), ["add_node"], ["add_node"]]);
-    expect(sent[0]).toEqual({ ops: before.map((bot) => ({ type: "update_node", id: bot.id, patch: { position: bot.position } })) });
-    expect(Object.values(backend.current().bots).map((bot) => bot.placed)).toEqual(before.map(() => true));
-    controller.undo();
-    controller.undo();
-    expect(controller.getState().canUndo).toBe(false);
-    await controller.upload(new File(["x"], "still.png", { type: "image/png" }), { x: 5, y: 900 });
-    expect(sent).toHaveLength(5);
-  });
-
-  it("stores those places before an upload too", async () => {
-    const { controller, sent } = await started();
-    const { nodeId } = await controller.upload(new File(["x"], "still.png", { type: "image/png" }), { x: 5, y: 6 });
-    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([["update_node", "update_node", "update_node", "update_node"]]);
-    expect(node(controller, nodeId)).toBeDefined();
-  });
-
-  it("stores those places before a picture's node takes its picture's frame, which stays out of undo", async () => {
-    const { backend, controller, sent } = await started();
-    const bots = backend.current().nodes.filter((candidate) => candidate.type === "bot");
-    controller.fitPicture("city-night", { position: { x: 1200, y: 640 }, width: 220, height: 391 }, { naturalWidth: 27, naturalHeight: 48 });
-    await controller.settled();
-    await controller.refresh();
-    expect(sent.map((request) => request.ops.map((op) => op.type))).toEqual([bots.map(() => "update_node"), ["update_node"]]);
-    expect(node(controller, "city-night")).toMatchObject({ position: { x: 1200, y: 640 }, width: 220, height: 391, metadata: { naturalWidth: 27, naturalHeight: 48 } });
-    expect(backend.current().nodes.filter((candidate) => candidate.type === "bot").map((bot) => bot.position)).toEqual(bots.map((bot) => bot.position));
-    expect(controller.getState().canUndo).toBe(false);
-  });
-
-  it("shows a view without storing it when asked to", async () => {
-    const { backend, controller } = await started();
-    controller.setViewport({ x: 40, y: 50, k: 0.5 }, { save: false });
-    await vi.advanceTimersByTimeAsync(VIEWPORT_SAVE_DELAY_MS * 2);
-    await controller.settled();
-    expect(controller.getState().viewport).toEqual({ x: 40, y: 50, k: 0.5 });
-    expect(backend.current().viewport).toEqual({ x: 0, y: 0, k: 1 });
+    expect(node(controller, "logline")).toMatchObject({ position: { x: 640, y: 80 }, arranged: true });
   });
 
   it("reads the canvas and the bots' looks again whenever the backend says something changed", async () => {
@@ -123,24 +87,6 @@ describe("the canvas controller", () => {
     expect(backend.readConversations).toEqual([{ botId: "mira", threadId: "thread-mira" }, { botId: "kai" }]);
   });
 
-  it("undoes and redoes a deletion with its connections, and drops redo after a new change", async () => {
-    const { backend, controller } = await started();
-    controller.apply([{ type: "delete_node", id: "city-night" }]);
-    expect(node(controller, "city-night")).toBeUndefined();
-    controller.undo();
-    expect(node(controller, "city-night")).toBeDefined();
-    expect(controller.getState().snapshot!.connections.some((connection) => connection.id === "c-city-creation")).toBe(true);
-    expect(controller.getState().canRedo).toBe(true);
-    controller.redo();
-    expect(node(controller, "city-night")).toBeUndefined();
-    controller.undo();
-    controller.apply([{ type: "update_node", id: "logline", patch: { title: "x" } }]);
-    expect(controller.getState().canRedo).toBe(false);
-    await controller.settled();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(backend.current().nodes.some((candidate) => candidate.id === "city-night")).toBe(true);
-  });
-
   it("keeps a failed change off the canvas and says why", async () => {
     const { backend, controller } = await started();
     backend.applyOps = () => Promise.reject(new Error("Disk full"));
@@ -153,31 +99,6 @@ describe("the canvas controller", () => {
     controller.apply([{ type: "update_node", id: "logline", patch: { title: "Lost again" } }]);
     await controller.settled();
     expect(controller.getState().writeError).toBe(t("serverError.projectCanvas.archived"));
-  });
-
-  it("stores the view once it rests, without moving it on a newer snapshot or adding it to undo", async () => {
-    const { backend, controller } = await started();
-    controller.setViewport({ x: 40, y: 50, k: 2 });
-    controller.setViewport({ x: 80, y: 90, k: 2 });
-    await vi.advanceTimersByTimeAsync(VIEWPORT_SAVE_DELAY_MS);
-    await controller.settled();
-    expect(backend.current().viewport).toEqual({ x: 80, y: 90, k: 2 });
-    backend.updateBots((snapshot) => {
-      snapshot.viewport = { x: 0, y: 0, k: 1 };
-    });
-    await vi.advanceTimersByTimeAsync(0);
-    await controller.refresh();
-    expect(controller.getState().viewport).toEqual({ x: 80, y: 90, k: 2 });
-    expect(controller.getState().canUndo).toBe(false);
-  });
-
-  it("tidies the bots into their stages' columns as one undoable change", async () => {
-    const { controller } = await started();
-    controller.apply([{ type: "update_node", id: botNodeId("otto"), patch: { position: { x: 2000, y: 2000 } } }], { record: false });
-    controller.tidy();
-    expect(node(controller, botNodeId("otto"))!.position).not.toEqual({ x: 2000, y: 2000 });
-    controller.undo();
-    expect(node(controller, botNodeId("otto"))!.position).toEqual({ x: 2000, y: 2000 });
   });
 
   it("stores a changed prompt before generating, and hands back a refusal", async () => {
@@ -263,34 +184,14 @@ describe("the canvas controller", () => {
     expect(controller.getState().snapshot!.nodes.filter((one) => one.metadata?.selected)).toHaveLength(1);
   });
 
-  it("answers the run and shows where it then stands, and hands on a refusal", async () => {
-    const run = { id: "r", startedAt: 1, stages: [], videos: { status: "confirm" as const, shots: 2, ready: 0, failed: 0 } };
-    const { controller } = await started({ snapshot: { ...sampleCanvasSnapshot(), run } });
-    await controller.answerVideos("start");
-    expect(controller.getState().snapshot!.run!.videos.status).toBe("working");
-    await expect(controller.answerVideos("start")).rejects.toThrow("isn't waiting");
-  });
-
-  it("names the finished film by its path in the project folder, and refuses a file outside it or one it can't place without asking the backend", async () => {
-    const draft = { state: "written" as const, name: "Rain City", exportFolder: "/dramas/Rain City/产出" };
-    const paths: Record<string, string> = { "inside.mp4": "/dramas/Rain City/产出/成片/inside.mp4", "outside.mp4": "/Users/me/Movies/outside.mp4", "nowhere.mp4": "" };
-    const { backend, controller } = await started({ snapshot: { ...sampleCanvasSnapshot(), draft }, localPathOf: (file) => paths[file.name]! });
-    const setFinalFilm = vi.spyOn(backend, "setFinalFilm");
-    expect(controller.picksFiles).toBe(true);
-    expect(await controller.chooseFilm(new File(["x"], "outside.mp4"))).toBe(false);
-    expect(await controller.chooseFilm(new File(["x"], "nowhere.mp4"))).toBe(false);
-    expect(setFinalFilm).not.toHaveBeenCalled();
-    expect(await controller.chooseFilm(new File(["x"], "inside.mp4"))).toBe(true);
-    expect(setFinalFilm).toHaveBeenCalledWith(SAMPLE_PROJECT_ID, { path: "产出/成片/inside.mp4" });
-    expect(controller.getState().snapshot!.nodes.some((one) => one.metadata?.role === "final")).toBe(true);
-    expect((await started()).controller.picksFiles).toBe(false);
-  });
-
-  it("records an upload so undo removes the node", async () => {
-    const { controller } = await started();
-    const { nodeId } = await controller.upload(new File(["x"], "still.png", { type: "image/png" }), { x: 5, y: 6 });
-    expect(node(controller, nodeId)).toMatchObject({ type: "image", position: { x: 5, y: 6 } });
-    controller.undo();
-    expect(node(controller, nodeId)).toBeUndefined();
+  it("has an episode where it stopped go on, shows where the production then stands, and hands on a refusal", async () => {
+    const backend = productionBoardBackend({ episodes: 4 });
+    const controller = new CanvasController(backend, BOARD_PROJECT_ID);
+    await controller.start();
+    await controller.retry({ episode: SAMPLE_FAILED_EPISODE });
+    const episode = controller.getState().snapshot!.production!.episodes.find((one) => one.episode === SAMPLE_FAILED_EPISODE)!;
+    expect(episode.status).toBe("storyboard");
+    expect(backend.retries).toEqual([{ episode: SAMPLE_FAILED_EPISODE }]);
+    await expect(controller.retry({ job: "script" })).rejects.toThrow("Nothing stopped there.");
   });
 });

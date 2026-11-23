@@ -1,4 +1,4 @@
-import type { Board, BoardCard, BoardCardKind } from "./board";
+import type { Board, BoardCard, BoardCardKind } from "./types";
 import { BOARD_STAGES, type BoardStage } from "./overlay";
 
 export interface BoardRect {
@@ -14,20 +14,6 @@ export interface BoardSize {
 }
 
 export type BoardCardSizes = Record<BoardCardKind, BoardSize>;
-
-export const PLACEHOLDER_CARD_SIZES: BoardCardSizes = {
-  bot: { width: 320, height: 280 },
-  brief: { width: 330, height: 300 },
-  plan: { width: 330, height: 260 },
-  episode: { width: 400, height: 320 },
-  stack: { width: 400, height: 220 },
-  character: { width: 400, height: 240 },
-  scene: { width: 340, height: 260 },
-  shot: { width: 470, height: 300 },
-  result: { width: 320, height: 230 },
-  final: { width: 620, height: 420 },
-  other: { width: 340, height: 240 },
-};
 
 export const ROW_GAP = 32;
 export const LANE_GAP = 120;

@@ -1,5 +1,6 @@
 import type { DramaJob, ProductionEpisodeStatus, ProductionTaskStatus } from "../../../shared/production";
-import type { BoardBotCard, BoardCard, BoardEdge, BoardEdgeKind, BoardEdgeLabel, BoardEdgeState, BoardIndex, BoardResultCard } from "./board";
+import type { BoardIndex } from "./board";
+import type { BoardBotCard, BoardCard, BoardEdge, BoardEdgeKind, BoardEdgeLabel, BoardEdgeState, BoardResultCard } from "./types";
 
 const taskState = (status: ProductionTaskStatus | undefined): BoardEdgeState => (status === "done" ? "done" : status === "working" ? "active" : "wait");
 

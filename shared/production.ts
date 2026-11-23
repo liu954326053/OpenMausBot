@@ -90,6 +90,9 @@ export interface ProductionWire {
   endedAt?: number;
 }
 
+/** `POST /api/team-projects/:id/production/retry`: a whole-drama job whose task failed, or an episode where it stopped. */
+export type ProductionRetryInput = { job: DramaJob } | { episode: number };
+
 /** How many of each the production runs at once in a project. */
 export interface ProductionConcurrency {
   /** Episodes in work at the same time. */
