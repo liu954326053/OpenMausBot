@@ -24,7 +24,8 @@ export interface BoardShotRef {
   number: number;
 }
 
-const SILVER: CanvasBotLook = { color: "silver" };
+/** The look of a bot whose own look the board does not have. */
+export const SILVER: CanvasBotLook = { color: "silver" };
 
 export const shotCode = (shot: number): string => `SH${String(shot).padStart(2, "0")}`;
 
@@ -89,7 +90,7 @@ export function CardName({ text, title = text, onOpen, className, data = "card-n
 export function CardAction({ onClick, label, icon, className }: { onClick: () => void; label: string; icon?: ReactNode; className?: string }) {
   const act = alone(onClick);
   return (
-    <button type="button" data-board-card-action="" className={cn("ui-button ui-button-sm shrink-0", className)} onClick={act}>
+    <button type="button" data-board-card-action="" className={cn("ui-button ui-button-sm shrink-0 whitespace-nowrap", className)} onClick={act}>
       {icon}
       {label}
     </button>

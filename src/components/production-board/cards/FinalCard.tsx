@@ -4,7 +4,6 @@ import type { ProjectDraftWire } from "../../../../shared/project-draft";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { CardAction, CardLabel, CardName, CardShell, clockLength, InlineVideo, PicturePlaceholder, shotCode } from "./parts";
-import { TONE_DOT } from "./tone";
 
 /** One of the episode's shots, in the order the film plays. */
 export interface FinalClip {
@@ -27,12 +26,13 @@ export interface FinalCardProps {
   onOpenDraft?: () => void;
 }
 
-const CLIP_DOT: Readonly<Record<FinalClip["state"], string>> = {
-  ready: TONE_DOT.done,
-  generating: TONE_DOT.working,
-  failed: TONE_DOT.failed,
-  missing: "border border-ink-tertiary",
+const CLIP_LOOK: Readonly<Record<FinalClip["state"], string>> = {
+  ready: "bg-success/25 text-ink",
+  generating: "bg-accent/20 text-ink-secondary",
+  failed: "bg-danger/20 text-danger",
+  missing: "border border-dashed border-ink-tertiary/60 text-ink-tertiary",
 };
+const UNTIMED_CLIP_MS = 5000;
 
 function draftText(draft: ProjectDraftWire): string {
   switch (draft.state) {
@@ -74,7 +74,7 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
         {!videoUrl && ready < clips.length ? (
           <span data-final-progress="" className="text-[12px] leading-4 text-ink-tertiary tabular-nums">{t("boardCards.final.waiting", { ready, total: clips.length })}</span>
         ) : null}
-        <ol data-canvas-scroll="" className="flex gap-1 overflow-x-auto">
+        <ol className="flex h-7 gap-0.5">
           {clips.map((clip) => {
             const code = shotCode(clip.number);
             return (
@@ -82,10 +82,10 @@ export function FinalCard({ episode, title, coverUrl, videoUrl, durationMs, clip
                 key={clip.number}
                 data-final-clip={clip.state}
                 title={clip.state === "ready" ? t("boardCards.final.clipReady", { code }) : t("boardCards.final.clipMissing", { code })}
-                className={cn("flex h-7 shrink-0 items-center gap-1 rounded-md bg-control px-1.5 font-mono text-[12px] leading-4", clip.state === "ready" ? "text-ink" : "text-ink-tertiary")}
+                style={{ flexGrow: clip.durationMs || UNTIMED_CLIP_MS }}
+                className={cn("flex min-w-0 basis-0 items-center overflow-hidden rounded-[4px] px-1.5 font-mono text-[12px] leading-4", CLIP_LOOK[clip.state])}
               >
-                <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", CLIP_DOT[clip.state])} />
-                {code}
+                <span className="truncate">{code}</span>
               </li>
             );
           })}

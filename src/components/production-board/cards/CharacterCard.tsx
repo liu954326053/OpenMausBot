@@ -27,7 +27,7 @@ export function CharacterCard({ name, facts, pictureUrl, generation, shots, onOp
             {badge ? <span data-asset-badge="" dir="auto" className="ui-chip shrink-0 bg-control text-ink-secondary">{badge}</span> : null}
           </div>
           <AssetSubtitle facts={facts} />
-          <AssetTags tags={facts?.tags} className="max-h-[44px] pt-2" />
+          <AssetTags tags={facts?.tags} rows={2} className="mt-2 shrink-0" />
           {facts?.rows?.length ? (
             <dl className="flex flex-col gap-0.5 pt-2">
               {facts.rows.slice(0, ROWS_SHOWN).map(([label, value], index) => (

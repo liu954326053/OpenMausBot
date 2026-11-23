@@ -1,4 +1,4 @@
-import { ImageOff, Sparkles } from "lucide-react";
+import { ImageOff } from "lucide-react";
 import type { CanvasCardFacts } from "../../../../shared/project-canvas";
 import { episodeCode } from "../../../../shared/production";
 import { cn } from "@/lib/cn";
@@ -48,7 +48,7 @@ export function AssetPicture({ name, pictureUrl, generation, onGenerate, classNa
         <PicturePlaceholder>
           <ImageOff size={14} aria-hidden="true" />
           <span>{t("boardCards.asset.noPicture")}</span>
-          {onGenerate ? <CardAction icon={<Sparkles size={14} aria-hidden="true" />} label={t("boardCards.asset.generatePicture")} onClick={onGenerate} /> : null}
+          {onGenerate ? <CardAction label={t("boardCards.asset.generatePicture")} onClick={onGenerate} /> : null}
         </PicturePlaceholder>
       )}
     </div>
@@ -60,11 +60,16 @@ export function AssetSubtitle({ facts }: { facts?: CanvasCardFacts }) {
   return subtitle ? <div data-asset-subtitle="" dir="auto" title={subtitle} className="truncate text-[12px] leading-4 text-ink-tertiary">{subtitle}</div> : null;
 }
 
-export function AssetTags({ tags, className }: { tags?: readonly string[]; className?: string }) {
+/** The tags, as many whole rows of them as `rows` allows; a tag that does not fit goes to a row that is not shown. */
+export function AssetTags({ tags, rows, className }: { tags?: readonly string[]; rows: 1 | 2; className?: string }) {
   if (!tags?.length) return null;
   return (
-    <div className={cn("flex flex-wrap gap-1 overflow-hidden", className)}>
-      {tags.map((tag, index) => <span key={index} data-asset-tag="" dir="auto" className="ui-chip max-w-full truncate bg-control text-ink-secondary">{tag}</span>)}
+    <div className={cn("flex flex-wrap gap-1 overflow-hidden", rows === 1 ? "max-h-[22px]" : "max-h-[48px]", className)}>
+      {tags.map((tag, index) => (
+        <span key={index} data-asset-tag="" dir="auto" title={tag} className="ui-chip bg-control text-ink-secondary">
+          <span className="truncate">{tag}</span>
+        </span>
+      ))}
     </div>
   );
 }

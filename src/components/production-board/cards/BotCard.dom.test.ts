@@ -81,6 +81,16 @@ describe("the bot card", () => {
     expect(rows[3]!.querySelector("time")).toBeNull();
   });
 
+  it("shows its newest reply where it has no steps to show", () => {
+    const output = { text: "All six shots of EP01 are split.", threadId: "t1", messageId: "m1", at: 1 };
+    const card = draw({ bot: bot({ status: "idle", output }) });
+    const reply = card.querySelector<HTMLElement>("[data-bot-output]")!;
+    expect(textOf(reply)).toBe("All six shots of EP01 are split.");
+    expect(reply.className).toContain("line-clamp-3");
+    expect(textOf(card.querySelector("[data-bot-output-label]"))).toBe("Latest reply");
+    expect(draw({ bot: bot({ output }), steps: [{ text: "Split the shots", state: "done" }] }).querySelector("[data-bot-output]")).toBeNull();
+  });
+
   it("opens on a click anywhere on it, and from the keyboard through its name", () => {
     const onOpen = vi.fn();
     const card = draw({ onOpen });

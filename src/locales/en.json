@@ -9021,6 +9021,7 @@
   "boardCards.bot.task.storyboard": "Storyboard {episode} and make its shot videos",
   "boardCards.bot.task.post": "Cut {episode} into its film",
   "boardCards.bot.steps": "Latest steps",
+  "boardCards.bot.output": "Latest reply",
   "boardCards.bot.asking": "Waiting for your answer",
   "boardCards.bot.answer": "Answer",
   "boardCards.progress.tasks": "Tasks {done} / {total}",

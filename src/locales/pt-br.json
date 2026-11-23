@@ -9021,6 +9021,7 @@
   "boardCards.bot.task.storyboard": "Decupar o {episode} e gerar os vídeos dos planos",
   "boardCards.bot.task.post": "Montar o filme do {episode}",
   "boardCards.bot.steps": "Últimos passos",
+  "boardCards.bot.output": "Última resposta",
   "boardCards.bot.asking": "Esperando sua resposta",
   "boardCards.bot.answer": "Responder",
   "boardCards.progress.tasks": "Tarefas {done} / {total}",

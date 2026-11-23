@@ -28,4 +28,12 @@ describe("the far view label", () => {
     expect(farLabelScale(0.01)).toBeCloseTo(0.86 * 13);
     expect(draw({ zoom: 0.25 }).querySelector<HTMLElement>("[data-far-pill]")!.style.transform).toBe(`scale(${farLabelScale(0.25)})`);
   });
+
+  it("is never much wider on the board than its card, so neighbouring labels do not run into each other", () => {
+    for (const zoom of [1, 0.25, 0.08]) {
+      const pill = draw({ zoom }).querySelector<HTMLElement>("[data-far-pill]")!;
+      expect(Number.parseFloat(pill.style.maxWidth) * farLabelScale(zoom)).toBeCloseTo(BOARD_CARD_SIZES.bot.width * 1.25);
+    }
+    expect(draw().querySelector("[data-far-name]")!.className).toContain("truncate");
+  });
 });

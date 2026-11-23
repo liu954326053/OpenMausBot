@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { formatTime } from "@/lib/clock-time";
 import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
-import { CardAction, CardLabel, CardName, CardShell, Meter, percentOf, StatusMark } from "./parts";
+import { CardAction, CardLabel, CardName, CardShell, Meter, percentOf, SILVER, StatusMark } from "./parts";
 import { botStatus } from "./tone";
 
 export type BoardProgressKind = "tasks" | "episodes" | "characters" | "scenes" | "videos";
@@ -40,7 +40,6 @@ export interface BotCardProps {
 }
 
 const STEPS_SHOWN = 4;
-const SILVER: CanvasBotLook = { color: "silver" };
 
 /** An episode's bot is named after its source with the episode's code; the card shows the code apart. */
 function ownName(name: string, episode: number | undefined): string {
@@ -71,6 +70,7 @@ export function BotCard({ bot, look, job, task, progress, steps, onOpen, onRetry
   const doing = bot.status === "working" ? bot.doing?.trim() : undefined;
   const current = planned ?? doing ?? t("boardCards.bot.noTask");
   const progressLabel = progress ? t(`boardCards.progress.${progress.kind}`, { done: progress.done, total: progress.total }) : "";
+  const reply = bot.output?.text.trim();
   return (
     <CardShell kind="bot" label={bot.name} tone={status.tone} onOpen={onOpen}>
       <header className="flex items-center gap-2.5 px-3 pt-3">
@@ -106,7 +106,12 @@ export function BotCard({ bot, look, job, task, progress, steps, onOpen, onRetry
         ) : null}
       </section>
 
-      {steps?.length ? (
+      {!steps?.length && reply ? (
+        <section className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 pt-3">
+          <span data-bot-output-label=""><CardLabel>{t("boardCards.bot.output")}</CardLabel></span>
+          <p data-bot-output="" dir="auto" title={reply} className="line-clamp-3 whitespace-pre-line text-[12px] leading-[18px] text-ink-secondary">{reply}</p>
+        </section>
+      ) : steps?.length ? (
         <ol aria-label={t("boardCards.bot.steps")} className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-3 pt-3">
           {steps.slice(-STEPS_SHOWN).map((step, index) => (
             <li key={index} data-step={step.state} className={cn("flex items-start gap-2 text-[12px] leading-4", step.state === "waiting" ? "text-ink-tertiary" : step.state === "working" ? "text-ink" : "text-ink-secondary")}>

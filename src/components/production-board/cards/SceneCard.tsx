@@ -23,7 +23,7 @@ export function SceneCard({ name, facts, pictureUrl, generation, shots, refinedB
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-2.5">
         <CardName text={name} onOpen={onOpen} className="text-[17px] font-semibold leading-6" />
         <AssetSubtitle facts={facts} />
-        <AssetTags tags={facts?.tags} className="max-h-[24px] pt-1" />
+        <AssetTags tags={facts?.tags} rows={1} className="mt-1.5 shrink-0" />
         <div className="mt-auto flex min-w-0 items-center gap-3 pt-1.5">
           <AssetShots shots={shots} verb="usedIn" className="flex-1" />
           {refinedBy ? (

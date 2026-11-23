@@ -61,12 +61,12 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
       <header className="flex items-center gap-2 px-3 pt-2.5">
         <span data-shot-code="" className="ui-chip shrink-0 bg-control font-mono text-ink-secondary">{code}</span>
         <CardName text={title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6" />
+        {takes.length > 0 ? <span data-result-count="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary">{t("boardCards.result.takes", { count: takes.length })}</span> : null}
         {take?.durationMs ? <span data-result-length="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary tabular-nums">{clockLength(take.durationMs)}</span> : null}
       </header>
       <footer className="mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-2">
         {takes.length > 0 ? (
           <>
-            <span data-result-count="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary">{t("boardCards.result.takes", { count: takes.length })}</span>
             <div className="flex min-w-0 items-center gap-0.5 overflow-hidden">
               {takes.map((one, index) => (
                 <button
