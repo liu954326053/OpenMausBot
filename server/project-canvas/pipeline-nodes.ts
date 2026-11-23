@@ -29,6 +29,23 @@ export function takesOf(document: Pick<CanvasDocument, "nodes">, shotId: string)
   return document.nodes.filter((node) => isTake(node) && node.metadata?.shotId === shotId);
 }
 
+export function shotParts(document: Pick<CanvasDocument, "nodes">): { creationOf(shotId: string): CanvasNode | undefined; takesOf(shotId: string): readonly CanvasNode[] } {
+  const creations = new Map<string, CanvasNode>();
+  const takes = new Map<string, CanvasNode[]>();
+  for (const node of document.nodes) {
+    const shotId = node.metadata?.shotId;
+    if (shotId === undefined) continue;
+    if (isCreation(node)) {
+      if (!creations.has(shotId)) creations.set(shotId, node);
+    } else if (isTake(node)) {
+      const made = takes.get(shotId);
+      if (made) made.push(node);
+      else takes.set(shotId, [node]);
+    }
+  }
+  return { creationOf: (shotId) => creations.get(shotId), takesOf: (shotId) => takes.get(shotId) ?? [] };
+}
+
 /** The episodes' scripts by number; of two that claim one number the first added is it. */
 export function episodesOf(document: Pick<CanvasDocument, "nodes">): CanvasNode[] {
   const seen = new Set<number>();

@@ -33,8 +33,9 @@ export interface RegistryStore {
   loadBots(): BotRecord[];
   /** The saved rooms as parsed; throws when nothing readable is saved. */
   loadGroups(): GroupRecord[];
-  /** Every bot and its threads as `bots` holds them, synced before it returns. `bots` may be a list that is not live
-   * yet (saved first, so a failure leaves memory alone); `current` says it is the live list, holding every change. */
+  /** Every bot and its threads as `bots` holds them, synced before it returns (inside saveBotsOnceAfter, when the pass
+   * returns). `bots` may be a list that is not live yet (saved first, so a failure leaves memory alone); `current` says
+   * it is the live list, holding every change. */
   writeBots(bots: readonly BotRecord[], current: boolean): void;
   /** Every room and its threads as `groups` holds them, synced before it returns. */
   writeGroups(groups: readonly GroupRecord[]): void;
@@ -72,6 +73,36 @@ export const persistedBots = (bots: readonly BotRecord[]) => bots.map(({ busy: _
   tasks: bot.tasks?.map(({ busy: _taskBusy, activity: _taskActivity, turnStartedAt: _taskTurnStarted, ...task }) => persistedPin(task)),
 }));
 
+let passDepth = 0;
+const waitingBots = new Map<JsonRegistry, () => void>();
+
+/**
+ * Every save of the bots asked for while `run` runs waits, and the last list asked for is written once when it
+ * returns: for a pass that changes many bots, each change of which is made again when it is lost (copies follow their
+ * source again at the next start). A failure then is logged, not thrown, and memory keeps the changes for the next
+ * save. A bot's deletion is still written at once, before its files go.
+ */
+export function saveBotsOnceAfter<T>(run: () => T): T {
+  passDepth += 1;
+  try {
+    return run();
+  } finally {
+    passDepth -= 1;
+    if (passDepth === 0) writeWaitingBots();
+  }
+}
+
+function writeWaitingBots(): void {
+  for (const [registry, write] of waitingBots) {
+    waitingBots.delete(registry);
+    try {
+      write();
+    } catch (error) {
+      console.error("the bots changed in one pass were not saved; the next save writes them", error);
+    }
+  }
+}
+
 /** What groups.json holds: a room's running turn is never saved. */
 export const persistedGroups = (groups: readonly GroupRecord[]) => groups.map(({ busyBotId: _busyBotId, turnStartedAt: _turnStartedAt, ...g }) => ({
   ...g,
@@ -82,6 +113,7 @@ export const persistedGroups = (groups: readonly GroupRecord[]) => groups.map(({
 export class JsonRegistry implements RegistryStore {
   private readonly botsFile = new OwnedFile(BOTS_FILE, { mode: 0o600 });
   private readonly groupsFile = new OwnedFile(GROUPS_FILE, { mode: 0o600 });
+  private writingDeletion = false;
 
   loadBots(): BotRecord[] {
     tightenRegistryFile(BOTS_FILE);
@@ -99,7 +131,13 @@ export class JsonRegistry implements RegistryStore {
   }
 
   writeBots(bots: readonly BotRecord[], current: boolean): void {
+    if (passDepth > 0 && !this.writingDeletion) waitingBots.set(this, () => this.writeWholeBots(bots, current));
+    else this.writeWholeBots(bots, current);
+  }
+
+  private writeWholeBots(bots: readonly BotRecord[], current: boolean): void {
     this.botsFile.write(JSON.stringify(persistedBots(bots)));
+    waitingBots.delete(this);
     if (current) supersedeLaterSave(BOTS_FILE);
   }
 
@@ -113,8 +151,13 @@ export class JsonRegistry implements RegistryStore {
     else write();
   }
 
-  deleteOwner(_owner: RegistryOwner, write: () => void): void {
-    write();
+  deleteOwner(owner: RegistryOwner, write: () => void): void {
+    this.writingDeletion = owner.kind === "bot";
+    try {
+      write();
+    } finally {
+      this.writingDeletion = false;
+    }
   }
 
   batch<T>(run: () => T): T {

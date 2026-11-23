@@ -1,3 +1,4 @@
+import { saveBotsOnceAfter } from "../registry-store.ts";
 import { sectionKey, type BotRecord, type Store } from "../store.ts";
 import { copyUpdate } from "./follow.ts";
 import type { StoredTeamProject, TeamProjectRegistry } from "./registry.ts";
@@ -144,9 +145,11 @@ export class Following {
     const copies = this.deps.store.bots.filter((bot) => follows(bot) && bot.teamProject.source === botId);
     if (!copies.length) return;
     const ids = new Set(copies.map((copy) => copy.id));
-    for (const project of this.projects()) {
-      if (copies.some((copy) => copy.teamProject!.id === project.id)) this.followProject(project, ids);
-    }
+    saveBotsOnceAfter(() => {
+      for (const project of this.projects()) {
+        if (copies.some((copy) => copy.teamProject!.id === project.id)) this.followProject(project, ids);
+      }
+    });
   }
 
   /** A group chat changed: a copy whose turn in it ended takes the model it waited for. */
@@ -158,7 +161,7 @@ export class Following {
 
   private renumber(projectId: string): void {
     const project = this.projects().find((candidate) => candidate.id === projectId);
-    if (project) this.followProject(project);
+    if (project) saveBotsOnceAfter(() => this.followProject(project));
   }
 
   /** Gives each project the context of its team now. */
@@ -178,7 +181,9 @@ export class Following {
 
   /** Every project at once: after a start, and whenever the departments change. */
   all(): void {
-    for (const project of this.projects()) this.followProject(project);
+    saveBotsOnceAfter(() => {
+      for (const project of this.projects()) this.followProject(project);
+    });
     this.contexts();
   }
 }

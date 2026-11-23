@@ -8,7 +8,7 @@ import {
   type CanvasNodeMetadata,
 } from "../../shared/project-canvas.ts";
 import type { CanvasFrame } from "./ops.ts";
-import { creationOf, isCreation, isShot, isTake, takesOf } from "./pipeline-nodes.ts";
+import { creationOf, isCreation, isShot, isTake, shotParts, takesOf } from "./pipeline-nodes.ts";
 import { clearSpot, LANE_GAP, placeAfter } from "./placement.ts";
 
 /** What placing a node the server makes needs. */
@@ -176,9 +176,10 @@ export interface PipelineShot {
 export function listShots(document: CanvasDocument): PipelineShot[] {
   const shots = document.nodes.filter(isShot).map((shot, index) => ({ shot, index }))
     .sort((a, b) => (a.shot.metadata?.episode ?? 0) - (b.shot.metadata?.episode ?? 0) || a.index - b.index).map(({ shot }) => shot);
+  const parts = shotParts(document);
   return shots.map((shot) => {
-    const creation = creationOf(document, shot.id);
-    const takes = takesOf(document, shot.id);
+    const creation = parts.creationOf(shot.id);
+    const takes = parts.takesOf(shot.id);
     const selected = takes.find((take) => take.metadata?.selected && take.metadata.file);
     const { file, durationMs, naturalWidth, naturalHeight } = selected?.metadata ?? {};
     return {
