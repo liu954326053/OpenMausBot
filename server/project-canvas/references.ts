@@ -23,8 +23,6 @@ export interface TaskReferences {
   count: number;
 }
 
-export const TASK_REFERENCES_MAX = 50;
-
 /** The canvas as if each content node the person named with a task were connected into the node the task was written
  * in, so it goes with the task as a connected one does. */
 export function withNamedReferences(document: CanvasDocument, nodeId: string, named: readonly string[]): CanvasDocument {

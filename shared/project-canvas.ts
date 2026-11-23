@@ -362,13 +362,15 @@ export interface CanvasTaskRequest {
    * as its panel labels them: the references `mentionReferences` gives it and the other nodes connected into it. Its
    * own text, its first reference, goes first, with `text` as the request to revise it. */
   targetNodeId?: string;
-  /** Content nodes of this canvas the person named for the task. Each goes with it as if it were connected into the
-   * node the task was written in: words quoted, pictures as the model's input. */
+  /** Content nodes of this canvas the person named for the task, at most `CANVAS_TASK_REFERENCES_MAX`. Each goes with
+   * it as if it were connected into the node the task was written in: words quoted, pictures as the model's input. */
   references?: string[];
   /** The language the person's app shows, a tag such as "zh" or "pt-br", whose words name the references their text
    * mentions ("图片 1"). Without it, the language the server writes its own lines in. */
   language?: string;
 }
+
+export const CANVAS_TASK_REFERENCES_MAX = 50;
 
 export interface CanvasTaskResponse {
   threadId: string;

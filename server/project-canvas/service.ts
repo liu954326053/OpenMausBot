@@ -2,6 +2,7 @@ import {
   botNodeId,
   CANVAS_MAX_NODES,
   CANVAS_NODE_SIZE,
+  CANVAS_TASK_REFERENCES_MAX,
   canvasFileNodeType,
   generationKindOf,
   type CanvasConnection,
@@ -39,7 +40,7 @@ import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type Canvas
 import type { ProjectPathError } from "./paths.ts";
 import { canvasFlow, type CanvasFlow, type ProjectPipeline } from "./flow.ts";
 import { placeAfter, placeForActor } from "./placement.ts";
-import { TASK_REFERENCES_MAX, taskMessage, taskReferences, withNamedReferences } from "./references.ts";
+import { taskMessage, taskReferences, withNamedReferences } from "./references.ts";
 import { botFrames, buildSnapshot } from "./snapshot.ts";
 import { shownSoFar } from "./shown-so-far.ts";
 import { replyText, roomTurnClosedBy, TaskTargets, type TaskTarget } from "./task-targets.ts";
@@ -453,8 +454,8 @@ export class ProjectCanvasService {
     const asked = request.threadId;
     if (typeof botId !== "string" || typeof text !== "string" || text.length > TASK_MAX_CHARS || (asked !== undefined && typeof asked !== "string")
       || (targetNodeId !== undefined && typeof targetNodeId !== "string")
-      || (named !== undefined && !(Array.isArray(named) && named.length <= TASK_REFERENCES_MAX && named.every((id) => typeof id === "string")))) {
-      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, references?, language? }, its text at most ${TASK_MAX_CHARS} characters and at most ${TASK_REFERENCES_MAX} references` });
+      || (named !== undefined && !(Array.isArray(named) && named.length <= CANVAS_TASK_REFERENCES_MAX && named.every((id) => typeof id === "string")))) {
+      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, references?, language? }, its text at most ${TASK_MAX_CHARS} characters and at most ${CANVAS_TASK_REFERENCES_MAX} references` });
     }
     const language = requestLanguage(request.language) ?? this.deps.language();
     if (!project.botIds.includes(botId)) throw refusal(404, "serverError.projectCanvas.notMember");
