@@ -39,6 +39,7 @@ import { freeSpot, grownSpot, uploadedNodeSize } from "@/lib/project-canvas/plac
 import { copySelection, duplicateNode, isContentNode, pasteClipboard, type CanvasClipboard } from "@/lib/project-canvas/selection";
 import { randomUuid } from "@/lib/random-uuid";
 import { CanvasUiContext, nodeById, type CanvasTool, type CanvasUi, type CreatableNodeType } from "./canvas-ui";
+import { CanvasNav } from "./CanvasNav";
 import { CanvasStage, type StageMenuRequest } from "./CanvasStage";
 import { CanvasToolbar, Minimap, ZoomDock } from "./docks";
 import { CanvasContextMenu, CreateMenu, NodeContextMenu } from "./menus";
@@ -445,6 +446,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot }: { con
             </div>
           ) : null}
           {listOpen ? <NodeList aboveMinimap={minimapOpen} onClose={() => setListOpen(false)} onFocus={(nodeId) => ui.focusNode(nodeId)} /> : null}
+          <CanvasNav onFocus={(nodeId) => ui.focusNode(nodeId)} />
           {minimapOpen ? <Minimap nodes={snapshot.nodes} viewport={viewport} size={size} onCenter={(point) => controller.setViewport({ ...viewport, x: size.width / 2 - point.x * viewport.k, y: size.height / 2 - point.y * viewport.k })} /> : null}
           <CanvasToolbar tool={tool} onTool={setTool} onFocus={() => fitAll()} onCreate={(type) => createNode(type)} onUpload={() => openUpload()} onDeleteSelection={removeSelection} onClear={clearCanvas} />
           <ZoomDock viewport={viewport} minimapOpen={minimapOpen} onMinimap={() => setMinimapOpen((open) => !open)} onReset={resetView} onZoom={(k) => controller.setViewport(zoomAroundCenter(viewport, size, k) satisfies CanvasViewport)} />

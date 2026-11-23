@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/use-owner-or-admin", () => ({ useOwnerOrAdmin: () => true }));
 
-import { botNodeId, CANVAS_NODE_SIZE, type CanvasBotState } from "../../../shared/project-canvas";
+import { botNodeId, CANVAS_NODE_SIZE, type CanvasBotState, type CanvasNode } from "../../../shared/project-canvas";
 import { loadLocale, setLocale } from "@/lib/i18n";
 import { VIEWPORT_SAVE_DELAY_MS } from "@/lib/project-canvas/controller";
 import { fitNodeSize, nodeBounds } from "@/lib/project-canvas/geometry";
@@ -717,6 +717,49 @@ describe("the project canvas", () => {
       kept.middle = press(1);
     });
     expect(kept).toEqual({ left: false, middle: true });
+  });
+
+  it("lists a canvas's characters, scenes and shots on its right, says where each shot sits in the film, and takes the view to one", async () => {
+    const start = sampleCanvasSnapshot();
+    const group = (id: string, title: string, y: number): CanvasNode => ({ id, type: "group", title, position: { x: 4000, y }, width: 720, height: 320 });
+    const profile: CanvasNode = { id: "alan", type: "text", title: "Alan · look", position: { x: 4024, y: 4052 }, width: 340, height: 240, groupId: "group-alan", metadata: { role: "character", content: "Yellow raincoat." } };
+    await mount({ snapshot: { ...start, nodes: [...start.nodes, group("group-alan", "Alan", 4000), profile, group("group-rooftop", "Rooftop", 5000)] } });
+    const rows = () => [...host.querySelectorAll<HTMLElement>("[data-canvas-outline]")];
+    expect(host.querySelector("[data-canvas-outline-section] h3")?.textContent).toBe("Characters");
+    expect(rows().map((row) => row.getAttribute("data-canvas-outline"))).toEqual(["group-alan", "group-rooftop", "shot-1"]);
+    expect(rows().map((row) => row.title)).toEqual(["Alan", "Rooftop", "Shot 1 · Rooftop"]);
+    expect(rows()[2]!.querySelector("[data-canvas-outline-meta]")?.textContent).toBe("10s · 00:00–00:10");
+    const view = () => (stage().firstElementChild as HTMLElement).style.transform;
+    const first = view();
+    await act(async () => rows()[0]!.click());
+    await settle();
+    expect(rows()[0]!.getAttribute("aria-current")).toBe("true");
+    expect(view()).not.toBe(first);
+    const second = view();
+    await act(async () => rows()[2]!.click());
+    await settle();
+    expect(rows()[2]!.getAttribute("aria-current")).toBe("true");
+    expect(rows()[0]!.getAttribute("aria-current")).toBeNull();
+    expect(view()).not.toBe(second);
+
+    const third = view();
+    const wheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+    await act(async () => { rows()[0]!.dispatchEvent(wheel); });
+    expect(wheel.defaultPrevented).toBe(false);
+    expect(view()).toBe(third);
+    await act(async () => { rows()[0]!.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); });
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it("stays a tab on a canvas with nothing to go to, and says what it will hold when opened", async () => {
+    const start = sampleCanvasSnapshot();
+    await mount({ snapshot: { ...start, nodes: start.nodes.filter((node) => node.type === "bot") } });
+    expect(host.querySelector("aside")).toBeNull();
+    const tab = host.querySelector<HTMLElement>('button[aria-label="Show the outline"]')!;
+    await act(async () => tab.click());
+    expect(host.querySelector("aside")?.textContent).toContain("Characters, scenes and shots show up here.");
+    await act(async () => (host.querySelector("aside button") as HTMLElement).click());
+    expect(host.querySelector("aside")).toBeNull();
   });
 
   it("renames a content node from its title and leaves a bot's name alone", async () => {
