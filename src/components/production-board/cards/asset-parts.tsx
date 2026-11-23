@@ -74,8 +74,10 @@ export function AssetTags({ tags, rows, className }: { tags?: readonly string[];
   );
 }
 
+export const paletteColours = (palette: readonly string[] | undefined): string[] => palette?.filter((colour) => COLOUR.test(colour)) ?? [];
+
 export function AssetPalette({ palette }: { palette?: readonly string[] }) {
-  const colours = palette?.filter((colour) => COLOUR.test(colour)) ?? [];
+  const colours = paletteColours(palette);
   if (colours.length === 0) return null;
   return (
     <div className="flex shrink-0 items-center gap-1">
