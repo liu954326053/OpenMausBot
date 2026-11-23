@@ -1,4 +1,4 @@
-import { EPISODE_JOBS } from "../../shared/production";
+import { EPISODE_JOBS, type EpisodeJob } from "../../shared/production";
 import type { ProjectTeamUnusable, TeamProjectRefusal, TeamProjectsListWire, TeamProjectWire } from "../../shared/team-projects";
 import type { LocaleKey } from "@/locales";
 
@@ -87,18 +87,17 @@ export interface EpisodeTeam<T> {
  * has bots of its own, in order. */
 export function splitEpisodes<T extends SideBot>(project: Pick<TeamProjectWire, "episodeBots">, team: readonly T[]): { drama: T[]; episodes: EpisodeTeam<T>[] } {
   const drama: T[] = [];
-  const byNumber = new Map<number, T[]>();
+  const byNumber = new Map<number, Array<{ bot: T; job: EpisodeJob }>>();
   for (const bot of team) {
     const episode = project.episodeBots[bot.id];
-    const bots = episode && byNumber.get(episode.number);
+    const crew = episode && byNumber.get(episode.number);
     if (!episode) drama.push(bot);
-    else if (bots) bots.push(bot);
-    else byNumber.set(episode.number, [bot]);
+    else if (crew) crew.push({ bot, job: episode.job });
+    else byNumber.set(episode.number, [{ bot, job: episode.job }]);
   }
-  const jobOrder = (bot: T) => EPISODE_JOBS.indexOf(project.episodeBots[bot.id]!.job);
   const episodes = [...byNumber]
     .sort(([a], [b]) => a - b)
-    .map(([number, bots]) => ({ number, bots: bots.sort((a, b) => jobOrder(a) - jobOrder(b)) }));
+    .map(([number, crew]) => ({ number, bots: crew.sort((a, b) => EPISODE_JOBS.indexOf(a.job) - EPISODE_JOBS.indexOf(b.job)).map(({ bot }) => bot) }));
   return { drama, episodes };
 }
 
