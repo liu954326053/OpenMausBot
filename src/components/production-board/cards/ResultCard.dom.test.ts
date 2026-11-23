@@ -60,17 +60,17 @@ describe("the result card", () => {
     it("keeps the selected and the newest takes in view, and reaches the rest from one button", () => {
       const onOpen = vi.fn();
       const card = draw({ takes: MANY, onOpen });
-      expect(strip(card)).toEqual(["V2", "V6", "V7", "V8"]);
+      expect(strip(card)).toEqual(["V2", "V7", "V8"]);
       const button = more(card);
-      expect([textOf(button), button.getAttribute("aria-label"), button.getAttribute("aria-expanded"), panelOf(button).hidden]).toEqual(["+4", "4 more takes", "false", true]);
+      expect([textOf(button), button.getAttribute("aria-label"), button.getAttribute("aria-expanded"), panelOf(button).hidden]).toEqual(["+5", "5 more takes", "false", true]);
       click(button);
       expect([button.getAttribute("aria-expanded"), panelOf(button).hidden]).toEqual(["true", false]);
       const others = [...panelOf(button).querySelectorAll<HTMLButtonElement>("[data-result-take]")];
-      expect(others.map(textOf)).toEqual(["V1", "V3", "V4", "V5"]);
+      expect(others.map(textOf)).toEqual(["V1", "V3", "V4", "V5", "V6"]);
       click(others[2]);
       expect(shown(card)).toBe("/files/m4.mp4");
       expect([button.getAttribute("aria-expanded"), document.activeElement]).toEqual(["false", button]);
-      expect(strip(card)).toEqual(["V2", "V4", "V7", "V8"]);
+      expect(strip(card)).toEqual(["V2", "V4", "V8"]);
       expect(onOpen).not.toHaveBeenCalled();
     });
 
@@ -85,8 +85,8 @@ describe("the result card", () => {
     });
 
     it("shows every take when they all fit", () => {
-      const card = draw({ takes: MANY.slice(0, 5) });
-      expect(strip(card)).toEqual(["V1", "V2", "V3", "V4", "V5"]);
+      const card = draw({ takes: MANY.slice(0, 4) });
+      expect(strip(card)).toEqual(["V1", "V2", "V3", "V4"]);
       expect(card.querySelector("[data-result-more]")).toBeNull();
     });
   });
