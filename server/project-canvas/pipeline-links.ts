@@ -1,5 +1,5 @@
 import { botNodeId, CANVAS_MAX_CONNECTIONS, type CanvasDocument } from "../../shared/project-canvas.ts";
-import { botsWith, creationOf, isEpisode, isFinal, isProfile, isShot, isTake, makerOf, type BotStages } from "./pipeline-nodes.ts";
+import { botsWith, isEpisode, isFinal, isProfile, isShot, isTake, makerOf, shotParts, type BotStages } from "./pipeline-nodes.ts";
 
 /** A connection the pipeline wants, by the ids of the nodes it joins. */
 export interface PipelineLink {
@@ -34,6 +34,14 @@ export function wantedLinks(document: Pick<CanvasDocument, "nodes" | "connection
     links.push({ from, to });
   };
   const byId = new Map(document.nodes.map((node) => [node.id, node]));
+  const { creationOf } = shotParts(document);
+  const imagesInto = new Map<string, string[]>();
+  for (const connection of document.connections) {
+    if (byId.get(connection.fromNodeId)?.type !== "image") continue;
+    const images = imagesInto.get(connection.toNodeId);
+    if (images) images.push(connection.fromNodeId);
+    else imagesInto.set(connection.toNodeId, [connection.fromNodeId]);
+  }
   const fromMaker = (node: { id: string }, maker: string | undefined) => {
     if (maker !== undefined && Object.hasOwn(stages, maker)) want(botNodeId(maker), node.id);
   };
@@ -56,15 +64,13 @@ export function wantedLinks(document: Pick<CanvasDocument, "nodes" | "connection
       fromMaker(node, maker);
     } else if (isShot(node)) {
       fromMaker(node, maker);
-      const creation = creationOf(document, node.id);
+      const creation = creationOf(node.id);
       if (!creation) continue;
       want(node.id, creation.id);
-      for (const connection of document.connections) {
-        if (connection.toNodeId === node.id && byId.get(connection.fromNodeId)?.type === "image") want(connection.fromNodeId, creation.id);
-      }
+      for (const image of imagesInto.get(node.id) ?? []) want(image, creation.id);
     } else if (isTake(node)) {
       const shotId = node.metadata?.shotId;
-      const creation = shotId ? creationOf(document, shotId) : undefined;
+      const creation = shotId ? creationOf(shotId) : undefined;
       if (creation) want(creation.id, node.id);
       if (node.metadata?.selected && shotId && byId.get(shotId)?.type === "shot") for (const botId of at("post", node.metadata.episode)) want(node.id, botNodeId(botId));
     } else if (isFinal(node)) {

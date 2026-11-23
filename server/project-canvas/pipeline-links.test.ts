@@ -60,6 +60,15 @@ describe("the links the pipeline wants", () => {
     expect(wanted(document)).toEqual(["bot:boards > shot-1", "shot-1 > make-1", "face > make-1", "empty > make-1"]);
   });
 
+  it("takes a shot's first creation node wherever it stands, and the images connected into the shot in the order they were connected", () => {
+    const document = canvas([
+      node("make-b", "config", { role: "creation", shotId: "shot-1" }), node("take-0", "video", { role: "take", shotId: "shot-1" }),
+      node("shot-1", "shot", {}, by("boards")), node("make-a", "config", { role: "creation", shotId: "shot-1" }),
+      node("take-1", "video", { role: "take", shotId: "shot-1", selected: true }), node("face", "image", { file }), node("pic", "image"),
+    ], [link("pic", "shot-1"), link("face", "shot-1"), { ...link("face", "shot-1"), id: "again" }, link("ghost", "shot-1")]);
+    expect(wanted(document)).toEqual(["make-b > take-0", "bot:boards > shot-1", "shot-1 > make-b", "pic > make-b", "face > make-b", "make-b > take-1", "take-1 > bot:editor"]);
+  });
+
   it("joins a take from its shot's creation node, and the selected take of a shot that is there on to every post bot", () => {
     const document = canvas([
       node("shot-1", "shot"), node("make-1", "config", { role: "creation", shotId: "shot-1" }),
