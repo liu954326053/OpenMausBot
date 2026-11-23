@@ -60,7 +60,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
   const events: ProjectCanvasEvent[] = [];
   const sent: Array<{ botId: string; threadId: string; text: string }> = [];
   const threads: Record<string, Message[]> = {};
-  const project = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {} } as TeamProjectWire;
+  const project = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {}, episodeBots: {} } as TeamProjectWire;
   const bots: Record<string, Partial<BotRecord>> = {
     lead: { id: "lead", name: "Lead", title: "Producer", threadId: "lead-main", teamProject: { id: "p1", role: "producer" } },
     writer: { id: "writer", name: "Writer", title: "Writes the episodes", threadId: "writer-main", teamProject: { id: "p1", role: "writer" } },
@@ -151,30 +151,6 @@ describe("changing a project's canvas", () => {
     expect(() => service.project("gone")).toThrow(expect.objectContaining({ status: 404 }));
     expect(() => service.projectOfBot("plain")).toThrow(expect.objectContaining({ status: 403 }));
     expect(service.projectOfBot("writer").id).toBe("p1");
-  });
-});
-
-describe("the pipeline's lines between a project's bots", () => {
-  it("names the projects whose canvas draws other lines or stages than when last asked, a project made since included", () => {
-    const pipelines: Record<string, ProjectPipeline> = {};
-    const listed: TeamProjectWire[] = [];
-    const { service, project } = setup({ projects: { list: () => listed }, pipelineOf: (projectId) => pipelines[projectId] ?? { stages: {}, lines: [] } });
-    listed.push({ ...project, botIds: ["lead", "writer", "board"] });
-    expect(service.linesMoved()).toEqual(["p1"]);
-    expect(service.linesMoved()).toEqual([]);
-
-    const lines = [{ from: "lead", to: "writer" }, { from: "writer", to: "board" }];
-    pipelines.p1 = { stages: { writer: ["script"], board: ["storyboard"] }, lines };
-    expect(service.linesMoved()).toEqual(["p1"]);
-    expect(service.linesMoved()).toEqual([]);
-    pipelines.p1 = { stages: { writer: ["script"], board: ["storyboard", "post"] }, lines };
-    expect(service.linesMoved()).toEqual(["p1"]);
-    pipelines.p1 = { stages: pipelines.p1.stages, lines: [...lines, { from: "writer", to: "someone-elsewhere" }] };
-    expect(service.linesMoved()).toEqual([]);
-
-    listed.push({ ...project, id: "p2", botIds: ["lead-2", "writer-2"], leadBotId: "lead-2" });
-    pipelines.p1 = { stages: {}, lines: [] };
-    expect(service.linesMoved()).toEqual(["p1", "p2"]);
   });
 });
 

@@ -2,12 +2,13 @@ import { canvasRefusalOf } from "../project-canvas/service.ts";
 import { ownerOrAdmin } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "../routes/table.ts";
 import { userError } from "../user-errors.ts";
-import type { PipelineRuns } from "./runs.ts";
+import type { Productions } from "./engine.ts";
 
-const ROUTE = /^\/api\/team-projects\/([\w-]+)\/pipeline\/videos$/;
+const ROUTE = /^\/api\/team-projects\/([\w-]+)\/production\/retry$/;
 
-/** The person's answer to a project's videos, for the owner and admins as the rest of a project is. */
-export function createPipelineRunRoutes(runs: Pick<PipelineRuns, "answerVideos">): RouteHandler {
+/** `POST /api/team-projects/:id/production/retry`: the person has what stopped tried again, for the owner and admins
+ * as the rest of a project is. */
+export function createProductionRoutes(productions: Pick<Productions, "retry">): RouteHandler {
   return async ({ req, res, path, method, auth, json, readBody }) => {
     const match = ROUTE.exec(path);
     if (!match) return PASS;
@@ -20,7 +21,7 @@ export function createPipelineRunRoutes(runs: Pick<PipelineRuns, "answerVideos">
       return json(res, 405, { error: `${method} is not answered at ${path}` });
     }
     try {
-      return json(res, 200, await runs.answerVideos(match[1]!, await readBody(req)));
+      return json(res, 200, await productions.retry(match[1]!, await readBody(req)));
     } catch (error) {
       const refused = canvasRefusalOf(error);
       if (!refused) throw error;

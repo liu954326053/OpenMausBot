@@ -315,21 +315,6 @@ describe("a team bot is its maker's until they share it", () => {
   }, hostTimeout(120_000));
 });
 
-describe("the team's bot limit", () => {
-  it("counts a User's bots with everyone's: at the limit theirs is refused in the same words as an admin's", async () => {
-    for (let count = (await bots("olive")).length; count < 100; count++) {
-      const filler = await as("ada", "POST", "/api/bots", { name: `Filler ${count}`, useDefaults: false });
-      if (filler.status !== 201) break;
-    }
-    const all = (await bots("olive")).length;
-    const adminToo = await as("ada", "POST", "/api/bots", { name: "One more", useDefaults: false });
-    expect(adminToo.status, `${all} bots: ${JSON.stringify(adminToo.body)}`).toBe(409);
-    const refused = await as("rui", "POST", "/api/bots", { name: "One more" });
-    expect([refused.status, refused.body.error]).toEqual([409, adminToo.body.error]);
-    expect(refused.body.error).toMatch(/already has 100 bots.*delete a bot you no longer need/);
-  }, hostTimeout(240_000));
-});
-
 describe("anywhere but a team", () => {
   it("a new bot on this computer and on My Cloud is as it always was: no sharing, everyone who signs in", async () => {
     for (const place of [fx.local, fx.onCloud]) {

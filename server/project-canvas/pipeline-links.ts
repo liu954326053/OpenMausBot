@@ -1,5 +1,5 @@
 import { botNodeId, CANVAS_MAX_CONNECTIONS, type CanvasDocument } from "../../shared/project-canvas.ts";
-import { botsWith, creationOf, isCharacter, isShot, isTake, makerOf, type BotStages } from "./pipeline-nodes.ts";
+import { botsWith, creationOf, isEpisode, isFinal, isProfile, isShot, isTake, makerOf, type BotStages } from "./pipeline-nodes.ts";
 
 /** A connection the pipeline wants, by the ids of the nodes it joins. */
 export interface PipelineLink {
@@ -7,18 +7,24 @@ export interface PipelineLink {
   to: string;
 }
 
+/** The bots the production made for one episode each → that episode's number. */
+export type BotEpisodes = Readonly<Record<string, number>>;
+
 const keyOf = (from: string, to: string) => `${from}\u0000${to}`;
 
 /**
- * The connections the pipeline wants on a canvas, by who made each node and what it is:
- * - the script: from every script bot, and on to every character and storyboard bot that is not a script bot too;
- * - a character: from the bot that made it, and on to every other storyboard bot;
+ * The connections the production wants on a canvas, by who made each node and what it is:
+ * - the brief and the plan: from the bot that made them, and the brief on to every script bot;
+ * - an episode's script: from the bot that made it, and on to the episode's own storyboard bot;
+ * - a script written before dramas had episodes: from every script bot, and on to every storyboard bot that is no
+ *   episode's own;
+ * - a character or a scene: from the bot that made it;
  * - a shot: from the bot that made it, on to its creation node, and every image connected into the shot into that
  *   node too;
- * - a take: from its shot's creation node, and the selected one of a shot that is there on to every post bot;
- * - the finished film: from every post bot.
+ * - a take: from its shot's creation node, and the selected one of a shot that is there on to its episode's post bot;
+ * - a finished film: from its episode's post bot.
  */
-export function wantedLinks(document: Pick<CanvasDocument, "nodes" | "connections">, stages: BotStages): PipelineLink[] {
+export function wantedLinks(document: Pick<CanvasDocument, "nodes" | "connections">, stages: BotStages, botEpisodes: BotEpisodes = {}): PipelineLink[] {
   const links: PipelineLink[] = [];
   const seen = new Set<string>();
   const want = (from: string, to: string) => {
@@ -31,16 +37,23 @@ export function wantedLinks(document: Pick<CanvasDocument, "nodes" | "connection
   const fromMaker = (node: { id: string }, maker: string | undefined) => {
     if (maker !== undefined && Object.hasOwn(stages, maker)) want(botNodeId(maker), node.id);
   };
+  /** The bots that do `job` for `episode`: that episode's own, or without an episode the ones that are no episode's. */
+  const at = (job: "storyboard" | "post", episode: number | undefined) => botsWith(stages, job).filter((botId) => botEpisodes[botId] === episode);
   for (const node of document.nodes) {
     const role = node.metadata?.role;
     const maker = makerOf(node);
-    if (node.type === "text" && role === "script") {
+    if (node.type === "text" && (role === "brief" || role === "plan")) {
+      fromMaker(node, maker);
+      if (role === "brief") for (const botId of botsWith(stages, "script")) if (botId !== maker) want(node.id, botNodeId(botId));
+    } else if (isEpisode(node)) {
+      fromMaker(node, maker);
+      for (const botId of at("storyboard", node.metadata!.episode)) want(node.id, botNodeId(botId));
+    } else if (node.type === "text" && role === "script") {
       const writers = botsWith(stages, "script");
       for (const botId of writers) want(botNodeId(botId), node.id);
-      for (const botId of [...botsWith(stages, "character"), ...botsWith(stages, "storyboard")]) if (!writers.includes(botId)) want(node.id, botNodeId(botId));
-    } else if (isCharacter(node)) {
+      for (const botId of at("storyboard", undefined)) if (!writers.includes(botId)) want(node.id, botNodeId(botId));
+    } else if (isProfile(node)) {
       fromMaker(node, maker);
-      for (const botId of botsWith(stages, "storyboard")) if (botId !== maker) want(node.id, botNodeId(botId));
     } else if (isShot(node)) {
       fromMaker(node, maker);
       const creation = creationOf(document, node.id);
@@ -53,9 +66,9 @@ export function wantedLinks(document: Pick<CanvasDocument, "nodes" | "connection
       const shotId = node.metadata?.shotId;
       const creation = shotId ? creationOf(document, shotId) : undefined;
       if (creation) want(creation.id, node.id);
-      if (node.metadata?.selected && shotId && byId.get(shotId)?.type === "shot") for (const botId of botsWith(stages, "post")) want(node.id, botNodeId(botId));
-    } else if (node.type === "video" && role === "final") {
-      for (const botId of botsWith(stages, "post")) want(botNodeId(botId), node.id);
+      if (node.metadata?.selected && shotId && byId.get(shotId)?.type === "shot") for (const botId of at("post", node.metadata.episode)) want(node.id, botNodeId(botId));
+    } else if (isFinal(node)) {
+      for (const botId of at("post", node.metadata?.episode)) want(botNodeId(botId), node.id);
     }
   }
   return links;

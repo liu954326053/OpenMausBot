@@ -4,6 +4,7 @@ import type {
   CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamChangesInput, TeamChangesResult, TeamProjectLookup, TeamProjectRecord,
   TeamProjectWire, TeamProjectsApi, TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
+import type { EpisodeJob } from "../../shared/production.ts";
 import type { TeamSetupFields } from "../../shared/team-setup.ts";
 import type { PackageImportDeps } from "../package-import.ts";
 import type { RoutineManager } from "../routines.ts";
@@ -126,8 +127,9 @@ export class TeamProjects implements TeamProjectsApi {
     if (ready && !this.writtenCopies.has(project.id)) this.touch(project.id);
     const bots = this.botsOf(project.id);
     const follows = Object.fromEntries(bots.flatMap((bot) => (bot.teamProject?.source && !bot.teamProject.sourceLeft ? [[bot.id, bot.teamProject.source]] : [])));
+    const episodeBots = Object.fromEntries(bots.flatMap((bot) => (bot.teamProject?.episode ? [[bot.id, bot.teamProject.episode]] : [])));
     const teamChanges = project.archivedAt === undefined ? this.teamChanges(project) : null;
-    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: bots.map((bot) => bot.id), follows, ...(teamChanges ? { teamChanges } : {}) };
+    return { ...publicRecord(project), folderState: ready ? "ready" : "missing", botIds: bots.map((bot) => bot.id), follows, episodeBots, ...(teamChanges ? { teamChanges } : {}) };
   }
 
   private teamChanges(project: StoredTeamProject) {
@@ -239,6 +241,29 @@ export class TeamProjects implements TeamProjectsApi {
       }
     }
     return { project: this.afterChange(id)!, skipped };
+  }
+
+  /**
+   * The project's bot that does `job` for one episode: the one it has, else a new copy made as the project's copies
+   * were, of the team member `templateBotId` follows, or of that bot itself when it follows nobody. Throws when the
+   * copy cannot be made.
+   */
+  async episodeBot(projectId: string, templateBotId: string, number: number, job: EpisodeJob): Promise<string> {
+    const project = this.stored(projectId);
+    if (!project) throw new Error("no project has that id");
+    const own = this.botsOf(projectId).find((bot) => bot.teamProject?.episode?.number === number && bot.teamProject.episode.job === job);
+    if (own) return own.id;
+    const template = this.deps.store.bot(templateBotId);
+    if (!template?.teamProject || template.teamProject.id !== projectId) throw new Error("the bot to copy is not one of the project's");
+    const teamSection = this.following.teamSection(project);
+    const followed = template.teamProject.source && !template.teamProject.sourceLeft && teamSection ? this.deps.store.bot(template.teamProject.source) : null;
+    const made = await addCopy(project, followed ?? template, followed ? teamSection! : project.section, {
+      importDeps: this.deps.importDeps,
+      exportMember: (member, section) => this.exportOf({ scope: "department", section, bots: [member] }),
+      ensureWorkspace: this.deps.ensureWorkspace,
+      syncCopy: (botId) => void this.following.sync(botId),
+    }, { episode: { number, job }, follows: Boolean(followed) });
+    return made.id;
   }
 
   private stored(id: string): StoredTeamProject | undefined {

@@ -17,7 +17,6 @@ export function storeRefusal(error: string): { error: string; errorKey?: UserErr
 export interface SidebarSectionRouteDeps {
   store: Store;
   teamComputers: TeamComputers;
-  maxBots: number;
   assertTeamComputerChangeIdle(before: BotRecord, after: BotRecord): void;
   wireBot(bot: BotRecord): WireBot;
   /** A department was renamed (`to`) or deleted (null): what is kept about it by name follows. */
@@ -26,10 +25,9 @@ export interface SidebarSectionRouteDeps {
 
 export function createSidebarSectionRoutes(deps: SidebarSectionRouteDeps): RouteHandler {
   const { store, teamComputers, assertTeamComputerChangeIdle, wireBot } = deps;
-  const MAX_WORKSPACE_BOTS = deps.maxBots;
   const createSidebarSectionSchema = z.object({
     name: z.string(),
-    botIds: z.array(z.string().regex(/^[\w-]+$/)).max(MAX_WORKSPACE_BOTS).default([]),
+    botIds: z.array(z.string().regex(/^[\w-]+$/)).default([]),
   }).strict();
 
   return async ({ req, res, url, path, method, json, readBody }) => {
@@ -54,7 +52,7 @@ export function createSidebarSectionRoutes(deps: SidebarSectionRouteDeps): Route
     if (method === "PUT" && path === "/api/sidebar-sections") {
       const section = url.searchParams.get("section")?.trim();
       if (!section || !store.sections.includes(section)) return json(res, 404, userError("serverError.department.notFound"));
-      const ids = z.array(z.string().regex(/^[\w-]+$/)).max(MAX_WORKSPACE_BOTS);
+      const ids = z.array(z.string().regex(/^[\w-]+$/));
       const parsed = z.object({ addBotIds: ids, removeBotIds: ids }).strict().safeParse(await readBody(req));
       if (!parsed.success) return json(res, 400, { error: "Provide addBotIds and removeBotIds" });
       for (const [botIds, destination] of [[parsed.data.addBotIds, section], [parsed.data.removeBotIds, undefined]] as const) {

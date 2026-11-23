@@ -112,6 +112,35 @@ describe("a project's group chat", () => {
     expect(store.group(project.roomId!)!.defaultResponder).toEqual({ kind: "member", botId: lead });
   });
 
+  it("leaves out the bots the production makes for one episode each: a copy of the member a project bot follows, the same bot when asked again", async () => {
+    const { store, rooms, service } = await installation();
+    const project = await made(service);
+    rooms.start();
+    const template = project.botIds.find((id) => id !== project.leadBotId)!;
+    const source = store.bot(template)!.teamProject!.source!;
+    const before = [...store.group(project.roomId!)!.memberIds];
+
+    const first = await service.episodeBot(project.id, template, 1, "storyboard");
+    expect(await service.episodeBot(project.id, template, 1, "storyboard")).toBe(first);
+    const second = await service.episodeBot(project.id, template, 2, "storyboard");
+    const cutter = await service.episodeBot(project.id, template, 1, "post");
+    expect(new Set([template, first, second, cutter]).size).toBe(4);
+
+    const named = store.bot(source)!.name;
+    expect(store.bot(first)).toMatchObject({ section: project.section, cwd: project.folder, name: `${named} EP01`, teamProject: { id: project.id, source, episode: { number: 1, job: "storyboard" } } });
+    expect([store.bot(second)!.name, store.bot(cutter)!.name]).toEqual([`${named} EP02`, `${named} EP01 2`]);
+    expect(new Set([template, first, second, cutter].map((id) => store.bot(id)!.teamProject!.role)).size).toBe(4);
+    const listed = service.list().find((one) => one.id === project.id)!;
+    expect(listed.episodeBots).toEqual({ [first]: { number: 1, job: "storyboard" }, [second]: { number: 2, job: "storyboard" }, [cutter]: { number: 1, job: "post" } });
+    expect(listed.botIds).toEqual(expect.arrayContaining([first, second, cutter]));
+    expect(listed.follows).toMatchObject({ [first]: source, [second]: source, [cutter]: source });
+    expect(listed.teamChanges).toBeUndefined();
+    expect(store.group(project.roomId!)!.memberIds).toEqual(before);
+
+    await expect(service.episodeBot("no-such-project", template, 1, "storyboard")).rejects.toThrow();
+    await expect(service.episodeBot(project.id, source, 3, "storyboard")).rejects.toThrow("not one of the project's");
+  });
+
   it("takes in a joining bot later when the room cannot change now", async () => {
     const refused = { now: undefined as string | undefined };
     const { store, rooms, service, retries, logged } = await installation(refused);

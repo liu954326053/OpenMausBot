@@ -7,7 +7,7 @@ import type { TeamProjectsApi } from "../../shared/team-projects.ts";
 import { DATA_DIR } from "../config.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import type { RouteHandler } from "../routes/table.ts";
-import { pipelinePlaceOf } from "../team-flow/flows.ts";
+import { productionStagesOf } from "../production/plans.ts";
 import { NO_CANVAS, type ProjectDraftCanvas } from "./canvas.ts";
 import { ProjectDrafts } from "./drafts.ts";
 import { defaultJianyingPlaces, findJianying, type JianyingInstall, type JianyingPlaces } from "./jianying.ts";
@@ -28,7 +28,7 @@ export interface ProjectDraftHostDeps {
   dataDir?: string;
   places?: JianyingPlaces;
   launch?(install: JianyingInstall): Promise<boolean>;
-  /** A bot's stages in its pipeline; by default the ones the team flows give it. */
+  /** A bot's jobs in its project; by default the ones its project's production gives it. */
   stagesOf?(botId: string): readonly FlowStage[];
   watchEveryMs?: number;
   log?(line: string): void;
@@ -38,11 +38,11 @@ export interface ProjectDraftHost {
   routes: RouteHandler;
   drafts: ProjectDrafts;
   connectCanvas(canvas: ProjectDraftCanvas): void;
-  /** For the canvas's snapshot: the project's draft as `auth` sees it. Undefined for a project that is not there; never throws. */
-  draftWire(projectId: string, auth: RequestAuth): ProjectDraftWire | undefined;
-  /** Writes the project's draft now if every shot that plays has a selected take, and again only when its clips
-   * changed; safe to call on every change to a canvas. Never throws. */
-  writeDraftIfReady(projectId: string): Promise<void>;
+  /** For the canvas's snapshot: an episode's draft as `auth` sees it. Undefined for a project that is not there; never throws. */
+  draftWire(projectId: string, auth: RequestAuth, episode?: number): ProjectDraftWire | undefined;
+  /** Writes an episode's draft now if every shot of it that plays has a selected take, and again only when its clips
+   * changed. Never throws. */
+  writeDraftIfReady(projectId: string, episode?: number): Promise<void>;
   /** `listener` runs after a project's order of shots was set. Returns the unsubscribe. */
   onTimelineChange(listener: (projectId: string) => void): () => void;
   /** `listener` runs after a draft was written, so what `draftWire` answers changed. Returns the unsubscribe. */
@@ -65,7 +65,7 @@ export function createProjectDraftHost(deps: ProjectDraftHostDeps): ProjectDraft
   const canvas: ProjectDraftCanvas = {
     shots: (projectId) => connected.shots(projectId),
     showsFile: (projectId, path) => connected.showsFile(projectId, path),
-    addFinal: (projectId, path, film) => connected.addFinal(projectId, path, film),
+    addFinal: (projectId, path, film, episode) => connected.addFinal(projectId, path, film, episode),
   };
   const drafts = new ProjectDrafts({
     projects: deps.projects,
@@ -106,23 +106,23 @@ export function createProjectDraftHost(deps: ProjectDraftHostDeps): ProjectDraft
       const projectId = deps.store.bot(botId)?.teamProject?.id;
       return projectId ? deps.projects.list().find((project) => project.id === projectId && project.botIds.includes(botId)) : undefined;
     },
-    stagesOf: deps.stagesOf ?? ((botId) => pipelinePlaceOf(botId)?.stages ?? []),
+    stagesOf: deps.stagesOf ?? productionStagesOf,
   }));
 
   return {
     routes: createProjectDraftRoutes(drafts),
     drafts,
     connectCanvas: (next) => { connected = next; },
-    draftWire: (projectId, auth) => {
+    draftWire: (projectId, auth, episode) => {
       try {
-        return drafts.draftWire(projectId, auth);
+        return drafts.draftWire(projectId, auth, episode);
       } catch {
         return undefined;
       }
     },
-    writeDraftIfReady: async (projectId) => {
+    writeDraftIfReady: async (projectId, episode) => {
       try {
-        await drafts.writeDraftIfReady(projectId);
+        await drafts.writeDraftIfReady(projectId, episode);
       } catch (error) {
         log(`[project-draft] the draft of project ${projectId} could not be written (${named(error)})`);
       }

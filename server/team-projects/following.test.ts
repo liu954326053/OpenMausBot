@@ -58,6 +58,19 @@ describe("a copy following its source", () => {
     expect(names()).toEqual(["Morgan", "Quill", "Penn"]);
   });
 
+  it("names an episode's own bot after its source and its episode, and renames it with its source", async () => {
+    const app = await installation();
+    const project = await app.project("Season one");
+    const template = app.copyOf(project, "scout").id;
+    const [first, second] = [await app.projects.episodeBot(project.id, template, 1, "storyboard"), await app.projects.episodeBot(project.id, template, 12, "storyboard")];
+    const names = () => [template, first, second].map((id) => app.store.bot(id)!.name);
+    expect(names()).toEqual(["Scout", "Scout EP01", "Scout EP12"]);
+
+    app.store.patchBot(app.source("scout").id, { name: "Finder", title: "Lead finder" });
+    expect(names()).toEqual(["Finder", "Finder EP01", "Finder EP12"]);
+    expect(app.store.bot(second)).toMatchObject({ title: "Lead finder", teamProject: { episode: { number: 12, job: "storyboard" } } });
+  });
+
   it("lets a busy copy finish its turn on its model, and gives it the new one when the turn ends", async () => {
     const app = await installation();
     const project = await app.project("Season one");

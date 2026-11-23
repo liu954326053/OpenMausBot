@@ -1,9 +1,10 @@
 import {
-  isTeamProjectRole, teamProjectRole, type TeamChangesInput, type TeamMemberWire, type TeamProjectChanges,
+  isTeamProjectRole, teamProjectRole, type TeamChangesInput, type TeamMemberWire, type TeamProjectChanges, type TeamProjectMembership,
 } from "../../shared/team-projects.ts";
 import { importPackageDocument, type PackageImportDeps } from "../package-import.ts";
 import type { BotRecord } from "../store.ts";
 import { removeImported, type ExportedTeam } from "./create.ts";
+import { copyName } from "./follow.ts";
 import type { StoredTeamProject } from "./registry.ts";
 import { teamBots } from "./teams.ts";
 
@@ -47,11 +48,19 @@ export interface AddCopyContext {
   syncCopy(botId: string): void;
 }
 
+/** What sets a copy apart from the project's first ones: the episode the production makes it for, and whether it
+ * follows the bot it is a copy of. */
+export interface CopyPlace {
+  episode?: NonNullable<TeamProjectMembership["episode"]>;
+  /** False for a copy of a bot that is no team member: it follows nobody. */
+  follows?: boolean;
+}
+
 /**
  * Makes a copy of a team member in the project, as the project's copies were made, less the group chats: it remembers
  * its source and follows it. Whatever stops it part-way, what was made is taken back.
  */
-export async function addCopy(project: StoredTeamProject, source: BotRecord, teamSection: string, context: AddCopyContext): Promise<BotRecord> {
+export async function addCopy(project: StoredTeamProject, source: BotRecord, teamSection: string, context: AddCopyContext, place: CopyPlace = {}): Promise<BotRecord> {
   const deps: PackageImportDeps = { ...(await context.importDeps()), presets: undefined };
   const exported = context.exportMember(source, teamSection);
   const key = exported.keys[source.id];
@@ -67,9 +76,13 @@ export async function addCopy(project: StoredTeamProject, source: BotRecord, tea
   try {
     const [made, ...more] = imported.bots;
     if (!made || more.length) throw new Error(`the export of ${source.name} held ${imported.bots.length} bots`);
-    deps.store.patchBot(made.id, { section: project.section, teamProject: { id: project.id, role, source: source.id }, cwd: project.folder });
+    const follows = place.follows !== false;
+    const membership: TeamProjectMembership = { id: project.id, role, ...(follows ? { source: source.id } : {}), ...(place.episode ? { episode: place.episode } : {}) };
+    const others = deps.store.bots.filter((bot) => bot.teamProject?.id === project.id && bot.id !== made.id).map((bot) => bot.name);
+    const name = place.episode ? { name: copyName(source, others, place.episode.number) } : {};
+    deps.store.patchBot(made.id, { section: project.section, teamProject: membership, cwd: project.folder, ...name });
     context.ensureWorkspace(made.id);
-    context.syncCopy(made.id);
+    if (follows) context.syncCopy(made.id);
     return deps.store.bot(made.id)!;
   } catch (error) {
     try {

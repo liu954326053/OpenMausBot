@@ -1,7 +1,7 @@
 import { PAIRING_INPUT_PROBLEM_TEXT } from "../shared/pairing-code.ts";
 import { redactParams } from "../shared/redact.ts";
 import { formatServerText, type ServerErrorBody, type ServerTextParams } from "../shared/server-text.ts";
-import { PIPELINE_RUN_ERRORS } from "./pipeline-run/error-text.ts";
+import { PRODUCTION_ERRORS } from "./production/error-text.ts";
 import { PROJECT_DRAFT_ERRORS } from "./project-draft/error-text.ts";
 import { PROJECT_GENERATION_ERRORS } from "./project-generation/error-text.ts";
 
@@ -292,7 +292,7 @@ export const USER_ERROR = {
   "serverError.teamFlow.loop": "{to}'s work already reaches {from}, so a line from {from} to {to} would make a loop.",
   ...PROJECT_GENERATION_ERRORS,
   ...PROJECT_DRAFT_ERRORS,
-  ...PIPELINE_RUN_ERRORS,
+  ...PRODUCTION_ERRORS,
 } as const;
 
 export type UserErrorKey = keyof typeof USER_ERROR;

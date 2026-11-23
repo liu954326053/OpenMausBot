@@ -42,9 +42,10 @@ export interface ProjectRoomsDeps {
   log(line: string): void;
 }
 
-/** The project's bots, its lead first. */
+/** The project's bots that work on the whole drama, its lead first. A bot made for one episode has a conversation of
+ * its own and is in no room. */
 function botsOf(project: StoredTeamProject, bots: readonly BotRecord[]): BotRecord[] {
-  const own = bots.filter((bot) => bot.teamProject?.id === project.id);
+  const own = bots.filter((bot) => bot.teamProject?.id === project.id && !bot.teamProject.episode);
   return [...own.filter((bot) => bot.id === project.leadBotId), ...own.filter((bot) => bot.id !== project.leadBotId)];
 }
 
@@ -102,8 +103,8 @@ export class ProjectRooms {
 
   private changed(change: StoreChange): void {
     if (change.type !== "bot") return;
-    const projectId = this.deps.store.bots.find((bot) => bot.id === change.botId)?.teamProject?.id;
-    if (projectId) this.join(projectId, change.botId);
+    const membership = this.deps.store.bots.find((bot) => bot.id === change.botId)?.teamProject;
+    if (membership && !membership.episode) this.join(membership.id, change.botId);
   }
 
   /** A project's bot joins its room, unless the room was given it already or the project's room is not made yet. */

@@ -3,6 +3,7 @@ import { lstat, mkdir, readdir, readFile, realpath, stat } from "node:fs/promise
 import { dirname, join } from "node:path";
 
 import { CANVAS_OUTPUT_FOLDER, type CanvasReadOnly } from "../../shared/project-canvas.ts";
+import { episodeCode } from "../../shared/production.ts";
 import type { ProjectDraftOpenResult, ProjectDraftWire, ProjectFinalResult, ProjectTimelineWire, TimelineClip } from "../../shared/project-draft.ts";
 import type { TeamProjectsApi, TeamProjectWire } from "../../shared/team-projects.ts";
 import { writeFileAtomic } from "../atomic.ts";
@@ -50,6 +51,14 @@ const NUMBERS_TRIED = 1000;
 
 const sha256 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex");
 
+/** Where an episode's timeline and draft are stored; a drama made before episodes keeps its project's own. */
+const timelineKey = (projectId: string, episode: number | undefined) => (episode === undefined ? projectId : `${projectId}-ep${episode}`);
+
+const episodeIn = (body: unknown): number | undefined => {
+  const episode = body && typeof body === "object" ? (body as { episode?: unknown }).episode : undefined;
+  return typeof episode === "number" && Number.isInteger(episode) && episode > 0 ? episode : undefined;
+};
+
 /** The desktop app's own window, or a trusted caller on this machine: never a paired device, a phone that came in
  * through the companion, or a bot's shell. */
 const atThisComputer = (auth: RequestAuth) => auth.kind === "loopback" && auth.trust !== "service" && auth.companionDevice === undefined;
@@ -67,7 +76,8 @@ function filmOf(video: { file: FinishedFilm["file"]; facts: VideoFacts }): Finis
 
 const archivedRefusal = () => new DraftRefusal(409, { code: "canvas_read_only", ...userError("serverError.projectCanvas.archived"), reason: "archived" } satisfies CanvasReadOnly);
 
-/** A project's timeline, its JianYing draft and its finished film. */
+/** Each episode's timeline, its JianYing draft and its finished film. Without an episode they are those of a drama made
+ * before episodes: its shots that belong to no episode. */
 export class ProjectDrafts {
   private readonly deps: ProjectDraftsDeps;
   private readonly queues = new Map<string, Promise<unknown>>();
@@ -99,11 +109,12 @@ export class ProjectDrafts {
     return this.lookup;
   }
 
-  async timeline(projectId: string): Promise<ProjectTimelineWire> {
+  async timeline(projectId: string, episode?: number): Promise<ProjectTimelineWire> {
     const project = this.project(projectId);
-    const { clips, missing, leftOut } = await this.read(project);
+    const { clips, missing, leftOut } = await this.read(project, episode);
     return {
       projectId,
+      ...(episode === undefined ? {} : { episode }),
       clips: clips.map(({ shotId, nodeId, title, file, durationMs, width, height }) => ({ shotId, nodeId, title, file, durationMs, width, height })),
       missingShots: missing,
       ...(leftOut.length ? { leftOut } : {}),
@@ -111,42 +122,43 @@ export class ProjectDrafts {
   }
 
   /** `ProjectTimelineInput`. The draft follows when every shot that plays has a selected take. */
-  async setOrder(projectId: string, body: unknown): Promise<ProjectTimelineWire> {
+  async setOrder(projectId: string, body: unknown, episode?: number): Promise<ProjectTimelineWire> {
     const project = this.project(projectId);
     if (project.archivedAt !== undefined) throw archivedRefusal();
-    await this.serial(projectId, async () => {
-      const next = orderFrom(this.deps.canvas.shots(projectId), body);
-      this.deps.store.write(projectId, { ...this.deps.store.read(projectId), ...next });
+    const key = timelineKey(projectId, episode);
+    await this.serial(key, async () => {
+      const next = orderFrom(this.shots(projectId, episode), body);
+      this.deps.store.write(key, { ...this.deps.store.read(key), ...next });
     });
     for (const listener of this.timelineListeners) listener(projectId);
-    await this.writeDraftIfReady(projectId).catch((error: unknown) => {
+    await this.writeDraftIfReady(projectId, episode).catch((error: unknown) => {
       this.deps.log(`[project-draft] the draft of project ${projectId} could not be written after its order changed (${error instanceof Error ? error.name : "unknown"})`);
     });
-    return this.timeline(projectId);
+    return this.timeline(projectId, episode);
   }
 
   /**
-   * Writes the project's draft now if every shot that plays has a selected take: the first time, and again whenever
+   * Writes the episode's draft now if every shot of it that plays has a selected take: the first time, and again whenever
    * the clips are not the ones the draft was written from. A draft JianYing saved since is left as it is and the new
    * one goes beside it, numbered. Does nothing, and costs little, when nothing changed, so it can be called on every
    * change to the canvas. Answers the draft as the person at this computer sees it.
    */
-  async writeDraftIfReady(projectId: string): Promise<ProjectDraftWire> {
+  async writeDraftIfReady(projectId: string, episode?: number): Promise<ProjectDraftWire> {
     const project = this.project(projectId);
-    return this.serial(projectId, async () => {
-      await this.write(project);
-      return this.wireOf(project, true);
+    return this.serial(timelineKey(projectId, episode), async () => {
+      await this.write(project, episode);
+      return this.wireOf(project, true, episode);
     });
   }
 
   /** The draft as `auth` sees it, for the canvas's snapshot. */
-  draftWire(projectId: string, auth: RequestAuth): ProjectDraftWire {
-    return this.wireOf(this.project(projectId), atThisComputer(auth));
+  draftWire(projectId: string, auth: RequestAuth, episode?: number): ProjectDraftWire {
+    return this.wireOf(this.project(projectId), atThisComputer(auth), episode);
   }
 
   /** The draft as the person at this computer sees it: what a bot of the project is told. */
-  draftAtThisComputer(projectId: string): ProjectDraftWire {
-    return this.wireOf(this.project(projectId), true);
+  draftAtThisComputer(projectId: string, episode?: number): ProjectDraftWire {
+    return this.wireOf(this.project(projectId), true, episode);
   }
 
   async open(projectId: string, auth: RequestAuth): Promise<ProjectDraftOpenResult> {
@@ -158,7 +170,7 @@ export class ProjectDrafts {
     return { opened: "app" };
   }
 
-  /** `ProjectFinalInput`: the file the person names becomes the finished film. */
+  /** `ProjectFinalInput`: the file the person names becomes the episode's finished film. */
   async final(projectId: string, body: unknown): Promise<ProjectFinalResult> {
     const project = this.project(projectId);
     if (project.archivedAt !== undefined) throw archivedRefusal();
@@ -170,25 +182,28 @@ export class ProjectDrafts {
       throw isProjectPathError(error) ? pathRefusal(error, project.folder) : error;
     }
     if (!film) throw refuse(422, "serverError.projectDraft.notVideo");
-    const { nodeId } = await this.deps.canvas.addFinal(projectId, film.file.path, film);
+    const { nodeId } = await this.deps.canvas.addFinal(projectId, film.file.path, film, episodeIn(body));
     return { nodeId };
   }
 
   /**
    * One look at the output folder of every project that has a draft. A video there that no node of the canvas shows,
-   * that is newer than the project's first draft and whose size and time did not change since the look before goes
-   * to the canvas as the finished film. Only the folder itself is looked at: what this app generates goes into its
-   * subfolders.
+   * that is newer than its episode's first draft and whose size and time did not change since the look before goes to
+   * the canvas as that episode's finished film: the episode whose draft the file is named after, or the only episode
+   * that has a draft. Only the folder itself is looked at: what this app generates goes into its subfolders.
    */
   async lookForFinals(): Promise<void> {
     if (!this.deps.onPersonsComputer) return;
     const watched = new Set<string>();
     for (const project of this.deps.projects.list()) {
       if (project.archivedAt !== undefined || project.folderState !== "ready") continue;
-      const draft = this.storedDraft(project.id);
-      if (!draft) continue;
+      const drafted = this.episodesOf(project.id).flatMap((episode) => {
+        const draft = this.storedDraft(timelineKey(project.id, episode));
+        return draft ? [{ episode, draft }] : [];
+      });
+      if (!drafted.length) continue;
       watched.add(project.id);
-      await this.lookAtOutput(project, draft.firstWrittenAt);
+      await this.lookAtOutput(project, drafted);
     }
     for (const projectId of this.outputs.keys()) if (!watched.has(projectId)) this.outputs.delete(projectId);
   }
@@ -209,27 +224,38 @@ export class ProjectDrafts {
     return next;
   }
 
-  private storedDraft(projectId: string): WrittenDraft | undefined {
+  private storedDraft(key: string): WrittenDraft | undefined {
     try {
-      return this.deps.store.read(projectId).draft;
+      return this.deps.store.read(key).draft;
     } catch {
       return undefined;
     }
   }
 
-  private wireOf(project: TeamProjectWire, here: boolean): ProjectDraftWire {
+  /** The episode's shots in the canvas's own order. */
+  private shots(projectId: string, episode: number | undefined): DraftShot[] {
+    return this.deps.canvas.shots(projectId).filter((shot) => shot.episode === episode);
+  }
+
+  /** The episodes that have a shot, in order; `undefined` stands for the shots that belong to none. */
+  private episodesOf(projectId: string): Array<number | undefined> {
+    const episodes = new Set(this.deps.canvas.shots(projectId).map((shot) => shot.episode));
+    return [...episodes].sort((a, b) => (a ?? 0) - (b ?? 0));
+  }
+
+  private wireOf(project: TeamProjectWire, here: boolean, episode?: number): ProjectDraftWire {
     const exportFolder = join(project.folder, CANVAS_OUTPUT_FOLDER);
     if (!this.deps.onPersonsComputer || !here) return { state: "unavailable", reason: "remote", exportFolder };
     if (this.lookup?.state !== "ready") return { state: "unavailable", reason: this.lookup?.reason ?? "not-installed", exportFolder };
-    const draft = this.storedDraft(project.id);
+    const draft = this.storedDraft(timelineKey(project.id, episode));
     if (!draft) return { state: "none", exportFolder };
     return { state: draft.kept ? "kept" : "written", name: draft.name, writtenAt: draft.writtenAt, exportFolder };
   }
 
   /** Security: a clip is a file that really is inside the project folder and whose bytes are a video; a take that is
    * neither leaves its shot without a video. */
-  private async read(project: TeamProjectWire): Promise<ReadTimeline> {
-    const { playing, leftOut } = arrangedShots(this.deps.canvas.shots(project.id), this.deps.store.read(project.id));
+  private async read(project: TeamProjectWire, episode: number | undefined): Promise<ReadTimeline> {
+    const { playing, leftOut } = arrangedShots(this.shots(project.id, episode), this.deps.store.read(timelineKey(project.id, episode)));
     const clips: ReadClip[] = [];
     const missing: string[] = [];
     for (const shot of playing) {
@@ -276,18 +302,19 @@ export class ProjectDrafts {
     return video ? filmOf(video) : null;
   }
 
-  private async write(project: TeamProjectWire): Promise<void> {
+  private async write(project: TeamProjectWire, episode: number | undefined): Promise<void> {
     if (!this.deps.onPersonsComputer) return;
     const lookup = await this.refreshJianying();
     if (lookup.state !== "ready" || project.archivedAt !== undefined || project.folderState !== "ready") return;
     const { install } = lookup;
     const format = draftFormatFor(install.version);
     if (!format) return;
-    const { clips, missing } = await this.read(project);
+    const { clips, missing } = await this.read(project, episode);
     if (missing.length || !clips.length) return;
+    const key = timelineKey(project.id, episode);
     const fps = clips[0]!.fps;
     const clipsHash = sha256(JSON.stringify({ versions: format.versions, fps: fps ?? null, clips: clips.map((clip) => [clip.absolute, clip.durationUs, clip.width, clip.height, clip.file.bytes]) }));
-    const stored = this.deps.store.read(project.id);
+    const stored = this.deps.store.read(key);
     const root = install.draftRoot;
     const previous = stored.draft && dirname(stored.draft.folder) === root ? stored.draft : undefined;
     if (previous?.clipsHash === clipsHash) return;
@@ -297,7 +324,8 @@ export class ProjectDrafts {
     if (previous && held === "written") place = previous;
     else if (previous && held === "gone" && (await this.claim(previous.folder))) place = previous;
     else {
-      const fresh = await this.freshFolder(root, draftFolderName(project.name), previous ? previous.number + 1 : 1);
+      const named = episode === undefined ? project.name : `${project.name} ${episodeCode(episode)}`;
+      const fresh = await this.freshFolder(root, draftFolderName(named), previous ? previous.number + 1 : 1);
       const kept = previous && held === "saved" ? previous.name : previous?.kept;
       place = { ...fresh, draftId: this.deps.newId(), createdUs: now * 1000, ...(kept ? { kept } : {}) };
     }
@@ -311,7 +339,7 @@ export class ProjectDrafts {
       name: place.name, number: place.number, folder: place.folder, draftId: place.draftId, createdUs: place.createdUs, writtenAt: now,
       firstWrittenAt: stored.draft?.firstWrittenAt ?? now, fileHash: sha256(built.timeline), clipsHash, ...(place.kept ? { kept: place.kept } : {}),
     };
-    this.deps.store.write(project.id, { ...stored, draft });
+    this.deps.store.write(key, { ...stored, draft });
     for (const listener of this.draftListeners) listener(project.id);
   }
 
@@ -351,7 +379,7 @@ export class ProjectDrafts {
     throw new Error("no free name for the draft's folder");
   }
 
-  private async lookAtOutput(project: TeamProjectWire, since: number): Promise<void> {
+  private async lookAtOutput(project: TeamProjectWire, drafted: ReadonlyArray<{ episode: number | undefined; draft: WrittenDraft }>): Promise<void> {
     const dir = join(project.folder, CANVAS_OUTPUT_FOLDER);
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     const before = this.outputs.get(project.id);
@@ -362,21 +390,31 @@ export class ProjectDrafts {
       if (!info?.isFile()) continue;
       const last = before?.get(entry.name);
       const still = last !== undefined && last.size === info.size && last.mtimeMs === info.mtimeMs;
-      if (still && !last.settled && info.mtimeMs >= since) await this.offer(project, `${CANVAS_OUTPUT_FOLDER}/${entry.name}`);
+      const of = still && !last.settled ? this.draftedFor(entry.name, drafted) : undefined;
+      if (of && info.mtimeMs >= of.draft.firstWrittenAt) await this.offer(project, `${CANVAS_OUTPUT_FOLDER}/${entry.name}`, of.episode);
       now.set(entry.name, { size: info.size, mtimeMs: info.mtimeMs, settled: still });
     }
     this.outputs.set(project.id, now);
   }
 
+  /** The episode a file exported to the output folder is the film of: the one whose draft, as it is or was named, the
+   * file is named after, the longest name first; with one drafted episode, that one whatever the file is called. */
+  private draftedFor<Drafted extends { draft: WrittenDraft }>(fileName: string, drafted: readonly Drafted[]): Drafted | undefined {
+    const stem = fileName.replace(/\.[^.]*$/, "");
+    const named = drafted.flatMap((one) => [one.draft.name, ...(one.draft.kept ? [one.draft.kept] : [])].filter((name) => stem.startsWith(name)).map((name) => ({ one, name })));
+    named.sort((a, b) => b.name.length - a.name.length);
+    return named[0]?.one ?? (drafted.length === 1 ? drafted[0] : undefined);
+  }
+
   /** A file is offered once for each size and time it settles at, so a film the canvas refused is not tried again
    * every look. An MP4 without its header is an export still being written: it is offered again when it changes. */
-  private async offer(project: TeamProjectWire, path: string): Promise<void> {
+  private async offer(project: TeamProjectWire, path: string, episode: number | undefined): Promise<void> {
     if (this.deps.canvas.showsFile(project.id, path)) return;
     const video = await this.videoAt(project, path).catch(() => null);
     if (!video || (video.facts.mime !== "video/webm" && video.facts.durationUs === undefined)) return;
     const film = filmOf(video);
     try {
-      await this.deps.canvas.addFinal(project.id, film.file.path, film);
+      await this.deps.canvas.addFinal(project.id, film.file.path, film, episode);
     } catch (error) {
       // Security: the error's name only; its message can hold the project's folder path.
       this.deps.log(`[project-draft] the finished film of project ${project.id} could not be put on the canvas (${error instanceof Error ? error.name : "unknown"})`);

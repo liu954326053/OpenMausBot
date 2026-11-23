@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { CANVAS_MAX_CONNECTIONS, type CanvasConnection, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasNodeMetadata } from "../../shared/project-canvas.ts";
 import type { FlowStage } from "../../shared/team-pipeline.ts";
-import { settleLinks, wantedLinks, type PipelineLink } from "./pipeline-links.ts";
+import { settleLinks, wantedLinks, type BotEpisodes, type PipelineLink } from "./pipeline-links.ts";
 
 const by = (botId: string): CanvasNodeCreator => ({ kind: "bot", botId });
 const node = (id: string, type: CanvasNode["type"], metadata?: CanvasNodeMetadata, createdBy: CanvasNodeCreator = { kind: "person" }): CanvasNode =>
@@ -13,26 +13,41 @@ const canvas = (nodes: CanvasNode[], connections: CanvasConnection[] = []): Canv
 const file = { path: "产出/a", mime: "image/png", bytes: 1, name: "a" };
 
 const TEAM: Record<string, FlowStage[]> = { lead: ["lead"], writer: ["script"], faces: ["character"], boards: ["storyboard"], editor: ["post"], voice: ["other"] };
-const wanted = (document: CanvasDocument, stages: Record<string, FlowStage[]> = TEAM) => wantedLinks(document, stages).map(({ from, to }) => `${from} > ${to}`);
+const wanted = (document: CanvasDocument, stages: Record<string, FlowStage[]> = TEAM, botEpisodes: BotEpisodes = {}) =>
+  wantedLinks(document, stages, botEpisodes).map(({ from, to }) => `${from} > ${to}`);
+
+/** A drama of episodes: the first two have a storyboard bot and a post bot of their own. */
+const DRAMA: Record<string, FlowStage[]> = { lead: ["lead"], writer: ["script"], faces: ["character"], sets: ["scene"], "boards-1": ["storyboard"], "boards-2": ["storyboard"], "editor-1": ["post"], "editor-2": ["post"] };
+const OWN: BotEpisodes = { "boards-1": 1, "boards-2": 2, "editor-1": 1, "editor-2": 2 };
 
 describe("the links the pipeline wants", () => {
-  it("joins the script from every script bot and on to every character and storyboard bot", () => {
-    const document = canvas([node("script", "text", { content: "Act one", role: "script" }, by("writer"))]);
-    expect(wanted(document, { ...TEAM, pen: ["script"], frames: ["storyboard"] })).toEqual([
-      "bot:writer > script", "bot:pen > script", "script > bot:faces", "script > bot:boards", "script > bot:frames",
-    ]);
+  it("joins the brief and the lead's split of the work from the lead, and the brief on to every script bot", () => {
+    const document = canvas([node("brief", "text", { role: "brief" }, by("lead")), node("split", "text", { role: "plan" }, by("lead"))]);
+    expect(wanted(document, { ...TEAM, pen: ["script"] })).toEqual(["bot:lead > brief", "brief > bot:writer", "brief > bot:pen", "bot:lead > split"]);
   });
 
-  it("does not send the script back to a bot that is also of the script stage", () => {
+  it("joins an episode's script from the bot that made it and on to the episode's own storyboard bot, to nobody while it has none", () => {
+    const document = canvas([
+      node("ep-1", "text", { role: "episode", episode: 1 }, by("writer")), node("ep-2", "text", { role: "episode", episode: 2 }, by("writer")),
+      node("ep-3", "text", { role: "episode", episode: 3 }, by("writer")), node("loose", "text", { role: "episode" }, by("writer")),
+    ]);
+    expect(wanted(document, DRAMA, OWN)).toEqual(["bot:writer > ep-1", "ep-1 > bot:boards-1", "bot:writer > ep-2", "ep-2 > bot:boards-2", "bot:writer > ep-3"]);
+  });
+
+  it("joins a script written before episodes from every script bot and on to every storyboard bot that is no episode's own", () => {
+    const document = canvas([node("script", "text", { content: "Act one", role: "script" }, by("writer"))]);
+    expect(wanted(document, { ...TEAM, pen: ["script"], frames: ["storyboard"] })).toEqual(["bot:writer > script", "bot:pen > script", "script > bot:boards", "script > bot:frames"]);
+    expect(wanted(document, { ...DRAMA, boards: ["storyboard"] }, OWN)).toEqual(["bot:writer > script", "script > bot:boards"]);
+  });
+
+  it("does not send that script back to a bot that is also of the script stage", () => {
     const document = canvas([node("script", "text", { role: "script" })]);
     expect(wanted(document, { lead: ["lead"], solo: ["script", "character", "storyboard"], boards: ["storyboard"] })).toEqual(["bot:solo > script", "script > bot:boards"]);
   });
 
-  it("joins a character from the bot that made it and on to every storyboard bot but that one", () => {
-    const document = canvas([node("mei", "text", { role: "character" }, by("faces")), node("lin", "text", { role: "character" }, by("boards"))]);
-    expect(wanted(document, { ...TEAM, boards: ["character", "storyboard"], frames: ["storyboard"] })).toEqual([
-      "bot:faces > mei", "mei > bot:boards", "mei > bot:frames", "bot:boards > lin", "lin > bot:frames",
-    ]);
+  it("joins a character and a scene from the bot that made it", () => {
+    const document = canvas([node("mei", "text", { role: "character" }, by("faces")), node("hall", "text", { role: "scene" }, by("sets")), node("lin", "text", { role: "character" })]);
+    expect(wanted(document, DRAMA, OWN)).toEqual(["bot:faces > mei", "bot:sets > hall"]);
   });
 
   it("joins a shot from the bot that made it, on to its creation node, and the images connected into the shot into that node too", () => {
@@ -57,15 +72,24 @@ describe("the links the pipeline wants", () => {
     expect(wanted(document, { lead: ["lead"], boards: ["storyboard"] })).toEqual(["shot-1 > make-1", "make-1 > take-1", "make-1 > take-2", "make-9 > take-9"]);
   });
 
-  it("joins the finished film from every post bot, and from nobody in a project without one", () => {
+  it("sends an episode's selected take to that episode's post bot alone, and its finished film comes from that bot", () => {
+    const document = canvas([
+      node("shot-1", "shot", { episode: 2 }), node("make-1", "config", { role: "creation", shotId: "shot-1", episode: 2 }),
+      node("take-1", "video", { role: "take", shotId: "shot-1", episode: 2, selected: true }),
+      node("film-1", "video", { role: "final", episode: 1, file }), node("film-2", "video", { role: "final", episode: 2, file }), node("film-3", "video", { role: "final", episode: 3, file }),
+    ]);
+    expect(wanted(document, DRAMA, OWN)).toEqual(["shot-1 > make-1", "make-1 > take-1", "take-1 > bot:editor-2", "bot:editor-1 > film-1", "bot:editor-2 > film-2"]);
+  });
+
+  it("joins the finished film of a drama made before episodes from every post bot, and from nobody in a project without one", () => {
     const document = canvas([node("film", "video", { role: "final", file })]);
     expect(wanted(document, { ...TEAM, cutter: ["post"] })).toEqual(["bot:editor > film", "bot:cutter > film"]);
     expect(wanted(document, { lead: ["lead"], writer: ["script"] })).toEqual([]);
   });
 
   it("wants nothing from a bot that is not of the project", () => {
-    const document = canvas([node("shot-1", "shot", {}, by("left")), node("mei", "text", { role: "character" }, by("left"))]);
-    expect(wanted(document)).toEqual(["mei > bot:boards"]);
+    const document = canvas([node("shot-1", "shot", {}, by("left")), node("mei", "text", { role: "character" }, by("left")), node("ep-1", "text", { role: "episode", episode: 1 }, by("left"))]);
+    expect(wanted(document)).toEqual([]);
   });
 });
 

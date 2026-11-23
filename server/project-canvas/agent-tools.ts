@@ -1,4 +1,5 @@
 import { botNodeId, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas.ts";
+import { planProduction } from "../production/plans.ts";
 import { statusOf } from "../routes/project-generation.ts";
 import { PASS } from "../routes/table.ts";
 import type { CanvasGenerationCards } from "./generation-card.ts";
@@ -9,6 +10,7 @@ export const PROJECT_CANVAS_TOOL_PATHS = {
   read: "/api/internal/project-canvas/read",
   apply: "/api/internal/project-canvas/apply",
   generate: "/api/internal/project-canvas/generate",
+  plan: "/api/internal/project-canvas/plan",
 } as const;
 
 const TOOL_OF_PATH = new Map<string, keyof typeof PROJECT_CANVAS_TOOL_PATHS>(Object.entries(PROJECT_CANVAS_TOOL_PATHS).map(([tool, path]) => [path, tool as keyof typeof PROJECT_CANVAS_TOOL_PATHS]));
@@ -42,7 +44,9 @@ export function canvasStateText(snapshot: CanvasSnapshot, me: string, ask: Recor
     you: own,
     ...(snapshot.readOnly ? { readOnly: "The project is archived: the canvas can be read, not changed." } : {}),
   };
-  const bots = Object.values(snapshot.bots).map((bot) => ({ id: botNodeId(bot.botId), name: bot.name, title: bot.title, ...(bot.lead ? { lead: true } : {}), stages: bot.stages, status: bot.status }));
+  const bots = Object.values(snapshot.bots).map((bot) => ({
+    id: botNodeId(bot.botId), name: bot.name, title: bot.title, ...(bot.lead ? { lead: true } : {}), jobs: bot.stages, ...(bot.episode === undefined ? {} : { episode: bot.episode }), status: bot.status,
+  }));
   const content = snapshot.nodes.filter((node) => node.type !== "bot");
   const link = (one: CanvasSnapshot["connections"][number]) => ({ id: one.id, from: one.fromNodeId, to: one.toNodeId, kind: one.kind, ...(one.pipeline ? { pipeline: true } : {}) });
   if (typeof ask.node_id === "string") {
@@ -82,6 +86,7 @@ export function createProjectCanvasToolRoutes(service: ProjectCanvasService, car
         const outcome = service.applyRequest(project, actor, { ops: body.ops });
         return void ctx.json(ctx.res, 200, { text: JSON.stringify(outcome) });
       }
+      if (tool === "plan") return void ctx.json(ctx.res, 200, { text: await planProduction(project.id, ctx.botId, body) });
       const nodeId = String(body.node_id);
       const outcome = await service.generate(project, actor, body.node_id);
       if ("job" in outcome) {

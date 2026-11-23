@@ -50,7 +50,7 @@ describe("a project's generation settings", () => {
     h.project("first");
     expect(h.api.settings("first")).toEqual(DEFAULT_GENERATION_SETTINGS);
     const saved = await h.api.saveSettings("first", { image: IMAGE, video: VIDEO } as never);
-    const settings = { image: { ...DEFAULT_GENERATION_SETTINGS.image, ...IMAGE }, video: { ...DEFAULT_GENERATION_SETTINGS.video, ...VIDEO } };
+    const settings = { ...DEFAULT_GENERATION_SETTINGS, image: { ...DEFAULT_GENERATION_SETTINGS.image, ...IMAGE }, video: { ...DEFAULT_GENERATION_SETTINGS.video, ...VIDEO } };
     expect(saved).toEqual({ settings });
 
     h.project("second");

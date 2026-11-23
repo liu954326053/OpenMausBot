@@ -168,14 +168,14 @@ describe("a shot's takes", () => {
 describe("a character's group", () => {
   const profile = (id: string, y: number, maker = "faces") => node(id, "text", [0, y], { content: "The bride", role: "character" }, by(maker));
 
-  it("is made around a character a bot adds, titled after it and the bot's, the character joined from the bot and on to every storyboard bot", () => {
+  it("is made around a character a bot adds, titled after it and the bot's, the character joined from the bot", () => {
     const { find, links, changed, events } = settle(canvas(), (document) => {
       document.nodes.push({ ...profile("mei", 0), title: "Mei" });
       document.connections.push(link("bot:faces", "mei"));
     }, { actor: by("faces"), stages: { ...TEAM, frames: ["storyboard"] } });
     expect(find("new-1")).toEqual({ id: "new-1", type: "group", title: "Mei", position: { x: -24, y: -52 }, width: 340 + 48, height: 240 + 52 + 24, createdBy: by("faces") });
     expect(find("mei")?.groupId).toBe("new-1");
-    expect(links()).toEqual(["bot:faces => mei", "mei => bot:boards", "mei => bot:frames"]);
+    expect(links()).toEqual(["bot:faces => mei"]);
     expect(changed.nodes).toEqual(["new-1", "mei"]);
     expect(events).toEqual([{ kind: "role", role: "character", nodeId: "mei" }]);
   });
@@ -242,7 +242,7 @@ describe("what the pipeline tells of a change", () => {
       document.nodes[0]!.metadata = { ...document.nodes[0]!.metadata, role: "script" };
     });
     expect(events).toEqual([{ kind: "role", role: "script", nodeId: "draft" }]);
-    expect(links()).toEqual(["bot:writer => draft", "draft => bot:faces", "draft => bot:boards"]);
+    expect(links()).toEqual(["bot:writer => draft", "draft => bot:boards"]);
   });
 
   it("is nothing for a change that touches no role", () => {

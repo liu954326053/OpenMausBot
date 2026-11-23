@@ -1192,8 +1192,8 @@ provider outage. So on a Cloud home (`server/engine-memory.ts`):
   fails at once with that line (no conversation is made, and it never wakes a sleeping Cloud),
   and its daily memory upkeep waits. Every bot wakes as soon as the Admin tells the home its new
   plan, with no restart. An older server refuses a sixth bot with `409` `{"code":"bot_limit"}`;
-  the app still shows its upgrade popup for that. Every plan holds at most 100 bots
-  (`MAX_WORKSPACE_BOTS`), counted on `POST /api/bots`, a package import and a Chief's setup.
+  the app still shows its upgrade popup for that. A workspace holds as many bots as it is
+  given: a drama's production makes two for every episode.
 - **How much a Starter Cloud runs at once.** Two turns Cloud-wide, and four hand-offs waiting
   beyond them; past that a new hand-off is refused (`server/host/starter-caps.ts`).
 - **Who goes first.** The gate only changes the order, never how much it lets in. A

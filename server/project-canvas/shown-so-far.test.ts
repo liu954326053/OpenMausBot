@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { botNodeId, type CanvasBotState, type CanvasNode, type CanvasSnapshot } from "../../shared/project-canvas.ts";
-import type { PipelineRunWire } from "../../shared/pipeline-run.ts";
+import type { ProductionWire } from "../../shared/production.ts";
 import { reachedBots, shownSoFar } from "./shown-so-far.ts";
 
 const botNode = (botId: string, x: number): CanvasNode => ({ id: botNodeId(botId), type: "bot", title: botId, position: { x, y: 0 }, width: 300, height: 180 });
@@ -22,15 +22,11 @@ function snapshot(extra: Partial<CanvasSnapshot> = {}, states: Record<string, Pa
     ...extra,
   };
 }
-const run = (statuses: Array<PipelineRunWire["stages"][number]["status"]>): PipelineRunWire => ({
-  id: "r1", startedAt: 1,
-  stages: [
-    { stage: "script", botIds: ["writer"], status: statuses[0]! },
-    { stage: "character", botIds: ["designer"], status: statuses[1]! },
-    { stage: "post", botIds: ["editor"], status: statuses[2]! },
-  ],
-  videos: { status: "waiting", shots: 0, ready: 0, failed: 0 },
-});
+const production: ProductionWire = {
+  plan: { assignments: { script: "writer", character: "designer", post: "editor" }, plannedAt: 1 },
+  jobs: [{ job: "script", botId: "writer", status: "working" }, { job: "character", botId: "designer", status: "waiting" }],
+  ready: false, episodes: [], tasks: [], startedAt: 1,
+};
 const shownIds = (shown: CanvasSnapshot) => shown.nodes.map((node) => node.id);
 
 describe("the bots the canvas shows the person", () => {
@@ -40,11 +36,11 @@ describe("the bots the canvas shows the person", () => {
     expect(Object.keys(shown.bots)).toEqual(TEAM);
   });
 
-  it("adds the bots of each stage of the run as it begins, with the lines between the bots shown", () => {
-    const shown = shownSoFar(snapshot({ run: run(["done", "working", "waiting"]) }));
+  it("adds the bots the production's plan gives a whole-drama job, waiting ones too, with the lines between the bots shown, and each episode's own bots", () => {
+    const shown = shownSoFar(snapshot({ production }));
     expect(shownIds(shown)).toEqual(["bot:lead", "bot:writer", "bot:designer"]);
     expect(shown.connections.map((one) => one.id)).toEqual(["d1", "d2"]);
-    expect(shownIds(shownSoFar(snapshot({ run: run(["done", "failed", "waiting"]) })))).toEqual(["bot:lead", "bot:writer", "bot:designer"]);
+    expect(shownIds(shownSoFar(snapshot({}, { editor: { episode: 2 } })))).toEqual(["bot:lead", "bot:editor"]);
   });
 
   it("adds a bot that did or said something in the project, or that the person placed", () => {

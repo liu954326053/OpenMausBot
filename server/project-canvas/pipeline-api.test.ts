@@ -35,11 +35,22 @@ beforeEach(() => {
 
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-function setup(pipeline: ProjectPipeline = structuredClone(DRAMA)) {
+/** A drama of episodes: the first two have a storyboard bot and a post bot of their own. */
+const EPISODES: { pipeline: ProjectPipeline; episodeBots: TeamProjectWire["episodeBots"] } = {
+  pipeline: {
+    stages: { lead: ["lead"], writer: ["script"], faces: ["character"], sets: ["scene"], "boards-1": ["storyboard"], "boards-2": ["storyboard"], "editor-1": ["post"], "editor-2": ["post"] },
+    lines: [{ from: "lead", to: "writer" }, { from: "writer", to: "faces" }, { from: "writer", to: "sets" }],
+  },
+  episodeBots: {
+    "boards-1": { number: 1, job: "storyboard" }, "boards-2": { number: 2, job: "storyboard" }, "editor-1": { number: 1, job: "post" }, "editor-2": { number: 2, job: "post" },
+  },
+};
+
+function setup(pipeline: ProjectPipeline = structuredClone(DRAMA), episodeBots: TeamProjectWire["episodeBots"] = {}) {
   const broadcasts: ProjectCanvasEvent[] = [];
   const told: CanvasPipelineEvent[] = [];
-  const botIds = ["lead", "writer", "faces", "boards", "editor"].filter((id) => id === "lead" || Object.hasOwn(pipeline.stages, id));
-  const project = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds, follows: {} } as TeamProjectWire;
+  const botIds = Object.keys({ lead: true, ...pipeline.stages });
+  const project: TeamProjectWire = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds, follows: {}, episodeBots };
   const jobs = new Map<string, GenerationJob>();
   const started: Array<{ input: StartGenerationInput; requester: GenerationRequester }> = [];
   let next = 0;
@@ -306,23 +317,37 @@ describe("selecting a take", () => {
 });
 
 describe("the project's shots for post", () => {
-  it("are listed from top to bottom, each with its selected take's file, duration and size, or none", async () => {
+  it("are listed in the order they were added, wherever they stand, each with its selected take's file, duration and size, or none", async () => {
     const { service, pipeline, project, creationOf, takesOf, generated } = setup();
-    const [low, high, bare] = service.apply(project, person, opsOf(
-      { type: "add_node", nodeType: "shot", title: "Second", position: { x: 0, y: 900 }, metadata: { prompt: "Ring" } },
-      { type: "add_node", nodeType: "shot", title: "First", position: { x: 0, y: 300 }, metadata: { prompt: "Veil" } },
+    const [first, second, bare] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "shot", title: "First", position: { x: 0, y: 900 }, metadata: { prompt: "Veil" } },
+      { type: "add_node", nodeType: "shot", title: "Second", position: { x: 0, y: 300 }, metadata: { prompt: "Ring" } },
       { type: "add_node", nodeType: "shot", title: "Third", position: { x: 0, y: 1500 }, metadata: { prompt: "Altar" } },
     )).nodeIds as [string, string, string];
-    await generated(low);
-    await generated(high);
-    const take = takesOf(high)[0]!;
+    await generated(second);
+    await generated(first);
+    const take = takesOf(first)[0]!;
     service.apply(project, person, opsOf({ type: "update_node", id: take.id, metadata: { durationMs: 5200, naturalWidth: 1280, naturalHeight: 720 } }));
     service.apply(project, person, opsOf({ type: "delete_node", id: creationOf(bare).id }));
     expect(pipeline.shots("p1")).toEqual([
-      { shotId: high, title: "First", prompt: "Veil", creationNodeId: creationOf(high).id, status: "success", takes: 1, take: { nodeId: take.id, title: "job-2.mp4", file: video("job-2.mp4"), durationMs: 5200, width: 1280, height: 720 } },
-      { shotId: low, title: "Second", prompt: "Ring", creationNodeId: creationOf(low).id, status: "success", takes: 1, take: { nodeId: takesOf(low)[0]!.id, title: "job-1.mp4", file: video("job-1.mp4") } },
+      { shotId: first, title: "First", prompt: "Veil", creationNodeId: creationOf(first).id, status: "success", takes: 1, take: { nodeId: take.id, title: "job-2.mp4", file: video("job-2.mp4"), durationMs: 5200, width: 1280, height: 720 } },
+      { shotId: second, title: "Second", prompt: "Ring", creationNodeId: creationOf(second).id, status: "success", takes: 1, take: { nodeId: takesOf(second)[0]!.id, title: "job-1.mp4", file: video("job-1.mp4") } },
       { shotId: bare, title: "Third", prompt: "Altar", creationNodeId: null, status: "idle", takes: 0, take: null },
     ]);
+  });
+
+  it("come episode by episode: a shot is of the episode whose storyboard bot added it, and so are its creation node and its takes, which go to that episode's post bot", async () => {
+    const { pipeline, find, links, creationOf, takesOf, addShot, generated } = setup(structuredClone(EPISODES.pipeline), EPISODES.episodeBots);
+    const late = addShot("2-1", "Altar", bot("boards-2"));
+    const [a, b] = [addShot("1-1", "Veil", bot("boards-1")), addShot("1-2", "Ring", bot("boards-1"))];
+    await generated(a);
+    await generated(late);
+    expect(find(a)?.metadata).toMatchObject({ episode: 1 });
+    expect(creationOf(late).metadata).toMatchObject({ episode: 2 });
+    expect(takesOf(a)[0]!.metadata).toMatchObject({ episode: 1, selected: true });
+    expect(links(takesOf(a)[0]!.id)).toEqual([`${creationOf(a).id} => ${takesOf(a)[0]!.id}`, `${takesOf(a)[0]!.id} => bot:editor-1`]);
+    expect(links(takesOf(late)[0]!.id)).toContain(`${takesOf(late)[0]!.id} => bot:editor-2`);
+    expect(pipeline.shots("p1").map((shot) => [shot.shotId, shot.episode, shot.take !== null])).toEqual([[a, 1, true], [b, 1, false], [late, 2, true]]);
   });
 });
 
@@ -366,31 +391,74 @@ describe("the finished film", () => {
   });
 });
 
-describe("the script", () => {
-  it("is the text node marked as it: joined from the script bots and on to the character and storyboard bots, and a bot's newer script takes its older one's place", () => {
-    const { service, pipeline, project, told, find, links } = setup();
-    const [draft, rewrite] = service.apply(project, bot("writer"), opsOf(
-      { type: "add_node", nodeType: "text", title: "Episode 1", metadata: { content: "Act one" } }, { type: "add_node", nodeType: "text", title: "Episode 1b", metadata: { content: "Act one, again" } },
-    )).nodeIds as [string, string];
-    told.length = 0;
-    pipeline.markScript("p1", draft);
-    expect(find(draft)?.metadata).toEqual({ content: "Act one", role: "script" });
-    expect(links(draft)).toEqual([`bot:writer => ${draft}`, `${draft} => bot:faces`, `${draft} => bot:boards`]);
-    expect(told).toEqual([{ kind: "role", projectId: "p1", role: "script", nodeId: draft }]);
-    pipeline.markStale("p1", [draft]);
-    pipeline.markScript("p1", draft);
-    expect(find(draft)?.metadata).toEqual({ content: "Act one", role: "script" });
+describe("the brief", () => {
+  it("goes on the canvas as the lead's, with the node of the lead's split of the work, and on to the script bot; planning again changes its rows and adds nothing", () => {
+    const { service, pipeline, find, links, view } = setup(structuredClone(EPISODES.pipeline), EPISODES.episodeBots);
+    const titles = { brief: "Brief", plan: "Task split" };
+    const before = service.revisionOf("p1") ?? 0;
+    expect(pipeline.setBrief("p1", "lead", [["Episodes", "20 × 2 min"], ["Style", "Period drama"]], titles)).toEqual({ revision: before + 1 });
+    const brief = view().nodes.find((node) => node.metadata?.role === "brief")!;
+    const plan = view().nodes.find((node) => node.metadata?.role === "plan")!;
+    expect(brief).toMatchObject({ type: "text", title: "Brief", createdBy: bot("lead"), metadata: { card: { rows: [["Episodes", "20 × 2 min"], ["Style", "Period drama"]] } } });
+    expect(plan).toMatchObject({ type: "text", title: "Task split", createdBy: bot("lead") });
+    expect(links(brief.id)).toEqual([`bot:lead => ${brief.id}`, `${brief.id} => bot:writer`]);
+    expect(links(plan.id)).toEqual([`bot:lead => ${plan.id}`]);
 
-    pipeline.markScript("p1", rewrite);
-    expect(find(draft)?.metadata).toEqual({ content: "Act one" });
-    expect(links(draft)).toEqual([]);
-    expect(links(rewrite)).toEqual([`bot:writer => ${rewrite}`, `${rewrite} => bot:faces`, `${rewrite} => bot:boards`]);
+    expect(pipeline.setBrief("p1", "lead", [["Episodes", "20 × 2 min"], ["Style", "Period drama"]], titles)).toEqual({ revision: before + 1 });
+    expect(pipeline.setBrief("p1", "lead", [["Episodes", "12 × 3 min"]], titles)).toEqual({ revision: before + 2 });
+    expect(find(brief.id)?.metadata?.card?.rows).toEqual([["Episodes", "12 × 3 min"]]);
+    expect(view().nodes.filter((node) => node.metadata?.role === "brief" || node.metadata?.role === "plan")).toHaveLength(2);
+  });
+});
+
+describe("an episode on a project's canvas", () => {
+  const episode = (number: number, title: string) => ({ type: "add_node", nodeType: "text", title, metadata: { content: `Script of ${title}`, role: "episode", episode: number, card: { subtitle: "A bride is swapped" } } });
+
+  it("is added by the script bot alone, each number once, and goes on to its own storyboard bot", () => {
+    const { service, pipeline, project, told, links } = setup(structuredClone(EPISODES.pipeline), EPISODES.episodeBots);
+    expect(refusal(() => service.apply(project, bot("faces"), opsOf(episode(1, "The swap"))))?.body).toMatchObject({ code: "not_allowed" });
+    expect(refusal(() => service.apply(project, bot("writer"), opsOf({ type: "add_node", nodeType: "text", metadata: { role: "episode" } })))?.body).toMatchObject({ code: "invalid_op" });
+    const [second, first, third] = service.apply(project, bot("writer"), opsOf(episode(2, "The vow"), episode(1, "The swap"), episode(3, "The flight"))).nodeIds as [string, string, string];
+    expect(refusal(() => service.apply(project, bot("writer"), opsOf(episode(2, "Again"))))?.body).toMatchObject({ code: "invalid_op" });
+    expect(pipeline.episodes("p1")).toEqual([
+      { episode: 1, nodeId: first, title: "The swap" }, { episode: 2, nodeId: second, title: "The vow" }, { episode: 3, nodeId: third, title: "The flight" },
+    ]);
+    expect(links(first)).toEqual([`bot:writer => ${first}`, `${first} => bot:boards-1`]);
+    expect(links(second)).toEqual([`bot:writer => ${second}`, `${second} => bot:boards-2`]);
+    expect(links(third)).toEqual([`bot:writer => ${third}`]);
+    expect(told).toContainEqual({ kind: "role", projectId: "p1", role: "episode", nodeId: first });
   });
 
-  it("is refused for a node that is no text node or is gone", () => {
-    const { pipeline, addShot } = setup();
-    expect(refusal(() => pipeline.markScript("p1", addShot("Shot 1", "Veil")))).toMatchObject({ status: 400 });
-    expect(refusal(() => pipeline.markScript("p1", "gone"))).toMatchObject({ status: 404 });
+  it("gets its storyboard bot's line the next time the canvas is read once the project has that bot", () => {
+    const { service, project, current, links } = setup({ stages: { lead: ["lead"], writer: ["script"] }, lines: [{ from: "lead", to: "writer" }] });
+    const [first] = service.apply(project, bot("writer"), opsOf(episode(1, "The swap"))).nodeIds as [string];
+    expect(links(first)).toEqual([`bot:writer => ${first}`]);
+    project.botIds.push("boards-1");
+    project.episodeBots = { "boards-1": { number: 1, job: "storyboard" } };
+    current.pipeline = { stages: { ...current.pipeline.stages, "boards-1": ["storyboard"] }, lines: current.pipeline.lines };
+    service.snapshot("p1", auth);
+    expect(links(first)).toEqual([`bot:writer => ${first}`, `${first} => bot:boards-1`]);
+  });
+});
+
+describe("the drama's characters and scenes", () => {
+  it("are listed in the order they were added, each with the pictures of its group and where each picture stands", async () => {
+    const { service, pipeline, project, jobs } = setup(structuredClone(EPISODES.pipeline), EPISODES.episodeBots);
+    const [mei, front, side] = service.apply(project, bot("faces"), opsOf(
+      { type: "add_node", nodeType: "text", title: "Mei", metadata: { content: "The bride", role: "character", card: { badge: "Lead", subtitle: "24, seamstress" } } },
+      { type: "add_node", nodeType: "image", title: "Mei, front", metadata: { prompt: "Front view" } },
+      { type: "add_node", nodeType: "image", title: "Mei, side", metadata: { prompt: "Side view" } },
+    )).nodeIds as [string, string, string];
+    service.apply(project, bot("faces"), opsOf({ type: "connect_nodes", fromNodeId: mei, toNodeId: front }, { type: "connect_nodes", fromNodeId: mei, toNodeId: side }));
+    expect(refusal(() => service.apply(project, bot("faces"), opsOf({ type: "add_node", nodeType: "text", title: "Hall", metadata: { role: "scene" } })))?.body).toMatchObject({ code: "not_allowed" });
+    const [hall] = service.apply(project, bot("sets"), opsOf({ type: "add_node", nodeType: "text", title: "Hall", metadata: { content: "The wedding hall", role: "scene" } })).nodeIds as [string];
+    await service.generate(project, person, front);
+    expect(pipeline.profiles("p1")).toEqual([
+      { nodeId: mei, role: "character", title: "Mei", subtitle: "24, seamstress", pictures: [{ nodeId: front, state: "loading" }, { nodeId: side, state: "empty" }] },
+      { nodeId: hall, role: "scene", title: "Hall", pictures: [] },
+    ]);
+    service.jobChanged({ ...jobs.get("job-1")!, kind: "image", settings: DEFAULT_GENERATION_SETTINGS.image.defaults, status: "done", files: [image("mei.png")] });
+    expect(pipeline.profiles("p1")[0]!.pictures).toEqual([{ nodeId: front, state: "ready" }, { nodeId: side, state: "empty" }]);
   });
 });
 
@@ -408,7 +476,7 @@ describe("marking nodes stale", () => {
 });
 
 describe("a character on a project's canvas", () => {
-  it("is added by the character bot alone, in a group of its own with the pictures connected from it, and goes to the storyboard bots", () => {
+  it("is added by the character bot alone, in a group of its own with the pictures connected from it", () => {
     const { service, project, find, links, view } = setup();
     const add = { type: "add_node", nodeType: "text", title: "Mei", metadata: { content: "The bride", role: "character" } };
     expect(refusal(() => service.apply(project, boards, opsOf(add)))?.body).toMatchObject({ code: "not_allowed" });
@@ -416,7 +484,7 @@ describe("a character on a project's canvas", () => {
     const group = view().nodes.find((node) => node.type === "group")!;
     expect(group).toMatchObject({ title: "Mei", createdBy: bot("faces") });
     expect(find(mei!)).toMatchObject({ groupId: group.id, metadata: { role: "character" } });
-    expect(links(mei!)).toEqual([`bot:faces => ${mei}`, `${mei} => bot:boards`]);
+    expect(links(mei!)).toEqual([`bot:faces => ${mei}`]);
 
     const [face] = service.apply(project, person, opsOf({ type: "add_node", nodeType: "image", position: { x: 4000, y: 4000 }, metadata: { file: image("mei.png") } })).nodeIds;
     service.apply(project, bot("faces"), opsOf({ type: "connect_nodes", fromNodeId: mei, toNodeId: face }));
@@ -496,19 +564,19 @@ describe("a canvas stored before the pipeline", () => {
   });
 });
 
-describe("the pipeline's links on a canvas when the team's pipeline changes", () => {
-  it("follow it the next time the canvas is read: a new post bot gets the selected take, a storyboard bot that left the stage loses the script", async () => {
-    const { service, pipeline, project, current, links, takesOf, addShot, generated } = setup();
-    const [draft] = service.apply(project, bot("writer"), opsOf({ type: "add_node", nodeType: "text", metadata: { content: "Act one" } })).nodeIds;
-    pipeline.markScript("p1", draft!);
+describe("the production's links on a canvas when who does a job changes", () => {
+  it("follow it the next time the canvas is read: a new post bot gets the selected take, and the brief goes to the new script bot", async () => {
+    const { service, pipeline, current, links, view, takesOf, addShot, generated } = setup();
+    pipeline.setBrief("p1", "lead", [["Episodes", "1"]], { brief: "Brief", plan: "Task split" });
+    const brief = view().nodes.find((node) => node.metadata?.role === "brief")!;
     const shotId = addShot("Shot 1", "Veil");
     await generated(shotId);
     const take = takesOf(shotId)[0]!;
     const revision = service.revisionOf("p1")!;
-    current.pipeline = { ...DRAMA, stages: { ...DRAMA.stages, faces: ["post"], boards: ["other"] } };
+    current.pipeline = { ...DRAMA, stages: { ...DRAMA.stages, faces: ["post", "script"], writer: ["other"] } };
     expect(service.snapshot("p1", auth).revision).toBe(revision + 1);
     expect(links(take.id)).toEqual([expect.stringContaining(` => ${take.id}`), `${take.id} => bot:editor`, `${take.id} => bot:faces`]);
-    expect(links(draft!)).toEqual([`bot:writer => ${draft}`]);
+    expect(links(brief.id)).toEqual([`bot:lead => ${brief.id}`, `${brief.id} => bot:faces`]);
     expect(service.snapshot("p1", auth).revision).toBe(revision + 1);
   });
 });

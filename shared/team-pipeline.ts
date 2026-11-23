@@ -5,7 +5,7 @@
  * turn; a member with `other` is reached by the Chief only. Only a team with a Chief has a pipeline, and the main
  * bot is in none.
  */
-export type FlowStage = "lead" | "script" | "character" | "storyboard" | "post" | "other";
+export type FlowStage = "lead" | "script" | "character" | "scene" | "storyboard" | "post" | "other";
 
 /** The stages work passes through, in order. `lead` comes before them and `other` stands outside. */
 export const PIPELINE_STAGES = ["script", "character", "storyboard", "post"] as const satisfies readonly FlowStage[];

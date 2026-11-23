@@ -39,8 +39,8 @@ describe("what a bot reads of its project's canvas", () => {
     expect(read.project).toEqual({ id: "p1", name: "Stand-in bride", revision: 7 });
     expect(read.you).toBe(botNodeId("writer"));
     expect(read.bots).toEqual([
-      { id: botNodeId("lead"), name: "Lead", title: "Producer", lead: true, stages: ["lead"], status: "working" },
-      { id: botNodeId("writer"), name: "Writer", title: "Writes", stages: ["other"], status: "idle" },
+      { id: botNodeId("lead"), name: "Lead", title: "Producer", lead: true, jobs: ["lead"], status: "working" },
+      { id: botNodeId("writer"), name: "Writer", title: "Writes", jobs: ["other"], status: "idle" },
     ]);
     expect(read.nodes.map((one: { id: string; createdBy: string }) => [one.id, one.createdBy])).toEqual([["brief", "person"], ["outline", "you"], ["shot", botNodeId("lead")]]);
     expect(read.nodes[0].metadata.content).toBe(`${"x".repeat(120)}...`);

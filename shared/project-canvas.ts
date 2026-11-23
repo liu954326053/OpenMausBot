@@ -24,8 +24,8 @@
  * SOFTWARE.
  */
 
+import type { ProductionWire } from "./production.ts";
 import type { GenerationKind } from "./project-generation.ts";
-import type { PipelineRunWire } from "./pipeline-run.ts";
 import type { ProjectDraftWire } from "./project-draft.ts";
 import type { ServerTextParams } from "./server-text.ts";
 import type { FlowStage } from "./team-pipeline.ts";
@@ -81,8 +81,38 @@ export interface CanvasNodeSettings {
   seconds?: number;
 }
 
+export const CANVAS_CARD_ROWS_MAX = 12;
+export const CANVAS_CARD_TAGS_MAX = 8;
+export const CANVAS_CARD_PALETTE_MAX = 6;
+export const CANVAS_CARD_TEXT_MAX_CHARS = 200;
+
+/** What a card shows of a brief, an episode, a character or a scene besides its text, as the bot that made it wrote it. */
+export interface CanvasCardFacts {
+  /** A word or two set apart on the card: a character's part in the drama, such as "lead". */
+  badge?: string;
+  /** One line under the title: a character's age and occupation, a scene's place and time, an episode's logline. */
+  subtitle?: string;
+  tags?: string[];
+  /** A label and its value each: a brief's lines, a character's look and voice. */
+  rows?: Array<[string, string]>;
+  /** `#rrggbb` colours. */
+  palette?: string[];
+}
+
+/** How a shot is filmed, as its storyboard bot wrote it. What it shows is its `prompt`, how long it runs its
+ * `settings.seconds`. */
+export interface CanvasShotDesign {
+  /** The shot size, such as "wide" or "close-up". */
+  size?: string;
+  /** The camera's move, such as "slow push-in". */
+  move?: string;
+  /** What is heard: a line of dialogue, sound and music. */
+  audio?: string;
+}
+
 /** What a node carries besides its frame. Which keys a type takes:
- * - text: `content`, `fontSize`;
+ * - text: `content`, `fontSize`, `card`;
+ * - shot: `shot`;
  * - image, video, audio, file: `file`; image and video also `naturalWidth`, `naturalHeight`; audio and video
  *   `durationMs`;
  * - image, video, shot and config: `prompt`, `status`, `errorDetails`, `errorKey`, `errorParams`, `jobId`, `settings`;
@@ -107,10 +137,14 @@ export interface CanvasNodeMetadata {
   jobId?: string;
   settings?: CanvasNodeSettings;
   generationMode?: "image" | "video";
-  /** What the node is in the project's pipeline; absent on a node that is none of these. Set by the server, never by
-   * an operation of the person or a bot, except `character`, which the bot of the character stage gives a text node
-   * it adds. */
+  /** What the node is in the project's production; absent on a node that is none of these. Set by the server, never
+   * by an operation of the person; a bot gives a text node it adds the role of its own job: `episode` from the script
+   * bot, `character` from the character bot, `scene` from the scene bot. */
   role?: CanvasNodeRole;
+  /** On an `episode`: its number, from 1. On a shot, a `creation`, a `take` and a `final`: the episode it belongs to. */
+  episode?: number;
+  card?: CanvasCardFacts;
+  shot?: CanvasShotDesign;
   /** On a `creation` and a `take`: the shot it belongs to. */
   shotId?: string;
   /** On a `take`: it is the one of its shot that goes to post. One take of a shot at most. */
@@ -120,11 +154,16 @@ export interface CanvasNodeMetadata {
 }
 
 /**
- * `script`: the text node holding the script stage's result. `character`: a text node holding one character's
- * profile; it and the pictures generated from it sit in one group. `creation`: the config node that generates a
- * shot's video. `take`: a video generated for a shot. `final`: the finished film the person exported.
+ * `brief`: the text node holding what the lead agreed with the person. `plan`: the text node that stands for the
+ * lead's split of the work. `episode`: a text node holding one episode's script. `script`: a script written before a
+ * drama had episodes, read as its only episode. `character` and `scene`: a text node holding one character's or one
+ * scene's profile; it and the pictures generated from it sit in one group. `creation`: the config node that generates
+ * a shot's video. `take`: a video generated for a shot. `final`: an episode's finished film.
  */
-export type CanvasNodeRole = "script" | "character" | "creation" | "take" | "final";
+export type CanvasNodeRole = "brief" | "plan" | "episode" | "script" | "character" | "scene" | "creation" | "take" | "final";
+
+/** The roles a bot gives a text node it adds, each by the bot of that job. */
+export const CANVAS_PROFILE_ROLES = ["character", "scene"] as const satisfies readonly CanvasNodeRole[];
 
 export interface CanvasNode {
   id: string;
@@ -245,8 +284,10 @@ export interface CanvasBotState {
   /** Its job title. */
   title: string;
   lead: boolean;
-  /** Its stages in the project's pipeline, in order; `["other"]` outside it. */
+  /** Its jobs in the project's production, in order; `["other"]` for a bot that has none. */
   stages: FlowStage[];
+  /** The episode the production made it for; absent on a bot that works on the whole drama. */
+  episode?: number;
   status: CanvasBotStatus;
   /** While working: the step it is on, in the words of its chat's activity line. */
   doing?: string;
@@ -283,10 +324,10 @@ export interface CanvasSnapshot extends CanvasDocument {
   readOnly?: "archived";
   /** By bot id; the node is `bot:<botId>`. */
   bots: Record<string, CanvasBotState>;
-  /** The project's pipeline run, once one started. */
-  run?: PipelineRunWire;
-  /** The project's JianYing draft and where the finished film is expected. */
-  draft?: ProjectDraftWire;
+  /** The project's production, once its lead planned it. */
+  production?: ProductionWire;
+  /** Each episode's JianYing draft by episode number, and where its finished film is expected. */
+  drafts?: Record<number, ProjectDraftWire>;
 }
 
 /** On `/api/events`, to the owner and admins, when a project's canvas changes. `document`: the stored canvas has a new

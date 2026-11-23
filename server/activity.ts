@@ -88,6 +88,7 @@ const TEAM_ACTION_KEYS: Record<string, string> = {
   canvas_apply_ops: "activity.tool.team.canvasApplyOps",
   canvas_generate: "activity.tool.team.canvasGenerate",
   canvas_get_state: "activity.tool.team.canvasGetState",
+  production_plan: "activity.tool.team.productionPlan",
   timeline_get_state: "activity.tool.team.timelineGetState",
   timeline_set_order: "activity.tool.team.timelineSetOrder",
   close_thread: "activity.tool.team.closeThread",

@@ -1,7 +1,7 @@
 import { CANVAS_MAX_NODES, type CanvasDocument, type CanvasNodeCreator, type CanvasNodeRole } from "../../shared/project-canvas.ts";
 import type { CanvasChangeSet, CanvasFrame } from "./ops.ts";
 import { settleGroups } from "./pipeline-groups.ts";
-import { settleLinks, wantedLinks } from "./pipeline-links.ts";
+import { settleLinks, wantedLinks, type BotEpisodes } from "./pipeline-links.ts";
 import { botsWith, creationOf, isCreation, isShot, isTake, makerOf, type BotStages } from "./pipeline-nodes.ts";
 import { addCreation, keepOneSelected, markOutdatedTakes } from "./pipeline-shots.ts";
 import { upgradeCanvas } from "./pipeline-upgrade.ts";
@@ -20,6 +20,8 @@ export interface SettleInput {
   /** Each bot's stages when the canvas's links were last made. */
   beforeStages: BotStages;
   stages: BotStages;
+  /** The bots the production made for one episode each. */
+  botEpisodes?: BotEpisodes;
   /** Who made the change; absent for one the server made. */
   actor?: CanvasNodeCreator;
   /** `before` was stored before the pipeline: it is brought forward, and every link the pipeline wants is made. */
@@ -47,11 +49,12 @@ function changesOf(before: CanvasDocument, after: CanvasDocument): PipelineChang
 }
 
 /**
- * What the server does after every change to a canvas, in place on `after`: a shot a storyboard bot or the person
- * added gets its creation node; a shot a bot deleted takes its creation node with it; takes left behind by a shot's
- * new prompt become stale; one take per shot keeps the selected mark; characters get their groups and their pictures
- * join them; and the pipeline's links go from the ones wanted before to the ones wanted now. Returns what it changed
- * beyond the change itself, and what the change did to the pipeline's nodes.
+ * What the server does after every change to a canvas, in place on `after`: a shot an episode's storyboard bot added
+ * belongs to that episode; a shot a storyboard bot or the person added gets its creation node; a shot a bot deleted
+ * takes its creation node with it; takes left behind by a shot's new prompt become stale; one take per shot keeps the
+ * selected mark; characters and scenes get their groups and their pictures join them; and the pipeline's links go
+ * from the ones wanted before to the ones wanted now. Returns what it changed beyond the change itself, and what the
+ * change did to the pipeline's nodes.
  */
 export function settlePipeline(input: SettleInput): { changed: CanvasChangeSet; events: PipelineChange[] } {
   const { before, after, stages, actor } = input;
@@ -67,10 +70,17 @@ export function settlePipeline(input: SettleInput): { changed: CanvasChangeSet; 
 
   const was = new Set(before.nodes.map((node) => node.id));
   const storyboard = new Set(botsWith(stages, "storyboard"));
+  const botEpisodes = input.botEpisodes ?? {};
   for (const shot of after.nodes.filter(isShot)) {
     const maker = makerOf(shot);
     const inPipeline = shot.createdBy?.kind === "person" || (maker !== undefined && storyboard.has(maker));
-    if (was.has(shot.id) || !inPipeline || creationOf(after, shot.id) || after.nodes.length >= CANVAS_MAX_NODES) continue;
+    if (was.has(shot.id)) continue;
+    const episode = maker === undefined ? undefined : botEpisodes[maker];
+    if (episode !== undefined && shot.metadata?.episode !== episode) {
+      shot.metadata = { ...shot.metadata, episode };
+      nodes.add(shot.id);
+    }
+    if (!inPipeline || creationOf(after, shot.id) || after.nodes.length >= CANVAS_MAX_NODES) continue;
     nodes.add(addCreation(after, shot, context).id);
   }
 
@@ -88,8 +98,8 @@ export function settlePipeline(input: SettleInput): { changed: CanvasChangeSet; 
 
   for (const id of [...markOutdatedTakes(before, after), ...keepOneSelected(before, after), ...settleGroups(before, after, context)]) nodes.add(id);
 
-  const wantedBefore = input.upgrade ? [] : wantedLinks(before, input.beforeStages);
-  for (const id of settleLinks(after, wantedBefore, wantedLinks(after, stages), input.newId)) connections.add(id);
+  const wantedBefore = input.upgrade ? [] : wantedLinks(before, input.beforeStages, botEpisodes);
+  for (const id of settleLinks(after, wantedBefore, wantedLinks(after, stages, botEpisodes), input.newId)) connections.add(id);
 
   return { changed: { nodes: [...nodes], connections: [...connections] }, events: changesOf(before, after) };
 }

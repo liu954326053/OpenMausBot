@@ -106,7 +106,7 @@ export function draftsHarness(options: DraftsHarnessOptions = {}) {
   mkdirSync(join(folder, "产出", "视频"), { recursive: true });
   mkdirSync(draftRoot);
   const project: TeamProjectWire = {
-    id: "p1", name: options.name ?? "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "post"], follows: {},
+    id: "p1", name: options.name ?? "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "post"], follows: {}, episodeBots: {},
   };
   const projects = [project];
   const canvas = new MemoryDraftCanvas();

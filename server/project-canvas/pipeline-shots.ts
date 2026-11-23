@@ -37,7 +37,11 @@ export function addCreation(document: CanvasDocument, shot: CanvasNode, context:
     title: shot.title,
     position: clearSpot(document, { x: shot.position.x + shot.width + LANE_GAP, y: shot.position.y }, size, context.bots, context.reserved, ignore),
     ...size,
-    metadata: { generationMode: "video", role: "creation", shotId: shot.id, ...(settings && Object.keys(settings).length ? { settings } : {}) },
+    metadata: {
+      generationMode: "video", role: "creation", shotId: shot.id,
+      ...(shot.metadata?.episode === undefined ? {} : { episode: shot.metadata.episode }),
+      ...(settings && Object.keys(settings).length ? { settings } : {}),
+    },
     ...(shot.createdBy ? { createdBy: shot.createdBy } : {}),
   };
   document.nodes.push(creation);
@@ -69,7 +73,7 @@ export function landTake(document: CanvasDocument, creation: CanvasNode, file: C
     title: file.name,
     position: placeAfter(document, creation, size, context.bots, context.reserved),
     ...size,
-    metadata: { file, role: "take", shotId: creation.metadata!.shotId! },
+    metadata: { file, role: "take", shotId: creation.metadata!.shotId!, ...(creation.metadata!.episode === undefined ? {} : { episode: creation.metadata!.episode }) },
     ...(creation.createdBy ? { createdBy: creation.createdBy } : {}),
   };
   const connection: CanvasConnection = { id: context.newId(), fromNodeId: creation.id, toNodeId: take.id, kind: "content", pipeline: true };
@@ -155,6 +159,8 @@ export interface PipelineTake {
  * the last one failed; `idle` for a shot that has no creation node. */
 export interface PipelineShot {
   shotId: string;
+  /** The episode it belongs to; absent on a shot of a drama made before episodes. */
+  episode?: number;
   title: string;
   prompt: string;
   creationNodeId: string | null;
@@ -165,9 +171,11 @@ export interface PipelineShot {
   take: PipelineTake | null;
 }
 
-/** The canvas's shots from top to bottom, those level with each other from left to right. */
+/** The canvas's shots episode by episode, those of one episode in the order they were added; shots of no episode
+ * come first. */
 export function listShots(document: CanvasDocument): PipelineShot[] {
-  const shots = document.nodes.filter(isShot).sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x);
+  const shots = document.nodes.filter(isShot).map((shot, index) => ({ shot, index }))
+    .sort((a, b) => (a.shot.metadata?.episode ?? 0) - (b.shot.metadata?.episode ?? 0) || a.index - b.index).map(({ shot }) => shot);
   return shots.map((shot) => {
     const creation = creationOf(document, shot.id);
     const takes = takesOf(document, shot.id);
@@ -175,6 +183,7 @@ export function listShots(document: CanvasDocument): PipelineShot[] {
     const { file, durationMs, naturalWidth, naturalHeight } = selected?.metadata ?? {};
     return {
       shotId: shot.id,
+      ...(shot.metadata?.episode === undefined ? {} : { episode: shot.metadata.episode }),
       title: shot.title,
       prompt: shot.metadata?.prompt ?? "",
       creationNodeId: creation?.id ?? null,

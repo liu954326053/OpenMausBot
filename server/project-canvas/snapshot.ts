@@ -51,6 +51,8 @@ export interface SnapshotInput {
   bots: BotFacts[];
   /** The project's pipeline: its bots' stages and the lines between them. */
   pipeline: ProjectPipeline;
+  /** The bots the production made for one episode each → that episode's number. */
+  botEpisodes?: Readonly<Record<string, number>>;
   /** Whether the viewer may open this conversation. */
   sees(threadId: string): boolean;
 }
@@ -92,7 +94,7 @@ function boundedOutput(text: string): { text: string; truncated?: true } {
   return points.length > CANVAS_OUTPUT_MAX_CHARS ? { text: points.slice(0, CANVAS_OUTPUT_MAX_CHARS).join(""), truncated: true } : { text: points.join("") };
 }
 
-function botState(bot: BotFacts, lead: boolean, stages: FlowStage[], placed: boolean, sees: (threadId: string) => boolean): CanvasBotState {
+function botState(bot: BotFacts, lead: boolean, stages: FlowStage[], episode: number | undefined, placed: boolean, sees: (threadId: string) => boolean): CanvasBotState {
   const visible = bot.threads.filter((one) => sees(one.threadId));
   const reply = newest(visible.filter((one) => one.reply), (one) => one.reply!.at);
   const card = newest(visible.filter((one) => one.card), (one) => one.card!.at);
@@ -103,6 +105,7 @@ function botState(bot: BotFacts, lead: boolean, stages: FlowStage[], placed: boo
     title: bot.title,
     lead,
     stages,
+    ...(episode === undefined ? {} : { episode }),
     status: statusOf(bot.threads),
     ...(doing ? { doing: redactSecretsInText(doing.doing!) } : {}),
     ...(reply ? { output: { ...boundedOutput(reply.reply!.text), threadId: reply.threadId, messageId: reply.reply!.messageId, at: reply.reply!.at } } : {}),
@@ -136,6 +139,6 @@ export function buildSnapshot(input: SnapshotInput): CanvasSnapshot {
     connections,
     project,
     ...(project.archived ? { readOnly: "archived" as const } : {}),
-    bots: Object.fromEntries(input.bots.map((one) => [one.id, botState(one, one.id === project.leadBotId, flow.stages[one.id]!, frames.get(botNodeId(one.id))!.placed, input.sees)])),
+    bots: Object.fromEntries(input.bots.map((one) => [one.id, botState(one, one.id === project.leadBotId, flow.stages[one.id]!, input.botEpisodes?.[one.id], frames.get(botNodeId(one.id))!.placed, input.sees)])),
   };
 }

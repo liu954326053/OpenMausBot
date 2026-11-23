@@ -18,7 +18,7 @@ import { HOSTING_TOOL_DEFINITIONS, HOSTING_TOOL_NAMES } from "./agents-hosting-t
 import { MEETING_TOOL_DEFINITIONS, MEETING_TOOL_NAMES } from "./agents-meeting-tools.ts";
 import { MAUSBOT_TOOL_DEFINITIONS } from "./agents-mausbot-tools.ts";
 import { TEAM_PROJECT_TOOL_DEFINITIONS } from "./agents-team-project-tools.ts";
-import { PROJECT_CANVAS_TOOL_DEFINITIONS } from "./agents-project-canvas-tools.ts";
+import { PROJECT_CANVAS_TOOL_DEFINITIONS, PROJECT_LEAD_TOOL_NAMES } from "./agents-project-canvas-tools.ts";
 import { PROJECT_TIMELINE_TOOL_DEFINITIONS } from "./agents-project-timeline-tools.ts";
 import { PERSON_TOOL_DEFINITIONS } from "./agents-person-tools.ts";
 import { RESEARCH_TOOL_DEFINITIONS, RESEARCH_TOOL_NAMES, X_TOOL_NAMES } from "./agents-research-tools.ts";
@@ -887,5 +887,6 @@ function catalogTools(profile: CatalogProfile) {
       return { ...tool, description: tool.description.replace(CHIEF_PROFILE_TARGET, ""), inputSchema: { ...tool.inputSchema, properties } };
     });
   return [...ROLE_TOOLS, ...(profile.mausbot === true ? MAUSBOT_TOOL_DEFINITIONS : []), ...(profile.teamProjects === true ? TEAM_PROJECT_TOOL_DEFINITIONS : []),
-    ...(profile.projectCanvas === true ? PROJECT_CANVAS_TOOL_DEFINITIONS : []), ...(profile.projectTimeline === true ? PROJECT_TIMELINE_TOOL_DEFINITIONS : [])];
+    ...(profile.projectCanvas === true ? PROJECT_CANVAS_TOOL_DEFINITIONS.filter((tool) => profile.chief || !PROJECT_LEAD_TOOL_NAMES.has(tool.name)) : []),
+    ...(profile.projectTimeline === true ? PROJECT_TIMELINE_TOOL_DEFINITIONS : [])];
 }

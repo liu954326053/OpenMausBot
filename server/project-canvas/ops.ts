@@ -30,6 +30,10 @@ import { z } from "zod";
 import {
   botIdOfNode,
   botNodeId,
+  CANVAS_CARD_PALETTE_MAX,
+  CANVAS_CARD_ROWS_MAX,
+  CANVAS_CARD_TAGS_MAX,
+  CANVAS_CARD_TEXT_MAX_CHARS,
   CANVAS_CONTENT_MAX_CHARS,
   CANVAS_MAX_CONNECTIONS,
   CANVAS_MAX_NODES,
@@ -43,6 +47,7 @@ import {
   type CanvasNode,
   type CanvasNodeCreator,
   type CanvasNodeMetadata,
+  type CanvasNodeRole,
   type CanvasNodeType,
   type CanvasOp,
   type CanvasPoint,
@@ -133,6 +138,16 @@ const file = z.object({
   name: short(255),
 }).strict();
 
+const cardText = z.string().trim().min(1).max(CANVAS_CARD_TEXT_MAX_CHARS);
+const cardFacts = z.object({
+  badge: cardText.optional(),
+  subtitle: cardText.optional(),
+  tags: z.array(cardText).max(CANVAS_CARD_TAGS_MAX).optional(),
+  rows: z.array(z.tuple([cardText, cardText])).max(CANVAS_CARD_ROWS_MAX).optional(),
+  palette: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/, "a colour is #rrggbb")).max(CANVAS_CARD_PALETTE_MAX).optional(),
+}).strict();
+const shotDesign = z.object({ size: cardText.optional(), move: cardText.optional(), audio: z.string().trim().min(1).max(CANVAS_PROMPT_MAX_CHARS).optional() }).strict();
+
 const METADATA_FIELDS = {
   content: z.string().max(CANVAS_CONTENT_MAX_CHARS),
   fontSize: z.number().finite().min(6).max(200),
@@ -148,7 +163,10 @@ const METADATA_FIELDS = {
   jobId: short(200),
   settings,
   generationMode: z.enum(["image", "video"]),
-  role: z.enum(["script", "character", "creation", "take", "final"]),
+  role: z.enum(["brief", "plan", "episode", "script", "character", "scene", "creation", "take", "final"]),
+  episode: z.number().int().min(1).max(9_999),
+  card: cardFacts,
+  shot: shotDesign,
   shotId: short(200),
   selected: z.boolean(),
   stale: z.boolean(),
@@ -200,12 +218,12 @@ const GENERATION: readonly MetadataKey[] = ["prompt", "status", ...ERROR_FIELDS,
 const TYPE_KEYS: Record<CanvasNodeType, readonly MetadataKey[]> = {
   bot: [],
   group: [],
-  text: ["content", "fontSize"],
+  text: ["content", "fontSize", "card"],
   file: ["file"],
   audio: ["file", "durationMs"],
   image: ["file", "naturalWidth", "naturalHeight", ...GENERATION],
   video: ["file", "naturalWidth", "naturalHeight", "durationMs", ...GENERATION],
-  shot: GENERATION,
+  shot: [...GENERATION, "shot"],
   config: [...GENERATION, "generationMode"],
 };
 const IMAGE_SETTINGS = new Set(["model", "aspect", "quality", "count"]);
@@ -213,8 +231,16 @@ const VIDEO_SETTINGS = new Set(["model", "resolution", "aspect", "seconds"]);
 const SETTINGS_OF: Partial<Record<CanvasNodeType, ReadonlySet<string>>> = { image: IMAGE_SETTINGS, video: VIDEO_SETTINGS, shot: VIDEO_SETTINGS };
 const BOT_ADDS: ReadonlySet<CanvasNodeType> = new Set(["text", "shot"]);
 /** What a node is in the pipeline: the server's to set. */
-const PIPELINE_KEYS = ["role", "shotId", "selected", "stale"] as const satisfies readonly MetadataKey[];
-const PIPELINE_IS_THE_SERVERS = "role, shotId, selected and stale are set by the server";
+const PIPELINE_KEYS = ["role", "episode", "shotId", "selected", "stale"] as const satisfies readonly MetadataKey[];
+const PIPELINE_IS_THE_SERVERS = "role, episode, shotId, selected and stale are set by the server";
+/** The role a bot gives a text node it adds, by the job it has: the job, and what the role says the node holds. */
+const ROLE_OF_JOB = {
+  episode: { job: "script", holds: "an episode's script, with metadata.episode its number" },
+  character: { job: "character", holds: "a character's profile" },
+  scene: { job: "scene", holds: "a scene's profile" },
+} as const satisfies Partial<Record<CanvasNodeRole, { job: FlowStage; holds: string }>>;
+/** The jobs whose bots add the image nodes their pictures are generated in. */
+const PICTURE_JOBS: readonly FlowStage[] = ["character", "scene"];
 
 function checkMetadata(type: CanvasNodeType, values: { settings?: unknown }, index: number): void {
   for (const key of Object.keys(values)) {
@@ -284,18 +310,24 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
     (actor.kind === "bot" ? { kind: "bot", botId: actor.botId } : restored(id, type)?.createdBy ?? { kind: "person" });
 
   /** What an added node is in the pipeline. It is never taken from the person's operation, which a paste or an undo
-   * fills with a copy, and from a bot's only a character's profile. */
+   * fills with a copy, and from a bot's only the role of the bot's own job. */
   function addedRole(op: Extract<CanvasOp, { type: "add_node" }>, index: number): CanvasNodeMetadata {
     if (actor.kind === "person") return restored(op.id, op.nodeType)?.pipeline ?? {};
-    const { role, shotId, selected, stale } = op.metadata ?? {};
-    if (shotId !== undefined || selected !== undefined || stale !== undefined || (role !== undefined && role !== "character")) {
-      throw new CanvasOpRefusal("not_allowed", `${PIPELINE_IS_THE_SERVERS}; the one role you can give is character, to a text node you add`, index);
+    const { role, episode, shotId, selected, stale } = op.metadata ?? {};
+    const own = role !== undefined && Object.hasOwn(ROLE_OF_JOB, role) ? ROLE_OF_JOB[role as keyof typeof ROLE_OF_JOB] : undefined;
+    if (shotId !== undefined || selected !== undefined || stale !== undefined || (role !== undefined && !own) || (episode !== undefined && role !== "episode")) {
+      throw new CanvasOpRefusal("not_allowed", `${PIPELINE_IS_THE_SERVERS}; the roles a bot gives a text node it adds are episode, character and scene, each by the bot of that job`, index);
     }
-    if (role === undefined) return {};
-    if (op.nodeType !== "text" || !context.stages?.includes("character")) {
-      throw new CanvasOpRefusal("not_allowed", "only a bot of the character stage adds a character, as a text node", index);
+    if (role === undefined || !own) return {};
+    if (op.nodeType !== "text" || !context.stages?.includes(own.job)) {
+      throw new CanvasOpRefusal("not_allowed", `only the bot whose job is ${own.job} adds ${own.holds}, as a text node`, index);
     }
-    return { role };
+    if (role !== "episode") return { role };
+    if (episode === undefined) throw new CanvasOpRefusal("invalid_op", "an episode needs metadata.episode, its number from 1", index);
+    if (document.nodes.some((node) => node.metadata?.role === "episode" && node.metadata.episode === episode)) {
+      throw new CanvasOpRefusal("invalid_op", `episode ${episode} is already on the canvas: change that node instead of adding another`, index);
+    }
+    return { role, episode };
   }
 
   const actorOwnsEnd = (id: string) => {
@@ -347,13 +379,13 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
 
   ops.forEach((op, index) => {
     if (op.type === "add_node") {
-      if (actor.kind === "bot" && !BOT_ADDS.has(op.nodeType) && !(op.nodeType === "image" && context.stages?.includes("character"))) {
-        throw new CanvasOpRefusal("not_allowed", "you can add text and shot nodes, and in the character stage image nodes; files you attach become nodes on their own", index);
+      if (actor.kind === "bot" && !BOT_ADDS.has(op.nodeType) && !(op.nodeType === "image" && PICTURE_JOBS.some((job) => context.stages?.includes(job)))) {
+        throw new CanvasOpRefusal("not_allowed", "you can add text and shot nodes, and the character and scene bots image nodes; files you attach become nodes on their own", index);
       }
       if (actor.kind === "bot" && op.groupId) throw new CanvasOpRefusal("not_allowed", "grouping is the person's", index);
       if (op.id && (exists(op.id) || isBotNode(op.id))) throw new CanvasOpRefusal("invalid_op", `node ${op.id} is already there`, index, op.id);
       if (document.nodes.length >= CANVAS_MAX_NODES) throw new CanvasOpRefusal("limit", `a canvas holds at most ${CANVAS_MAX_NODES} nodes`, index);
-      const { role: _role, shotId: _shotId, selected: _selected, stale: _stale, ...own } = op.metadata ?? {};
+      const { role: _role, episode: _episode, shotId: _shotId, selected: _selected, stale: _stale, ...own } = op.metadata ?? {};
       checkMetadata(op.nodeType, own, index);
       const added: CanvasNodeMetadata = { ...own, ...addedRole(op, index) };
       if (op.groupId) {

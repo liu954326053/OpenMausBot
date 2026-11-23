@@ -543,7 +543,7 @@ function inFlowOrder<T extends RosterMember>(team: readonly T[], flow: PipelineP
 }
 
 const STAGE_WORDS: Record<Exclude<FlowStage, "lead" | "other">, string> = {
-  script: "script", character: "character design", storyboard: "storyboard", post: "post-production",
+  script: "script", character: "character design", scene: "scene design", storyboard: "storyboard", post: "post-production",
 };
 
 /** A pipeline member's stages, as a roster and list_bots name them. */

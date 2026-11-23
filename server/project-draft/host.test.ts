@@ -41,7 +41,7 @@ function installation(options: { onPersonsComputer?: boolean; jianying?: boolean
     mkdirSync(join(base, "Applications", "VideoFusion-macOS.app", "Contents"), { recursive: true });
     writeFileSync(join(base, "Applications", "VideoFusion-macOS.app", "Contents", "Info.plist"), "<key>CFBundleShortVersionString</key>\n<string>11.8.0</string>");
   }
-  const project: TeamProjectWire = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "post"], follows: {} };
+  const project: TeamProjectWire = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "post"], follows: {}, episodeBots: {} };
   const stages: Record<string, FlowStage[]> = { lead: ["lead"], post: ["post"] };
   const launched: JianyingInstall[] = [];
   const lines: string[] = [];

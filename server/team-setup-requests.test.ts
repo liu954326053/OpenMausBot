@@ -55,7 +55,7 @@ function harness(caps?: Record<string, { driverKind: string; agentsMcp: boolean 
   const validateChange = vi.fn();
   let fieldsRefusal: ((target: BotRecord, fields: TeamSetupFields) => string | null) | null = null;
   const canPersist = vi.fn((): { ok: true } | { ok: false; status: number; error: string } => ({ ok: true }));
-  const service = new TeamSetupRequestService({ store, teams: () => teams, maxBots: 100, hasTeamAuthority,
+  const service = new TeamSetupRequestService({ store, teams: () => teams, hasTeamAuthority,
     canPersist, ownsThread: () => sourceExists, targetBusy, deleteBot, deletionRefusal, autoApply, validateChange,
     fieldsRefusal: (target, fields) => fieldsRefusal?.(target, fields) ?? null,
     mcpServerProblem: (name, botId) => {
@@ -793,10 +793,6 @@ describe("a Chief making bots, whatever the plan", () => {
     expect(app.apply).toHaveBeenCalledTimes(1);
   });
 
-  it("still holds the workspace's own ceiling", () => {
-    const app = full(97);
-    expect(() => app.propose([specialist("Scout"), specialist("Writer")])).toThrow(expect.objectContaining({ status: 409, message: "This setup exceeds the workspace bot limit" }));
-  });
 });
 
 describe("team setup and a team project's wall", () => {

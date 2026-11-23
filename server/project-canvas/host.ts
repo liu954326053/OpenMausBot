@@ -13,7 +13,7 @@ import { createProjectCanvasRoutes } from "../routes/project-canvas.ts";
 import type { RouteHandler } from "../routes/table.ts";
 import { isSteeredMessageQueued, onSteeredQueueChange, queuedSteerSnapshot } from "../steer-queue.ts";
 import type { Store } from "../store.ts";
-import { onTeamFlowsChange, projectPipeline } from "../team-flow/flows.ts";
+import { productionPipeline } from "../production/plans.ts";
 import { onTeamProjectFolderChange } from "../team-projects/folder-watch.ts";
 import { createProjectCanvasToolRoutes } from "./agent-tools.ts";
 import { CanvasDocuments } from "./document-store.ts";
@@ -36,7 +36,7 @@ export interface ProjectCanvasHostDeps {
   sendToRoom: ProjectCanvasServiceDeps["sendToRoom"];
   roomSpeaker(threadId: string): string | undefined;
   roomWorking(threadId: string): boolean;
-  /** A project's pipeline; by default the one its team's pipeline gives its copies. */
+  /** Who does what in a project; by default what its production says. */
   pipelineOf?(projectId: string, leadBotId: string): ProjectPipeline;
   generation: ProjectGenerationApi;
   /** Hands a card's decision to the turn parked on it; false when none took it. */
@@ -74,7 +74,7 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     sendToRoom: deps.sendToRoom,
     roomSpeaker: deps.roomSpeaker,
     roomWorking: deps.roomWorking,
-    pipelineOf: deps.pipelineOf ?? projectPipeline,
+    pipelineOf: deps.pipelineOf ?? productionPipeline,
     generation: deps.generation,
     openCards: openCardRows,
     queuedThreads,
@@ -139,13 +139,6 @@ export function createProjectCanvasHost(deps: ProjectCanvasHostDeps): ProjectCan
     queued = now;
   });
 
-  onTeamFlowsChange(() => {
-    try {
-      for (const projectId of service.linesMoved()) botsChanged(projectId);
-    } catch (error) {
-      console.error(`[project-canvas] a change to a team's flow could not be drawn on the canvases (${error instanceof Error ? error.message : "unknown"})`);
-    }
-  });
   onTeamProjectFolderChange(({ projectId }) => botsChanged(projectId));
 
   deps.generation.onJobChange((job) => service.jobChanged(job));

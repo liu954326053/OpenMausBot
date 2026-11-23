@@ -113,7 +113,6 @@ interface Options {
   fieldsRefusal?(target: BotRecord, fields: TeamSetupFields): string | null;
   /** Why this MCP server cannot be given to this bot (unknown, or another bot's own); null when it can. */
   mcpServerProblem?(name: string, botId: string): string | null;
-  maxBots: number;
   ownsThread(botId: string, threadId: string): boolean;
   /** `request` only for a reviewed deletion; Undo of a creation deletes without one. */
   deleteBot(botId: string, revalidate: () => void, request?: TeamSetupRequest): Promise<void>;
@@ -218,8 +217,6 @@ export class TeamSetupRequestService {
       const at = projected.findIndex((bot) => bot.id === operation.botId);
       if (at < 0) projected.push(next); else projected[at] = next;
     }
-    const creating = request.operations.filter((op) => op.action === "create").length;
-    if (this.options.store.bots.length + creating > this.options.maxBots) throw new TeamSetupError("This setup exceeds the workspace bot limit", 409);
     for (const name of request.newTeams) if (!request.operations.some((op) => section(op.fields.section) === name)) throw new TeamSetupError(`New team ${JSON.stringify(name)} needs a specialist in this setup`);
     for (const operation of request.operations) {
       const candidate = projected.find((bot) => bot.id === operation.botId)!;
