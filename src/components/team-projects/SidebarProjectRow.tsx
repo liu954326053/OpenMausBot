@@ -1,4 +1,4 @@
-import { FolderClosed, FolderOpen, MessagesSquare, MoreHorizontal } from "lucide-react";
+import { Crown, FolderClosed, FolderOpen, MessagesSquare, MoreHorizontal } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
@@ -66,14 +66,28 @@ export function SidebarProjectRow({ project, attention, simple, selected, expand
   );
 }
 
-/** A project's bot under its open row, set in to the project's name: a click opens the bot's conversation. */
-export function SidebarProjectBot({ bot, simple, selected, onOpen }: { bot: Bot; simple: boolean; selected: boolean; onOpen: () => void }) {
+/** A project's bot under its open row, set in to the project's name: its role after its name, the lead's mark, and a
+ * click that opens the bot's conversation. */
+export function SidebarProjectBot({ bot, lead, simple, selected, onOpen }: { bot: Bot; lead?: boolean; simple: boolean; selected: boolean; onOpen: () => void }) {
   const attention = sidebarSectionAttention([bot], []);
+  const role = bot.title.trim();
+  const leadLabel = lead ? t("teamProjects.lead") : "";
   return (
-    <button type="button" data-sidebar-project-bot={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={bot.name}
+    <button type="button" data-sidebar-project-bot={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={[bot.name, role, leadLabel].filter(Boolean).join(" · ")}
       className={cn(UNDER_PROJECT, simple ? "h-10 rounded-[8px] ps-[50px] pe-2" : "h-8 rounded-md ps-[46px] pe-2", selected ? rowSelectedSurface : "hover:bg-raised/50")}>
       <BotAvatar bot={bot} state={stateForBot(bot)} size={simple ? 22 : 20} />
-      <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-ink">{bot.name}</span>
+      <span dir="auto" className="min-w-0 shrink truncate text-[13px] leading-5 text-ink">{bot.name}</span>
+      {role ? (
+        <span dir="auto" data-sidebar-project-bot-title="" className="min-w-0 flex-1 truncate text-[12px] leading-4 text-ink-tertiary">{role}</span>
+      ) : (
+        <span className="flex-1" />
+      )}
+      {lead ? (
+        <span data-sidebar-project-bot-lead="" title={leadLabel} className="flex shrink-0 items-center text-ink-secondary">
+          <Crown size={14} aria-hidden="true" />
+          <span className="sr-only">{leadLabel}</span>
+        </span>
+      ) : null}
       <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
     </button>
   );

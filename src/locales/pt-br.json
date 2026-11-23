@@ -7173,6 +7173,7 @@
   "teamProjects.team": "Equipe",
   "teamProjects.teamMembers": "Chefe de gabinete: {chief} · Membros: {members}",
   "teamProjects.teamChiefOnly": "Chefe de gabinete: {chief}",
+  "teamProjects.lead": "Líder",
   "teamProjects.pickTeam": "Escolha uma equipe para este projeto.",
   "teamProjects.folder": "Pasta do projeto",
   "teamProjects.folderHint": "Uma pasta nova, criada junto com o projeto.",
