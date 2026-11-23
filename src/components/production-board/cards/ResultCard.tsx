@@ -2,7 +2,7 @@ import { Check, Clapperboard, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder, shotCode, type BoardGeneration } from "./parts";
+import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder, shotCode, StaleMark, type BoardGeneration } from "./parts";
 
 /** One video made of a shot. */
 export interface BoardTake {
@@ -12,6 +12,8 @@ export interface BoardTake {
   /** The take that goes to post. */
   selected?: boolean;
   durationMs?: number;
+  /** The take node's `metadata.stale`. */
+  stale?: boolean;
 }
 
 export interface ResultCardProps {
@@ -54,6 +56,7 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
           </PicturePlaceholder>
         )}
         {take && making ? <span data-result-generating="" className="ui-chip absolute start-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
+        {take?.stale ? <StaleMark reason={t("boardCards.stale.take")} className="absolute end-2 top-2 bg-card text-ink-secondary" /> : null}
         {take && failed ? (
           <span data-result-failure="" title={failureText(generation)} className="absolute inset-x-2 bottom-2 truncate rounded-md bg-card px-2 py-1 text-[12px] leading-4 text-danger">{failureText(generation)}</span>
         ) : null}

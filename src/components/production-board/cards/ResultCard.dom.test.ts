@@ -65,6 +65,15 @@ describe("the result card", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 
+  it("marks the take it shows, quietly, when that take was made before a change to what it was made from", () => {
+    const card = draw({ takes: [{ ...TAKES[0]!, stale: true }, TAKES[1]!, TAKES[2]!] });
+    expect(card.querySelector("[data-stale]")).toBeNull();
+    click(versions(card)[0]);
+    const badge = card.querySelector<HTMLElement>("[data-stale]")!;
+    expect(textOf(badge)).toBe("Outdated");
+    expect(badge.title).toBe("Something this take was made from changed after it was made. Generate it again to bring it up to date.");
+  });
+
   it("says a take is being made without inventing how far along it is", () => {
     const first = draw({ takes: [], generation: { status: "loading" } });
     expect(textOf(first.querySelector("[data-result-media]"))).toBe("Generating…");

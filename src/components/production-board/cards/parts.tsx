@@ -100,6 +100,11 @@ export function CardAction({ onClick, label, icon, className }: { onClick: () =>
   );
 }
 
+/** A quiet mark on something made before a change to what it was made from. */
+export function StaleMark({ reason, className }: { reason: string; className?: string }) {
+  return <span data-stale="" title={reason} className={cn("ui-chip shrink-0 bg-control text-ink-tertiary", className)}>{t("boardCards.stale.label")}</span>;
+}
+
 export function StatusMark({ status, className }: { status: BoardStatus; className?: string }) {
   return (
     <span data-board-status={status.tone} className={cn("inline-flex shrink-0 items-center gap-1.5 text-[12px] font-medium leading-4", TONE_TEXT[status.tone], className)}>

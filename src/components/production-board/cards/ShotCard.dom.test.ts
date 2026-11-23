@@ -57,6 +57,13 @@ describe("the shot card", () => {
     expect(onGenerate).toHaveBeenCalledTimes(2);
   });
 
+  it("marks itself, quietly, when something it was made from changed after it was made", () => {
+    const badge = draw({ stale: true }).querySelector<HTMLElement>("[data-stale]")!;
+    expect(textOf(badge)).toBe("Outdated");
+    expect(badge.title).toBe("Something this shot was made from changed after it was made.");
+    expect(draw().querySelector("[data-stale]")).toBeNull();
+  });
+
   it("says when it has no description, and cuts long text short", () => {
     expect(textOf(draw({ prompt: undefined }).querySelector("[data-shot-prompt]"))).toBe("No description yet");
     const long = "A description that goes on and on, past what a shot card of this size can show in three lines of text";

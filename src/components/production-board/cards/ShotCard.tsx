@@ -3,7 +3,7 @@ import { episodeCode } from "../../../../shared/production";
 import type { CanvasShotDesign } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, failureText, shotCode, StatusMark, type BoardGeneration } from "./parts";
+import { CardAction, CardName, CardShell, failureText, shotCode, StaleMark, StatusMark, type BoardGeneration } from "./parts";
 import type { BoardStatus } from "./tone";
 
 /** A character or a scene a shot is drawn with. */
@@ -26,6 +26,8 @@ export interface ShotCardProps {
   takes?: number;
   /** How its newest video is being made. */
   generation?: BoardGeneration;
+  /** The shot node's `metadata.stale`. */
+  stale?: boolean;
   onOpen?: () => void;
   onGenerate?: () => void;
 }
@@ -50,7 +52,7 @@ function Reference({ reference }: { reference: BoardReference }) {
   );
 }
 
-export function ShotCard({ number, episode, title, design, seconds, prompt, references, takes = 0, generation, onOpen, onGenerate }: ShotCardProps) {
+export function ShotCard({ number, episode, title, design, seconds, prompt, references, takes = 0, generation, stale, onOpen, onGenerate }: ShotCardProps) {
   const status = videoStatus(generation, takes);
   const code = shotCode(number);
   const facts: Array<[label: string, value: string | undefined]> = [
@@ -65,6 +67,7 @@ export function ShotCard({ number, episode, title, design, seconds, prompt, refe
       <header className="flex items-center gap-2 px-3 pt-3">
         <span data-shot-code="" title={episode === undefined ? code : `${episodeCode(episode)} ${code}`} className="ui-chip shrink-0 bg-control font-mono text-ink-secondary">{code}</span>
         <CardName text={title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6" />
+        {stale ? <StaleMark reason={t("boardCards.stale.shot")} /> : null}
         <StatusMark status={status} />
       </header>
       <dl className="grid grid-cols-3 gap-3 px-3 pt-2">
