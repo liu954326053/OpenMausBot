@@ -4,9 +4,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
-import type { Bot, Group } from "@/state/store";
+import type { Bot, Group, Message } from "@/state/store";
 
-const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: { bots: [] as unknown[], groups: [] as unknown[], pendingQueued: {} } }));
+const fixture = vi.hoisted(() => ({ dispatch: vi.fn(), state: { bots: [] as unknown[], groups: [] as unknown[], pendingQueued: {} }, shownGroup: null as unknown }));
 vi.mock("@/state/store-select", () => ({
   useStoreSelector: (selector: (state: typeof fixture.state) => unknown) => selector(fixture.state),
   useStoreDispatch: () => fixture.dispatch,
@@ -19,7 +19,12 @@ vi.mock("@/components/ChatView", async () => {
 });
 vi.mock("@/components/GroupView", async () => {
   const { createElement: element } = await import("react");
-  return { GroupView: ({ group }: { group: Group }) => element("main", { "data-group-view": group.id }) };
+  return {
+    GroupView: ({ group }: { group: Group }) => {
+      fixture.shownGroup = group;
+      return element("main", { "data-group-view": group.id });
+    },
+  };
 });
 
 import { setLocale } from "@/lib/i18n";
@@ -124,6 +129,33 @@ describe("a group chat in a project", () => {
     expect(q("[data-project-chat]")?.dataset.projectChat).toBe("p-bride");
     await drawRoom(room("sales-room", "Sales"));
     expect([q("[data-project-chat]"), q("[data-group-view]")?.dataset.groupView]).toEqual([null, "sales-room"]);
+  });
+
+  describe("of a drama whose production made bots for its episodes", () => {
+    const episodeBots = { "frame-1": { number: 1, job: "storyboard" }, "cut-1": { number: 1, job: "post" } } as const;
+    const started: Message = { id: "started", role: "bot", kind: "activity", at: 2, tool: { name: "EP01 storyboard started: frame-1", ok: true } };
+    beforeEach(() => {
+      fixture.state = { ...fixture.state, bots: [main, lead, writer, bot("frame-1", { section: "The bride" }), bot("cut-1", { section: "The bride" })] };
+      setTeamProjects({ root: "/dramas", projects: [{ ...bride, roomId: "bride-room", botIds: [...bride.botIds, "frame-1", "cut-1"], episodeBots }] });
+    });
+
+    it("lists in the project's own group chat only the bots of the whole drama, the production's notes left in it as they are", async () => {
+      const own = { ...room("bride-room", "The bride"), memberIds: ["lead", "frame-1", "writer", "cut-1"], messages: [started] };
+      await drawRoom(own);
+      expect(fixture.shownGroup).toEqual({ ...own, memberIds: ["lead", "writer"] });
+      const shown = fixture.shownGroup;
+      await drawRoom(own);
+      expect(fixture.shownGroup).toBe(shown);
+    });
+
+    it("leaves the project's own group chat as it is while no episode's bot is in it, and another group chat of its department", async () => {
+      const own = room("bride-room", "The bride");
+      await drawRoom(own);
+      expect(fixture.shownGroup).toBe(own);
+      const side = { ...room("side-room", "The bride"), memberIds: ["lead", "frame-1"] };
+      await drawRoom(side);
+      expect(fixture.shownGroup).toBe(side);
+    });
   });
 
   it("gives way to MagicBot when the project is archived while its group chat is open", async () => {

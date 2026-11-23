@@ -1,5 +1,5 @@
 import { FolderX } from "lucide-react";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, type ReactNode } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { ChatView } from "@/components/ChatView";
@@ -30,9 +30,20 @@ export function ProjectChat({ bot }: { bot: Bot }) {
 export function ProjectGroup({ group }: { group: Group }) {
   const side = useTeamProjectSide();
   const project = side.shown ? projectOfGroup(side, group) : undefined;
+  const shown = useWholeDramaRoom(group, project);
   useLeaveWhenArchived(group.id, project);
   if (!project || project.archivedAt !== undefined) return <GroupView group={group} />;
-  return <ProjectFrame project={project}><GroupView group={group} /></ProjectFrame>;
+  return <ProjectFrame project={project}><GroupView group={shown} /></ProjectFrame>;
+}
+
+/** The project's own group chat with only the bots of the whole drama as its members: a bot made for one episode works
+ * in a conversation of its own. */
+function useWholeDramaRoom(group: Group, project: TeamProjectWire | undefined): Group {
+  const episodeBots = project?.roomId === group.id ? project.episodeBots : undefined;
+  return useMemo(() => {
+    const memberIds = episodeBots ? group.memberIds.filter((id) => !episodeBots[id]) : group.memberIds;
+    return memberIds.length === group.memberIds.length ? group : { ...group, memberIds };
+  }, [group, episodeBots]);
 }
 
 function projectOfGroup(side: TeamProjectSide, group: Group): TeamProjectWire | undefined {
