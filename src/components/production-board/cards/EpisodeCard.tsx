@@ -31,7 +31,7 @@ export function EpisodeCard({ episode, logline, text, to, onOpen, onRetry }: Epi
       {logline?.trim() ? (
         <p data-episode-logline="" dir="auto" title={logline} className="line-clamp-2 px-3 pt-2 text-[13px] font-medium leading-[18px] text-ink-secondary">{logline}</p>
       ) : null}
-      <p data-episode-text="" dir="auto" className={cn("min-h-0 flex-1 overflow-hidden whitespace-pre-line px-3 pt-2 text-[12px] leading-[18px]", script ? "text-ink-tertiary" : "text-ink-tertiary/70")}>
+      <p data-episode-text="" dir="auto" className={cn("min-h-0 flex-1 overflow-hidden whitespace-pre-line px-3 pt-2 text-[12px] leading-4", script ? "text-ink-tertiary" : "text-ink-tertiary/70")}>
         {script ? text : t("boardCards.episode.noText")}
       </p>
       {shots > 0 || to || (status?.tone === "failed" && onRetry) ? (

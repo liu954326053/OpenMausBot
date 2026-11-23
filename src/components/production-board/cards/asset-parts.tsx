@@ -31,7 +31,7 @@ export function AssetPicture({ name, pictureUrl, generation, onGenerate, classNa
     return (
       <div data-asset-picture="" className={cn("relative overflow-hidden bg-ink/[0.04]", className)}>
         <img src={pictureUrl} alt={t("boardCards.asset.picture", { name })} draggable={false} className="size-full object-cover" />
-        {making ? <span data-asset-generating="" className="ui-chip absolute left-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
+        {making ? <span data-asset-generating="" className="ui-chip absolute start-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
       </div>
     );
   }

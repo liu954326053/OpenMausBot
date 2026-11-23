@@ -35,7 +35,7 @@ export function PlanCard({ tasks, onOpen }: PlanCardProps) {
           const status = taskStatus(task.status)!;
           const name = t(`boardCards.plan.job.${task.job}`);
           return (
-            <li key={task.job} data-plan-task={task.job} className="grid grid-cols-[22px_minmax(0,1fr)] gap-x-2 py-1">
+            <li key={task.job} data-plan-task={task.job} className="grid grid-cols-[24px_minmax(0,1fr)] gap-x-2 py-1">
               <span data-task-code="" className="font-mono text-[12px] leading-[18px] text-ink-tertiary">{`T${index + 1}`}</span>
               <div className="flex min-w-0 items-center gap-1.5">
                 <span data-task-name="" title={name} className="min-w-0 truncate text-[13px] font-medium leading-[18px] text-ink">

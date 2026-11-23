@@ -19,7 +19,7 @@ export interface SceneCardProps {
 export function SceneCard({ name, facts, pictureUrl, generation, shots, refinedBy, onOpen, onGenerate }: SceneCardProps) {
   return (
     <CardShell kind="scene" label={name} onOpen={onOpen}>
-      <AssetPicture name={name} pictureUrl={pictureUrl} generation={generation} onGenerate={onGenerate} className="h-[150px] w-full shrink-0" />
+      <AssetPicture name={name} pictureUrl={pictureUrl} generation={generation} onGenerate={onGenerate} className="h-38 w-full shrink-0" />
       <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 pt-2.5">
         <CardName text={name} onOpen={onOpen} className="text-[17px] font-semibold leading-6" />
         <AssetSubtitle facts={facts} />

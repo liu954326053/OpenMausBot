@@ -36,7 +36,7 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
   const name = `${code} ${title}`;
   return (
     <CardShell kind="result" label={name} tone={failed ? "failed" : undefined} onOpen={onOpen}>
-      <div data-result-media="" className="relative h-[168px] shrink-0">
+      <div data-result-media="" className="relative h-42 shrink-0">
         {take?.videoUrl ? (
           <InlineVideo src={take.videoUrl} posterUrl={take.posterUrl} label={t("boardCards.result.play", { name })} onPlay={() => onPlay?.(take.id)} className="size-full" />
         ) : making ? (
@@ -53,7 +53,7 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
             {onGenerate ? <CardAction icon={<Sparkles size={14} aria-hidden="true" />} label={t("boardCards.video.generate")} onClick={onGenerate} /> : null}
           </PicturePlaceholder>
         )}
-        {take && making ? <span data-result-generating="" className="ui-chip absolute left-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
+        {take && making ? <span data-result-generating="" className="ui-chip absolute start-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
         {take && failed ? (
           <span data-result-failure="" title={failureText(generation)} className="absolute inset-x-2 bottom-2 truncate rounded-md bg-card px-2 py-1 text-[12px] leading-4 text-danger">{failureText(generation)}</span>
         ) : null}
@@ -75,7 +75,7 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
                   data-result-take=""
                   aria-pressed={one.id === take?.id}
                   title={t("boardCards.result.take", { n: index + 1 })}
-                  className={cn("h-6 min-w-7 shrink-0 rounded-md px-1.5 font-mono text-[12px]", one.id === take?.id ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
+                  className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", one.id === take?.id ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
                   onClick={(event) => {
                     event.stopPropagation();
                     setShownId(one.id);

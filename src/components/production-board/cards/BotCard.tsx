@@ -109,7 +109,7 @@ export function BotCard({ bot, look, job, task, progress, steps, onOpen, onRetry
       {!steps?.length && reply ? (
         <section className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden px-3 pt-3">
           <span data-bot-output-label=""><CardLabel>{t("boardCards.bot.output")}</CardLabel></span>
-          <p data-bot-output="" dir="auto" title={reply} className="line-clamp-3 whitespace-pre-line text-[12px] leading-[18px] text-ink-secondary">{reply}</p>
+          <p data-bot-output="" dir="auto" title={reply} className="line-clamp-3 whitespace-pre-line text-[12px] leading-4 text-ink-secondary">{reply}</p>
         </section>
       ) : steps?.length ? (
         <ol aria-label={t("boardCards.bot.steps")} className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-3 pt-3">

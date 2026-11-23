@@ -20,7 +20,7 @@ export function CharacterCard({ name, facts, pictureUrl, generation, shots, onOp
   return (
     <CardShell kind="character" label={name} onOpen={onOpen}>
       <div className="flex min-h-0 flex-1 gap-3 p-3">
-        <AssetPicture name={name} pictureUrl={pictureUrl} generation={generation} onGenerate={onGenerate} className="h-full w-[138px] shrink-0 rounded-lg" />
+        <AssetPicture name={name} pictureUrl={pictureUrl} generation={generation} onGenerate={onGenerate} className="h-full w-35 shrink-0 rounded-lg" />
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-center gap-1.5">
             <CardName text={name} onOpen={onOpen} className="text-[17px] font-semibold leading-6" />
