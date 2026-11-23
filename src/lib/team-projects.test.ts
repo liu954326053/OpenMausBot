@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectTeamUnusable, TeamProjectRefusal, TeamProjectWire } from "../../shared/team-projects";
 import { en } from "@/locales";
-import { refusalKey, refusalPlace, splitEpisodes, teamProjectFolder, teamProjectSectionId, teamProjectSide, teamProjectsVersion, unusableKey } from "./team-projects";
+import { refusalKey, refusalPlace, splitEpisodes, splitTeamByEpisode, teamProjectFolder, teamProjectSectionId, teamProjectSide, teamProjectsVersion, unusableKey, type EpisodeBotPlace } from "./team-projects";
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban drama team" }, follows: {},
@@ -119,6 +119,18 @@ describe("a drama's team", () => {
     expect(ids(bigTeam)).toEqual(["big-lead", "big-writer", ...episodeIds]);
     const { drama, episodes } = splitEpisodes(big, bigTeam);
     expect([ids(drama), episodes.length, ids(episodes[59]!.bots)]).toEqual([["big-lead", "big-writer"], 60, ["ep60-shots", "ep60-post"]]);
+  });
+
+  it("splits any list by the episode each bot was made for, a bot whose job there is not known after the storyboard and post bots", () => {
+    const places: Record<string, EpisodeBotPlace> = {
+      "ep2-other": { number: 2 }, "ep2-post": { number: 2, job: "post" }, "ep2-shots": { number: 2, job: "storyboard" }, "ep1-post": { number: 1, job: "post" },
+    };
+    const crew = ["lead", "ep2-other", "ep2-post", "writer", "ep2-shots", "ep1-post"].map((id) => bot(id, "lamp"));
+    const { drama, episodes } = splitTeamByEpisode(crew, (one) => places[one.id]);
+    expect([ids(drama), episodes.map(({ number, bots }) => [number, ids(bots)])]).toEqual([
+      ["lead", "writer"],
+      [[1, ["ep1-post"]], [2, ["ep2-shots", "ep2-post", "ep2-other"]]],
+    ]);
   });
 });
 

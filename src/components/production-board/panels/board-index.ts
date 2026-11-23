@@ -1,6 +1,7 @@
-import type { ProductionEpisodeWire } from "../../../../shared/production";
+import { EPISODE_JOBS, type EpisodeJob, type ProductionEpisodeWire } from "../../../../shared/production";
 import { botNodeId, type CanvasBotState, type CanvasNode, type CanvasSnapshot } from "../../../../shared/project-canvas";
 import type { FlowStage } from "../../../../shared/team-pipeline";
+import { splitTeamByEpisode, type EpisodeBotPlace } from "@/lib/team-projects";
 
 export type AssetKind = "character" | "scene" | "episode" | "shot" | "result" | "final" | "brief" | "plan" | "text" | "image" | "video" | "audio" | "file";
 
@@ -69,12 +70,15 @@ function workRank(bot: CanvasBotState): number {
   return ranks.length ? Math.min(...ranks) : WORK_ORDER.length;
 }
 
+const isEpisodeStage = (stage: FlowStage): stage is EpisodeJob => (EPISODE_JOBS as readonly FlowStage[]).includes(stage);
+
+const episodePlace = (bot: CanvasBotState): EpisodeBotPlace | undefined =>
+  bot.lead || bot.episode === undefined ? undefined : { number: bot.episode, job: bot.stages.find(isEpisodeStage) };
+
 function teamInOrder(bots: readonly CanvasBotState[]): BoardIndex["team"] {
-  const drama = bots.filter((bot) => bot.episode === undefined || bot.lead);
-  const episodes = bots.filter((bot) => bot.episode !== undefined && !bot.lead);
+  const { drama, episodes } = splitTeamByEpisode(bots, episodePlace);
   drama.sort((a, b) => workRank(a) - workRank(b));
-  episodes.sort((a, b) => a.episode! - b.episode! || workRank(a) - workRank(b));
-  return { drama, episodes };
+  return { drama, episodes: episodes.flatMap((episode) => episode.bots) };
 }
 
 function push<Key, Value>(map: Map<Key, Value[]>, key: Key, value: Value): void {
