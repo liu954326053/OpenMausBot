@@ -177,6 +177,8 @@ export interface CanvasNode {
   createdBy?: CanvasNodeCreator;
   /** The group node this node sits in. */
   groupId?: string;
+  /** The person moved it on the production board, which then draws it at `position` instead of laying it out. */
+  arranged?: true;
 }
 
 /** `content`: the upstream node is reference material for the downstream one. `dispatch`: a line of the project's
@@ -291,6 +293,8 @@ export interface CanvasBotState {
   status: CanvasBotStatus;
   /** While working: the step it is on, in the words of its chat's activity line. */
   doing?: string;
+  /** Its latest steps in its open conversation, oldest first, in the words of its chat's activity lines. */
+  steps?: Array<{ text: string; at: number }>;
   /** Its newest reply, secrets redacted, at most `CANVAS_OUTPUT_MAX_CHARS` characters. */
   output?: { text: string; truncated?: true; threadId: string; messageId: string; at: number };
   /** The question or approval card it waits on the person with. */
