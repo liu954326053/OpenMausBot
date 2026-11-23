@@ -25,8 +25,22 @@ const refuse = (what: string) => () => { throw new Error(`a bench team has no ${
 /** Makes `count` projects, "Project 1" on, in `root` from the department `team`; returns their ids in that order, none
  * when the department has no bot. */
 export async function seedProjects(store: Store, { team, count, root, selection }: { team: string; count: number; root: string; selection: ModelSelection }): Promise<string[]> {
+  const projects = count < 1 ? null : openTeamProjects(store, { team, root, selection });
+  if (!projects) return [];
+  const ids: string[] = [];
+  for (let index = 1; index <= count; index += 1) {
+    const made = await projects.api.create({ name: `Project ${index}`, team });
+    if (!("project" in made)) throw new Error(`Project ${index} was not made: ${made.error}`);
+    ids.push(made.project.id);
+  }
+  return ids;
+}
+
+/** The app's project service over `store`, with the first bot of `team` its Chief and `root` the projects' folder;
+ * null when the department has no bot. */
+export function openTeamProjects(store: Store, { team, root, selection }: { team: string; root: string; selection: ModelSelection }): ReturnType<typeof createTeamProjectsHost> | null {
   const chief = store.bots.find((bot) => bot.section === team && !bot.hidden);
-  if (!chief || count < 1) return [];
+  if (!chief) return null;
   ensureDefaultBot(store, { dataDir: DATA_DIR });
   store.setChiefOfStaff(chief.id);
   const checked = checkTeamProjectsRoot(root, DATA_DIR);
@@ -54,14 +68,13 @@ export async function seedProjects(store: Store, { team, count, root, selection 
     deleteBot: async () => "a bench seed deletes no bot",
     exportDocument: (target, listed, carries) => share.document(target, listed, carries),
     ownSkillNames: (botId) => listSkills(botId).map((skill) => skill.name), language: () => undefined, broadcast: () => {},
+    updateRoom: (groupId, patch) => {
+      const room = store.patchGroup(groupId, patch);
+      if (!room) throw new Error("a bench room is gone");
+      return room;
+    },
+    publishedRoom: () => {},
   });
   setTeamProjectLookup(projects.lookup);
-
-  const ids: string[] = [];
-  for (let index = 1; index <= count; index += 1) {
-    const made = await projects.api.create({ name: `Project ${index}`, team });
-    if (!("project" in made)) throw new Error(`Project ${index} was not made: ${made.error}`);
-    ids.push(made.project.id);
-  }
-  return ids;
+  return projects;
 }

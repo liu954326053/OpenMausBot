@@ -1,20 +1,29 @@
 // A real server from source in a temporary home, driven by the repository's fake Claude engine: many bots, each with
 // many threads, are sent work at once. Reports send-to-start latency, stream volume, health stalls and what the
-// server's own diagnostics say. No AI account is used and no user data is touched.
-import { readFileSync, writeFileSync } from "node:fs";
+// server's own diagnostics say. With --drama EPISODES the bots sit in departments beside a drama of that many episodes
+// (testing/bench-drama.ts), whose costs are measured before the rounds. No AI account is used and no user data is touched.
+import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { arch, availableParallelism, platform } from "node:os";
+import { arch, availableParallelism, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { removeTempDir } from "../server/testing/cleanup.ts";
+import { startFakeGenerationMcp } from "../server/testing/fake-generation-mcp-server.ts";
+import { GENERATION_KEY } from "../server/testing/project-generation-harness.ts";
 import { launchRestartableServer } from "../server/testing/restartable-server.ts";
+import { measureDrama, PROBE_ARGS, readProbe, seedDrama } from "./testing/bench-drama.ts";
 
 const arg = (name: string, fallback: string): string => {
   const at = process.argv.indexOf(`--${name}`);
   return at > 0 && process.argv[at + 1] ? process.argv[at + 1]! : fallback;
 };
 const BOTS = Number(arg("bots", "34")), THREADS = Number(arg("threads", "200")), ROUNDS = Number(arg("rounds", "3"));
+/** How many of the bots each round sends work to, and how often the server is started on the seeded data. */
+const SEND = Math.min(BOTS, Number(arg("send", String(BOTS)))), STARTS = Number(arg("starts", "1"));
+const DRAMA = Number(arg("drama", "0")), REPEATS = Number(arg("repeats", "5"));
+const SECTIONS = ["Sales", "Support", "Engineering", "Research", "Operations", "Marketing", "Finance", "People"];
 /** What the measuring client tells the server it understands: "whole" is a client from before thread frames. */
 const FRAMES = arg("frames", "whole");
 const quantile = (values: number[], q: number): number | null => values.length
@@ -22,8 +31,15 @@ const quantile = (values: number[], q: number): number | null => values.length
 
 const WAIT_MS = Number(arg("wait", "90")) * 1_000;
 
-const server = await launchRestartableServer();
-for (const signal of ["SIGINT", "SIGTERM", "SIGALRM"] as const) process.once(signal, () => { void server.close().finally(() => process.exit(1)); });
+const server = await launchRestartableServer(DRAMA ? { scripted: true, nodeArgs: PROBE_ARGS } : {});
+const generation = DRAMA ? await startFakeGenerationMcp({ key: GENERATION_KEY, taskMs: 3_600_000 }) : null;
+const dramaFolder = DRAMA ? realpathSync(mkdtempSync(join(tmpdir(), "openmausbot-bench-drama-"))) : null;
+const closeAll = async () => {
+  await server.close();
+  await generation?.close();
+  if (dramaFolder) await removeTempDir(dramaFolder);
+};
+for (const signal of ["SIGINT", "SIGTERM", "SIGALRM"] as const) process.once(signal, () => { void closeAll().finally(() => process.exit(1)); });
 const api = async (method: string, path: string, body?: unknown): Promise<any> => {
   const response = await fetch(`${server.url}${path}`, { method, headers: { "content-type": "application/json", origin: server.url },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
@@ -34,8 +50,12 @@ const api = async (method: string, path: string, body?: unknown): Promise<any> =
 
 try {
   const botIds: string[] = [];
-  for (let i = 0; i < BOTS; i++) botIds.push((await api("POST", "/api/bots", { name: `Bench ${i + 1}` })).bot.id);
+  for (let i = 0; i < BOTS; i++) botIds.push((await api("POST", "/api/bots", { name: `Bench ${i + 1}`, ...(DRAMA ? { section: SECTIONS[i % SECTIONS.length] } : {}) })).bot.id);
   for (const botId of botIds) await api("POST", `/api/bots/${botId}/tasks`, { title: "Bench thread" });
+  if (generation) {
+    await api("POST", "/api/mcp/servers", { name: "gen", type: "http", url: generation.url, headers: { Authorization: `Bearer ${GENERATION_KEY}` } });
+    await api("PATCH", "/api/mcp/servers/gen", { enabled: true });
+  }
   await server.stop();
   const botsFile = join(server.dataDir, "bots.json");
   const bots = JSON.parse(readFileSync(botsFile, "utf8")) as Array<{ id: string; tasks: Array<Record<string, unknown>> }>;
@@ -48,9 +68,17 @@ try {
         usage: { inputTokens: 120_000 + i, outputTokens: 4_000 + i, cachedInputTokens: 90_000, contextTokens: 60_000 } });
     }
   }
-  const bytesOnDisk = Buffer.byteLength(JSON.stringify(bots));
   writeFileSync(botsFile, JSON.stringify(bots));
-  await server.start();
+  const drama = dramaFolder ? seedDrama(server.dataDir, server.port, dramaFolder, DRAMA) : null;
+  if (drama) console.log(JSON.stringify({ drama: "seeded", bots: drama.bots, projectBots: drama.projectBots, canvas: drama.canvas, episodeBotMs: drama.episodeBotMs }));
+  const bytesOnDisk = readFileSync(botsFile).byteLength;
+  const startMs: number[] = [];
+  for (let start = 0; start < STARTS; start++) {
+    if (start) await server.stop();
+    const at = performance.now();
+    await server.start();
+    startMs.push(Math.round(performance.now() - at));
+  }
 
   const started = new Map<string, number>(), completed = new Set<string>();
   const stream = { bytes: 0, reconnects: 0, snapshots: 0, snapshotBytes: 0, byKind: new Map<string, { frames: number; bytes: number }>() };
@@ -104,6 +132,17 @@ try {
     }
   })();
 
+  await delay(1_000);
+  console.log(JSON.stringify({ benchmark: "many-bots", node: process.version, platform: platform(), arch: arch(), cpus: availableParallelism(),
+    bots: BOTS, allBots: drama?.bots ?? BOTS, sentPerRound: SEND, threadsPerBot: THREADS, clientFrames: FRAMES, botsJsonBytes: bytesOnDisk, startMs,
+    scope: "Real server from source with the fake Claude engine; each round sends one message to each of the first bots at once. Not model throughput." }));
+  if (drama) {
+    await delay(4_000);
+    const measured = await measureDrama({ url: server.url, dataDir: server.dataDir, planPath: server.planPath, seed: drama, ordinaryBotId: botIds[0]!, repeats: REPEATS,
+      frames: () => stream.byKind, print: (line) => console.log(JSON.stringify(line)) });
+    console.log(JSON.stringify({ drama: "summary", startMedianMs: [...startMs].sort((a, b) => a - b)[Math.floor(startMs.length / 2)], ...measured }));
+  }
+
   const health: number[] = [];
   let probing = true;
   const probe = (async () => {
@@ -114,28 +153,25 @@ try {
       await delay(20);
     }
   })();
-
-  await delay(1_000);
-  console.log(JSON.stringify({ benchmark: "many-bots", node: process.version, platform: platform(), arch: arch(), cpus: availableParallelism(),
-    bots: BOTS, threadsPerBot: THREADS, clientFrames: FRAMES, botsJsonBytes: bytesOnDisk,
-    scope: "Real server from source with the fake Claude engine; each round sends one message to every bot at once. Not model throughput." }));
+  const sending = botIds.slice(0, SEND);
+  if (drama) await readProbe(server.url, server.dataDir);
   for (let round = 1; round <= ROUNDS; round++) {
     started.clear(); completed.clear(); health.length = 0;
     const bytesBefore = stream.bytes + stream.snapshotBytes, reconnectsBefore = stream.reconnects, kindsBefore = new Map([...stream.byKind].map(([kind, tally]) => [kind, { ...tally }]));
     const sent = new Map<string, number>();
     const roundStart = performance.now();
-    await Promise.all(botIds.map(async (botId) => {
+    await Promise.all(sending.map(async (botId) => {
       const threadId = targets.get(botId)!;
       sent.set(threadId, performance.now());
       await api("POST", `/api/bots/${botId}/messages`, { text: `Round ${round}: reply with one line.`, threadId });
     }));
     const deadline = Date.now() + WAIT_MS;
-    while (completed.size < BOTS && Date.now() < deadline) await delay(25);
+    while (completed.size < SEND && Date.now() < deadline) await delay(25);
     const roundMs = Math.round(performance.now() - roundStart);
     // A stream the server cut and could not resume misses turn events: ask the server what finished.
     const seenOnStream = completed.size;
-    if (seenOnStream < BOTS) {
-      const wanted = new Set(targets.values());
+    if (seenOnStream < SEND) {
+      const wanted = new Set(sending.map((botId) => targets.get(botId)!));
       for (const bot of (await api("GET", "/api/bots?messages=0")).bots as Array<{ tasks?: Array<{ threadId: string; busy?: boolean }> }>) {
         for (const task of bot.tasks ?? []) if (wanted.has(task.threadId) && !task.busy) completed.add(task.threadId);
       }
@@ -145,9 +181,15 @@ try {
     const bot = stream.byKind.get("bot"), botBefore = kindsBefore.get("bot");
     console.log(JSON.stringify({ round, turnsCompleted: completed.size, turnEndsSeenOnStream: seenOnStream, roundMs,
       sendToStartP50Ms: quantile(toStart, .5), sendToStartP95Ms: quantile(toStart, .95), sendToStartMaxMs: quantile(toStart, 1),
-      streamKbPerTurn: Math.round((stream.bytes + stream.snapshotBytes - bytesBefore) / 1024 / BOTS), streamCutByServer: stream.reconnects - reconnectsBefore, botFramesPerTurn: Number((((bot?.frames ?? 0) - (botBefore?.frames ?? 0)) / BOTS).toFixed(1)),
-      botFrameKbPerTurn: Math.round(((bot?.bytes ?? 0) - (botBefore?.bytes ?? 0)) / 1024 / BOTS),
+      streamKbPerTurn: Math.round((stream.bytes + stream.snapshotBytes - bytesBefore) / 1024 / SEND), streamCutByServer: stream.reconnects - reconnectsBefore, botFramesPerTurn: Number((((bot?.frames ?? 0) - (botBefore?.frames ?? 0)) / SEND).toFixed(1)),
+      botFrameKbPerTurn: Math.round(((bot?.bytes ?? 0) - (botBefore?.bytes ?? 0)) / 1024 / SEND),
       healthP95Ms: quantile(health, .95), healthMaxMs: quantile(health, 1) }));
+    if (drama) {
+      const seen = await readProbe(server.url, server.dataDir), saves = seen.methods["Store.saveBots"], written = seen.writes["bots.json"];
+      console.log(JSON.stringify({ round, serverPerTurn: { cpuMs: Math.round(seen.cpuMs / SEND), saveBots: Number(((saves?.calls ?? 0) / SEND).toFixed(1)),
+        saveBotsMs: Number(((saves?.totalMs ?? 0) / SEND).toFixed(1)), botsJsonWrites: Number(((written?.calls ?? 0) / SEND).toFixed(1)), botsJsonKb: Math.round((written?.bytes ?? 0) / 1024 / SEND) },
+        loopMaxMs: Math.round(seen.loopDelayMs.max) }));
+    }
   }
   probing = false;
   await probe;
@@ -157,5 +199,5 @@ try {
   console.log(JSON.stringify({ getBotsBytes: (await botsBody.arrayBuffer()).byteLength }));
   abort.abort();
 } finally {
-  await server.close();
+  await closeAll();
 }
