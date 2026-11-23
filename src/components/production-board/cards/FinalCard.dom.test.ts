@@ -67,17 +67,18 @@ describe("the final card", () => {
     expect([play.mock.calls.length, onPlay.mock.calls.length, onOpen.mock.calls.length]).toEqual([1, 1, 0]);
   });
 
-  it("says where its JianYing draft stands and opens a written one", () => {
+  it("says where its JianYing draft stands and opens JianYing for a written one", () => {
     const onOpenDraft = vi.fn();
     const onOpen = vi.fn();
     const written = draw({ draft: DRAFT, onOpenDraft, onOpen });
-    expect(textOf(written.querySelector("[data-final-draft]"))).toContain("Lamps of the Fog Harbour EP01");
-    click(buttonNamed(written, "Open in JianYing"));
+    expect(textOf(written.querySelector("[data-final-draft-name]"))).toBe("Lamps of the Fog Harbour EP01");
+    expect(written.querySelector("[data-final-draft-state]")).toBeNull();
+    click(buttonNamed(written, "Open JianYing"));
     expect([onOpenDraft.mock.calls.length, onOpen.mock.calls.length]).toEqual([1, 0]);
 
     const kept = draw({ draft: { ...DRAFT, state: "kept", name: "Lamps EP01 (2)" }, onOpenDraft });
-    expect(textOf(kept.querySelector("[data-final-draft-state]"))).toBe("Lamps EP01 (2), beside the copy JianYing saved");
-    expect(buttonNamed(kept, "Open in JianYing")).toBeDefined();
+    expect([textOf(kept.querySelector("[data-final-draft-name]")), textOf(kept.querySelector("[data-final-draft-state]"))]).toEqual(["Lamps EP01 (2)", "Written beside the copy JianYing saved"]);
+    expect(buttonNamed(kept, "Open JianYing")).toBeDefined();
 
     const states: Array<[Partial<ProjectDraftWire>, string]> = [
       [{ state: "none" }, "Written once every shot has a video"],
@@ -88,15 +89,32 @@ describe("the final card", () => {
     for (const [patch, text] of states) {
       const card = draw({ draft: { exportFolder: "/tmp/out", ...patch } as ProjectDraftWire, onOpenDraft });
       expect(textOf(card.querySelector("[data-final-draft-state]"))).toBe(text);
-      expect(buttonNamed(card, "Open in JianYing")).toBeUndefined();
+      expect(buttonNamed(card, "Open JianYing")).toBeUndefined();
     }
     expect(draw().querySelector("[data-final-draft]")).toBeNull();
+  });
+
+  it("names the draft to look for in JianYing's list, and says so on the button, which only brings JianYing up", () => {
+    const onOpenDraft = vi.fn();
+    const onOpen = vi.fn();
+    const card = draw({ draft: DRAFT, draftName: "Fog Harbour EP01", onOpenDraft, onOpen });
+    const name = card.querySelector<HTMLElement>("[data-final-draft-name]")!;
+    expect([textOf(name), name.title, name.className.includes("truncate")]).toEqual(["Fog Harbour EP01", "Fog Harbour EP01", true]);
+    const open = buttonNamed(card, "Open JianYing")!;
+    expect(open.title).toBe("Find “Fog Harbour EP01” in JianYing's drafts");
+    click(open);
+    expect([onOpenDraft.mock.calls.length, onOpen.mock.calls.length]).toEqual([1, 0]);
+  });
+
+  it("shows no name while it knows none, or while there is no draft yet", () => {
+    expect(draw({ draft: { ...DRAFT, name: undefined }, onOpenDraft: () => {} }).querySelector("[data-final-draft-name]")).toBeNull();
+    expect(draw({ draft: { state: "none", exportFolder: "/tmp/out" }, draftName: "Fog Harbour EP01" }).querySelector("[data-final-draft-name]")).toBeNull();
   });
 
   it("speaks the person's language", () => {
     setLocale("zh");
     const card = draw({ draft: DRAFT, onOpenDraft: () => {} });
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("成片 · EP01");
-    expect(buttonNamed(card, "在剪映里打开")).toBeDefined();
+    expect(buttonNamed(card, "打开剪映")!.title).toBe("在剪映的草稿里找「Lamps of the Fog Harbour EP01」");
   });
 });
