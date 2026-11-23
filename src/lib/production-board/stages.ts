@@ -1,4 +1,4 @@
-import type { ProductionTaskStatus } from "../../../shared/production";
+import type { ProductionEpisodeStatus, ProductionTaskStatus } from "../../../shared/production";
 import type { BoardIndex } from "./board";
 import type { BoardStageState } from "./types";
 import type { BoardStage } from "./overlay";
@@ -31,15 +31,16 @@ export function boardStages(index: BoardIndex): Record<BoardStage, BoardStageSta
   const episodes = production.episodes;
   const job = (name: "script" | "character" | "scene") => production.jobs.find((one) => one.job === name);
   const library = [job("character"), job("scene")].filter((one) => one !== undefined).map((one) => taskStage(one.status));
+  const passed = (past: ReadonlySet<ProductionEpisodeStatus>) => together(episodes.map((one) => (past.has(one.status) ? "done" : "wait")));
   const storyboard = (): BoardStageState => {
     if (episodes.some((one) => one.status === "failed" && !one.postBotId)) return "failed";
     if (episodes.some((one) => one.status === "storyboard" || one.status === "videos")) return "active";
-    return episodes.length && episodes.every((one) => one.status === "post" || one.status === "done") ? "done" : "wait";
+    return passed(new Set(["post", "done"]));
   };
   const post = (): BoardStageState => {
     if (episodes.some((one) => one.status === "failed" && one.postBotId)) return "failed";
     if (episodes.some((one) => one.status === "post")) return "active";
-    return episodes.length && episodes.every((one) => one.status === "done") ? "done" : "wait";
+    return passed(new Set(["done"]));
   };
   return { brief: "done", script: taskStage(job("script")?.status), library: together(library), storyboard: storyboard(), post: post() };
 }

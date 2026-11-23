@@ -252,10 +252,16 @@ describe("the board's lines", () => {
 });
 
 describe("the board's stages", () => {
-  it("tells each stage's state from the production", () => {
-    expect(buildBoard(drama()).stages).toEqual({ brief: "done", script: "done", library: "done", storyboard: "active", post: "wait" });
+  it("tells each stage's state from the production, a stage some episodes are past being at work", () => {
+    expect(buildBoard(drama()).stages).toEqual({ brief: "done", script: "done", library: "done", storyboard: "active", post: "active" });
     const posting = drama({ production: { episodes: [episodeWire(1, "post"), episodeWire(2, "done")] } });
     expect(buildBoard(posting).stages).toMatchObject({ storyboard: "done", post: "active" });
+    const between = drama({ production: { episodes: [episodeWire(1, "done"), episodeWire(2, "waiting")] } });
+    expect(buildBoard(between).stages).toMatchObject({ storyboard: "active", post: "active" });
+    const waiting = drama({ production: { episodes: [episodeWire(1, "waiting"), episodeWire(2, "waiting")] } });
+    expect(buildBoard(waiting).stages).toMatchObject({ storyboard: "wait", post: "wait" });
+    const finished = drama({ production: { episodes: [episodeWire(1, "done"), episodeWire(2, "done")] } });
+    expect(buildBoard(finished).stages).toMatchObject({ storyboard: "done", post: "done" });
     const failing = drama({ production: { jobs: [{ job: "script", botId: "writer", status: "done" }, { job: "character", botId: "painter", status: "failed" }, { job: "scene", botId: "builder", status: "working" }] } });
     expect(buildBoard(failing).stages).toMatchObject({ library: "failed" });
     expect(buildBoard(snapshot([bot("lead", ["lead"])], [])).stages).toEqual({ brief: "active", script: "wait", library: "wait", storyboard: "wait", post: "wait" });
