@@ -47,7 +47,7 @@ import { useAdvancedMode } from "@/lib/interface-mode";
 import { useAutomationsNeedYou } from "./SidebarFooterNav";
 import { mcpOpen } from "@/lib/apps-panel";
 import { useCloudFilesReady } from "@/lib/cloud-files";
-import { skillsLibraryEnabled } from "@/lib/feature-flags";
+import { skillsLibraryEnabled, publishedAppsEnabled } from "@/lib/feature-flags";
 import { SidebarPopoverMenu, type SidebarMenuItem } from "./SidebarPopoverMenu";
 import { api, useStore, type Action, type AppSettingsSection } from "@/state/store";
 import { serverCheckPhase, serverUpdateRow, type ServerUpdateCheck, type ServerUpdatePhase } from "@/lib/server-update";
@@ -623,7 +623,7 @@ export function SidebarProfileMenu({ iconOnly = false, rail = false, circle = fa
         onAutomations: () => dispatch({ type: "showRoutines", view: "list" }),
         onTeamMap: () => dispatch({ type: "showTeamMap" }),
         onFiles: filesReady ? () => dispatch({ type: "showFiles" }) : undefined,
-        onPublishedApps: () => dispatch({ type: "showPublishedApps" }),
+        onPublishedApps: publishedAppsEnabled(state.config) ? () => dispatch({ type: "showPublishedApps" }) : undefined,
         onSkillsLibrary: skillsLibraryEnabled(state.config) ? () => dispatch({ type: "showSkillsLibrary" }) : undefined,
         mcp: { open: mcpOpen(state), onSelect: () => dispatch({ type: "togglePlugins", open: true, surface: "mcp" }) },
         onTeamFiles: state.config?.team ? () => dispatch({ type: "showTeamFiles" }) : undefined,

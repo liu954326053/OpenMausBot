@@ -6,7 +6,7 @@ import { appsOpen, mcpOpen } from "@/lib/apps-panel";
 import { automationsFrom, hasUnseenProblemRun } from "@/lib/automations";
 import { cn } from "@/lib/cn";
 import { useCloudFilesReady } from "@/lib/cloud-files";
-import { skillsLibraryEnabled } from "@/lib/feature-flags";
+import { skillsLibraryEnabled, publishedAppsEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { useAdvancedMode } from "@/lib/interface-mode";
 import { useWebPanels } from "@/lib/web-panel-preferences";
@@ -191,14 +191,16 @@ export function SidebarFooterNav({
         />
       )}
       {filesRow}
-      <NavRow
-        id="published-apps"
-        label={t("sidebar.nav.publishedApps")}
-        iconsOnly={iconsOnly || toolbar}
-        active={state.activeView === "published-apps"}
-        icon={(active) => <Rocket size={iconSize} className={tone(active)} />}
-        onClick={() => dispatch({ type: "showPublishedApps" })}
-      />
+      {publishedAppsEnabled(state.config) && (
+        <NavRow
+          id="published-apps"
+          label={t("sidebar.nav.publishedApps")}
+          iconsOnly={iconsOnly || toolbar}
+          active={state.activeView === "published-apps"}
+          icon={(active) => <Rocket size={iconSize} className={tone(active)} />}
+          onClick={() => dispatch({ type: "showPublishedApps" })}
+        />
+      )}
       {skillsLibraryEnabled(state.config) && (
         <NavRow
           id="skills-library"

@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 
 export interface FeatureFlagConfig {
-  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; roomMemoryCapture?: boolean; savedSteps?: boolean; savedStepsHere?: boolean; usbPhoneTakeover?: boolean };
+  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; publishedApps?: boolean; roomMemoryCapture?: boolean; savedSteps?: boolean; savedStepsHere?: boolean; usbPhoneTakeover?: boolean };
   browserEngine?: { kind: "engine" | "unavailable"; reason?: string; installable?: boolean; installing?: boolean; installError?: string };
 }
 
@@ -74,6 +74,11 @@ export function claudeUserSkillsEnabled(config: FeatureFlagConfig | null | undef
 
 export function skillsLibraryEnabled(config: FeatureFlagConfig | null | undefined): boolean {
   return config?.features?.skillsLibrary !== false;
+}
+
+/** The sidebar's entry to the Published apps page. Off unless true: a home that publishes sites sets it by hand. */
+export function publishedAppsEnabled(config: FeatureFlagConfig | null | undefined): boolean {
+  return config?.features?.publishedApps === true;
 }
 
 export function shareLearnedSkillsMode(config: FeatureFlagConfig | null | undefined): "off" | "ask" | "auto" {

@@ -102,6 +102,7 @@ async function until<T>(probe: () => Promise<T> | T, what: string, timeoutMs = 3
     const shot = async (name: string) => { await new Promise((done) => setTimeout(done, 500)); await ui("screenshot", "--out", join(evidenceDir, `${name}.png`)); };
     const press = (selector: string) => evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return false; el.click(); return true; })()`);
     const openPage = async () => {
+      await until(() => evaluate(`Boolean(document.querySelector('[data-sidebar-nav="published-apps"]'))`), "the Tools section's Published apps entry");
       if (!await press('[data-sidebar-nav="published-apps"]')) throw new Error("the Tools section has no Published apps entry");
       await until(() => evaluate(`Boolean(document.querySelector('[data-published-apps]:not([data-published-apps="loading"])'))`), "the Published apps page to load");
     };
@@ -112,6 +113,8 @@ async function until<T>(probe: () => Promise<T> | T, what: string, timeoutMs = 3
     await evaluate(`localStorage.setItem("omb-advanced-mode", "1"); window.dispatchEvent(new StorageEvent("storage", { key: "omb-advanced-mode" })); true`);
 
     // Nothing published yet: the page says what it is and how to get the first app.
+    // Published apps is a page a home opts into: the Tools entry appears once its config asks for it.
+    await api("PUT", "/api/config", { features: { publishedApps: true } });
     await until(() => evaluate(`Boolean(document.querySelector('[data-sidebar-nav="published-apps"]'))`), "the Tools section's Published apps entry");
     await shot("tools-menu-desktop");
     await openPage();

@@ -18,6 +18,11 @@ export function skillsLibraryEnabled(cfg: AppConfig): boolean {
   return cfg.features?.skillsLibrary !== false;
 }
 
+/** The sidebar's entry to Published apps. Off unless true, set by hand: a home that publishes sites asks for it. */
+export function publishedAppsEnabled(cfg: AppConfig): boolean {
+  return cfg.features?.publishedApps === true;
+}
+
 export interface SkillManifest {
   id: string;
   name: string;

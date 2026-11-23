@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { builtInBrowserEnabled, parseSkillReviewSteps, roomMemoryCaptureEnabled, savedStepsEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines, usbPhoneTakeoverEnabled } from "./feature-flags";
+import { builtInBrowserEnabled, parseSkillReviewSteps, publishedAppsEnabled, roomMemoryCaptureEnabled, savedStepsEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines, usbPhoneTakeoverEnabled } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps skill authoring on by default, before and after the config arrives", () => {
@@ -80,6 +80,14 @@ describe("experimental feature flags", () => {
     expect(usbPhoneTakeoverEnabled({ features: {} })).toBe(false);
     expect(usbPhoneTakeoverEnabled({ features: { usbPhoneTakeover: false } })).toBe(false);
     expect(usbPhoneTakeoverEnabled({ features: { usbPhoneTakeover: true } })).toBe(true);
+  });
+
+  it("keeps Published apps out of the sidebar until a home that publishes sets it", () => {
+    expect(publishedAppsEnabled(null)).toBe(false);
+    expect(publishedAppsEnabled({})).toBe(false);
+    expect(publishedAppsEnabled({ features: {} })).toBe(false);
+    expect(publishedAppsEnabled({ features: { publishedApps: false } })).toBe(false);
+    expect(publishedAppsEnabled({ features: { publishedApps: true } })).toBe(true);
   });
 
   it("offers sharing learned skills only with the skills library, asking by default", () => {

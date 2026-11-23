@@ -494,7 +494,7 @@ import {
   mergeSkills,
   renderSkillInstructions,
   selectBundledSkills,
-  skillsLibraryEnabled, readSkillLibraryIndex,
+  skillsLibraryEnabled, publishedAppsEnabled, readSkillLibraryIndex,
 } from "./skill-library.ts";
 import { runSkillsLibraryBootSweep } from "./skills-library-migration.ts";
 import { installedPlaybookInstructions } from "./installed-playbooks.ts";
@@ -11828,7 +11828,7 @@ function configStatus() {
       skillAuthoring: skillAuthoringEnabled(cfg),
       skillReview: cfg.features?.skillReview === true,
       skillReviewSteps: skillReviewSteps(cfg),
-      skillsLibrary: skillsLibraryEnabled(cfg),
+      skillsLibrary: skillsLibraryEnabled(cfg), publishedApps: publishedAppsEnabled(cfg),
       shareLearnedSkills: skillsHost.mode(),
       showToolCalls: showToolCallsEnabled(cfg),
       browser: builtInBrowserEnabled(cfg),

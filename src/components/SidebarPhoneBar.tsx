@@ -2,7 +2,7 @@ import { BookOpen, FolderOpen, LayoutGrid, Puzzle, Rocket, Search, Server, Users
 
 import { appsOpen, mcpOpen } from "@/lib/apps-panel";
 import { useCloudFilesReady } from "@/lib/cloud-files";
-import { skillsLibraryEnabled } from "@/lib/feature-flags";
+import { skillsLibraryEnabled, publishedAppsEnabled } from "@/lib/feature-flags";
 import { t } from "@/lib/i18n";
 import { useStore } from "@/state/store";
 
@@ -43,13 +43,13 @@ export function SidebarPhoneBar({ query, onQuery, teamMapUnread = false }: { que
       active: state.activeView === "files",
       onSelect: () => dispatch({ type: "showFiles" }),
     }] : []),
-    {
+    ...(publishedAppsEnabled(state.config) ? [{
       key: "published-apps",
       label: t("sidebar.nav.publishedApps"),
       icon: <Rocket size={18} />,
       active: state.activeView === "published-apps",
       onSelect: () => dispatch({ type: "showPublishedApps" }),
-    },
+    }] : []),
     ...(skillsLibraryEnabled(state.config) ? [{
       key: "skills-library",
       label: t("skills.library.title"),
