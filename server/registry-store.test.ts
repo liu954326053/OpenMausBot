@@ -11,6 +11,7 @@ const bot = (id: string) => ({ id, name: id, busy: true, activity: "working", ta
   { threadId: `${id}-t`, busy: true, activity: "working", turnStartedAt: 1, pinned: false },
 ] }) as unknown as BotRecord;
 const owner = { kind: "bot", id: "a" } as const;
+const nextIteration = () => new Promise<void>((done) => setImmediate(done));
 
 describe("the JSON registry: today's bots.json and groups.json behind the registry calls", () => {
   beforeEach(() => {
@@ -39,7 +40,7 @@ describe("the JSON registry: today's bots.json and groups.json behind the regist
     expect(new JsonRegistry().loadBots()).toEqual(persistedBots([bot("a")]));
   });
 
-  it("writes a thread change at once, at the end of the running batch, or a bounded moment later", () => {
+  it("writes a thread change at once, by the end of the event-loop iteration, or a bounded moment later", async () => {
     const registry = new JsonRegistry();
     const write = vi.fn();
     registry.upsertThread(owner, "a-t", "now", write);
@@ -47,9 +48,11 @@ describe("the JSON registry: today's bots.json and groups.json behind the regist
     registry.batch(() => {
       registry.upsertThread(owner, "a-t", "pass", write);
       registry.upsertThread(owner, undefined, "pass", write);
-      expect(write).toHaveBeenCalledTimes(1);
     });
-    expect(write, "one write for the pass").toHaveBeenCalledTimes(2);
+    registry.upsertThread(owner, "a-t", "pass", write);
+    expect(write).toHaveBeenCalledTimes(1);
+    await nextIteration();
+    expect(write, "one write for the iteration").toHaveBeenCalledTimes(2);
     registry.upsertThread(owner, "a-t", "later", write);
     expect(write).toHaveBeenCalledTimes(2);
     flushLaterSaves();
@@ -58,14 +61,23 @@ describe("the JSON registry: today's bots.json and groups.json behind the regist
     expect(write).toHaveBeenCalledTimes(4);
   });
 
-  it("a whole save of the live list supersedes a write still waiting", () => {
-    const registry = new JsonRegistry();
-    const waiting = vi.fn();
-    registry.upsertThread(owner, "a-t", "later", waiting);
-    registry.writeBots([bot("a")], false);
-    registry.writeBots([bot("b")], true);
-    flushLaterSaves();
-    expect(waiting).not.toHaveBeenCalled();
+  it("a whole save of the live list, a deletion or a fresh read supersedes a write still waiting", async () => {
+    const supersede: Array<[string, (registry: JsonRegistry) => void]> = [
+      ["a whole save of the live list", (registry) => { registry.writeBots([bot("a")], false); registry.writeBots([bot("b")], true); }],
+      ["a deletion", (registry) => registry.deleteOwner({ kind: "bot", id: "b" }, () => registry.writeBots([bot("a")], false))],
+      ["a fresh read", () => new JsonRegistry().loadBots()],
+    ];
+    for (const [what, run] of supersede) {
+      const registry = new JsonRegistry();
+      registry.writeBots([bot("a"), bot("b")], true);
+      const waiting = vi.fn();
+      registry.upsertThread(owner, "a-t", "later", waiting);
+      registry.upsertThread(owner, "a-t", "pass", waiting);
+      run(registry);
+      await nextIteration();
+      flushLaterSaves();
+      expect(waiting, what).not.toHaveBeenCalled();
+    }
   });
 
   it("writes the bots once when a pass of many changes returns, the last list it was asked to save", () => {

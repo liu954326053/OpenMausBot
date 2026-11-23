@@ -7578,7 +7578,7 @@ function threadTitleGate(bot: Pick<BotRecord, "modelSelection">): { ok: true; in
 
 const titleRegenerations = new Set<string>();
 
-/** The turn's start saves its thread's bookkeeping (title, last asked, read) once, when its synchronous part returns. */
+/** The turn's start saves its thread's bookkeeping (title, last asked, read) in its event-loop iteration's one write. */
 function startTurn(...args: Parameters<typeof beginTurn>): ReturnType<typeof beginTurn> { return batchSaves(() => beginTurn(...args)); }
 async function beginTurn(
   botId: string,
