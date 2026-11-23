@@ -6,7 +6,7 @@ import { refusalKey, refusalPlace, teamProjectFolder, teamProjectSectionId, team
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban drama team" }, follows: {},
-  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`, `${id}-writer`, `${id}-shots`], ...extra,
+  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`, `${id}-writer`, `${id}-shots`], episodeBots: {}, ...extra,
 });
 const bot = (id: string, section?: string, pinned?: boolean) => ({ id, section, pinned });
 const ids = (items: Array<{ id: string }>) => items.map((item) => item.id);

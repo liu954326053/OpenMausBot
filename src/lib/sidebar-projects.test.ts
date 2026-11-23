@@ -6,7 +6,7 @@ import { teamProjectSide } from "./team-projects";
 
 const project = (id: string, botIds: string[]): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds,
+  leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds, episodeBots: {},
 });
 const side = teamProjectSide({ root: "/dramas", projects: [project("The bride", ["lead", "writer"])] });
 const main = { id: "maus", defaultBot: {} };

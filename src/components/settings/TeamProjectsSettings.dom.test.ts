@@ -11,7 +11,7 @@ import { TeamProjectsSettings } from "./TeamProjectsSettings";
 
 const project = (id: string, name: string, over: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name, folder: `/dramas/${name}`, section: name, team: { key: "team:urban", name: "Urban romance" }, follows: {},
-  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`], ...over,
+  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`], episodeBots: {}, ...over,
 });
 const bride = project("p1", "The bride");
 const heir = project("p2", "The heir", { archivedAt: 5 });

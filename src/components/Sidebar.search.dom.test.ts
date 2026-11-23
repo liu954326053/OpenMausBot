@@ -33,7 +33,7 @@ const room = (id: string, name: string, section?: string): Group => ({
 });
 const project = (id: string, name: string, botIds: string[]): TeamProjectWire => ({
   id, name, folder: `/dramas/${name}`, section: name, team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds,
+  leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds, episodeBots: {},
 });
 
 const state: AppState = {

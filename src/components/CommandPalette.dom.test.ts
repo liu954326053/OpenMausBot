@@ -32,7 +32,7 @@ const bots: Bot[] = [
 ];
 const project: TeamProjectWire = {
   id: "bride", name: "雨夜新娘", folder: "/projects/雨夜新娘", section: "雨夜新娘", team: { key: "crew", name: "剧组" },
-  leadBotId: "writer-copy", createdAt: 1, folderState: "ready", botIds: ["writer-copy"], follows: { "writer-copy": "writer" },
+  leadBotId: "writer-copy", createdAt: 1, folderState: "ready", botIds: ["writer-copy"], follows: { "writer-copy": "writer" }, episodeBots: {},
 };
 
 let root: Root;

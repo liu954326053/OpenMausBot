@@ -5,7 +5,7 @@ import { archiveTeamProject, createTeamProject, listProjectTeams, listTeamProjec
 
 const project: TeamProjectWire = {
   id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead"],
+  leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead"], episodeBots: {},
 };
 
 interface Call { path: string; method: string; body: unknown }

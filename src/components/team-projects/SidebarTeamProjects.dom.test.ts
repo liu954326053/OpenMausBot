@@ -32,7 +32,7 @@ const room = (id: string, section: string): Group => ({
 });
 const project = (id: string, botIds: string[], extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds, ...extra,
+  leadBotId: botIds[0]!, createdAt: 1, folderState: "ready", botIds, episodeBots: {}, ...extra,
 });
 
 const bride = project("The bride", ["bride-lead", "bride-writer", "bride-editor"], { roomId: "bride-room" });

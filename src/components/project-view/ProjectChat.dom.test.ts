@@ -32,7 +32,7 @@ const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
 });
 const bride: TeamProjectWire = {
   id: "p-bride", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"],
+  leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], episodeBots: {},
 };
 const main = bot("main", { defaultBot: {} });
 const lead = bot("lead", { section: "The bride", chiefOfStaff: true });

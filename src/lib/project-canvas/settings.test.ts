@@ -6,6 +6,7 @@ import { nodeSettings, overrideSetting, referenceProblems, restoreSetting, setti
 const project: ProjectGenerationSettings = {
   image: { ...DEFAULT_GENERATION_SETTINGS.image, server: "studio", defaults: { model: "pic-1", aspect: "1:1", quality: "auto", count: 1 } },
   video: { ...DEFAULT_GENERATION_SETTINGS.video, server: "studio", defaults: { model: "clip-1", resolution: "720p", aspect: "16:9", seconds: 5 } },
+  concurrency: { ...DEFAULT_GENERATION_SETTINGS.concurrency },
 };
 const models: GenerationModel[] = [
   { id: "pic-1", name: "Pic", kind: "image", aspects: ["1:1", "16:9"], referenceImages: true, referenceAudio: false },
