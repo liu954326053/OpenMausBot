@@ -1,5 +1,10 @@
 # Image generation
 
+A picture a chat asks for is made by an installed **generation plugin** when one is on,
+set up and offers a picture model: see [Generation plugins](generation-plugins.md). With
+no such plugin, the providers below make it, exactly as before. Editing an image, an
+animated GIF and a bot's avatar always use the providers.
+
 Bots can create images in a chat: ask "make an image of…" and the bot calls
 its `generate_image` tool, on any engine. Bot avatars use the same providers.
 The image is attached to the bot's reply when its turn ends, like a voice note.

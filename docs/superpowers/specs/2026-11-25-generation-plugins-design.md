@@ -159,7 +159,7 @@ HTTP 请求映射，配置在插件管理页里改、保存即生效。
 没有就完全按今天的方式走 OpenAI/Grok/Gemini/OpenRouter/Higgsfield/自定义。原因：删掉供应商会让
 所有现存用户的图片立刻失效，也会破坏“备份供应商”“只给本人”等既有保护；而“优先”满足“走插件
 渠道”，又不改变任何没有装插件的人的体验。影响面是 `server/image-generation.ts` 的入口与它的错误
-文案；编辑图片（`edit_image`）仍只走 OpenAI。
+文案；编辑图片（`edit_image`）、动图（GIF）、机器人头像与草稿仍只走 OpenAI 或原有供应商。
 
 ## 8. UI
 

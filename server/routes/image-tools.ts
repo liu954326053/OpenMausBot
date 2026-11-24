@@ -6,7 +6,7 @@ import { z } from "zod";
 import { IMAGE_MAX_PER_TURN_DEFAULT, IMAGE_PROVIDERS } from "../../shared/image-generation.ts";
 import { IMAGE_PROMPT_MAX_CHARS } from "../drivers/agents-image-tools.ts";
 import {
-  generateImage, imageGenerationReady, imageProviderName, imageSlots, markupProblem,
+  generateImage, imageToolReady, imageProviderName, imageSlots, markupProblem,
   type GeneratedImage, type ImageCredentials, type ImageInput,
 } from "../image-generation.ts";
 import { IMAGE_MAX_BYTES } from "../attachments.ts";
@@ -102,7 +102,7 @@ export async function generateImageForTurn(raw: unknown, deps: ImageToolDeps, ed
       return { status: 400, body: { error: `${imageProviderName(provider)} is not one of the person's image providers: ${set}. Use one of those, or ask the person to change it in Settings.` } };
     }
     if (!(base && backup)) slot = base ? "primary" : "fallback";
-  } else if (!imageGenerationReady(deps.cfg)) {
+  } else if (!imageToolReady(deps.cfg)) {
     return { status: 409, body: { error: IMAGE_MESSAGES.notSetUp } };
   }
 
@@ -114,7 +114,7 @@ export async function generateImageForTurn(raw: unknown, deps: ImageToolDeps, ed
     made = true;
     if (!turn.attach({ bytes: image.bytes, mime: image.mime })) return { status: 409, body: { error: IMAGE_MESSAGES.noTurn } };
     const backup = image.usedFallback ? `, the person's backup image provider${image.baseError ? `, because the base failed: ${image.baseError}` : ""}` : "";
-    const by = `${imageProviderName(image.provider)} (${image.model})${backup}`;
+    const by = image.by ?? `${imageProviderName(image.provider)} (${image.model})${backup}`;
     return { status: 201, body: { text: `Image made by ${by}. It will be attached to this turn's reply when the turn ends.` } };
   } catch (error) {
     const status = (error as { status?: unknown } | null)?.status;
