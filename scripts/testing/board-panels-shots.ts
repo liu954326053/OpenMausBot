@@ -26,7 +26,7 @@ const pressText = (selector: string, text: string) => `[...document.querySelecto
 const tab = (name: string) => pressText("[role=tab]", name);
 const unfoldShots = (episode: string) => `[...document.querySelectorAll("[data-board-side-panel] button[aria-expanded=false]")].find((one) => one.textContent.includes(${JSON.stringify(episode)})).click(); true`;
 const unfold = pressLabelled("展开团队与素材");
-const addReference = pressText("[data-board-chat] button", "添加参考");
+const addReference = `document.querySelector("[data-board-chat] [data-reference-add]").click(); true`;
 
 const SHOTS: Shot[] = [
   { name: "team" },
@@ -39,6 +39,8 @@ const SHOTS: Shot[] = [
   { name: "chat-waiting", opened: "bot:board-3" },
   { name: "details-character", opened: "asset:group-qingwu" },
   { name: "details-shot", opened: "asset:shot-1-3" },
+  { name: "details-shot-paper", opened: "asset:shot-3-1" },
+  { name: "details-video", opened: "asset:take-1-3-1" },
   { name: "team-small", size: SMALL, steps: [unfold] },
   { name: "assets-small", size: SMALL, steps: [unfold, tab("素材分类"), unfoldShots("EP01")] },
   { name: "episodes-small", size: SMALL, steps: [unfold, tab("分集")] },
@@ -46,9 +48,10 @@ const SHOTS: Shot[] = [
   { name: "chat-small", size: SMALL, opened: "bot:board-2" },
   { name: "chat-docked-small", size: SMALL, opened: "bot:lead" },
   { name: "chat-picker-small", size: SMALL, opened: "bot:board-2", steps: [addReference] },
-  { name: "chat-sheet", size: [680, 560], opened: "bot:board-2" },
+  { name: "chat-sheet", size: [760, 520], opened: "bot:board-2" },
   { name: "details-character-small", size: SMALL, opened: "asset:group-qingwu" },
   { name: "details-shot-small", size: SMALL, opened: "asset:shot-1-3" },
+  { name: "details-video-small", size: SMALL, opened: "asset:take-1-3-1" },
   { name: "team-en", lang: "en" },
   { name: "chat-en", lang: "en", opened: "bot:board-2" },
   { name: "details-shot-en", lang: "en", opened: "asset:shot-1-3" },

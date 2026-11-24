@@ -16,8 +16,7 @@ afterEach(() => {
 
 const card = { width: 320, height: 240 };
 const chat = () => harness.host.querySelector<HTMLElement>("[data-board-chat]");
-const composer = () => chat()!.querySelector<HTMLTextAreaElement>("textarea")!;
-const picker = () => chat()!.querySelector<HTMLElement>("[data-reference-picker]");
+const composer = () => chat()!.querySelector<HTMLTextAreaElement>("textarea")!;const picker = () => chat()!.querySelector<HTMLElement>("[data-reference-picker]");
 const named = (name: string, scope: ParentNode = chat()!) =>
   [...scope.querySelectorAll<HTMLButtonElement>("button")].find((each) => each.getAttribute("aria-label") === name || each.textContent?.trim() === name);
 const chipIds = () => [...chat()!.querySelectorAll<HTMLElement>("[data-reference]")].map((chip) => chip.getAttribute("data-reference"));
@@ -47,6 +46,117 @@ function withBot(snapshot: CanvasSnapshot, botId: string, change: Partial<Canvas
 }
 
 describe("a bot's chat window", () => {
+  it("is the mockup's panel: 420 wide, clear of the board's edges, a floating 14px surface", async () => {
+    harness = await renderOverlay();
+    harness.anchors.set("bot:board-2", { x: 100, y: 200, ...card });
+    await openChat("board-2");
+    const window = chat()!;
+    const surface = window.querySelector<HTMLElement>("[data-chat-surface]")!;
+    expect(window.className).toContain("w-[420px]");
+    expect(window.className).toContain("max-h-[calc(100%-72px)]");
+    expect(surface.className).toContain("rounded-[14px]");
+    expect(surface.className).toContain("bg-menu");
+    expect(surface.className).toContain("popover-surface");
+    expect(surface.className).toContain("animate-fade-in");
+  });
+
+  it("points at its card with a diamond on the side the card is on, and lays it out at the card's top", async () => {
+    harness = await renderOverlay();
+    harness.anchors.set("bot:board-2", { x: 100, y: 200, ...card });
+    await openChat("board-2");
+    sized(chat()!, 420, 520);
+    await harness.moveView();
+    expect(chat()!.dataset.side).toBe("right");
+    const arrow = chat()!.querySelector<HTMLElement>("[data-chat-arrow]")!;
+    expect(arrow.style.top).toBe("22px");
+    expect(arrow.className).toContain("size-3");
+    expect(arrow.className).toContain("rotate-45");
+    expect(arrow.className).toContain("group-data-[side=right]/chat:-start-1.5");
+    harness.anchors.set("bot:board-2", { x: 900, y: 240, ...card });
+    await harness.moveView();
+    expect(chat()!.dataset.side).toBe("left");
+    expect(arrow.style.top).toBe("22px");
+  });
+
+  it("drops the diamond when the window can't sit beside the card, and in a sheet", async () => {
+    harness = await renderOverlay();
+    harness.anchors.set("bot:board-2", { x: 380, y: 430, ...card });
+    await openChat("board-2");
+    expect(chat()!.dataset.placement).toBe("beside");
+    expect(chat()!.dataset.side).toBeUndefined();
+    harness.unmount();
+    harness = await renderOverlay({}, { width: 700, height: 800 });
+    harness.anchors.set("bot:board-2", { x: 100, y: 200, ...card });
+    await openChat("board-2");
+    expect(chat()!.dataset.placement).toBe("sheet");
+    expect(chat()!.className).toContain("max-h-[min(70%,480px)]");
+    expect(chat()!.dataset.side).toBeUndefined();
+  });
+
+  it("gives a working bot an amber plate for its face and names it in 15px, its job under it", async () => {
+    harness = await renderOverlay();
+    await openChat("board-2");
+    const plate = chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!;
+    expect(plate.dataset.botState).toBe("working");
+    expect(plate.className).toContain("bg-board-amber");
+    expect(plate.className).toContain("text-board-ink");
+    expect(chat()!.querySelector("[data-chat-name]")!.className).toContain("text-[15px]");
+    expect(chat()!.querySelector("[data-chat-name]")!.className).toContain("font-semibold");
+    expect(chat()!.querySelector("[data-chat-role]")!.className).toContain("text-ink-tertiary");
+    await openChat("writer");
+    expect(chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!.dataset.botState).toBe("idle");
+    expect(chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!.className).not.toContain("bg-board-amber");
+  });
+
+  it("offers @ references and an amber send pill, grey while there is nothing to send", async () => {
+    harness = await renderOverlay();
+    await openChat("writer");
+    const pill = chat()!.querySelector<HTMLElement>("[data-chat-reference-pill]")!;
+    expect(pill.className).toContain("h-[34px]");
+    const send = named("Send")!;
+    expect(send.dataset.chatSend).toBe("");
+    expect(send.className).toContain("h-[34px]");
+    expect(send.className).toContain("bg-board-amber");
+    expect(send.className).toContain("text-board-ink");
+    expect(send.className).toContain("disabled:bg-control");
+    expect(send.disabled).toBe(true);
+    await typeInto(composer(), "加一场雨");
+    expect(named("Send")!.disabled).toBe(false);
+    const field = composer();
+    expect(field.className).toContain("h-[92px]");
+    expect(field.className).toContain("bg-app");
+  });
+
+  it("shows each reference as a 52px block with a remove dot that touch screens keep", async () => {
+    harness = await renderOverlay();
+    await openChat("board-2");
+    const block = chat()!.querySelector<HTMLElement>("[data-reference='profile-qingwu']")!;
+    expect(block.className).toContain("size-[52px]");
+    expect(block.querySelector("[data-thumb]")!.className).toContain("rounded-lg");
+    const remove = block.querySelector<HTMLElement>("[data-reference-remove]")!;
+    expect(remove.className).toContain("opacity-0");
+    expect(remove.className).toContain("touch:opacity-100");
+    expect(remove.className).toContain("focus-visible:opacity-100");
+    expect(remove.className).toContain("group-hover:opacity-100");
+    expect(chat()!.querySelector("[data-reference='episode-2'] [data-reference-remove]")).toBeNull();
+    await click(named("Remove 沈青梧")!);
+    expect(chipIds()).not.toContain("profile-qingwu");
+  });
+
+  it("lists the picker's assets as 44×30 thumbnails with a hairline row under a sticky head", async () => {
+    harness = await renderOverlay();
+    await openChat("writer");
+    await click(named("Add a reference")!);
+    const head = picker()!.querySelector<HTMLElement>("[data-picker-head]")!;
+    expect(head.className).toContain("sticky");
+    expect(head.className).toContain("bg-panel");
+    const row = picker()!.querySelector<HTMLElement>("[data-pick='character']") ?? picker()!.querySelector<HTMLElement>("[data-pick]")!;
+    expect(row.className).toContain("rounded-[8px]");
+    expect(row.className).toContain("border-hairline");
+    expect(row.querySelector("[data-thumb]")!.className).toContain("w-[44px]");
+    expect(row.querySelector("[data-thumb]")!.className).toContain("h-[30px]");
+  });
+
   it("sits beside the bot's card, follows it as the board moves, flips to stay on the screen and docks without a card", async () => {
     harness = await renderOverlay();
     harness.anchors.set("bot:board-2", { x: 100, y: 200, ...card });

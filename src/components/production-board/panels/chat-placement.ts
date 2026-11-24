@@ -2,8 +2,11 @@ import type { BoardAnchor } from "@/lib/production-board/overlay";
 
 export const CHAT_MARGIN = 12;
 export const CHAT_GAP = 16;
-/** Narrower than this, the chat window is a sheet along the board's bottom. */
+/** Narrower than this, the board has no room beside a card for the window, which becomes a sheet along its bottom. */
 export const CHAT_SHEET_BELOW = 720;
+/** How far below the card's top the window's pointer sits, and how much room it needs to show. */
+const ARROW_DROP = 28;
+const ARROW_INSET = 22;
 
 interface Size {
   width: number;
@@ -20,7 +23,7 @@ export interface PlacementInput {
 }
 
 export type ChatPlacement =
-  | { mode: "beside"; side: "right" | "left"; x: number; y: number }
+  | { mode: "beside"; side: "right" | "left"; x: number; y: number; arrow: number | null }
   | { mode: "docked"; x: number; y: number }
   | { mode: "sheet" };
 
@@ -34,10 +37,12 @@ export function placeChat({ anchor, size, layer, reserved }: PlacementInput): Ch
   const top = CHAT_MARGIN;
   const lowest = Math.max(top, layer.height - CHAT_MARGIN - size.height);
   if (!anchor) return { mode: "docked", x: right - size.width, y: top };
-  const y = clamp(anchor.y, top, lowest);
+  const wanted = clamp(anchor.y, top, lowest);
+  const pointer = anchor.y + ARROW_DROP - wanted;
+  const arrow = pointer >= ARROW_INSET && pointer <= size.height - ARROW_INSET ? pointer : null;
   const onRight = anchor.x + anchor.width + CHAT_GAP;
-  if (onRight + size.width <= right) return { mode: "beside", side: "right", x: onRight, y };
+  if (onRight + size.width <= right) return { mode: "beside", side: "right", x: onRight, y: wanted, arrow };
   const onLeft = anchor.x - CHAT_GAP - size.width;
-  if (onLeft >= left) return { mode: "beside", side: "left", x: onLeft, y };
-  return { mode: "beside", side: "right", x: clamp(onRight, left, right - size.width), y };
+  if (onLeft >= left) return { mode: "beside", side: "left", x: onLeft, y: wanted, arrow };
+  return { mode: "beside", side: "right", x: clamp(onRight, left, right - size.width), y: wanted, arrow };
 }

@@ -115,6 +115,8 @@
   --animate-sheet-in: sheet-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
   --animate-workspace-in: workspace-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
   --animate-pop-in: pop-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  /* A detail sheet is laid down: it rises 12px in 220ms, where a popover pops 6px and shrinks. */
+  --animate-details-in: details-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-pop-out: pop-out 0.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   --animate-caret: caret-blink 1s step-end infinite;
   --animate-msg-in: msg-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
@@ -2158,6 +2160,11 @@ body {
   from { transform: scale(0.96) translateY(6px); opacity: 0; }
   to { transform: scale(1) translateY(0); opacity: 1; }
 }
+/* The asset details: a sheet laid down, lifted 12px and no shrink. */
+@keyframes details-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
 @keyframes pop-out {
   from { transform: scale(1) translateY(0); opacity: 1; }
   to { transform: scale(0.96) translateY(6px); opacity: 0; }
@@ -2445,7 +2452,7 @@ html[data-cloud-intent-morph] [data-tour="composer"] { view-transition-name: clo
 @media (prefers-reduced-motion: reduce) {
   .turn-now-card { animation: none; }
   .turn-now-chevron { transition: none; }
-  .animate-caret, .animate-msg-in, .animate-pop-in, .animate-pop-out { animation: none; }
+  .animate-caret, .animate-msg-in, .animate-pop-in, .animate-pop-out, .animate-details-in { animation: none; }
   .animate-status-pulse { animation: none; opacity: 0.6; }
   .thinking-sheen { display: none; }
   .turn-phrase-in { animation: none; }
@@ -2464,6 +2471,7 @@ html[data-cloud-intent-morph] [data-tour="composer"] { view-transition-name: clo
 :root[data-reduced-motion="true"] .animate-spot-in,
 :root[data-reduced-motion="true"] .animate-pop-in,
 :root[data-reduced-motion="true"] .animate-pop-out,
+:root[data-reduced-motion="true"] .animate-details-in,
 :root[data-reduced-motion="true"] .step-open,
 :root[data-reduced-motion="true"] .check-in,
 :root[data-reduced-motion="true"] .progress-fill,

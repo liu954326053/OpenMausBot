@@ -89,26 +89,32 @@ function PreviewBoard({ opened: first }: { opened: BoardOpened | null }) {
     };
   }, []);
   return (
-    <div data-plain-board="" className="relative h-screen overflow-hidden bg-app text-ink">
-      {CARDS.map((card) => (
-        <div key={card.id} data-plain-card={card.id} className="absolute flex flex-col gap-1 rounded-xl border border-hairline/50 bg-card p-4" style={{ left: card.x, top: card.y, width: card.width, height: card.height }}>
-          <span className="text-[13px] font-medium leading-[18px]">{card.title}</span>
-          <span className="text-[12px] leading-4 text-ink-tertiary">{card.meta}</span>
-        </div>
-      ))}
-      <ProductionBoardOverlay
-        projectId={SAMPLE_PROJECT_ID}
-        snapshot={snapshot}
-        backend={fake.backend}
-        opened={opened}
-        open={setOpened}
-        close={() => setOpened(null)}
-        anchorOf={anchorOf}
-        subscribeView={subscribeView}
-        focusNode={() => undefined}
-        focusEpisode={() => undefined}
-        focusStage={() => undefined}
-      />
+    <div className="flex h-screen overflow-hidden bg-app text-ink">
+      <div data-plain-rail="" className="flex w-[260px] shrink-0 flex-col gap-3 border-e border-hairline/50 bg-panel p-3 text-[13px] leading-[18px] text-ink-secondary">
+        <span className="text-[12px] font-medium leading-4 text-ink-tertiary">Sidebar</span>
+        {["雾港灯语", "MausBot", "Inbox"].map((row) => <span key={row} className="truncate">{row}</span>)}
+      </div>
+      <div data-plain-board="" className="relative min-w-0 flex-1 overflow-hidden">
+        {CARDS.map((card) => (
+          <div key={card.id} data-plain-card={card.id} className="absolute flex flex-col gap-1 rounded-xl border border-hairline/50 bg-card p-4" style={{ left: card.x, top: card.y, width: card.width, height: card.height }}>
+            <span className="text-[13px] font-medium leading-[18px]">{card.title}</span>
+            <span className="text-[12px] leading-4 text-ink-tertiary">{card.meta}</span>
+          </div>
+        ))}
+        <ProductionBoardOverlay
+          projectId={SAMPLE_PROJECT_ID}
+          snapshot={snapshot}
+          backend={fake.backend}
+          opened={opened}
+          open={setOpened}
+          close={() => setOpened(null)}
+          anchorOf={anchorOf}
+          subscribeView={subscribeView}
+          focusNode={() => undefined}
+          focusEpisode={() => undefined}
+          focusStage={() => undefined}
+        />
+      </div>
     </div>
   );
 }

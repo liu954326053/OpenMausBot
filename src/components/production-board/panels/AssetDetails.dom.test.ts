@@ -31,6 +31,129 @@ async function openAsset(nodeId: string) {
 }
 
 describe("an asset's details", () => {
+  it("is the mockup's dialog: a 980px sheet over a scrim, risen 220ms and still for reduced motion", async () => {
+    harness = await renderOverlay();
+    await openAsset("image-qingwu");
+    const modal = details()!;
+    expect(modal.className).toContain("max-w-[980px]");
+    expect(modal.className).toContain("rounded-[14px]");
+    expect(modal.className).toContain("animate-details-in");
+    expect(modal.className).toContain("motion-reduce:animate-none");
+    expect(modal.parentElement!.className).toContain("ui-scrim");
+  });
+
+  it("heads with the kind, the version and a 17px title", async () => {
+    harness = await renderOverlay();
+    await openAsset("group-qingwu");
+    const kind = details()!.querySelector<HTMLElement>("[data-details-kind]")!;
+    expect(kind.textContent).toBe("Character");
+    expect(kind.className).toContain("text-[12px]");
+    expect(kind.className).toContain("text-ink-tertiary");
+    await openAsset("shot-1-3");
+    expect(details()!.querySelector<HTMLElement>("[data-version]")!.textContent).toBe("EP01 SH03");
+    expect(details()!.querySelector<HTMLElement>("[data-version]")!.className).toContain("font-mono");
+    const title = document.getElementById(details()!.getAttribute("aria-labelledby")!)!;
+    expect(title.className).toContain("text-[17px]");
+    expect(title.className).toContain("font-semibold");
+    expect(title.className).toContain("truncate");
+  });
+
+  it("gives the media 1.3 parts against the facts' 1, a character's picture 0.85, and a hairline between them", async () => {
+    harness = await renderOverlay();
+    await openAsset("shot-1-3");
+    expect(details()!.querySelector<HTMLElement>("[data-media]")!.className).toContain("flex-[1.3_1_0]");
+    const info = details()!.querySelector<HTMLElement>("[data-info]")!;
+    expect(info.className).toContain("flex-[1_1_0]");
+    expect(info.className).toContain("border-s");
+    expect(info.className).toContain("border-hairline");
+    await openAsset("group-qingwu");
+    expect(details()!.querySelector<HTMLElement>("[data-media]")!.className).toContain("flex-[0.85_1_0]");
+  });
+
+  it("sets a picture in an 8px figure with its size under it", async () => {
+    harness = await renderOverlay();
+    await openAsset("image-qingwu");
+    const figure = details()!.querySelector<HTMLElement>("figure")!;
+    expect(figure.className).toContain("gap-2.5");
+    expect(figure.querySelector("img")!.className).toContain("rounded-lg");
+    const caption = details()!.querySelector<HTMLElement>("[data-caption]")!;
+    expect(caption.className).toContain("text-[12px]");
+    expect(caption.className).toContain("text-ink-tertiary");
+    expect(caption.querySelector("[data-resolution]")!.textContent).toBe("768 × 1024");
+  });
+
+  it("renders a document as a still sheet that reads and selects like paper", async () => {
+    harness = await renderOverlay();
+    await openAsset("brief");
+    const sheet = details()!.querySelector<HTMLElement>("[data-sheet]")!;
+    expect(sheet.className).toContain("select-text");
+    expect(sheet.className).toContain("cursor-default");
+    expect(sheet.className).toContain("rounded-[10px]");
+    expect(sheet.textContent).toContain("把《雾港灯语》改成竖屏漫剧");
+    expect(sheet.querySelector("[draggable]")).toBeNull();
+    expect(sheet.getAttribute("data-board-card")).toBeNull();
+    expect(sheet.dataset.boardSurface).toBe("paper");
+  });
+
+  it("sets a shot still to be drawn on a still sheet, with a dashed frame where its sketch goes", async () => {
+    harness = await renderOverlay();
+    await openAsset("shot-3-1");
+    const sheet = details()!.querySelector<HTMLElement>("[data-sheet]")!;
+    expect(sheet.hasAttribute("data-sketch")).toBe(true);
+    expect(sheet.className).toContain("select-text");
+    expect(sheet.querySelector("[data-sketch-frame]")!.className).toContain("aspect-video");
+    expect(sheet.querySelector("[data-sketch-frame]")!.className).toContain("border-dashed");
+    expect(sheet.querySelector("[data-sketch-frame]")!.textContent).toBe("远景 · 缓慢推近 · 6s · 汽笛声，海浪");
+    expect(details()!.querySelector("[data-screen]")).toBeNull();
+  });
+
+  it("shows a video on a 16:9 screen with its takes, the one in use marked", async () => {
+    harness = await renderOverlay();
+    await openAsset("take-1-3-1");
+    expect(details()!.querySelector("video")!.closest("[data-screen]")!.className).toContain("aspect-video");    const takes = [...details()!.querySelectorAll<HTMLElement>("[data-take]")];
+    expect(takes.map((take) => take.textContent?.replace("✓", ""))).toEqual(["V1", "V2", "V3"]);
+    expect(takes[2]!.hasAttribute("data-cur")).toBe(true);
+    expect(takes[2]!.className).toContain("border-board-teal-ink");
+    expect(takes[2]!.className).toContain("text-board-teal-ink");
+    expect(takes[0]!.hasAttribute("data-cur")).toBe(false);
+    expect(takes[0]!.className).toContain("h-6");
+    expect(takes[0]!.className).toContain("font-mono");
+  });
+
+  it("lays its facts out under 64px terms and its prompt on a card", async () => {
+    harness = await renderOverlay();
+    await openAsset("shot-1-3");
+    expect(details()!.querySelector<HTMLElement>("dt")!.className).toContain("w-16");
+    const prompt = details()!.querySelector<HTMLElement>("[data-prompt]")!;
+    expect(prompt.className).toContain("bg-card");
+    expect(prompt.className).toContain("rounded-lg");
+    expect(prompt.className).toContain("text-[13px]");
+  });
+
+  it("lists the shots it appears in as 108px cards with a 16:9 picture on top", async () => {
+    harness = await renderOverlay();
+    await openAsset("group-qingwu");
+    const uses = [...details()!.querySelectorAll<HTMLElement>("[data-appearance]")];
+    expect(uses).toHaveLength(7);
+    expect(uses[0]!.className).toContain("w-[108px]");
+    expect(uses[0]!.className).toContain("text-[12px]");
+    expect(uses[0]!.querySelector("[data-use-thumb]")!.className).toContain("aspect-video");
+  });
+
+  it("stacks its two columns under 760px and scrolls inside the dialog there", async () => {
+    harness = await renderOverlay();
+    await openAsset("group-qingwu");
+    const body = details()!.querySelector<HTMLElement>("[data-details-body]")!;
+    expect(body.className).toContain("[@media(max-width:760px)]:flex-col");
+    expect(body.className).toContain("[@media(max-width:760px)]:overflow-y-auto");
+    const media = details()!.querySelector<HTMLElement>("[data-media]")!;
+    expect(media.className).toContain("[@media(max-width:760px)]:flex-none");
+    expect(media.className).toContain("[@media(max-width:760px)]:overflow-visible");
+    const picture = details()!.querySelector("figure img")!;
+    expect(picture.className).toContain("[@media(max-width:760px)]:max-h-[52vh]");
+    expect(details()!.querySelector<HTMLElement>("[data-info]")!.className).toContain("[@media(max-width:760px)]:flex-none");
+  });
+
   it("shows a character with its picture, facts, profile, prompt and the shots it is in", async () => {
     harness = await renderOverlay();
     await openAsset("image-qingwu");
@@ -51,7 +174,6 @@ describe("an asset's details", () => {
     expect(modal.textContent).toContain("In 7 shots");
     expect(marked("data-appearance")).toEqual(["shot-1-1", "shot-1-3", "shot-1-5", "shot-2-1", "shot-2-3", "shot-2-5", "shot-3-1"]);
   });
-
   it("says so when a character is in no shot yet", async () => {
     harness = await renderOverlay();
     await openAsset("group-aman");
