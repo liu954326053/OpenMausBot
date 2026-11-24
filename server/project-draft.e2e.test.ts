@@ -23,6 +23,7 @@ describe("a project's timeline and draft", () => {
   let root: string;
   let project: TeamProjectWire;
   let editor: Bot;
+  let researcher: Bot;
 
   const api = async (method: string, path: string, body?: unknown) => {
     const response = await fetch(server.url + path, {
@@ -54,13 +55,16 @@ describe("a project's timeline and draft", () => {
     };
     const director = await member("Director", "Runs the production");
     await member("Editor", "Cuts the film");
+    await member("Researcher", "Finds references");
     expect((await api("PATCH", `/api/bots/${director.id}`, { chiefOfStaff: true })).status).toBe(200);
     await settled();
     const made = await api("POST", "/api/team-projects", { name: "Draft drama", team: TEAM });
     expect(made.status, JSON.stringify(made.body)).toBe(201);
     project = made.body.project;
-    editor = (await bots()).find((one) => project.botIds.includes(one.id) && one.id !== project.leadBotId)!;
-    expect(editor).toBeTruthy();
+    const copy = async (name: string) => (await bots()).find((one) => project.botIds.includes(one.id) && one.name === name)!;
+    editor = await copy("Editor");
+    researcher = await copy("Researcher");
+    expect(editor && researcher).toBeTruthy();
     await settled();
   }, hostTimeout(90_000));
 
@@ -89,21 +93,30 @@ describe("a project's timeline and draft", () => {
     expect(await api("POST", at("final"), { path: "notes.mp4" })).toMatchObject({ status: 422, body: { errorKey: "serverError.projectDraft.notVideo" } });
   });
 
-  it("gives a bot that is not at the post stage no timeline tool", async () => {
-    writeFileSync(server.planPath, JSON.stringify({ [editor.id]: { script: [{ key: "timeline", match: ["READ-TIMELINE"], reply: "TRIED", steps: [
-      { tool: "timeline_get_state", arguments: {}, expectError: true },
-      { tool: "timeline_set_order", arguments: { shot_ids: [] }, expectError: true },
-    ] }] } }));
-    const sent = await api("POST", `/api/bots/${editor.id}/messages`, { text: "READ-TIMELINE", threadId: editor.threadId, sendId: crypto.randomUUID() });
-    expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
-    await expect.poll(async () => ((await api("GET", `/api/threads/${editor.threadId}/messages`)).body.messages as Line[]).some((line) => line.text === "TRIED"), { timeout: 30_000 }).toBe(true);
+  it("lists the timeline tools for the bot whose title says post-production, before any plan, and for no bot without that job", async () => {
+    const stages = (await api("GET", at("canvas"))).body.bots as Record<string, { stages: string[] }>;
+    expect([stages[editor.id]!.stages, stages[researcher.id]!.stages]).toEqual([["post"], ["other"]]);
+    writeFileSync(server.planPath, JSON.stringify({
+      [researcher.id]: { script: [{ key: "refused", match: ["READ-TIMELINE"], reply: "TRIED", steps: [
+        { tool: "timeline_get_state", arguments: {}, expectError: true },
+        { tool: "timeline_set_order", arguments: { shot_ids: [] }, expectError: true },
+      ] }] },
+      [editor.id]: { script: [{ key: "read", match: ["READ-TIMELINE"], reply: "READ", steps: [{ tool: "timeline_get_state", arguments: {} }] }] },
+    }));
+    for (const [bot, reply] of [[researcher, "TRIED"], [editor, "READ"]] as const) {
+      const sent = await api("POST", `/api/bots/${bot.id}/messages`, { text: "READ-TIMELINE", threadId: bot.threadId, sendId: crypto.randomUUID() });
+      expect(sent.status, JSON.stringify(sent.body)).toBeLessThan(300);
+      await expect.poll(async () => ((await api("GET", `/api/threads/${bot.threadId}/messages`)).body.messages as Line[]).some((line) => line.text === reply), { timeout: 30_000 }).toBe(true);
+    }
     await settled();
     const turns: Turn[] = readFileSync(`${server.planPath}.evidence.jsonl`, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    const turn = turns.find((one) => one.botId === editor.id && one.planKey === "timeline")!;
-    const answers = turn.evidence.filter((item) => item.step).map((item) => item.response as { result?: { isError?: boolean }; error?: unknown });
-    expect(answers).toHaveLength(2);
-    for (const answer of answers) expect(Boolean(answer.error || answer.result?.isError)).toBe(true);
-  }, hostTimeout(60_000));
+    const answersOf = (botId: string, key: string) => turns.find((one) => one.botId === botId && one.planKey === key)!.evidence.filter((item) => item.step)
+      .map((item) => item.response as { result?: { isError?: boolean }; error?: { message?: string } });
+    expect(answersOf(researcher.id, "refused").map((answer) => answer.error?.message)).toEqual(["Unknown tool: timeline_get_state", "Unknown tool: timeline_set_order"]);
+    const read = answersOf(editor.id, "read");
+    expect(read).toHaveLength(1);
+    expect([read[0]!.error, read[0]!.result?.isError ?? false]).toEqual([undefined, false]);
+  }, hostTimeout(90_000));
 
   it("made no JianYing folder in the server's home and kept no timeline in the project folder", () => {
     expect(existsSync(join(server.dataDir, "Movies"))).toBe(false);

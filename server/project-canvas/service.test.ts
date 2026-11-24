@@ -60,7 +60,7 @@ function setup(patch: Partial<ProjectCanvasServiceDeps> = {}) {
   const events: ProjectCanvasEvent[] = [];
   const sent: Array<{ botId: string; threadId: string; text: string }> = [];
   const threads: Record<string, Message[]> = {};
-  const project = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {} } as TeamProjectWire;
+  const project = { id: "p1", name: "Stand-in bride", folder, section: "Stand-in bride", leadBotId: "lead", createdAt: 1, folderState: "ready", botIds: ["lead", "writer"], follows: {}, episodeBots: {} } as TeamProjectWire;
   const bots: Record<string, Partial<BotRecord>> = {
     lead: { id: "lead", name: "Lead", title: "Producer", threadId: "lead-main", teamProject: { id: "p1", role: "producer" } },
     writer: { id: "writer", name: "Writer", title: "Writes the episodes", threadId: "writer-main", teamProject: { id: "p1", role: "writer" } },
@@ -154,30 +154,6 @@ describe("changing a project's canvas", () => {
   });
 });
 
-describe("the pipeline's lines between a project's bots", () => {
-  it("names the projects whose canvas draws other lines or stages than when last asked, a project made since included", () => {
-    const pipelines: Record<string, ProjectPipeline> = {};
-    const listed: TeamProjectWire[] = [];
-    const { service, project } = setup({ projects: { list: () => listed }, pipelineOf: (projectId) => pipelines[projectId] ?? { stages: {}, lines: [] } });
-    listed.push({ ...project, botIds: ["lead", "writer", "board"] });
-    expect(service.linesMoved()).toEqual(["p1"]);
-    expect(service.linesMoved()).toEqual([]);
-
-    const lines = [{ from: "lead", to: "writer" }, { from: "writer", to: "board" }];
-    pipelines.p1 = { stages: { writer: ["script"], board: ["storyboard"] }, lines };
-    expect(service.linesMoved()).toEqual(["p1"]);
-    expect(service.linesMoved()).toEqual([]);
-    pipelines.p1 = { stages: { writer: ["script"], board: ["storyboard", "post"] }, lines };
-    expect(service.linesMoved()).toEqual(["p1"]);
-    pipelines.p1 = { stages: pipelines.p1.stages, lines: [...lines, { from: "writer", to: "someone-elsewhere" }] };
-    expect(service.linesMoved()).toEqual([]);
-
-    listed.push({ ...project, id: "p2", botIds: ["lead-2", "writer-2"], leadBotId: "lead-2" });
-    pipelines.p1 = { stages: {}, lines: [] };
-    expect(service.linesMoved()).toEqual(["p1", "p2"]);
-  });
-});
-
 describe("a file a project's bot attaches", () => {
   const attached = (patch: Partial<Message> = {}): Message => ({
     id: "m1", at: 1, role: "bot", kind: "text", text: "",
@@ -217,6 +193,21 @@ describe("a task sent from the canvas", () => {
     service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: made.nodeIds[0], toNodeId: botNodeId("writer") }));
     expect(await service.task("p1", auth, { botId: "writer", text: "Write it" })).toEqual({ threadId: "writer-main", messageId: "sent-1", references: 1 });
     expect(sent).toEqual([{ botId: "writer", threadId: "writer-main", text: "Write it\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap." }]);
+  });
+
+  it("carries the nodes the person named with it as if they were connected, each once, and refuses a list that is not one of ids", async () => {
+    const { service, project, sent } = setup();
+    const [brief, scene] = service.apply(project, person, opsOf(
+      { type: "add_node", nodeType: "text", title: "Brief", metadata: { content: "The swap." } },
+      { type: "add_node", nodeType: "text", title: "Scene", metadata: { content: "Rain on the steps." } },
+    )).nodeIds as [string, string];
+    service.apply(project, person, opsOf({ type: "connect_nodes", fromNodeId: brief, toNodeId: botNodeId("writer") }));
+    const answer = await service.task("p1", auth, { botId: "writer", text: "Write it", references: [scene, brief, scene, "gone", botNodeId("lead")] });
+    expect(answer).toMatchObject({ references: 2 });
+    expect(sent.at(-1)?.text).toBe("Write it\n\nConnected to your node on the project's canvas:\n\nText 1 \"Brief\":\n\n> The swap.\n\nText 2 \"Scene\":\n\n> Rain on the steps.");
+    expect(service.botView(service.project("p1")).connections.filter((one) => one.kind === "content" && one.toNodeId === botNodeId("writer"))).toHaveLength(1);
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", references: "scene" })).rejects.toMatchObject({ status: 400 });
+    await expect(service.task("p1", auth, { botId: "writer", text: "Go", references: [7] })).rejects.toMatchObject({ status: 400 });
   });
 
   it("names the references in the language the person's request names, else in the server's", async () => {

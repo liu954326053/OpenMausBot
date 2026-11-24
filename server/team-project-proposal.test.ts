@@ -50,7 +50,7 @@ function cardStore() {
 const madeProject = (input: CreateTeamProjectInput): TeamProjectWire => ({
   id: "project-1", name: input.name, folder: join(ROOT, input.name), section: input.name,
   team: { key: "team:urban", name: input.team }, leadBotId: "bot-pia", createdAt: 5,
-  folderState: "ready", botIds: ["bot-pia", "bot-wen", "bot-sol"], follows: { "bot-pia": "src-pia", "bot-wen": "src-wen", "bot-sol": "src-sol" },
+  folderState: "ready", botIds: ["bot-pia", "bot-wen", "bot-sol"], follows: { "bot-pia": "src-pia", "bot-wen": "src-wen", "bot-sol": "src-sol" }, episodeBots: {},
 });
 
 interface Setup {

@@ -1,5 +1,5 @@
 import { Crown, FolderClosed, FolderOpen, MessagesSquare, MoreHorizontal } from "lucide-react";
-import type { MouseEvent } from "react";
+import { memo, type MouseEvent } from "react";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
@@ -14,6 +14,20 @@ import { SIMPLE_RAIL_BUTTON, SIMPLE_ROW_FOCUS } from "../SidebarSimpleTop";
 
 const HOVER_CONTROL = "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-70 touch:opacity-70";
 const UNDER_PROJECT = cn("relative flex w-full min-w-0 items-center gap-2 text-start", SIMPLE_ROW_FOCUS);
+
+/** Where a row under a project's row starts: at the project's name; at the name of the row it unfolds from; or a step
+ * in from that, as an episode's bots under the episode. */
+export type UnderProjectDepth = 0 | 1 | 2;
+
+const UNDER_PROJECT_INSET: Record<"simple" | "advanced", Record<UnderProjectDepth, string>> = {
+  simple: { 0: "ps-[50px]", 1: "ps-[80px]", 2: "ps-[92px]" },
+  advanced: { 0: "ps-[46px]", 1: "ps-[74px]", 2: "ps-[86px]" },
+};
+
+export function underProjectRow(simple: boolean, depth: UnderProjectDepth, selected: boolean): string {
+  return cn(UNDER_PROJECT, simple ? "h-10 rounded-[8px] pe-2" : "h-8 rounded-md pe-2", UNDER_PROJECT_INSET[simple ? "simple" : "advanced"][depth],
+    selected ? rowSelectedSurface : "hover:bg-raised/50");
+}
 
 /** One project in the sidebar. `expanded`: its group chat and its bots show under it. */
 export function SidebarProjectRow({ project, attention, simple, selected, expanded, menuOpen, onOpen, onMenu }: {
@@ -68,13 +82,22 @@ export function SidebarProjectRow({ project, attention, simple, selected, expand
 
 /** A project's bot under its open row, set in to the project's name: its role after its name, the lead's mark, and a
  * click that opens the bot's conversation. */
-export function SidebarProjectBot({ bot, lead, simple, selected, onOpen }: { bot: Bot; lead?: boolean; simple: boolean; selected: boolean; onOpen: () => void }) {
+export const SidebarProjectBot = memo(function SidebarProjectBot({ bot, lead, role = bot.title.trim(), depth = 0, simple, selected, onOpen }: {
+  bot: Bot;
+  lead?: boolean;
+  role?: string;
+  depth?: UnderProjectDepth;
+  simple: boolean;
+  selected: boolean;
+  /** Drawn again in a new language. */
+  locale: string;
+  onOpen: (bot: Bot) => void;
+}) {
   const attention = sidebarSectionAttention([bot], []);
-  const role = bot.title.trim();
   const leadLabel = lead ? t("teamProjects.lead") : "";
   return (
-    <button type="button" data-sidebar-project-bot={bot.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={[bot.name, role, leadLabel].filter(Boolean).join(" · ")}
-      className={cn(UNDER_PROJECT, simple ? "h-10 rounded-[8px] ps-[50px] pe-2" : "h-8 rounded-md ps-[46px] pe-2", selected ? rowSelectedSurface : "hover:bg-raised/50")}>
+    <button type="button" data-sidebar-project-bot={bot.id} aria-current={selected ? "page" : undefined} onClick={() => onOpen(bot)} title={[bot.name, role, leadLabel].filter(Boolean).join(" · ")}
+      className={underProjectRow(simple, depth, selected)}>
       <BotAvatar bot={bot} state={stateForBot(bot)} size={simple ? 22 : 20} />
       <span dir="auto" className="min-w-0 shrink truncate text-[13px] leading-5 text-ink">{bot.name}</span>
       {role ? (
@@ -91,14 +114,21 @@ export function SidebarProjectBot({ bot, lead, simple, selected, onOpen }: { bot
       <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
     </button>
   );
-}
+});
 
 /** A project's group chat, first under its open row: a click opens the group chat. */
-export function SidebarProjectRoom({ room, simple, selected, onOpen }: { room: Group; simple: boolean; selected: boolean; onOpen: () => void }) {
+export const SidebarProjectRoom = memo(function SidebarProjectRoom({ room, simple, selected, onOpen }: {
+  room: Group;
+  simple: boolean;
+  selected: boolean;
+  /** Drawn again in a new language. */
+  locale: string;
+  onOpen: (room: Group) => void;
+}) {
   const attention = sidebarSectionAttention([], [room]);
   return (
-    <button type="button" data-sidebar-project-room={room.id} aria-current={selected ? "page" : undefined} onClick={onOpen} title={room.name}
-      className={cn(UNDER_PROJECT, simple ? "h-10 rounded-[8px] ps-[50px] pe-2" : "h-8 rounded-md ps-[46px] pe-2", selected ? rowSelectedSurface : "hover:bg-raised/50")}>
+    <button type="button" data-sidebar-project-room={room.id} aria-current={selected ? "page" : undefined} onClick={() => onOpen(room)} title={room.name}
+      className={underProjectRow(simple, 0, selected)}>
       <span aria-hidden="true" className={cn("grid shrink-0 place-items-center text-ink-secondary", simple ? "size-[22px]" : "size-5")}>
         <MessagesSquare size={14} />
       </span>
@@ -106,7 +136,7 @@ export function SidebarProjectRoom({ room, simple, selected, onOpen }: { room: G
       <SectionAttention attention={attention} label={sidebarAttentionLabel(attention)} />
     </button>
   );
-}
+});
 
 /** A project in the narrow sidebar: its first letter in a square, with the mark of its team's state. */
 export function SidebarProjectTile({ project, attention, selected, onOpen, onMenu }: {

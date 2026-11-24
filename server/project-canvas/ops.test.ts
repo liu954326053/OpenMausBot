@@ -149,9 +149,25 @@ describe("changing a node", () => {
 
   it("moves and sizes a bot node and nothing else of it", () => {
     const moved = applyCanvasOps(canvas(), [{ type: "update_node", id: "bot:writer", patch: { position: { x: 880, y: 0 }, width: 320 } }], context());
-    expect(find(moved.document, "bot:writer")).toEqual({ id: "bot:writer", type: "bot", title: "", position: { x: 880, y: 0 }, width: 320, height: 180 });
+    expect(find(moved.document, "bot:writer")).toEqual({ id: "bot:writer", type: "bot", title: "", position: { x: 880, y: 0 }, width: 320, height: 180, arranged: true });
     expect(refused(() => applyCanvasOps(canvas(), [{ type: "update_node", id: "bot:lead", patch: { title: "Boss" } }], context())).code).toBe("invalid_op");
     expect(refused(() => applyCanvasOps(canvas(), [{ type: "update_node", id: "bot:gone", patch: { width: 300 } }], context())).code).toBe("not_found");
+  });
+
+  it("marks a node the person moves as arranged for good, which sizing it or a bot moving its own does not do", () => {
+    const moved = applyCanvasOps(canvas(), [
+      { type: "update_node", id: "brief", patch: { position: { x: 5, y: 6 } } },
+      { type: "update_node", id: "cover", patch: { width: 400 } },
+      { type: "update_node", id: "bot:writer", patch: { width: 320 } },
+    ], context());
+    expect(find(moved.document, "brief")?.arranged).toBe(true);
+    expect(find(moved.document, "cover")).not.toHaveProperty("arranged");
+    expect(find(moved.document, "bot:writer")).not.toHaveProperty("arranged");
+    const placed = applyCanvasOps(moved.document, [{ type: "update_node", id: "bot:writer", patch: { position: { x: 1, y: 2 } } }], context());
+    const resized = applyCanvasOps(placed.document, [{ type: "update_node", id: "bot:writer", patch: { width: 300 } }], context());
+    expect(find(resized.document, "bot:writer")).toMatchObject({ position: { x: 1, y: 2 }, width: 300, arranged: true });
+    const byBot = applyCanvasOps(canvas(), [{ type: "update_node", id: "shot-1", patch: { position: { x: 9, y: 9 } } }], context(WRITER));
+    expect(find(byBot.document, "shot-1")).not.toHaveProperty("arranged");
   });
 
   it("takes a node out of its group with a null group", () => {

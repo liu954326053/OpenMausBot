@@ -5,11 +5,11 @@ import { createPortal } from "react-dom";
 import type { TeamProjectWire } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
-import { t } from "@/lib/i18n";
+import { activeLocale, t } from "@/lib/i18n";
 import { useRememberedDisclosure } from "@/lib/remembered-disclosure";
 import { sidebarSectionAttention, type SidebarSectionAttention } from "@/lib/sidebar-attention";
 import type { SidebarDensity } from "@/lib/sidebar-preferences";
-import { teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
+import { splitEpisodes, teamProjectsVersion, type TeamProjectSide } from "@/lib/team-projects";
 import { useShowThreads } from "@/lib/thread-preferences";
 import { openProject, projectDisclosure, projectRoomOf } from "@/state/project-open";
 import type { Bot, Group } from "@/state/store";
@@ -22,6 +22,7 @@ import { MENU_ITEM, MENU_SHEET } from "../menu-recipe";
 import { useHeldMenuMotion } from "../MenuMotion";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
 import { SIMPLE_RAIL_BUTTON } from "../SidebarSimpleTop";
+import { SidebarProjectEpisodes } from "./SidebarProjectEpisodes";
 import { SidebarProjectBot, SidebarProjectRoom, SidebarProjectRow, SidebarProjectTile } from "./SidebarProjectRow";
 import { TeamChangesDialog } from "./TeamChangesDialog";
 import { dataSettingsPlace } from "./where-in-settings";
@@ -74,6 +75,8 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   const [reviewing, setReviewing] = useState<TeamProjectWire | null>(null);
   const forget = useCallback(() => setArchived(null), []);
   const labelId = useId();
+  const openRoom = useCallback((room: Group) => dispatch({ type: "select", id: room.id }), [dispatch]);
+  const openProjectBot = useCallback((bot: Bot) => openBot(dispatch, bot, showThreads), [dispatch, showThreads]);
 
   const listedBots = all.bots.filter((bot) => !bot.hidden);
   const shownProjects = side.projects
@@ -219,8 +222,7 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
               <ProjectBlock key={project.id} project={project} attention={attention} {...listedUnder(project)} openChat={openChat} simple={simple} gap={gap}
                 listOnly={query !== ""} onScreen={onScreen(project)} menuOpen={menu?.project.id === project.id} onMenu={openMenu?.(project)}
                 onReview={changesOf(project) ? () => review(project) : undefined} onOpen={() => show(project)}
-                onOpenRoom={(room) => dispatch({ type: "select", id: room.id })}
-                onOpenBot={(bot) => openBot(dispatch, bot, showThreads)} />
+                onOpenRoom={openRoom} onOpenBot={openProjectBot} />
             ))}
           </div>
         </>
@@ -230,8 +232,8 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   );
 }
 
-/** A project in the list: its row, its group chat and its bots under it while it is open, and what to say about its
- * folder and its team. */
+/** A project in the list: its row; while it is open, its group chat, the bots of the whole drama and its episodes under
+ * it; and what to say about its folder and its team. */
 function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, listOnly, onScreen, menuOpen, onMenu, onReview, onOpen, onOpenRoom, onOpenBot }: {
   project: TeamProjectWire;
   attention: SidebarSectionAttention;
@@ -257,6 +259,8 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
 }) {
   const [open, setOpen] = useRememberedDisclosure(projectDisclosure(project.id));
   const expanded = !listOnly && open && (room !== undefined || bots.length > 0);
+  const { drama, episodes } = splitEpisodes(project, expanded ? bots : []);
+  const locale = activeLocale();
   const click = () => {
     if (expanded && onScreen !== null) setOpen(false);
     else onOpen();
@@ -266,10 +270,12 @@ function ProjectBlock({ project, attention, room, bots, openChat, simple, gap, l
       <SidebarProjectRow project={project} attention={attention} simple={simple} expanded={listOnly ? undefined : expanded}
         selected={onScreen === "canvas" || onScreen === "other" || (onScreen === "listed" && !expanded)} menuOpen={menuOpen}
         onOpen={click} onMenu={onMenu} />
-      {expanded && room && <SidebarProjectRoom room={room} simple={simple} selected={openChat === room.id} onOpen={() => onOpenRoom(room)} />}
-      {expanded && bots.map((bot) => (
-        <SidebarProjectBot key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} selected={openChat === bot.id} onOpen={() => onOpenBot(bot)} />
+      {expanded && room && <SidebarProjectRoom room={room} simple={simple} selected={openChat === room.id} locale={locale} onOpen={onOpenRoom} />}
+      {drama.map((bot) => (
+        <SidebarProjectBot key={bot.id} bot={bot} lead={bot.id === project.leadBotId} simple={simple} selected={openChat === bot.id} locale={locale}
+          onOpen={onOpenBot} />
       ))}
+      {episodes.length > 0 && <SidebarProjectEpisodes project={project} episodes={episodes} simple={simple} gap={gap} openChat={openChat} onOpenBot={onOpenBot} />}
       {project.folderState === "missing" && (
         <p data-team-project-missing="" className={cn("flex items-center gap-1.5 pb-1 text-[12px] leading-4 text-warning", simple ? "px-2" : "px-3")}>
           <FolderX size={14} aria-hidden="true" className="shrink-0" /><span className="min-w-0 truncate">{t("teamProjects.folderMissing")}</span>

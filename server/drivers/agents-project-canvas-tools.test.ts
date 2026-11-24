@@ -11,6 +11,7 @@ import { AGENTS_MCP_ENV } from "./agents-mcp-env.ts";
 import { PROJECT_CANVAS_TOOL_DEFINITIONS, PROJECT_CANVAS_TOOL_NAMES } from "./agents-project-canvas-tools.ts";
 
 const TOOLS = ["canvas_get_state", "canvas_apply_ops", "canvas_generate"];
+const LEAD_TOOLS = [...TOOLS, "production_plan"];
 
 type Bot = AgentsConversation["bot"];
 const MAIN: Bot = { id: "magicbot", defaultBot: {}, chiefOfStaff: true };
@@ -22,7 +23,7 @@ const HOST: AgentsConversation["host"] = {
 };
 const envFor = (bot: Bot, room = false) =>
   agentsServerEnv({ threadId: "t", bot, room, teamComputer: false, host: HOST }, { generation: "g", depth: 0, skillAuthoring: false }, () => "bearer", "http://127.0.0.1:1");
-const shown = (bot: Bot, room = false) => availableTools(catalogProfileFromEnv(envFor(bot, room))).map((tool) => tool.name).filter((tool) => TOOLS.includes(tool));
+const shown = (bot: Bot, room = false) => availableTools(catalogProfileFromEnv(envFor(bot, room))).map((tool) => tool.name).filter((tool) => LEAD_TOOLS.includes(tool));
 
 function harness(answer: { ok: boolean; status: number; body: Json }) {
   const sent: Array<{ path: string; method?: string; body?: unknown }> = [];
@@ -38,12 +39,12 @@ function harness(answer: { ok: boolean; status: number; body: Json }) {
 }
 
 describe("who is shown the canvas tools", () => {
-  it("every bot of a project in its own chats, and neither the main bot nor a bot in no project", () => {
-    expect(shown(PROJECT_LEAD)).toEqual(TOOLS);
+  it("every bot of a project in its own chats, the tool that plans the production its lead alone, and neither the main bot nor a bot in no project", () => {
+    expect(shown(PROJECT_LEAD)).toEqual(LEAD_TOOLS);
     expect(shown(PROJECT_MEMBER)).toEqual(TOOLS);
     expect(shown(MAIN)).toEqual([]);
     expect(shown(ORDINARY)).toEqual([]);
-    expect([...PROJECT_CANVAS_TOOL_NAMES]).toEqual(TOOLS);
+    expect([...PROJECT_CANVAS_TOOL_NAMES]).toEqual(LEAD_TOOLS);
   });
 
   it("no bot in a room, which people outside the project may read", () => {
@@ -62,6 +63,7 @@ describe("who is shown the canvas tools", () => {
     const withTools = availableTools(catalogProfileFromEnv({ ...base, OMB_PROJECT_CANVAS: "1" }));
     expect(withTools.slice(-3).map((tool) => tool.name)).toEqual(TOOLS);
     expect(JSON.stringify(withTools.slice(0, -3))).toBe(JSON.stringify(without));
+    expect(availableTools(catalogProfileFromEnv({ ...base, OMB_PROJECT_CANVAS: "1", OMB_CHIEF_OF_STAFF: "1" })).slice(-4).map((tool) => tool.name)).toEqual(LEAD_TOOLS);
     expect(availableTools(catalogProfileFromEnv({ ...base, OMB_PROJECT_CANVAS: "true" })).map((tool) => tool.name)).not.toContain("canvas_get_state");
   });
 });
@@ -84,10 +86,13 @@ describe("calling the canvas tools", () => {
     const ops = [{ type: "add_node", nodeType: "text", title: "Outline", metadata: { content: "Act one" } }];
     await callTool("canvas_apply_ops", { ops }, context);
     await callTool("canvas_generate", { node_id: "n1" }, context);
+    const plan = { brief: [["Episodes", "20 × 2 min"]], episodes: 20, assignments: { script: "bot:writer" } };
+    await callTool("production_plan", plan, context);
     expect(sent).toEqual([
       { path: "/api/internal/project-canvas/read", method: "POST", body: { connected: true } },
       { path: "/api/internal/project-canvas/apply", method: "POST", body: { ops } },
       { path: "/api/internal/project-canvas/generate", method: "POST", body: { node_id: "n1" } },
+      { path: "/api/internal/project-canvas/plan", method: "POST", body: plan },
     ]);
   });
 

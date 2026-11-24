@@ -2,6 +2,8 @@
 // the way. These are the project's generation settings, what a canvas node inherits of them, what a model offers, a
 // generation job, the wire of `/api/team-projects/:id/generation/*`, and the server's own API for whoever starts a job.
 
+import { DEFAULT_PRODUCTION_CONCURRENCY, type ProductionConcurrency } from "./production.ts";
+
 export type GenerationKind = "image" | "video";
 
 /** One image generation: `count` pictures, each of `aspect` (such as "16:9") at `quality`, made by `model`. */
@@ -52,6 +54,8 @@ export interface GenerationKindSettings<S> {
 export interface ProjectGenerationSettings {
   image: GenerationKindSettings<ImageSettings>;
   video: GenerationKindSettings<VideoSettings>;
+  /** How many episodes, videos and pictures the project's production runs at once. */
+  concurrency: ProductionConcurrency;
 }
 
 /** What a model offers when the server gives no list (or an empty one) for it. */
@@ -80,6 +84,7 @@ export const DEFAULT_GENERATION_SETTINGS: ProjectGenerationSettings = frozen({
     tools: { listModels: "list_models", generate: "generate_video", taskStatus: "task_status", cancelTask: "cancel_task" },
     defaults: { model: "", resolution: "720p", aspect: "16:9", seconds: 5 },
   },
+  concurrency: { ...DEFAULT_PRODUCTION_CONCURRENCY },
 });
 
 /**

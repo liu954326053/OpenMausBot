@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasNode } from "../../../shared/project-canvas";
 import { DEFAULT_GENERATION_SETTINGS, type GenerationModel, type ProjectGenerationSettings } from "../../../shared/project-generation";
-import { nodeSettings, overrideSetting, referenceProblems, restoreSetting, settingRows } from "./settings";
+import { CONCURRENCY_KEYS, concurrencyCount, nodeSettings, overrideSetting, referenceProblems, restoreSetting, settingRows, withConcurrency } from "./settings";
 
 const project: ProjectGenerationSettings = {
   image: { ...DEFAULT_GENERATION_SETTINGS.image, server: "studio", defaults: { model: "pic-1", aspect: "1:1", quality: "auto", count: 1 } },
   video: { ...DEFAULT_GENERATION_SETTINGS.video, server: "studio", defaults: { model: "clip-1", resolution: "720p", aspect: "16:9", seconds: 5 } },
+  concurrency: { ...DEFAULT_GENERATION_SETTINGS.concurrency },
 };
 const models: GenerationModel[] = [
   { id: "pic-1", name: "Pic", kind: "image", aspects: ["1:1", "16:9"], referenceImages: true, referenceAudio: false },
@@ -50,5 +51,26 @@ describe("generation settings on a node", () => {
   it("flags references the model does not take", () => {
     expect(referenceProblems("video", project, shot(), models, { images: 1, audio: 1 })).toEqual([{ key: "referenceAudio", value: 1, offered: [] }]);
     expect(referenceProblems("video", project, shot({ settings: { model: "clip-2" } }), models, { images: 1, audio: 1 })).toEqual([]);
+  });
+});
+
+describe("how much of the production runs at once", () => {
+  it("is set as videos, images, then episodes", () => {
+    expect(CONCURRENCY_KEYS).toEqual(["videos", "images", "episodes"]);
+  });
+
+  it("takes a whole number from 1 to 50 as typed, with full-width digits and spaces around it", () => {
+    expect(["1", "2", " 50 ", "07", "１２"].map(concurrencyCount)).toEqual([1, 2, 50, 7, 12]);
+  });
+
+  it("takes nothing else", () => {
+    expect(["", " ", "0", "51", "100", "2.5", "-1", "+3", "1e1", "two", "0x2"].map(concurrencyCount)).toEqual(Array(11).fill(null));
+  });
+
+  it("starts from the defaults, 2 videos, 2 images and 3 episodes, where the server sends none", () => {
+    const { concurrency: _sent, ...older } = project;
+    expect(withConcurrency(older).concurrency).toEqual({ videos: 2, images: 2, episodes: 3 });
+    expect(withConcurrency({ ...older, concurrency: { episodes: 6 } }).concurrency).toEqual({ videos: 2, images: 2, episodes: 6 });
+    expect(withConcurrency({ ...project, concurrency: { videos: 9, images: 1, episodes: 50 } })).toEqual({ ...project, concurrency: { videos: 9, images: 1, episodes: 50 } });
   });
 });

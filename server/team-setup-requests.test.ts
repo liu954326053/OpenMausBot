@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,8 +10,6 @@ import { hasTeamAuthority } from "./peer-roster.ts";
 import type { BotRecord, OptionCardData } from "./store.ts";
 import type { TeamSetupFields, TeamSetupRequest, TeamSetupResult } from "../shared/team-setup.ts";
 import type { DirectApply } from "./direct-apply.ts";
-import { installTeamFlows } from "./team-flow/flows.ts";
-import type { FlowStage } from "../shared/team-pipeline.ts";
 
 function harness(caps?: Record<string, { driverKind: string; agentsMcp: boolean }>) {
   const bots: BotRecord[] = [];
@@ -55,7 +53,7 @@ function harness(caps?: Record<string, { driverKind: string; agentsMcp: boolean 
   const validateChange = vi.fn();
   let fieldsRefusal: ((target: BotRecord, fields: TeamSetupFields) => string | null) | null = null;
   const canPersist = vi.fn((): { ok: true } | { ok: false; status: number; error: string } => ({ ok: true }));
-  const service = new TeamSetupRequestService({ store, teams: () => teams, maxBots: 100, hasTeamAuthority,
+  const service = new TeamSetupRequestService({ store, teams: () => teams, hasTeamAuthority,
     canPersist, ownsThread: () => sourceExists, targetBusy, deleteBot, deletionRefusal, autoApply, validateChange,
     fieldsRefusal: (target, fields) => fieldsRefusal?.(target, fields) ?? null,
     mcpServerProblem: (name, botId) => {
@@ -235,7 +233,7 @@ describe("reviewed Chief team setup", () => {
   it("names where an unknown key is and what that level takes", () => {
     const h = harness();
     expect(() => h.propose([{ action: "update", botId: h.peer.id, fields: { model: "gpt" } }]))
-      .toThrow(/^operations\.0\.fields: Unrecognized key: "model"\. It takes chiefOfStaff, name, title, description, soul, soulAppend, cwd, section, modelSelection, mcpServers, stages\.$/);
+      .toThrow(/^operations\.0\.fields: Unrecognized key: "model"\. It takes chiefOfStaff, name, title, description, soul, soulAppend, cwd, section, modelSelection, mcpServers\.$/);
     expect(() => h.service.propose({ botId: h.chief.id, threadId: h.chief.threadId, plan: { reason: "Requested", operations: [{ action: "update", botId: h.peer.id, fields: { title: "Lead" } }], teams: [] } }))
       .toThrow(/^Unrecognized key: "teams"\. It takes reason, newTeams, operations\.$/);
   });
@@ -793,10 +791,6 @@ describe("a Chief making bots, whatever the plan", () => {
     expect(app.apply).toHaveBeenCalledTimes(1);
   });
 
-  it("still holds the workspace's own ceiling", () => {
-    const app = full(97);
-    expect(() => app.propose([specialist("Scout"), specialist("Writer")])).toThrow(expect.objectContaining({ status: 409, message: "This setup exceeds the workspace bot limit" }));
-  });
 });
 
 describe("team setup and a team project's wall", () => {
@@ -882,111 +876,22 @@ describe("team setup and a team project's wall", () => {
   });
 });
 
-describe("a team setup that gives its bots stages", () => {
-  const NO_FLOWS = { parents: () => ({}), projectParents: () => ({}), lineOf: () => null };
-  afterEach(() => installTeamFlows(NO_FLOWS));
-  const flows = (setJudged = vi.fn<(section: string, stages: Readonly<Record<string, readonly FlowStage[]>>) => void>()) => {
-    installTeamFlows({ ...NO_FLOWS, setJudged });
-    return setJudged;
-  };
-  const member = (name: string, title: string, stages?: string[], extra: Record<string, unknown> = {}) => ({ action: "create", key: name,
-    fields: { name, title, soul: "Do this stage's work.", section: "漫剧", modelSelection: { instanceId: "claude", model: "sonnet" }, ...(stages ? { stages } : {}), ...extra } });
-  const drama = () => [member("云舟", "制片人", ["lead"], { chiefOfStaff: true }), member("砚青", "编剧", ["script"]),
-    member("墨白", "分镜与美术设计", ["storyboard", "character", "storyboard"]), member("青禾", "后期合成", ["post"])];
-  const idOf = (h: ReturnType<typeof harness>, name: string) => h.store.bots.find((bot) => bot.name === name)!.id;
+describe("a team setup for a drama", () => {
+  const member = (name: string, title: string, extra: Record<string, unknown> = {}) => ({ action: "create", key: name,
+    fields: { name, title, soul: "Do this work.", section: "漫剧", modelSelection: { instanceId: "claude", model: "sonnet" }, ...extra } });
 
-  it("shows the team's pipeline on the card, and records the stages once the person confirms and the bots exist", async () => {
+  it("names its members and its lead, and draws no pipeline", async () => {
     const h = harness();
-    const recorded = flows();
-    const card = h.propose(drama(), ["漫剧"]);
-    expect(card.detail).toContain("\nPipeline of “漫剧”: 云舟 → 砚青 → 墨白 → 青禾\n");
-    const request = h.messages[0]!.card!.teamSetupRequest!;
-    expect(request.operations.map((operation) => operation.stages)).toEqual([undefined, ["script"], ["character", "storyboard"], ["post"]]);
-    for (const operation of request.operations) expect(operation.fields).not.toHaveProperty("stages");
-    expect(recorded).not.toHaveBeenCalled();
-    expect((await h.resolve(card.requestId))?.result.state).toBe("applied");
-    expect(recorded.mock.calls).toEqual([["漫剧", { [idOf(h, "砚青")]: ["script"], [idOf(h, "墨白")]: ["character", "storyboard"], [idOf(h, "青禾")]: ["post"] }]]);
-    for (const bot of h.store.bots) expect(bot).not.toHaveProperty("stages");
-    expect((await h.resolve(card.requestId))?.duplicate).toBe(true);
-    expect(recorded).toHaveBeenCalledTimes(1);
-  });
-
-  it("draws a plain five-member drama team in stage order, whatever order the plan lists it in", () => {
-    const h = harness();
-    flows();
-    const card = h.propose([member("Emery", "Video Editor", ["post"]), member("Devon", "Storyboard Artist", ["storyboard"]), member("Casey", "Character Designer", ["character"]),
-      member("Blake", "Screenwriter", ["script"]), member("Avery", "Producer", undefined, { chiefOfStaff: true })], ["漫剧"]);
-    expect(card.detail).toContain("Pipeline of “漫剧”: Avery → Blake → Casey → Devon → Emery");
-  });
-
-  it("records every member of a team that makes no dramas as other, and shows no pipeline for it", async () => {
-    const h = harness();
-    const recorded = flows();
-    const card = h.propose([member("林一", "增长负责人", undefined, { chiefOfStaff: true }), member("周二", "研究员", ["other"]), member("李四", "运营", ["other"])], ["漫剧"]);
+    const card = h.propose([member("云舟", "制片人", { chiefOfStaff: true }), member("砚青", "编剧"), member("墨白", "分镜")], ["漫剧"]);
     expect(card.detail).not.toContain("Pipeline");
-    await h.resolve(card.requestId);
-    expect(recorded.mock.calls).toEqual([["漫剧", { [idOf(h, "周二")]: ["other"], [idOf(h, "李四")]: ["other"] }]]);
+    expect((await h.resolve(card.requestId))?.result.state).toBe("applied");
+    expect(h.store.bots.filter((bot) => bot.section === "漫剧").map((bot) => [bot.name, Boolean(bot.chiefOfStaff)])).toEqual([["云舟", true], ["砚青", false], ["墨白", false]]);
   });
 
-  it("leaves a bot the plan gave no stages to be judged, and a plan without stages as it was", async () => {
+  it("refuses a member's stages as a key it does not take", () => {
     const h = harness();
-    const recorded = flows();
-    const card = h.propose([...drama(), member("阿音", "配音")], ["漫剧"]);
-    expect(card.detail).toContain("Pipeline of “漫剧”: 云舟 → 砚青 → 墨白 → 青禾\n");
-    await h.resolve(card.requestId);
-    expect(Object.keys(recorded.mock.calls[0]![1])).not.toContain(idOf(h, "阿音"));
-    const plain = h.propose([specialist("Mira", "Research")], ["Research"]);
-    expect(plain.detail).not.toContain("Pipeline");
-    await h.resolve(plain.requestId);
-    expect(recorded).toHaveBeenCalledTimes(1);
-  });
-
-  it("gives an existing member stages in its own team, and the Chief none", async () => {
-    const h = harness();
-    const recorded = flows();
-    const card = h.propose([{ action: "update", botId: h.peer.id, fields: { stages: ["script"] } }, { action: "update", botId: h.chief.id, fields: { stages: ["script"] } }]);
-    expect(card.detail).toContain("Pipeline of “Work”: Clive → Ada");
-    await h.resolve(card.requestId);
-    expect(recorded.mock.calls).toEqual([["Work", { [h.peer.id]: ["script"] }]]);
-  });
-
-  it("records the stages at once where the setup applies on its own", async () => {
-    const h = harness(); h.autoApply.mockReturnValue("full-access");
-    const recorded = flows();
-    const applied = await h.submit([{ action: "update", botId: h.peer.id, fields: { title: "Editor", stages: ["post"] } }]);
-    expect(applied).toMatchObject({ applied: true });
-    expect(applied.detail).toContain("Pipeline of “Work”: Clive → Ada");
-    expect(recorded.mock.calls).toEqual([["Work", { [h.peer.id]: ["post"] }]]);
-  });
-
-  it("records nothing for a setup the person cancels, or one that is cancelled when confirmed", async () => {
-    const h = harness();
-    const recorded = flows();
-    const denied = h.propose(drama(), ["漫剧"]);
-    expect((await h.resolve(denied.requestId, "deny"))?.result.state).toBe("denied");
-    const stale = h.propose([{ action: "update", botId: h.peer.id, fields: { title: "Writer", stages: ["script"] } }]);
-    h.peer.title = "Changed meanwhile";
-    expect((await h.resolve(stale.requestId))?.result.state).toBe("cancelled");
-    expect(recorded).not.toHaveBeenCalled();
-  });
-
-  it("applies the setup even when the stages cannot be recorded", async () => {
-    const h = harness();
-    flows(vi.fn(() => { throw new Error("team-flows.json cannot be written"); }));
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const card = h.propose(drama(), ["漫剧"]);
-      expect((await h.resolve(card.requestId))?.result).toMatchObject({ state: "applied" });
-      expect(h.store.bots.map((bot) => bot.name)).toEqual(expect.arrayContaining(["云舟", "砚青", "墨白", "青禾"]));
-    } finally {
-      warn.mockRestore();
-    }
-  });
-
-  it("refuses a stage that is none of the pipeline's, naming the ones there are", () => {
-    const h = harness();
-    expect(() => h.propose([member("云舟", "制片人", undefined, { chiefOfStaff: true }), member("砚青", "导演", ["director"])], ["漫剧"]))
-      .toThrow("stages takes script, character, storyboard, post, other");
+    expect(() => h.propose([member("云舟", "制片人", { chiefOfStaff: true }), member("砚青", "编剧", { stages: ["script"] })], ["漫剧"]))
+      .toThrow(/^operations\.1\.fields: Unrecognized key: "stages"\. It takes chiefOfStaff, name, title, description, soul, soulAppend, cwd, section, modelSelection, mcpServers\.$/);
     expect(h.messages).toEqual([]);
   });
 });

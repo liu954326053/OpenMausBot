@@ -1,4 +1,5 @@
-import type { PipelineVideosInput } from "../../../shared/pipeline-run";
+import type { ProductionRetryInput, ProductionTaskWire, ProductionWire } from "../../../shared/production";
+import type { TimelineClip } from "../../../shared/project-draft";
 import {
   CANVAS_NODE_SIZE,
   CANVAS_UPLOAD_FOLDER,
@@ -80,8 +81,8 @@ export interface MemoryCanvasBackend extends CanvasBackend {
   updateBots(change: (snapshot: CanvasSnapshot) => void): void;
   readonly openedChats: Array<{ botId: string; threadId?: string }>;
   readonly readConversations: Array<{ botId: string; threadId?: string }>;
-  /** The person's answers to the run, in order. */
-  readonly videoAnswers: Array<PipelineVideosInput["action"]>;
+  /** What the person had tried again, in order. */
+  readonly retries: ProductionRetryInput[];
 }
 
 /** A task a bot is on or has queued, with the node its reply becomes when it was written in a text node with text. */
@@ -126,7 +127,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const scheduleTask = (botId: string) => cancelTask.set(botId, schedule(() => finishTask(botId), delay, { kind: "task", botId }));
   const openedChats: Array<{ botId: string; threadId?: string }> = [];
   const readConversations: Array<{ botId: string; threadId?: string }> = [];
-  const videoAnswers: Array<PipelineVideosInput["action"]> = [];
+  const retries: ProductionRetryInput[] = [];
   let counter = 0;
   const newId = (prefix: string) => `${prefix}-${++counter}`;
 
@@ -259,7 +260,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
   const backend: MemoryCanvasBackend = {
     openedChats,
     readConversations,
-    videoAnswers,
+    retries,
     ...(options.localPathOf ? { localPathOf: options.localPathOf } : {}),
     current: () => structuredClone(snapshot),
     updateBots(change) {
@@ -338,9 +339,13 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       if (task.targetNodeId && target?.type !== "text") throw new Error("A reply goes into a text node of this canvas, and that is not one.");
       const threadId = task.threadId ?? bot.output?.threadId ?? `thread-${task.botId}`;
       const messageId = newId("message");
+      const writtenIn = target?.id ?? botNodeId(task.botId);
+      const connected = new Set(snapshot.connections.flatMap((one) => (one.kind === "content" && one.toNodeId === writtenIn ? [one.fromNodeId] : [])));
+      const named = [...new Set(task.references ?? [])].filter((nodeId) => nodeId !== writtenIn && !connected.has(nodeId) && botIdOfNode(nodeId) === null && nodeById(nodeId));
+      const connections = [...snapshot.connections, ...named.map((nodeId): CanvasConnection => ({ id: `named:${nodeId}`, fromNodeId: nodeId, toNodeId: writtenIn, kind: "content" }))];
       const references = target
-        ? mentionReferences(target.id, snapshot.nodes, snapshot.connections).filter((reference) => reference.nodeId !== target.id).length
-        : connectedReferences(botNodeId(task.botId), snapshot.nodes, snapshot.connections).length;
+        ? mentionReferences(target.id, snapshot.nodes, connections).filter((reference) => reference.nodeId !== target.id).length
+        : connectedReferences(writtenIn, snapshot.nodes, connections).length;
       exchanges.set(task.botId, [...(exchanges.get(task.botId) ?? []), { id: messageId, role: "person", text: task.text, at: Date.now() }]);
       const queue = botTasks.get(task.botId) ?? [];
       botTasks.set(task.botId, [...queue, { task, threadId, ...(target?.metadata?.content?.trim() ? { beside: replyNode(target) } : {}) }]);
@@ -460,26 +465,55 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       return { revision: snapshot.revision };
     },
 
-    async answerVideos(id, { action }) {
+    async retryProduction(id, input) {
       ensureProject(id);
       ensureWritable();
-      const run = snapshot.run;
-      if (!run) throw new Error("This project has no run.");
-      if (run.videos.status !== (action === "start" ? "confirm" : "failed")) throw new Error("The run isn't waiting for that answer.");
-      videoAnswers.push(action);
-      const videos = action === "skip" ? { ...run.videos, status: "done" as const } : { ...run.videos, status: "working" as const, failed: 0 };
-      snapshot = { ...snapshot, run: { ...run, videos } };
+      const production = snapshot.production;
+      if (!production) throw new Error("This project has no production yet.");
+      const stopped = "job" in input
+        ? production.jobs.find((one) => one.job === input.job)?.status === "failed"
+        : production.episodes.find((one) => one.episode === input.episode)?.status === "failed";
+      if (!stopped) throw new Error("Nothing stopped there.");
+      retries.push(structuredClone(input));
+      const retried = (task: ProductionTaskWire) => task.status === "failed" && ("job" in input ? task.job === input.job && task.episode === undefined : task.episode === input.episode);
+      const next: ProductionWire = {
+        ...production,
+        jobs: production.jobs.map((one) => ("job" in input && one.job === input.job ? { ...one, status: "working" } : one)),
+        episodes: production.episodes.map((one) => ("episode" in input && one.episode === input.episode ? { ...one, status: one.postBotId ? "post" : "storyboard" } : one)),
+        tasks: production.tasks.map((task) => (retried(task) ? { ...task, status: "working", at: Date.now() } : task)),
+      };
+      const working = new Set(production.tasks.filter(retried).map((task) => task.botId));
+      const bots = Object.fromEntries(Object.entries(snapshot.bots).map(([botId, bot]) => [botId, working.has(botId) ? { ...bot, status: "working" as const } : bot]));
+      snapshot = { ...snapshot, revision: snapshot.revision + 1, production: next, bots };
       emit();
+      return structuredClone(next);
+    },
+
+    async readTimeline(id, episode) {
+      ensureProject(id);
+      const clips: TimelineClip[] = [];
+      const missingShots: string[] = [];
+      for (const shot of snapshot.nodes.filter((node) => node.type === "shot" && node.metadata?.episode === episode)) {
+        const take = snapshot.nodes.find((node) => node.metadata?.role === "take" && node.metadata.shotId === shot.id && node.metadata.selected && node.metadata.file);
+        const file = take?.metadata?.file;
+        if (!take || !file) {
+          missingShots.push(shot.id);
+          continue;
+        }
+        const durationMs = take.metadata?.durationMs ?? (shot.metadata?.settings?.seconds ?? 0) * 1000;
+        clips.push({ shotId: shot.id, nodeId: take.id, title: shot.title, file, durationMs, width: take.metadata?.naturalWidth ?? 0, height: take.metadata?.naturalHeight ?? 0 });
+      }
+      return { projectId, ...(episode === undefined ? {} : { episode }), clips, missingShots };
     },
 
     async openDraft(id) {
       ensureProject(id);
-      const state = snapshot.draft?.state;
-      if (state !== "written" && state !== "kept") throw new Error("There is no draft to open yet.");
+      const drafted = Object.values(snapshot.drafts ?? {}).some((draft) => draft.state === "written" || draft.state === "kept");
+      if (!drafted) throw new Error("There is no draft to open yet.");
       return { opened: options.draftOpens ?? "draft" };
     },
 
-    async setFinalFilm(id, { path }) {
+    async setFinalFilm(id, { path, episode }) {
       ensureProject(id);
       ensureWritable();
       const parts = path.split("/");
@@ -488,12 +522,12 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
       const mime = VIDEO_TYPES[name.slice(name.lastIndexOf(".") + 1).toLowerCase()];
       if (!mime) throw new Error(`${name} is not a video.`);
       const file: CanvasFileRef = { path, mime, bytes: 0, name };
-      const film = snapshot.nodes.find((node) => node.metadata?.role === "final");
+      const film = snapshot.nodes.find((node) => node.metadata?.role === "final" && node.metadata.episode === episode);
       if (film) return commit([{ type: "update_node", id: film.id, patch: { title: name }, metadata: { file } }]);
       const post = postBots().map(nodeById).find((node) => node !== undefined);
       const frame = post ? nextOutputFrame(post, "video", snapshot.nodes, snapshot.connections, comingReplies()) : { position: { x: rightEdge(), y: 0 }, ...CANVAS_NODE_SIZE.video };
       const nodeId = newId("node");
-      commit([{ type: "add_node", id: nodeId, nodeType: "video", title: name, ...frame, metadata: { role: "final", file } }], () => {
+      commit([{ type: "add_node", id: nodeId, nodeType: "video", title: name, ...frame, metadata: { role: "final", file, ...(episode === undefined ? {} : { episode }) } }], () => {
         if (post) snapshot = { ...snapshot, connections: [...snapshot.connections, pipelineLink(post.id, nodeId)] };
       });
     },

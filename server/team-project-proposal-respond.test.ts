@@ -34,7 +34,7 @@ async function fixture() {
   const create = vi.fn(async (): Promise<CreateTeamProjectResult> => ({
     project: {
       id: "p1", name: "Palace", folder: "/projects/Palace", section: "Palace", team: { key: "team:drama", name: "Short drama team" },
-      leadBotId: lead.id, createdAt: 1, folderState: "ready", botIds: [lead.id], follows: { [lead.id]: "src-writer" },
+      leadBotId: lead.id, createdAt: 1, folderState: "ready", botIds: [lead.id], follows: { [lead.id]: "src-writer" }, episodeBots: {},
     },
   }));
   const answer = vi.fn(() => true);

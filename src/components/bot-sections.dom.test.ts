@@ -27,7 +27,7 @@ const bot = (id: string, extra: Partial<Bot> = {}): Bot => ({
 });
 const bride = {
   id: "p1", name: "The bride", folder: "/dramas/The bride", section: "The bride", team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: "lead", createdAt: 1, folderState: "ready" as const, botIds: ["lead", "writer"],
+  leadBotId: "lead", createdAt: 1, folderState: "ready" as const, botIds: ["lead", "writer"], episodeBots: {},
 };
 
 let container: HTMLDivElement, root: Root;

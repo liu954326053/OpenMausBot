@@ -141,7 +141,9 @@ export async function runRoomHandoffAgent(argv: string[], planPath: string, prom
   const turnContext = `${system}\n${JSON.stringify(prompt)}`;
   const resumed = turnContext.includes("Your downstream room requests have settled.");
   // `byPrompt` [{ promptIncludes, plan }] picks a plan by what the turn was sent; first match wins.
-  const botPlan = JSON.parse(readFileSync(planPath, "utf8"))[botId] ?? {};
+  // The plan under "*" is every bot's that has none of its own: a bot the server made mid-test, whose id no test knows.
+  const plans = JSON.parse(readFileSync(planPath, "utf8"));
+  const botPlan = plans[botId] ?? plans["*"] ?? {};
   const basePlan = (botPlan.byPrompt as Array<{ promptIncludes: string; plan: any }> | undefined)
     ?.find(rule => turnContext.includes(rule.promptIncludes))?.plan ?? botPlan;
   const previous = existsSync(`${planPath}.evidence.jsonl`) ? readFileSync(`${planPath}.evidence.jsonl`, "utf8").trim().split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];

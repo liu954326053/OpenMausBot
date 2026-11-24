@@ -1,4 +1,5 @@
 import { takeImportName } from "../../shared/import-name.ts";
+import { episodeCode } from "../../shared/production.ts";
 import { COPY_FIELDS, type CopyField } from "../../shared/team-projects.ts";
 import { sameModelSelection } from "../../shared/thread-model.ts";
 import type { ModelSelection } from "../../shared/wire.ts";
@@ -34,15 +35,17 @@ export function changedCopyFields(copy: BotRecord, changes: object): string[] {
   }).map(([field]) => field);
 }
 
-/** The name a copy takes: its source's, numbered when another bot of the project has it already. */
-export function copyName(source: Pick<BotRecord, "name">, otherNames: Iterable<string>): string {
-  return takeImportName(source.name, new Set([...otherNames].map((name) => name.trim().toLowerCase())));
+/** The name a copy takes: its source's, with its episode after it when it is one episode's own bot, numbered when
+ * another bot of the project has it already. */
+export function copyName(source: Pick<BotRecord, "name">, otherNames: Iterable<string>, episode?: number): string {
+  const name = episode === undefined ? source.name : `${source.name} ${episodeCode(episode)}`;
+  return takeImportName(name, new Set([...otherNames].map((other) => other.trim().toLowerCase())));
 }
 
 /** What `copy` needs to show what `source` shows now: only what differs. Null when nothing does. */
 export function copyUpdate(source: BotRecord, copy: BotRecord, otherNames: Iterable<string>): CopyUpdate | null {
   const fields: Partial<BotRecord> = {};
-  const name = copyName(source, otherNames);
+  const name = copyName(source, otherNames, copy.teamProject?.episode?.number);
   if (name !== copy.name) fields.name = name;
   for (const field of FOLLOWED_FIELDS) {
     if (!same(source[field], copy[field])) Object.assign(fields, { [field]: source[field] });

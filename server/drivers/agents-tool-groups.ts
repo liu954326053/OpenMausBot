@@ -35,7 +35,7 @@ export const CORE_TOOLS: ReadonlySet<string> = new Set([
   "wait_until", "list_waits", "cancel_wait", "check_back", "propose_profile", "propose_model", "propose_team_memory", "skills_list",
   "skill_manage", "mcp_server", "app_settings", "list_unread_notifications", "mark_notifications_read",
   "list_project_teams", "propose_team_project", "canvas_get_state", "canvas_apply_ops", "canvas_generate",
-  "timeline_get_state", "timeline_set_order",
+  "production_plan", "timeline_get_state", "timeline_set_order",
 ]);
 
 /** The agents tools the groups in `off` leave out. */

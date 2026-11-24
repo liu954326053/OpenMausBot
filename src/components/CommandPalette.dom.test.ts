@@ -24,15 +24,16 @@ const bot = (id: string, name: string, title: string, section: string, more: Par
   id, threadId: `${id}-thread`, name, title, description: "", color: "blue", notifications: false, unread: false,
   busy: false, messages: [], section, modelSelection: { instanceId: "claude", model: "fake" }, ...more,
 });
-const bots: Bot[] = [
+const crew: Bot[] = [
   bot("maus", "Maus", "", "", { defaultBot: {} }),
   bot("writer", "编剧", "写每一集的剧本", "剧组"),
   bot("writer-copy", "编剧", "写每一集的剧本", "雨夜新娘"),
   bot("helper", "Helper", "", ""),
 ];
+let bots = crew;
 const project: TeamProjectWire = {
   id: "bride", name: "雨夜新娘", folder: "/projects/雨夜新娘", section: "雨夜新娘", team: { key: "crew", name: "剧组" },
-  leadBotId: "writer-copy", createdAt: 1, folderState: "ready", botIds: ["writer-copy"], follows: { "writer-copy": "writer" },
+  leadBotId: "writer-copy", createdAt: 1, folderState: "ready", botIds: ["writer-copy"], follows: { "writer-copy": "writer" }, episodeBots: {},
 };
 
 let root: Root;
@@ -47,6 +48,7 @@ afterEach(() => {
   flushSync(() => root.unmount());
   host.remove();
   setTeamProjects(null);
+  bots = crew;
   vi.clearAllMocks();
 });
 
@@ -95,5 +97,17 @@ describe("Command palette bots", () => {
     press(input, "ArrowDown");
     press(input, "Enter");
     expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "writer-copy" });
+  });
+
+  it("finds the bots an episode has and says which drama they are in", () => {
+    bots = [...crew, bot("shots-1", "分镜 EP01", "", "雨夜新娘"), bot("post-1", "后期 EP01", "", "雨夜新娘")];
+    const episodeBots = { "shots-1": { number: 1, job: "storyboard" as const }, "post-1": { number: 1, job: "post" as const } };
+    setTeamProjects({ root: "/projects", projects: [{ ...project, botIds: [...project.botIds, "shots-1", "post-1"], episodeBots }] });
+    const input = open();
+    type(input, "EP01");
+    expect([entries(), home("bot:shots-1"), home("bot:post-1")]).toEqual([["bot:shots-1", "bot:post-1"], { text: "雨夜新娘", title: "雨夜新娘" }, { text: "雨夜新娘", title: "雨夜新娘" }]);
+    press(input, "ArrowDown");
+    press(input, "Enter");
+    expect(fixture.dispatch).toHaveBeenCalledWith({ type: "select", id: "post-1" });
   });
 });

@@ -17,10 +17,9 @@ it("moves the Sent-to row through claimed, working, waiting on a teammate and do
   const coderGate = join(session.info.dataDir, "coder-gate"), writerGate = join(session.info.dataDir, "writer-gate");
   try {
     const lead = (await cli("new-bot", "--name", "Lead", "--section", "Team")).bot;
-    // Makers has no Chief, so its bots are in no pipeline and Coder hands work on to Writer.
-    const coder = (await cli("new-bot", "--name", "Coder", "--section", "Makers")).bot;
-    const writer = (await cli("new-bot", "--name", "Writer", "--section", "Makers")).bot;
-    await api(`/api/bots/${lead.id}`, { method: "PATCH", body: { chiefOfStaff: true, managedSections: ["Makers"], acknowledgePeerScope: true } });
+    const coder = (await cli("new-bot", "--name", "Coder", "--section", "Team")).bot;
+    const writer = (await cli("new-bot", "--name", "Writer", "--section", "Team")).bot;
+    await api(`/api/bots/${lead.id}`, { method: "PATCH", body: { chiefOfStaff: true, managedSections: ["Team"], acknowledgePeerScope: true } });
     writeFileSync(plan, JSON.stringify({
       [lead.id]: { steps: [{ arguments: { bot_ids: [coder.id], message: "Build the page" } }], reply: "Asked Coder", resumeReply: "All done" },
       [coder.id]: { steps: [{ arguments: { bot_ids: [writer.id], message: "Write the copy" } }], gateFile: coderGate, reply: "Asked Writer", resumeReply: "Page built" },

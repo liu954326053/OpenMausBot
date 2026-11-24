@@ -698,7 +698,7 @@ describe("the Bot settings page", () => {
     fixture.storeState = { ...fixture.storeState, bots: [source, copy] };
     setTeamProjects({ root: "/dramas", projects: [{
       id: "bride", name: "Bride", folder: "/dramas/Bride", section: "Bride", team: { key: "team:drama", name: "Drama team" },
-      follows: { "quill-copy": "quill" }, leadBotId: "quill-copy", createdAt: 1, folderState: "ready", botIds: ["quill-copy"],
+      follows: { "quill-copy": "quill" }, leadBotId: "quill-copy", createdAt: 1, folderState: "ready", botIds: ["quill-copy"], episodeBots: {},
     }] });
     fixture.derived = { ...fixture.derived, followedSource: { id: "quill", name: "Quill", team: "Drama team", openable: true } };
     try {

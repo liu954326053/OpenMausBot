@@ -29,7 +29,7 @@ const TEAM: ProjectTeamWire = {
 
 const made = (input: CreateTeamProjectInput): TeamProjectWire => ({
   id: "project-1", name: input.name, folder: `/projects/${input.name}`, section: input.name, team: { key: "team:drama", name: input.team },
-  leadBotId: LEAD.id, createdAt: 1, folderState: "ready", botIds: [LEAD.id, MEMBER.id], follows: { [LEAD.id]: "src-pia", [MEMBER.id]: "src-wen" },
+  leadBotId: LEAD.id, createdAt: 1, folderState: "ready", botIds: [LEAD.id, MEMBER.id], follows: { [LEAD.id]: "src-pia", [MEMBER.id]: "src-wen" }, episodeBots: {},
 });
 
 const dirs: string[] = [];

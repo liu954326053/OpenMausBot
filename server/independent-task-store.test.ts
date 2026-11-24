@@ -156,7 +156,7 @@ describe("independent bot task state", () => {
     expect(persisted.tasks!.find((task) => task.threadId === execution.threadId)?.unread).toBe(false);
   });
 
-  it("persists routine execution identity without sharing context or approval settings", () => {
+  it("persists routine execution identity without sharing context or approval settings", async () => {
     const store = new Store(selection);
     const bot = store.createBot({}, { seedMessages: false });
     const first = store.createTask(bot.id, "First run", false)!;
@@ -164,6 +164,7 @@ describe("independent bot task state", () => {
     store.patchTask(bot.id, first.threadId, { routineRunId: "run-1" });
     store.patchTask(bot.id, second.threadId, { routineRunId: "run-2" });
     store.setResumeCursor(bot.id, "claude", "first-session", first.threadId);
+    await new Promise<void>((done) => setImmediate(done));
     const reloaded = new Store(selection);
     expect(reloaded.taskByThread(bot.id, first.threadId)).toMatchObject({ routineRunId: "run-1", resumeCursors: { claude: "first-session" } });
     expect(reloaded.taskByThread(bot.id, second.threadId)).toMatchObject({ routineRunId: "run-2", resumeCursors: {}, approvalMode: "full", autoApprove: false });

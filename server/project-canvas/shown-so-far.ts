@@ -1,10 +1,11 @@
 import { botIdOfNode, type CanvasSnapshot } from "../../shared/project-canvas.ts";
 
-/** The bots the work has reached: the lead, the bots of each stage of the run that began, a bot that did or said
- * something in the project, one something on the canvas is its own or is connected to, and one the person placed. */
-export function reachedBots(snapshot: Pick<CanvasSnapshot, "project" | "nodes" | "connections" | "bots" | "run">): Set<string> {
+/** The bots the work has reached: the lead, the bots the production's plan gives a job, each episode's own bots, a bot
+ * that did or said something in the project, one something on the canvas is its own or is connected to, and one the
+ * person placed. */
+export function reachedBots(snapshot: Pick<CanvasSnapshot, "project" | "nodes" | "connections" | "bots" | "production">): Set<string> {
   const reached = new Set<string>([snapshot.project.leadBotId]);
-  for (const stage of snapshot.run?.stages ?? []) if (stage.status !== "waiting") for (const botId of stage.botIds) reached.add(botId);
+  for (const { botId } of snapshot.production?.jobs ?? []) reached.add(botId);
   for (const node of snapshot.nodes) if (node.createdBy?.kind === "bot") reached.add(node.createdBy.botId);
   for (const connection of snapshot.connections) {
     if (connection.kind !== "content") continue;
@@ -14,7 +15,7 @@ export function reachedBots(snapshot: Pick<CanvasSnapshot, "project" | "nodes" |
     }
   }
   for (const [botId, state] of Object.entries(snapshot.bots)) {
-    if (state.lead || state.placed || state.status !== "idle" || state.output || state.waiting) reached.add(botId);
+    if (state.lead || state.placed || state.episode !== undefined || state.status !== "idle" || state.output || state.waiting) reached.add(botId);
   }
   return reached;
 }

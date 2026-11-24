@@ -12,10 +12,12 @@ export interface TimelineClip {
   height: number;
 }
 
-/** `GET /api/team-projects/:id/timeline`: the clips in order, and the shots that have no selected take. The order is
- * the shots' own, top to bottom, until the post stage or the person sets one. */
+/** `GET /api/team-projects/:id/timeline?episode=N`: an episode's clips in order, and its shots that have no selected
+ * take. The order is the one its shots were added in until its post bot or the person sets one. Without `episode` it
+ * is the timeline of a drama made before episodes. */
 export interface ProjectTimelineWire {
   projectId: string;
+  episode?: number;
   clips: TimelineClip[];
   missingShots: string[];
   /** The shots someone left out of the film; absent when there is none. Naming one in the order brings it back. */
@@ -50,10 +52,11 @@ export interface ProjectDraftOpenResult {
   opened: "draft" | "app";
 }
 
-/** `POST /api/team-projects/:id/final`: a video file in the project folder becomes the finished film's node. */
+/** `POST /api/team-projects/:id/final`: a video file in the project folder becomes an episode's finished film. */
 export interface ProjectFinalInput {
   /** Relative to the project folder. */
   path: string;
+  episode?: number;
 }
 
 /** What `POST /api/team-projects/:id/final` answers: the finished film's node. */

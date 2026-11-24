@@ -8,7 +8,7 @@ import { join } from "node:path";
 
 import { OwnedFile } from "./atomic.ts";
 import { DATA_DIR } from "./config.ts";
-import { batchSaves, saveLater, saveSoon, supersedeLaterSave } from "./save-batch.ts";
+import { batchSaves, saveByIterationEnd, saveLater, supersedeWaitingSaves } from "./save-batch.ts";
 import type { BotRecord, GroupRecord } from "./store.ts";
 
 export const BOTS_FILE = join(DATA_DIR, "bots.json");
@@ -20,8 +20,12 @@ export type RegistryOwner = { kind: "bot" | "group"; id: string };
  * How soon a change must be on disk:
  * - "now": before the call returns, synced. Creates, deletions, permissions, anything a person asked for; a failure
  *   throws, so the caller can put memory back (server/registry-save.ts commitRegistryChange).
- * - "pass": when the running batch ends (`batch`, server/save-batch.ts batchSaves), at once outside one. A turn's
- *   bookkeeping that must survive a crash: an engine session, which engine has the thread, what was handed to it.
+ * - "pass": on disk by the end of the current event-loop iteration (from a setImmediate callback: of the next one), in
+ *   one write of the file with every other "pass" change of that iteration (server/save-batch.ts saveByIterationEnd).
+ *   A turn's bookkeeping: an engine session, which engine has the thread, what was handed to it, when the person last
+ *   wrote, a title, a read mark. A crash, a kill or a fatal exit before then loses that iteration's changes and leaves
+ *   the last whole file; a graceful stop or a clean exit writes them first. One committed with commitRegistryChange
+ *   outside `batch` is written before the call returns, as "now" is, so a failed write still puts it back.
  * - "later": within SAVE_LATER_MAX_MS (server/save-batch.ts saveLater). Only what server/registry-save.ts
  *   DEFERRABLE_FIELDS allows, and a thread's usage: harmless to lose in a crash. Bots only: nothing of a room waits,
  *   and no room save supersedes a waiting write, so the types refuse "later" for a room.
@@ -33,21 +37,24 @@ export interface RegistryStore {
   loadBots(): BotRecord[];
   /** The saved rooms as parsed; throws when nothing readable is saved. */
   loadGroups(): GroupRecord[];
-  /** Every bot and its threads as `bots` holds them, synced before it returns. `bots` may be a list that is not live
-   * yet (saved first, so a failure leaves memory alone); `current` says it is the live list, holding every change. */
+  /** Every bot and its threads as `bots` holds them, synced before it returns (inside saveBotsOnceAfter, when the pass
+   * returns). `bots` may be a list that is not live yet (saved first, so a failure leaves memory alone); `current` says
+   * it is the live list, holding every change. */
   writeBots(bots: readonly BotRecord[], current: boolean): void;
   /** Every room and its threads as `groups` holds them, synced before it returns. */
   writeGroups(groups: readonly GroupRecord[]): void;
   /**
    * One owner's thread changed (`threadId`), or its record or any of its threads (undefined). `write` is the Store's
-   * own save of the whole list (what rollback and tests hook); it runs when `durability` says, and it throws for "now".
+   * own save of the whole list (what rollback and tests hook); it runs when `durability` says, and it throws when it
+   * runs before the call returns.
    * A row layout narrows that save to the one thread; this one writes the whole file.
    */
   upsertThread(owner: RegistryOwner & { kind: "bot" }, threadId: string | undefined, durability: RegistryDurability, write: () => void): void;
   upsertThread(owner: RegistryOwner & { kind: "group" }, threadId: string | undefined, durability: Exclude<RegistryDurability, "later">, write: () => void): void;
   /** An owner and all its threads leave the registry; `write` saves the list without it, synced, before it returns. */
   deleteOwner(owner: RegistryOwner, write: () => void): void;
-  /** Saves asked for with "pass" while `run` runs are written once when it returns: one transaction in a row layout. */
+  /** Every "pass" change while `run` runs waits for the end of the iteration, one committed with commitRegistryChange
+   * too (a failed write is then logged, and memory keeps the change for the next save): one transaction in a row layout. */
   batch<T>(run: () => T): T;
 }
 
@@ -72,6 +79,36 @@ export const persistedBots = (bots: readonly BotRecord[]) => bots.map(({ busy: _
   tasks: bot.tasks?.map(({ busy: _taskBusy, activity: _taskActivity, turnStartedAt: _taskTurnStarted, ...task }) => persistedPin(task)),
 }));
 
+let passDepth = 0;
+const waitingBots = new Map<JsonRegistry, () => void>();
+
+/**
+ * Every save of the bots asked for while `run` runs waits, and the last list asked for is written once when it
+ * returns: for a pass that changes many bots, each change of which is made again when it is lost (copies follow their
+ * source again at the next start). A failure then is logged, not thrown, and memory keeps the changes for the next
+ * save. A bot's deletion is still written at once, before its files go.
+ */
+export function saveBotsOnceAfter<T>(run: () => T): T {
+  passDepth += 1;
+  try {
+    return run();
+  } finally {
+    passDepth -= 1;
+    if (passDepth === 0) writeWaitingBots();
+  }
+}
+
+function writeWaitingBots(): void {
+  for (const [registry, write] of waitingBots) {
+    waitingBots.delete(registry);
+    try {
+      write();
+    } catch (error) {
+      console.error("the bots changed in one pass were not saved; the next save writes them", error);
+    }
+  }
+}
+
 /** What groups.json holds: a room's running turn is never saved. */
 export const persistedGroups = (groups: readonly GroupRecord[]) => groups.map(({ busyBotId: _busyBotId, turnStartedAt: _turnStartedAt, ...g }) => ({
   ...g,
@@ -82,10 +119,11 @@ export const persistedGroups = (groups: readonly GroupRecord[]) => groups.map(({
 export class JsonRegistry implements RegistryStore {
   private readonly botsFile = new OwnedFile(BOTS_FILE, { mode: 0o600 });
   private readonly groupsFile = new OwnedFile(GROUPS_FILE, { mode: 0o600 });
+  private writingDeletion = false;
 
   loadBots(): BotRecord[] {
     tightenRegistryFile(BOTS_FILE);
-    supersedeLaterSave(BOTS_FILE); // the file is read afresh, so a write still waiting has nothing left to add
+    supersedeWaitingSaves(BOTS_FILE); // the file is read afresh, so a write still waiting has nothing left to add
     const text = readFileSync(BOTS_FILE, "utf8"), bots = JSON.parse(text) as BotRecord[];
     this.botsFile.loaded(text);
     return bots;
@@ -93,14 +131,21 @@ export class JsonRegistry implements RegistryStore {
 
   loadGroups(): GroupRecord[] {
     tightenRegistryFile(GROUPS_FILE);
+    supersedeWaitingSaves(GROUPS_FILE);
     const text = readFileSync(GROUPS_FILE, "utf8"), groups = JSON.parse(text) as GroupRecord[];
     this.groupsFile.loaded(text);
     return groups;
   }
 
   writeBots(bots: readonly BotRecord[], current: boolean): void {
+    if (passDepth > 0 && !this.writingDeletion) waitingBots.set(this, () => this.writeWholeBots(bots, current));
+    else this.writeWholeBots(bots, current);
+  }
+
+  private writeWholeBots(bots: readonly BotRecord[], current: boolean): void {
     this.botsFile.write(JSON.stringify(persistedBots(bots)));
-    if (current) supersedeLaterSave(BOTS_FILE);
+    waitingBots.delete(this);
+    if (current) supersedeWaitingSaves(BOTS_FILE);
   }
 
   writeGroups(groups: readonly GroupRecord[]): void {
@@ -108,13 +153,19 @@ export class JsonRegistry implements RegistryStore {
   }
 
   upsertThread(owner: RegistryOwner, _threadId: string | undefined, durability: RegistryDurability, write: () => void): void {
-    if (durability === "pass") saveSoon(owner.kind === "bot" ? this.botsFile : this.groupsFile, write);
+    if (durability === "pass") saveByIterationEnd(owner.kind === "bot" ? BOTS_FILE : GROUPS_FILE, write);
     else if (durability === "later") saveLater(BOTS_FILE, write); // bots only (see RegistryDurability)
     else write();
   }
 
-  deleteOwner(_owner: RegistryOwner, write: () => void): void {
-    write();
+  deleteOwner(owner: RegistryOwner, write: () => void): void {
+    this.writingDeletion = owner.kind === "bot";
+    try {
+      write();
+    } finally {
+      this.writingDeletion = false;
+    }
+    supersedeWaitingSaves(owner.kind === "bot" ? BOTS_FILE : GROUPS_FILE);
   }
 
   batch<T>(run: () => T): T {

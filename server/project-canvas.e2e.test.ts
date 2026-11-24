@@ -153,11 +153,11 @@ describe("a project's canvas", () => {
     expect(snapshot.project).toEqual({ id: project.id, name: "Canvas drama", leadBotId: lead.id, archived: false, folderState: "ready" });
     expect(snapshot.nodes.map((node) => node.id)).toEqual([botNodeId(lead.id)]);
     expect(snapshot.bots[lead.id]).toMatchObject({ botId: lead.id, name: lead.name, lead: true, stages: ["lead"], status: "idle", placed: false });
-    expect(snapshot.bots[writer.id]).toMatchObject({ botId: writer.id, name: writer.name, title: "Writes the episodes", lead: false, stages: ["other"], status: "idle", placed: false });
+    expect(snapshot.bots[writer.id]).toMatchObject({ botId: writer.id, name: writer.name, title: "Writes the episodes", lead: false, stages: ["script"], status: "idle", placed: false });
     expect(snapshot.connections).toEqual([]);
   });
 
-  it("shows a bot once it is at work, below the lead, then its reply as its node's output with the secret in it redacted, and tells open apps", async () => {
+  it("shows a bot once it is at work, the script bot after the lead, then its reply as its node's output with the secret in it redacted, and tells open apps", async () => {
     plan([{ key: "draft", match: ["WRITE-DRAFT"], gateFile: gate(), reply: `Draft ready. Key ${SECRET}` }]);
     await say(writer, "WRITE-DRAFT");
     await expect.poll(async () => (await canvas()).bots[writer.id]!.status, { timeout: 30_000 }).toBe("working");
@@ -165,8 +165,8 @@ describe("a project's canvas", () => {
     expect(shown.nodes.map((node) => node.id)).toEqual(project.botIds.map(botNodeId));
     expect(shown.connections).toEqual([{ id: dispatchConnectionId(lead.id, writer.id), fromNodeId: botNodeId(lead.id), toNodeId: botNodeId(writer.id), kind: "dispatch" }]);
     const [leadNode, writerNode] = shown.nodes;
-    expect(writerNode!.position.x).toBe(leadNode!.position.x);
-    expect(writerNode!.position.y).toBeGreaterThan(leadNode!.position.y);
+    expect(writerNode!.position.x).toBeGreaterThan(leadNode!.position.x);
+    expect(writerNode!.position.y).toBe(leadNode!.position.y);
     const working = shown.bots[writer.id];
     const told = await events.until((frame) => frame.kind === "project-canvas" && frame.projectId === project.id && frame.reason === "bots", 10_000);
     writeFileSync(gate(), "go");

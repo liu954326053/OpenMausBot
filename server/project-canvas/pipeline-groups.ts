@@ -1,6 +1,6 @@
 import { CANVAS_MAX_NODES, type CanvasDocument, type CanvasNode } from "../../shared/project-canvas.ts";
 import type { CanvasFrame } from "./ops.ts";
-import { isCharacter } from "./pipeline-nodes.ts";
+import { isProfile } from "./pipeline-nodes.ts";
 import type { PlaceContext } from "./pipeline-shots.ts";
 import { clearBelow, clearSpot, GROUP_PADDING, GROUP_TOP_PADDING, NODE_GAP } from "./placement.ts";
 
@@ -12,8 +12,8 @@ function wrap(members: readonly CanvasNode[]): CanvasFrame {
   return { position: { x: left - GROUP_PADDING, y: top - GROUP_TOP_PADDING }, width: right - left + 2 * GROUP_PADDING, height: bottom - top + GROUP_TOP_PADDING + GROUP_PADDING };
 }
 
-/** The group around a node that newly is a character: its maker's, titled after it, moved down with it until it is
- * clear of what is on the canvas. */
+/** The group around a node that newly is a character's or a scene's profile: its maker's, titled after it, moved down
+ * with it until it is clear of what is on the canvas. */
 function groupAround(document: CanvasDocument, character: CanvasNode, context: PlaceContext): CanvasNode {
   const stored = new Set(document.nodes.map((one) => one.id));
   const taken: CanvasFrame[] = [
@@ -31,18 +31,18 @@ function groupAround(document: CanvasDocument, character: CanvasNode, context: P
 }
 
 /**
- * Keeps each character with its pictures in one group. A node that newly is a character and sits in no group gets one.
- * A picture in no group joins a character's group when a connection is newly made into it from the character or from
- * a picture of the group, as generating from either makes one: it goes to the right of the group's nodes, and the
- * group grows around them. A group that carries its character's name is renamed with it. Returns the ids of the nodes
- * it added, moved or changed.
+ * Keeps each character and each scene with its pictures in one group. A node that newly is a profile and sits in no
+ * group gets one. A picture in no group joins a profile's group when a connection is newly made into it from the
+ * profile or from a picture of the group, as generating from either makes one: it goes to the right of the group's
+ * nodes, and the group grows around them. A group that carries its profile's name is renamed with it. Returns the ids
+ * of the nodes it added, moved or changed.
  */
 export function settleGroups(before: CanvasDocument, after: CanvasDocument, context: PlaceContext): string[] {
   const changed = new Set<string>();
   const was = new Map(before.nodes.map((node) => [node.id, node]));
   const groupOf = (node: CanvasNode) => (node.groupId ? after.nodes.find((one) => one.id === node.groupId && one.type === "group") : undefined);
 
-  for (const character of after.nodes.filter(isCharacter)) {
+  for (const character of after.nodes.filter(isProfile)) {
     const prior = was.get(character.id);
     const group = groupOf(character);
     if (group) {
@@ -50,14 +50,14 @@ export function settleGroups(before: CanvasDocument, after: CanvasDocument, cont
         group.title = character.title;
         changed.add(group.id);
       }
-    } else if (!(prior && isCharacter(prior)) && after.nodes.length < CANVAS_MAX_NODES) {
+    } else if (!(prior && isProfile(prior)) && after.nodes.length < CANVAS_MAX_NODES) {
       changed.add(groupAround(after, character, context).id);
       changed.add(character.id);
     }
   }
 
   const characterOf = new Map<string, CanvasNode>();
-  for (const character of after.nodes.filter(isCharacter)) {
+  for (const character of after.nodes.filter(isProfile)) {
     const group = groupOf(character);
     if (group && !characterOf.has(group.id)) characterOf.set(group.id, character);
   }

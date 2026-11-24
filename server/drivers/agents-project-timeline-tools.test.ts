@@ -4,7 +4,7 @@ import type { FlowStage } from "../../shared/team-pipeline.ts";
 import { isReadOnlyAgentTool } from "../agent-tool-policy.ts";
 import { agentsServerEnv, type AgentsConversation } from "../agents-turn.ts";
 import { BOX_ENV_OMB_NAMES } from "../bot-box/env.ts";
-import { installTeamFlows } from "../team-flow/flows.ts";
+import { connectProductionJobs } from "../production/plans.ts";
 import { callTool, type ToolCallContext } from "./agents-call.ts";
 import { availableTools, catalogProfileFromEnv } from "./agents-catalog.ts";
 import type { Json } from "./agents-client.ts";
@@ -20,7 +20,6 @@ const WRITER: Bot = { id: "writer", teamProject: { id: "project-1", role: "write
 const LEAD: Bot = { id: "lead", chiefOfStaff: true, teamProject: { id: "project-1", role: "producer" } };
 const TEAM_POST: Bot = { id: "team-post" };
 const STAGES: Record<string, FlowStage[]> = { post: ["post"], both: ["storyboard", "post"], writer: ["script"], lead: ["lead"], "team-post": ["post"] };
-const NO_FLOWS = { parents: () => ({}), projectParents: () => ({}), lineOf: () => null };
 const HOST: AgentsConversation["host"] = {
   skillAuthoring: false, sharedComputers: false, cloudHome: false, team: false, voiceNotes: false, x: false, research: false, imageGeneration: false, localVm: false,
 };
@@ -28,8 +27,8 @@ const envFor = (bot: Bot, room = false) =>
   agentsServerEnv({ threadId: "t", bot, room, teamComputer: false, host: HOST }, { generation: "g", depth: 0, skillAuthoring: false }, () => "bearer", "http://127.0.0.1:1");
 const shown = (bot: Bot, room = false) => availableTools(catalogProfileFromEnv(envFor(bot, room))).map((tool) => tool.name).filter((tool) => TOOLS.includes(tool));
 
-beforeEach(() => installTeamFlows({ ...NO_FLOWS, placeOf: (botId) => (STAGES[botId] ? { stages: STAGES[botId], upstream: [], downstream: [], team: Object.keys(STAGES) } : null) }));
-afterEach(() => installTeamFlows(NO_FLOWS));
+beforeEach(() => connectProductionJobs({ pipeline: () => ({ stages: {}, lines: [] }), stagesOf: (botId) => STAGES[botId] ?? [], plan: async () => "" }));
+afterEach(() => connectProductionJobs(null));
 
 function harness(answer: { ok: boolean; status: number; body: Json }) {
   const sent: Array<{ path: string; method?: string; body?: unknown }> = [];

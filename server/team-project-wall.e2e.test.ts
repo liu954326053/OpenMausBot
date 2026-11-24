@@ -202,7 +202,7 @@ describe("two team projects made from one team, on the real server", () => {
     expect(kept(directorB)).toMatchObject({ chiefOfStaff: true, section: PAPER, teamProject: { id: "project-paper" } });
   });
 
-  it("tells a project's member of its own lead alone, and answers its reach past the wall as a bot that does not exist", async () => {
+  it("tells a project's bot of its own team and the main bot alone, and answers its reach past the wall as a bot that does not exist", async () => {
     const seen = await personAsks("a member of Midnight Train", writerA, `Where does the script stand? @${ELSEWHERE.bot} has the budget.`, {
       [writerA.id]: {
         steps: [
@@ -231,9 +231,9 @@ describe("two team projects made from one team, on the real server", () => {
 
     const turn = firstTurn(seen, writerA);
     const heard = told(turn);
-    expect(heard).toContain("You work in your team's pipeline");
-    expect(heard).toContain(`- Director — Showrunner [Project lead] [leads the pipeline] [upstream of you] [id: ${directorA.id}]`);
-    expect(heard, "the main bot is not on a project member's lines").not.toContain(main.id);
+    expect(heard).toContain("You work inside one team project.");
+    expect(heard).toContain(`- Director — Showrunner (${MIDNIGHT}) [Project lead] [id: ${directorA.id}]`);
+    expect(heard).toContain(`[id: ${main.id}]`);
     for (const own of MIDNIGHT_ONLY) expect(heard, own).toContain(own);
     for (const beyond of [directorB.id, writerB.id, oswald.id, PAPER, "Oswald", "Studio", ELSEWHERE.place, ...PAPER_ONLY]) expect(heard, beyond).not.toContain(beyond);
 
@@ -248,9 +248,10 @@ describe("two team projects made from one team, on the real server", () => {
     expect(teamNotes).toContain(KNOWN[MIDNIGHT].ending);
     expect(teamNotes).not.toContain(KNOWN[PAPER].ending);
     expect(listed).toContain(directorA.id);
-    for (const beyond of [main.id, directorB.id, writerB.id, oswald.id, PAPER, "Oswald"]) expect(listed, beyond).not.toContain(beyond);
+    expect(listed).toContain(main.id);
+    for (const beyond of [directorB.id, writerB.id, oswald.id, PAPER, "Oswald"]) expect(listed, beyond).not.toContain(beyond);
     expect(nobody).toContain(`No bot with id or name "${NOBODY}"`);
-    expect(nobody).toContain("You work in your team's pipeline");
+    expect(nobody).toContain("You work inside one team project");
     const asUnknown = (answer: string, asked: string) => expect(answer.replaceAll(asked, NOBODY)).toBe(nobody);
     asUnknown(otherWriter!, writerB.id);
     asUnknown(otherLead!, directorB.id);

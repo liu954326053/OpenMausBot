@@ -48,7 +48,7 @@ export async function webhookPortRefusal(url: string, webhookPort: number, heade
     : `the server's webhook receiver is not listening on port ${webhookPort}: ${reason}`;
 }
 
-export async function launchRestartableServer(options: { scripted?: boolean; dataDirRoot?: string } = {}): Promise<RestartableServer> {
+export async function launchRestartableServer(options: { scripted?: boolean; dataDirRoot?: string; nodeArgs?: readonly string[] } = {}): Promise<RestartableServer> {
   const port = await freePortBlock([0, 1]);
   // Native browser daemons use UNIX sockets, and a macOS temp home can exceed their path limit.
   const dataDir = mkdtempSync(join(options.dataDirRoot ?? tmpdir(), "omb-restartable-"));
@@ -69,7 +69,7 @@ export async function launchRestartableServer(options: { scripted?: boolean; dat
   const start = async () => {
     const env = verificationServerEnvironment(process.env, dataDir, port);
     const log = openSync(logPath, "a", 0o600);
-    const spawned = spawn(process.execPath, verificationServerArgs(env), { cwd: ROOT, env, stdio: ["ignore", log, log] });
+    const spawned = spawn(process.execPath, [...(options.nodeArgs ?? []), ...verificationServerArgs(env)], { cwd: ROOT, env, stdio: ["ignore", log, log] });
     child = spawned;
     closeSync(log);
     const deadline = Date.now() + 30_000;

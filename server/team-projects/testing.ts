@@ -21,7 +21,7 @@ const LIBRARY_SKILL = "---\nname: beat-sheet\ndescription: Plans an episode's be
  * A whole installation in a throwaway home: the real bot store, routines, package importer and share export under the
  * projects service, with a skills library and a team memory the test fills by hand.
  */
-export async function teamProjectsInstallation(options: { maxBots?: number } = {}) {
+export async function teamProjectsInstallation() {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "omb-team-projects-")));
   vi.resetModules();
   vi.stubEnv("HOME", home);
@@ -59,7 +59,6 @@ export async function teamProjectsInstallation(options: { maxBots?: number } = {
     sections: { writeBrief: (section, text) => void sections.writeSectionContext(section, text) },
     images: { save: (bytes, mime) => botAvatarUrlFromStoredPath(saveImage(Buffer.from(bytes), mime).path)! },
     defaultSelection: () => ({ instanceId: "claude", model: "default-model" }),
-    ...(options.maxBots === undefined ? {} : { maxBots: options.maxBots }),
   };
 
   const libraryListing = (name: string): SkillListing => ({

@@ -31,7 +31,6 @@ function fixture(options: { newBotComputer?: BotCreateRouteDeps["newBotComputer"
     hostedWorkspace: false,
     hostedFullAccessRefusal: "",
     desktopManaged: true,
-    maxWorkspaceBots: 100,
     paused: () => false,
     cloudOwnerKey: null,
     hostedModels: null,

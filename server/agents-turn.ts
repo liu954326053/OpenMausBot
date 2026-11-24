@@ -4,7 +4,7 @@
 // when it calls it.
 import { AGENTS_PROXY_ENV } from "./agents-bridge-switch.ts";
 import { roleToolEnv } from "./chief-level.ts";
-import { pipelinePlaceOf } from "./team-flow/flows.ts";
+import { productionStagesOf } from "./production/plans.ts";
 import { proposesTeamProjects } from "./team-project-proposal-access.ts";
 import { TOOLS_OFF_ENV } from "../shared/tool-groups.ts";
 
@@ -56,7 +56,7 @@ export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTu
     ...roleToolEnv(bot),
     OMB_TEAM_PROJECTS: flag(proposesTeamProjects(bot) && !conversation.room),
     OMB_PROJECT_CANVAS: flag(projectWork),
-    OMB_PROJECT_TIMELINE: flag(projectWork && pipelinePlaceOf(bot.id)?.stages.includes("post") === true),
+    OMB_PROJECT_TIMELINE: flag(projectWork && productionStagesOf(bot.id).includes("post")),
     OMB_IMAGE_GENERATION: flag(host.imageGeneration),
     OMB_MEETINGS: flag(host.meetings === true && !conversation.room),
     OMB_APP_HOSTING: flag(host.appHosting === true),

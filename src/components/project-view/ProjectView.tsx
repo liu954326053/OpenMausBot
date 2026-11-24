@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 
 import { WindowDragStrip } from "@/components/DesktopCapabilities";
+import { ProductionBoardOverlay } from "@/components/production-board/panels/ProductionBoardOverlay";
 import { ServerProjectCanvas } from "@/components/project-canvas/ServerProjectCanvas";
 import { useViewerEmail } from "@/lib/default-bot";
 import { t } from "@/lib/i18n";
@@ -34,7 +35,7 @@ export function ProjectView({ projectId, selectedBotId }: ProjectViewProps) {
 
   return (
     <main data-project-view={project.id} className="flex min-w-0 flex-1 flex-col overflow-hidden bg-app text-ink">
-      <ServerProjectCanvas projectId={project.id} selectedBotId={selectedBotId} topBarSlot={<ProjectTopBar project={project} mode="canvas" />} />
+      <ServerProjectCanvas projectId={project.id} selectedBotId={selectedBotId} topBarSlot={<ProjectTopBar project={project} mode="canvas" />} overlay={ProductionBoardOverlay} />
     </main>
   );
 }

@@ -1,4 +1,4 @@
-import type { PipelineVideosInput } from "../../../shared/pipeline-run";
+import type { ProductionRetryInput, ProductionWire } from "../../../shared/production";
 import type {
   CanvasConflict,
   CanvasFileRef,
@@ -13,7 +13,7 @@ import type {
   CanvasTaskResponse,
   CanvasUploadResponse,
 } from "../../../shared/project-canvas";
-import type { ProjectDraftOpenResult, ProjectFinalInput } from "../../../shared/project-draft";
+import type { ProjectDraftOpenResult, ProjectFinalInput, ProjectTimelineWire } from "../../../shared/project-draft";
 import type {
   GenerationKind,
   GenerationModelsWire,
@@ -83,8 +83,11 @@ export interface CanvasBackend {
 
   /** `POST /api/team-projects/:id/canvas/select-take`: the take becomes the one of its shot that goes to post. */
   selectTake(projectId: string, nodeId: string): Promise<{ revision: number }>;
-  /** `POST /api/team-projects/:id/pipeline/videos`: the person's answer to a run that waits before or after its videos. */
-  answerVideos(projectId: string, input: PipelineVideosInput): Promise<void>;
+  /** `POST /api/team-projects/:id/production/retry`: what stopped goes on, a whole-drama job or an episode. */
+  retryProduction(projectId: string, input: ProductionRetryInput): Promise<ProductionWire>;
+  /** `GET /api/team-projects/:id/timeline?episode=N`: the episode's clips in the order its film plays; without an
+   * episode, those of a drama made before episodes. */
+  readTimeline(projectId: string, episode?: number): Promise<ProjectTimelineWire>;
   /** `POST /api/team-projects/:id/draft/open`: JianYing comes to the front, on the draft or only as the app. */
   openDraft(projectId: string): Promise<ProjectDraftOpenResult>;
   /** `POST /api/team-projects/:id/final`: a video file in the project folder becomes the finished film's node. */

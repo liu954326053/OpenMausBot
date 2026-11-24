@@ -19,7 +19,7 @@ import type { BotVisibility, ModelSelection } from "../shared/wire.ts";
 export const NO_BOTS_MESSAGE = "This package has no bots. Add it from your organization's shelf, or update MagicBot.";
 export const NO_PRESETS_MESSAGE = "This file has no bots or preset bots to add. Its skills can be added from your organization's shelf.";
 
-export type PackageImportErrorCode = "no_bots" | "invalid_package" | "too_many_bots";
+export type PackageImportErrorCode = "no_bots" | "invalid_package";
 
 export class PackageImportError extends Error {
   readonly status: number;
@@ -63,8 +63,6 @@ export interface PackageImportDeps {
   images: { save(bytes: Uint8Array, mime: string): string };
   broadcast?: (event: { kind: "bot"; bot: BotRecord } | { kind: "group"; group: GroupRecord }) => void;
   defaultSelection: () => ModelSelection;
-  /** The most bots this workspace holds, every plan alike. */
-  maxBots?: number;
   presets?: PresetRegistry;
   /** A Team Cloud: the member adding the package, who looks after its bots. */
   createdBy?: string;
@@ -230,10 +228,6 @@ function runImport(source: ImportSource, options: PackageImportOptions, deps: Pa
   const members = pkg
     ? pkg.agents.map((agent) => ({ member: memberFromAgent(agent), agent }))
     : (source as { manifest: ParsedTeamManifest }).manifest.team.members.map((member) => ({ member, agent: undefined }));
-  if (deps.maxBots !== undefined && store.bots.length + members.length > deps.maxBots) {
-    throw new PackageImportError("too_many_bots", `This adds ${members.length} bots, and this workspace is limited to ${deps.maxBots} bots.`, 409);
-  }
-
   const importedBots: BotRecord[] = [];
   const createdGroups: GroupRecord[] = [];
   const createdRoutines: Routine[] = [];

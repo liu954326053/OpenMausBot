@@ -10,7 +10,7 @@ import {
 
 const project = (id: string, extra: Partial<TeamProjectWire> = {}): TeamProjectWire => ({
   id, name: id, folder: `/dramas/${id}`, section: id, team: { key: "team:urban", name: "Urban" }, follows: {},
-  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`], ...extra,
+  leadBotId: `${id}-lead`, createdAt: 1, folderState: "ready", botIds: [`${id}-lead`], episodeBots: {}, ...extra,
 });
 
 interface Waiting { path: string; method: string; answer(status: number, body: unknown): Promise<void> }

@@ -762,27 +762,20 @@ describe("reset_cloud_computer", () => {
   });
 });
 
-describe("list_bots in a pipeline", () => {
+describe("list_bots", () => {
   const agents = (body: Record<string, unknown>) => context({ client: { api: async () => body, apiResponse: async () => ({ ok: true, status: 200, body: {} }) } });
-  const pipeline = [
-    { name: "砚青", title: "编剧", stages: ["script"], reach: "downstream", id: "bot-writer" },
-    { name: "墨白", title: "分镜与美术设计", stages: ["character", "storyboard"], reach: "none", from: ["砚青"] },
-    { name: "青禾", title: "后期合成", stages: ["post"], reach: "none", from: ["墨白"] },
-  ];
 
-  it("tells the lead its whole team in order after the bots it reaches, the ones it does not reach without an id", async () => {
-    const result = await callTool("list_bots", {}, agents({ flow: "lead", bots: [{ id: "bot-writer", name: "砚青", title: "编剧", model: "m", section: "AI漫剧制作部门", flow: "downstream" }], pipeline }));
-    expect(result.text).toContain("- 砚青 — 编剧 [id: bot-writer, model: m, department: AI漫剧制作部门, downstream of you]");
-    expect(result.text).toContain([
-      "Your team's whole pipeline, in order, so you know every member: only the ones marked upstream or downstream of you can be reached.",
-      "- 砚青 — 编剧 [stage: script; downstream of you, id: bot-writer]",
-      "- 墨白 — 分镜与美术设计 [stages: character design, storyboard; not reachable from you: its work comes along the pipeline from 砚青]",
-      "- 青禾 — 后期合成 [stage: post-production; not reachable from you: its work comes along the pipeline from 墨白]",
-    ].join("\n"));
+  it("lists every bot the caller reaches with its id, an episode's own bots as any other, and nothing of upstream or downstream", async () => {
+    const result = await callTool("list_bots", {}, agents({ bots: [
+      { id: "bot-writer", name: "砚青", title: "编剧", model: "m", section: "AI漫剧制作部门" },
+      { id: "bot-board-ep01", name: "墨白 EP01", title: "分镜", model: "m", section: "AI漫剧制作部门" },
+    ] }));
+    expect(result.text).toContain("- 砚青 — 编剧 [id: bot-writer, model: m, department: AI漫剧制作部门]");
+    expect(result.text).toContain("- 墨白 EP01 — 分镜 [id: bot-board-ep01, model: m, department: AI漫剧制作部门]");
+    expect(result.text).not.toMatch(/pipeline|upstream|downstream/);
   });
 
-  it("says nothing of a pipeline to a bot in none", async () => {
-    const result = await callTool("list_bots", {}, agents({ bots: [{ id: "bot-scout", name: "Scout", model: "m", section: "" }] }));
-    expect(result.text).not.toContain("pipeline");
+  it("says when there is no bot to reach", async () => {
+    expect(await callTool("list_bots", {}, agents({ bots: [] }))).toEqual({ text: "No other bots you can reach yet." });
   });
 });

@@ -21,16 +21,17 @@ export interface ProjectTimelineToolDeps {
   stagesOf(botId: string): readonly FlowStage[];
 }
 
-const NOT_POST = "Only a project's bot whose stage is post reads and sets the project's timeline.";
+const NOT_POST = "Only a project's bot whose job is post reads and sets a timeline, and only its own episode's.";
 const seconds = (ms: number) => Math.round(ms / 10) / 100;
 
-/** What both tools answer: the film as it stands. */
-function timelineText(project: TeamProjectWire, timeline: ProjectTimelineWire, deps: ProjectTimelineToolDeps): string {
+/** What both tools answer: the episode's film as it stands. */
+function timelineText(project: TeamProjectWire, episode: number | undefined, timeline: ProjectTimelineWire, deps: ProjectTimelineToolDeps): string {
   const titles = new Map(deps.canvas.shots(project.id).map((shot) => [shot.shotId, shot.title]));
   const named = (shotId: string) => ({ shot_id: shotId, title: titles.get(shotId) ?? "" });
-  const { state, name, reason } = deps.drafts.draftAtThisComputer(project.id);
+  const { state, name, reason } = deps.drafts.draftAtThisComputer(project.id, episode);
   return JSON.stringify({
     project: { id: project.id, name: project.name },
+    ...(episode === undefined ? {} : { episode }),
     clips: timeline.clips.map((clip, index) => ({ position: index + 1, shot_id: clip.shotId, title: clip.title, seconds: seconds(clip.durationMs), file: clip.file.path })),
     total_seconds: seconds(timeline.clips.reduce((sum, clip) => sum + clip.durationMs, 0)),
     shots_without_video: timeline.missingShots.map(named),
@@ -39,19 +40,20 @@ function timelineText(project: TeamProjectWire, timeline: ProjectTimelineWire, d
   });
 }
 
-/** Security: every call is checked against the bot the capability names: only a bot of a project whose stages include
- * post reaches that project's timeline. */
+/** Security: every call is checked against the bot the capability names: only a project's bot whose job is post
+ * reaches a timeline, and only the one of the episode it was made for. */
 export function createProjectTimelineToolRoutes(deps: ProjectTimelineToolDeps): ProjectDraftToolRoute {
   return async (ctx) => {
     const tool = ctx.method === "POST" ? Object.entries(PROJECT_TIMELINE_TOOL_PATHS).find(([, path]) => path === ctx.path)?.[0] : undefined;
     if (!tool) return PASS;
     const project = deps.projectOfBot(ctx.botId);
     if (!project || !deps.stagesOf(ctx.botId).includes("post")) return void ctx.json(ctx.res, 403, { error: NOT_POST });
+    const episode = project.episodeBots[ctx.botId]?.number;
     try {
       const body = await ctx.readBody();
       const asked = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
-      const timeline = tool === "read" ? await deps.drafts.timeline(project.id) : await deps.drafts.setOrder(project.id, { shotIds: asked.shot_ids });
-      return void ctx.json(ctx.res, 200, { text: timelineText(project, timeline, deps) });
+      const timeline = tool === "read" ? await deps.drafts.timeline(project.id, episode) : await deps.drafts.setOrder(project.id, { shotIds: asked.shot_ids }, episode);
+      return void ctx.json(ctx.res, 200, { text: timelineText(project, episode, timeline, deps) });
     } catch (error) {
       const refused = draftRefusalOf(error);
       if (!refused) throw error;

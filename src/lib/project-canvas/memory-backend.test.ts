@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PipelineRunWire } from "../../../shared/pipeline-run";
 import { botNodeId, CANVAS_NODE_SIZE, type CanvasSnapshot } from "../../../shared/project-canvas";
 import type { ProjectDraftWire } from "../../../shared/project-draft";
 import type { StartGenerationInput } from "../../../shared/project-generation";
+import { BOARD_PROJECT_ID, boarderOf, productionBoardBackend, SAMPLE_FAILED_EPISODE } from "../../testing/production-board-sample";
 import { SAMPLE_IMAGE_PATH, SAMPLE_PROJECT_ID, sampleCanvasBackend, sampleCanvasSnapshot } from "../../testing/project-canvas-sample";
 import { OUTPUT_GAP_Y, OUTPUT_OFFSET_X } from "./generation";
 import type { MemoryCanvasBackend } from "./memory-backend";
@@ -11,12 +11,6 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 const node = (backend: MemoryCanvasBackend, id: string) => backend.current().nodes.find((one) => one.id === id)!;
-const RUN: PipelineRunWire = {
-  id: "run-1",
-  startedAt: 1,
-  stages: [{ stage: "script", botIds: ["kai"], status: "done" }, { stage: "storyboard", botIds: ["lena"], status: "done" }, { stage: "post", botIds: ["otto"], status: "waiting" }],
-  videos: { status: "confirm", shots: 3, ready: 1, failed: 0 },
-};
 const DRAFT: ProjectDraftWire = { state: "written", name: "Rain City", writtenAt: 2, exportFolder: "/dramas/Rain City/产出" };
 const withPipeline = (extra: Partial<CanvasSnapshot>, options: Parameters<typeof sampleCanvasBackend>[0] = {}) => sampleCanvasBackend({ ...options, snapshot: { ...sampleCanvasSnapshot(), ...extra } });
 
@@ -303,27 +297,36 @@ describe("the in-memory canvas backend", () => {
     await expect(backend.selectTake(SAMPLE_PROJECT_ID, second.id)).rejects.toMatchObject({ body: { code: "canvas_read_only" } });
   });
 
-  it("takes the person's answer to the run: start and retry set the videos going, skip goes on without them, and an answer the run isn't waiting for is refused", async () => {
-    const backend = withPipeline({ run: RUN });
-    await expect(backend.answerVideos(SAMPLE_PROJECT_ID, { action: "retry" })).rejects.toThrow("isn't waiting");
-    await backend.answerVideos(SAMPLE_PROJECT_ID, { action: "start" });
-    expect(backend.current().run!.videos).toEqual({ status: "working", shots: 3, ready: 1, failed: 0 });
-    await expect(backend.answerVideos(SAMPLE_PROJECT_ID, { action: "start" })).rejects.toThrow("isn't waiting");
+  it("has what stopped go on: a failed episode goes back to work with its failed tasks and their bots, and what did not stop is refused", async () => {
+    const backend = productionBoardBackend({ episodes: 4 });
+    const heard = vi.fn();
+    backend.subscribe(BOARD_PROJECT_ID, heard);
+    const before = backend.current().revision;
+    const production = await backend.retryProduction(BOARD_PROJECT_ID, { episode: SAMPLE_FAILED_EPISODE });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveBeenCalled();
+    expect(production.episodes.find((one) => one.episode === SAMPLE_FAILED_EPISODE)!.status).toBe("storyboard");
+    expect(production.tasks.find((task) => task.episode === SAMPLE_FAILED_EPISODE)).toMatchObject({ status: "working" });
+    expect(backend.current()).toMatchObject({ revision: before + 1, production, bots: { [boarderOf(SAMPLE_FAILED_EPISODE)]: { status: "working" } } });
+    expect(backend.retries).toEqual([{ episode: SAMPLE_FAILED_EPISODE }]);
 
-    backend.updateBots((snapshot) => { snapshot.run!.videos = { status: "failed", shots: 3, ready: 2, failed: 1 }; });
-    await backend.answerVideos(SAMPLE_PROJECT_ID, { action: "retry" });
-    expect(backend.current().run!.videos).toEqual({ status: "working", shots: 3, ready: 2, failed: 0 });
-    backend.updateBots((snapshot) => { snapshot.run!.videos = { status: "failed", shots: 3, ready: 2, failed: 1 }; });
-    await backend.answerVideos(SAMPLE_PROJECT_ID, { action: "skip" });
-    expect(backend.current().run!.videos).toEqual({ status: "done", shots: 3, ready: 2, failed: 1 });
-    expect(backend.videoAnswers).toEqual(["start", "retry", "skip"]);
-    await expect(sampleCanvasBackend().answerVideos(SAMPLE_PROJECT_ID, { action: "start" })).rejects.toThrow("no run");
+    await expect(backend.retryProduction(BOARD_PROJECT_ID, { episode: 1 })).rejects.toThrow("Nothing stopped there.");
+    await expect(backend.retryProduction(BOARD_PROJECT_ID, { job: "script" })).rejects.toThrow("Nothing stopped there.");
+    await expect(sampleCanvasBackend().retryProduction(SAMPLE_PROJECT_ID, { job: "script" })).rejects.toThrow("no production");
+  });
+
+  it("reads an episode's timeline as its shots' selected takes, and the shots that have none", async () => {
+    const backend = productionBoardBackend({ episodes: 4 });
+    const second = await backend.readTimeline(BOARD_PROJECT_ID, 2);
+    expect(second.clips.map((clip) => clip.shotId)).toEqual(["ep2-shot-1", "ep2-shot-2", "ep2-shot-3"]);
+    expect(second.missingShots).toEqual(["ep2-shot-4", "ep2-shot-5", "ep2-shot-6"]);
+    expect((await backend.readTimeline(BOARD_PROJECT_ID, 1)).missingShots).toEqual([]);
   });
 
   it("opens the draft there is, as the draft or only the app, and has none to open before one is written", async () => {
-    expect(await withPipeline({ draft: DRAFT }).openDraft(SAMPLE_PROJECT_ID)).toEqual({ opened: "draft" });
-    expect(await withPipeline({ draft: { ...DRAFT, state: "kept" } }, { draftOpens: "app" }).openDraft(SAMPLE_PROJECT_ID)).toEqual({ opened: "app" });
-    await expect(withPipeline({ draft: { state: "none", exportFolder: DRAFT.exportFolder } }).openDraft(SAMPLE_PROJECT_ID)).rejects.toThrow("no draft");
+    expect(await withPipeline({ drafts: { 1: DRAFT } }).openDraft(SAMPLE_PROJECT_ID)).toEqual({ opened: "draft" });
+    expect(await withPipeline({ drafts: { 1: { ...DRAFT, state: "kept" } } }, { draftOpens: "app" }).openDraft(SAMPLE_PROJECT_ID)).toEqual({ opened: "app" });
+    await expect(withPipeline({ drafts: { 1: { state: "none", exportFolder: DRAFT.exportFolder } } }).openDraft(SAMPLE_PROJECT_ID)).rejects.toThrow("no draft");
     await expect(sampleCanvasBackend().openDraft(SAMPLE_PROJECT_ID)).rejects.toThrow("no draft");
   });
 

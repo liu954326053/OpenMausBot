@@ -2,6 +2,7 @@ import {
   botNodeId,
   CANVAS_MAX_NODES,
   CANVAS_NODE_SIZE,
+  CANVAS_TASK_REFERENCES_MAX,
   canvasFileNodeType,
   generationKindOf,
   type CanvasConnection,
@@ -39,7 +40,7 @@ import { applyCanvasOps, CanvasOpRefusal, opTargets, parseCanvasOps, type Canvas
 import type { ProjectPathError } from "./paths.ts";
 import { canvasFlow, type CanvasFlow, type ProjectPipeline } from "./flow.ts";
 import { placeAfter, placeForActor } from "./placement.ts";
-import { taskMessage, taskReferences } from "./references.ts";
+import { taskMessage, taskReferences, withNamedReferences } from "./references.ts";
 import { botFrames, buildSnapshot } from "./snapshot.ts";
 import { shownSoFar } from "./shown-so-far.ts";
 import { replyText, roomTurnClosedBy, TaskTargets, type TaskTarget } from "./task-targets.ts";
@@ -150,6 +151,9 @@ interface ServiceChange {
 }
 
 const NONE: CanvasChangeSet = { nodes: [], connections: [] };
+/** The bots the production made for one episode each → that episode's number. */
+const episodesOfBots = (project: Pick<TeamProjectWire, "episodeBots">): Record<string, number> =>
+  Object.fromEntries(Object.entries(project.episodeBots).map(([botId, own]) => [botId, own.number]));
 const merged = (a: CanvasChangeSet, b: CanvasChangeSet): CanvasChangeSet => ({ ...a, nodes: [...new Set([...a.nodes, ...b.nodes])], connections: [...new Set([...a.connections, ...b.connections])] });
 const isEmpty = (set: CanvasChangeSet) => !set.nodes.length && !set.connections.length && !set.viewport && !set.backgroundMode;
 const madeBy = (node: CanvasNode, botId: string) => node.createdBy?.kind === "bot" && node.createdBy.botId === botId;
@@ -189,8 +193,7 @@ export class ProjectCanvasService {
   private readonly deps: ProjectCanvasServiceDeps;
   private readonly pipelineListeners = new Set<(event: CanvasPipelineEvent) => void>();
   private readonly changeListeners = new Set<(projectId: string) => void>();
-  private alsoShown: (projectId: string, auth: RequestAuth) => Pick<CanvasSnapshot, "run" | "draft"> = () => ({});
-  private lastLines = new Map<string, string>();
+  private alsoShown: (projectId: string, auth: RequestAuth) => Pick<CanvasSnapshot, "production" | "drafts"> = () => ({});
 
   constructor(deps: ProjectCanvasServiceDeps) {
     this.deps = deps;
@@ -226,17 +229,6 @@ export class ProjectCanvasService {
     return this.deps.documents.revisionOf(projectId);
   }
 
-  /** The projects whose canvas draws other lines between its bots, or other stages on them, than when this was last
-   * called, each project on the first call. Throws while the list of projects cannot be read. */
-  linesMoved(): string[] {
-    const before = this.lastLines;
-    this.lastLines = new Map(this.deps.projects.list().map((project) => {
-      const { stages, lines } = this.flow(project);
-      return [project.id, JSON.stringify([stages, lines])];
-    }));
-    return [...this.lastLines].filter(([projectId, lines]) => before.get(projectId) !== lines).map(([projectId]) => projectId);
-  }
-
   newId(): string {
     return this.deps.newId();
   }
@@ -263,8 +255,8 @@ export class ProjectCanvasService {
     };
   }
 
-  /** What the person's snapshot of a project carries besides its canvas: the pipeline's run and the draft. */
-  showAlso(extras: (projectId: string, auth: RequestAuth) => Pick<CanvasSnapshot, "run" | "draft">): void {
+  /** What the person's snapshot of a project carries besides its canvas: its production and its episodes' drafts. */
+  showAlso(extras: (projectId: string, auth: RequestAuth) => Pick<CanvasSnapshot, "production" | "drafts">): void {
     this.alsoShown = extras;
   }
 
@@ -324,7 +316,8 @@ export class ProjectCanvasService {
         const result = request.apply(document, botFrames(document, flow), removed);
         if (!made && before.nodes.length && !request.upgrade) return result;
         const pipeline = settlePipeline({
-          before, after: result.document, beforeStages: made ?? {}, stages: flow.stages, bots: botFrames(result.document, flow), reserved: this.reserved(project.id, result.document), newId: this.deps.newId,
+          before, after: result.document, beforeStages: made ?? {}, stages: flow.stages, botEpisodes: episodesOfBots(project),
+          bots: botFrames(result.document, flow), reserved: this.reserved(project.id, result.document), newId: this.deps.newId,
           ...(request.actor ? { actor: request.actor } : {}), ...(request.upgrade ? { upgrade: true } : {}),
         });
         events.push(...pipeline.events);
@@ -343,6 +336,7 @@ export class ProjectCanvasService {
       project: { id: project.id, name: project.name, leadBotId: project.leadBotId, archived: project.archivedAt !== undefined, folderState: project.folderState },
       bots: this.facts.facts(project.botIds, projectRoom(this.deps.store, project)),
       pipeline: this.deps.pipelineOf(project.id, project.leadBotId),
+      botEpisodes: episodesOfBots(project),
       sees,
     });
     for (const target of this.writing(project.id, snapshot.nodes)) {
@@ -456,11 +450,12 @@ export class ProjectCanvasService {
     if (project.archivedAt !== undefined) throw readOnlyRefusal();
     if (project.folderState !== "ready") throw refusal(409, "serverError.projectCanvas.folderMissing", { folder: project.folder });
     const request = record(body);
-    const { botId, text, targetNodeId } = request;
+    const { botId, text, targetNodeId, references: named } = request;
     const asked = request.threadId;
     if (typeof botId !== "string" || typeof text !== "string" || text.length > TASK_MAX_CHARS || (asked !== undefined && typeof asked !== "string")
-      || (targetNodeId !== undefined && typeof targetNodeId !== "string")) {
-      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, language? }, its text at most ${TASK_MAX_CHARS} characters` });
+      || (targetNodeId !== undefined && typeof targetNodeId !== "string")
+      || (named !== undefined && !(Array.isArray(named) && named.length <= CANVAS_TASK_REFERENCES_MAX && named.every((id) => typeof id === "string")))) {
+      throw new CanvasRefusal(400, { error: `a task is { botId, text, threadId?, targetNodeId?, references?, language? }, its text at most ${TASK_MAX_CHARS} characters and at most ${CANVAS_TASK_REFERENCES_MAX} references` });
     }
     const language = requestLanguage(request.language) ?? this.deps.language();
     if (!project.botIds.includes(botId)) throw refusal(404, "serverError.projectCanvas.notMember");
@@ -474,7 +469,8 @@ export class ProjectCanvasService {
     if (targetNodeId !== undefined && target?.type !== "text") {
       throw new CanvasRefusal(404, { error: "A reply goes into a text node of this canvas, and that is not one." });
     }
-    const references = await taskReferences(document, targetNodeId ?? botNodeId(botId), { folder: project.folder, saveImage: this.deps.saveImage, language });
+    const writtenIn = targetNodeId ?? botNodeId(botId);
+    const references = await taskReferences(withNamedReferences(document, writtenIn, named ?? []), writtenIn, { folder: project.folder, saveImage: this.deps.saveImage, language });
     const quoted = room ? { ...references, text: quietMentions(references.text), ...(references.source ? { source: quietMentions(references.source) } : {}) } : references;
     const message = taskMessage(text, quoted, language);
     if (!message) throw new CanvasRefusal(400, { error: "Write the task, or connect something to the bot's node." });

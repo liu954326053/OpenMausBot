@@ -8,8 +8,8 @@ import { closeTeamProjectsInstallation, teamProjectsInstallation, type TeamProje
 
 let app: TeamProjectsTestApp | undefined;
 
-async function installation(options: { maxBots?: number; root?: boolean } = {}) {
-  app = await teamProjectsInstallation(options);
+async function installation(options: { root?: boolean } = {}) {
+  app = await teamProjectsInstallation();
   app.projects.start();
   if (options.root !== false) expect(app.projects.setRoot(app.root)).toEqual({ root: app.root });
   const sales = app.salesTeam();
@@ -429,12 +429,6 @@ describe("a project that fails part-way", () => {
     const result = await failed(app);
     expect(result.error).toContain("team memory is unreadable");
     expect(app.registry.projects()).toEqual([]);
-    nothingLeft(app);
-  });
-
-  it("leaves nothing behind when the team would not fit", async () => {
-    const app = await installation({ maxBots: 5 });
-    await failed(app);
     nothingLeft(app);
   });
 

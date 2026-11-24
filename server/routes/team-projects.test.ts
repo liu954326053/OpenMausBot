@@ -49,7 +49,7 @@ async function serve(host: TeamProjectRouteHost, behind: RouteHandler[] = [], au
 
 const PROJECT: TeamProjectWire = {
   id: "project-1", name: "Stand-in bride", folder: "/dramas/Stand-in bride", section: "Stand-in bride",
-  team: { key: "team:sales", name: "Sales desk" }, leadBotId: "bot-1", createdAt: 1, folderState: "ready", botIds: ["bot-1", "bot-2"], follows: { "bot-1": "src-1" },
+  team: { key: "team:sales", name: "Sales desk" }, leadBotId: "bot-1", createdAt: 1, folderState: "ready", botIds: ["bot-1", "bot-2"], follows: { "bot-1": "src-1" }, episodeBots: {},
 };
 
 const TEAMS: ProjectTeamWire[] = [
@@ -202,7 +202,7 @@ async function withProject() {
 
   const teamComputers = { forSection: () => undefined, renameSection: () => false } as unknown as TeamComputers;
   const departments = createSidebarSectionRoutes({
-    store: installation.store, teamComputers, maxBots: 100, assertTeamComputerChangeIdle: () => {}, wireBot: (bot: BotRecord) => ({ id: bot.id, section: bot.section }) as never,
+    store: installation.store, teamComputers, assertTeamComputerChangeIdle: () => {}, wireBot: (bot: BotRecord) => ({ id: bot.id, section: bot.section }) as never,
   });
   const patchBot: RouteHandler = async ({ req, res, path, method, json, readBody }) => {
     const match = method === "PATCH" ? path.match(/^\/api\/bots\/([\w-]+)$/) : null;

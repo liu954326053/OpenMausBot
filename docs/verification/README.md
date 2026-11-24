@@ -99,7 +99,6 @@ Use only mapped, tested commands:
 - [The organization library](org-library.md)
 - [Preset bots](presets.md)
 - [Teams and shared instructions](teams.md)
-- [A team's pipeline on the team map](team-pipeline-map.md)
 - [Full workspace backups](workspace-backups.md)
 - [Optional company cloud backups](company-backups.md)
 - [Organization library: the desktop channel](desktop-library.md)
@@ -263,6 +262,12 @@ The [sidebar attention geometry fixture](sidebar-attention.md) measures the
 Active Threads popover's width and inset in the open sidebar and its column of
 avatars in a headless Electron window, so the menu never crosses the window's
 left edge and loses its title.
+
+The [production board recipe](production-board.md) checks a project's canvas as
+its production board: stages, folded episodes, lines in the state of their work,
+cards the person moves, retries and takes, the far view, the app's smallest
+window and how fast sixty episodes open, zoom and pan, against disposable
+servers with the scripted fake engine and a sample drama in the page.
 
 The [avatar provider fixture](avatar-providers.md) checks image-provider settings,
 keyless local generation, saved-key handling, and safe errors with a local fake API.

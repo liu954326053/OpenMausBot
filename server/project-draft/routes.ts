@@ -6,9 +6,15 @@ import { draftRefusalOf } from "./refusal.ts";
 
 const ROUTE = /^\/api\/team-projects\/([\w-]+)\/(timeline|draft\/open|final)$/;
 
-/** A project's timeline, its JianYing draft and its finished film, for the owner and admins as the rest of a project is. */
+/** `?episode=N`, or none for a drama made before episodes. */
+function episodeOf(url: URL): number | undefined {
+  const episode = Number(url.searchParams.get("episode"));
+  return Number.isInteger(episode) && episode > 0 ? episode : undefined;
+}
+
+/** An episode's timeline, its JianYing draft and its finished film, for the owner and admins as the rest of a project is. */
 export function createProjectDraftRoutes(drafts: ProjectDrafts): RouteHandler {
-  return async ({ req, res, path, method, auth, json, readBody }) => {
+  return async ({ req, res, url, path, method, auth, json, readBody }) => {
     const match = ROUTE.exec(path);
     if (!match) return PASS;
     if (!ownerOrAdmin(auth)) {
@@ -18,8 +24,8 @@ export function createProjectDraftRoutes(drafts: ProjectDrafts): RouteHandler {
     const projectId = match[1]!;
     const part = match[2];
     try {
-      if (part === "timeline" && method === "GET") return json(res, 200, await drafts.timeline(projectId));
-      if (part === "timeline" && method === "PUT") return json(res, 200, await drafts.setOrder(projectId, await readBody(req)));
+      if (part === "timeline" && method === "GET") return json(res, 200, await drafts.timeline(projectId, episodeOf(url)));
+      if (part === "timeline" && method === "PUT") return json(res, 200, await drafts.setOrder(projectId, await readBody(req), episodeOf(url)));
       if (part === "draft/open" && method === "POST") {
         req.resume();
         return json(res, 200, await drafts.open(projectId, auth));

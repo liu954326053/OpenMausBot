@@ -2,6 +2,7 @@ import {
   DEFAULT_GENERATION_SETTINGS, IMAGE_COUNT_MAX, type GenerationFailure, type GenerationKind, type GenerationModel, type GenerationTools,
   type ProjectGenerationSettings, type SettingProblem,
 } from "../../shared/project-generation.ts";
+import { PRODUCTION_CONCURRENCY_MAX } from "../../shared/production.ts";
 import { failure, type GenerationErrorName } from "./failure.ts";
 
 const TOOL_NAME = /^[A-Za-z0-9_.:/-]{1,128}$/;
@@ -67,6 +68,15 @@ export function mergeSettings(current: ProjectGenerationSettings, patch: unknown
         if (!field.ok) return field.problem;
         defaults[key] = field.value;
       }
+    }
+  }
+  if (patch.concurrency !== undefined) {
+    if (!isRecord(patch.concurrency)) return "concurrency must be an object";
+    for (const key of Object.keys(merged.concurrency) as Array<keyof ProjectGenerationSettings["concurrency"]>) {
+      const count = patch.concurrency[key];
+      if (count === undefined) continue;
+      if (!(typeof count === "number" && Number.isInteger(count) && count >= 1 && count <= PRODUCTION_CONCURRENCY_MAX)) return `concurrency.${key} must be a whole number from 1 to ${PRODUCTION_CONCURRENCY_MAX}`;
+      merged.concurrency[key] = count;
     }
   }
   return merged;

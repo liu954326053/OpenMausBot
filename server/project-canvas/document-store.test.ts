@@ -69,6 +69,12 @@ describe("a project's canvas on disk", () => {
     expect(again.nodes.map((node) => node.title)).toEqual(["Brief"]);
   });
 
+  it("keeps across a restart that the person moved a node", () => {
+    change(store(), [{ type: "add_node", id: "brief", nodeType: "text" }]);
+    change(store(), [{ type: "update_node", id: "brief", patch: { position: { x: 40, y: 80 } } }]);
+    expect(store().read("p1").nodes[0]).toMatchObject({ position: { x: 40, y: 80 }, arranged: true });
+  });
+
   it("keeps the revision when nothing changed", () => {
     const documents = store();
     change(documents, [{ type: "add_node", id: "a", nodeType: "text" }, { type: "add_node", id: "b", nodeType: "text" }, { type: "connect_nodes", fromNodeId: "a", toNodeId: "b" }]);
@@ -81,6 +87,38 @@ describe("a project's canvas on disk", () => {
 
   it("refuses a project id that is not a plain name", () => {
     expect(thrown(() => store().read("../p1"))).toMatchObject({ status: 404 });
+  });
+});
+
+describe("a canvas read", () => {
+  const brief: CanvasOp = { type: "add_node", id: "brief", nodeType: "text", title: "Brief", metadata: { content: "The swap." } };
+  const attempts = (read: CanvasDocument) => [
+    () => read.nodes.push({ ...read.nodes[0]! }),
+    () => { read.nodes[0]!.title = "Theirs"; },
+    () => { read.nodes[0]!.metadata!.content = "Theirs"; },
+    () => { read.nodes[0]!.position.x = 9; },
+    () => { read.viewport.k = 2; },
+    () => { read.revision = 7; },
+  ];
+
+  it("is the canvas as stored, which a reader cannot change, read from disk or after a change", () => {
+    const documents = store();
+    change(documents, [brief]);
+    for (const read of [documents.read("p1"), store().read("p1")]) {
+      for (const attempt of attempts(read)) expect(attempt).toThrow(TypeError);
+    }
+    expect(documents.read("p1")).toMatchObject({ revision: 1, viewport: { k: 1 }, nodes: [{ id: "brief", title: "Brief", position: { x: 0, y: 0 }, metadata: { content: "The swap." } }] });
+    expect(documents.read("p1").nodes).toHaveLength(1);
+  });
+
+  it("stays as it was when the canvas changes after it, while a change works on a copy of its own and hands back one", () => {
+    const documents = store();
+    change(documents, [brief]);
+    const before = documents.read("p1");
+    const outcome = change(documents, [{ type: "update_node", id: "brief", patch: { title: "Mine" } }]);
+    expect([before.revision, before.nodes[0]!.title]).toEqual([1, "Brief"]);
+    outcome.document.nodes[0]!.title = "The caller's";
+    expect(documents.read("p1")).toMatchObject({ revision: 2, nodes: [{ title: "Mine" }] });
   });
 });
 

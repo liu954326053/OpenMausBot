@@ -1,5 +1,7 @@
-// A project is one short drama: a folder under the projects root, and the team that works in it. The code calls it a
-// "team project" to keep it apart from a bot's own thread folders, which the wire types call `BotProject`.
+// A project is one drama of many episodes: a folder under the projects root, and the team that works in it. The code
+// calls it a "team project" to keep it apart from a bot's own thread folders, which the wire types call `BotProject`.
+
+import type { EpisodeJob } from "./production.ts";
 
 /** The folder inside a project folder that holds its team's own files. */
 export const TEAM_PROJECT_FOLDER = ".magic-team";
@@ -62,6 +64,8 @@ export interface TeamProjectMembership {
   source?: string;
   /** Its source was deleted, archived or left the team, or the team was deleted: it follows nobody until the person decides. */
   sourceLeft?: true;
+  /** The production made it for one episode: the episode's number, and the job it does there. */
+  episode?: { number: number; job: EpisodeJob };
 }
 
 /** What a copy shows of its source. Nobody can change these on a copy while it follows its source. */
@@ -137,6 +141,8 @@ export interface TeamProjectWire extends TeamProjectRecord {
   botIds: string[];
   /** The source of each copy that follows one, by the copy's id. */
   follows: Record<string, string>;
+  /** The bots the production made for one episode each, by bot id; the project's other bots work on the whole drama. */
+  episodeBots: Record<string, { number: number; job: EpisodeJob }>;
   /** Absent when nothing changed. */
   teamChanges?: TeamProjectChanges;
 }
@@ -233,4 +239,9 @@ export interface TeamProjectsApi {
    * for a project that is not archived. Null: no project has that id.
    */
   restore(id: string): TeamProjectWire | null;
+  /**
+   * The project's bot that does `job` for episode `number`: the one it has, else a new copy of the bot `templateBotId`
+   * of the project is a copy of. Answers its id; throws when the copy cannot be made.
+   */
+  episodeBot(projectId: string, templateBotId: string, number: number, job: EpisodeJob): Promise<string>;
 }
