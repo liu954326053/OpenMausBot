@@ -22,6 +22,8 @@ describe("the plan card", () => {
   it("numbers the tasks from T1, each with its job, its bot and its state", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("plan");
+    expect(card.dataset.boardSurface).toBe("paper");
+    expect(textOf(card.querySelector("[data-plan-code]"))).toBe("TASKS");
     expect(rows(card).map((row) => row.dataset.planTask)).toEqual(["script", "character", "scene", "storyboard", "post"]);
     expect(rows(card).map((row) => textOf(row.querySelector("[data-task-code]")))).toEqual(["T1", "T2", "T3", "T4", "T5"]);
     expect(rows(card).map((row) => textOf(row.querySelector("[data-task-name]")))).toEqual([
@@ -30,6 +32,18 @@ describe("the plan card", () => {
     expect(rows(card).map((row) => textOf(row.querySelector("[data-bot-chip-name], [data-task-nobody]")))).toEqual(["Mo", "Mei", "Yan", "Jingchuan", "Nobody"]);
     expect(rows(card).map((row) => row.querySelector<HTMLElement>("[data-board-status]")!.dataset.boardStatus)).toEqual(["done", "done", "failed", "working", "idle"]);
     expect(rows(card).map((row) => textOf(row.querySelector("[data-board-status]")))).toEqual(["Done", "Done", "Failed", "Working", "Waiting"]);
+  });
+
+  it("strikes each state as a round seal, and names a bot on an ink capsule", () => {
+    const stamps = rows(draw()).map((row) => row.querySelector<HTMLElement>("[data-board-status]")!);
+    expect(stamps.map((stamp) => stamp.className.includes("rounded-full"))).toEqual([true, true, true, true, true]);
+    expect(stamps[0]!.className).toContain("bg-board-teal-ink");
+    expect(stamps[1]!.className).toContain("bg-board-teal-ink");
+    expect(stamps[2]!.className).toContain("bg-board-ink");
+    expect(stamps[3]!.className).toContain("bg-board-amber");
+    expect(stamps[4]!.className).toContain("border-board-ink-3");
+    const chip = rows(draw())[0]!.querySelector<HTMLElement>("[data-bot-chip]")!;
+    expect(chip.className).toContain("bg-board-ink");
   });
 
   it("marks the tasks that run side by side", () => {
@@ -54,6 +68,6 @@ describe("the plan card", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
     setLocale("zh");
     expect(textOf(draw().querySelector("[data-card-name]"))).toBe("任务拆分");
-    expect(textOf(draw().querySelector("[data-task-parallel]"))).toBe("并行");
+    expect(textOf(draw().querySelector("[data-task-parallel]"))).toBe("平级");
   });
 });

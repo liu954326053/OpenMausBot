@@ -21,6 +21,8 @@ describe("the result card", () => {
   it("shows the selected take, how many takes there are, and a button per take", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("result");
+    expect(card.dataset.boardSurface).toBe("monitor");
+    expect(card.querySelector("[data-result-media]")!.className).toContain("aspect-video");
     expect(textOf(card.querySelector("[data-shot-code]"))).toBe("SH03");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Qingwu lights the lamp");
     expect(textOf(card.querySelector("[data-result-count]"))).toBe("Takes: 3");
@@ -29,6 +31,8 @@ describe("the result card", () => {
     expect(card.querySelector("video")!.getAttribute("preload")).toBe("metadata");
     expect(textOf(card.querySelector("[data-result-selected]"))).toBe("In the film");
     expect(textOf(card.querySelector("[data-result-length]"))).toBe("00:05");
+    expect(card.querySelector<HTMLElement>("[data-result-status]")!.dataset.resultStatus).toBe("done");
+    expect(buttonNamed(card, "Play SH03 Qingwu lights the lamp")!.className).toContain("size-12");
   });
 
   it("shows the newest take when none is selected", () => {

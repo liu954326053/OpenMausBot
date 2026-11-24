@@ -32,6 +32,20 @@ describe("the shot card", () => {
     expect(refs.map((ref) => [ref.dataset.shotReference, ref.title])).toEqual([["character", "Qingwu"], ["scene", "Old pier"]]);
     expect(refs[0]!.querySelector("img")!.getAttribute("src")).toBe("/files/qingwu.png");
     expect(textOf(refs[1])).toBe("O");
+    expect(refs[0]!.querySelector("span")!.className).toContain("ring-board-paper");
+  });
+
+  it("is a sheet of storyboard paper: code in ink, references on paper, the making action in amber", () => {
+    const onGenerate = vi.fn();
+    const card = draw({ referenceNames: true, onGenerate });
+    expect(card.dataset.boardSurface).toBe("paper");
+    expect(card.querySelector("[data-shot-code] [data-paper-code]")!.className).toContain("bg-board-ink");
+    const chip = card.querySelector<HTMLElement>("[data-shot-reference='character']")!;
+    expect(chip.className).toContain("bg-board-paper-2");
+    expect(buttonNamed(card, "Generate shot video")!.className).toContain("bg-board-amber");
+    const again = buttonNamed(draw({ takes: 2, onGenerate }), "Generate again")!;
+    expect(again.className).toContain("border-board-ink-3");
+    expect(again.className).not.toContain("bg-board-amber");
   });
 
   it("names the characters and scene it uses beside their pictures when the names fit, and shows the pictures alone when they do not", () => {
@@ -53,12 +67,12 @@ describe("the shot card", () => {
     const onOpen = vi.fn();
     const none = draw({ onGenerate, onOpen });
     expect(textOf(none.querySelector("[data-board-status]"))).toBe("No video yet");
-    click(buttonNamed(none, "Generate video"));
+    click(buttonNamed(none, "Generate shot video"));
     expect([onGenerate.mock.calls.length, onOpen.mock.calls.length]).toEqual([1, 0]);
 
     const making = draw({ generation: { status: "loading" }, onGenerate });
     expect(textOf(making.querySelector("[data-board-status]"))).toBe("Generating…");
-    expect(buttonNamed(making, "Generate video")).toBeUndefined();
+    expect(buttonNamed(making, "Generate shot video")).toBeUndefined();
 
     const ready = draw({ takes: 2, onGenerate });
     expect(textOf(ready.querySelector("[data-board-status]"))).toBe("Video ready");
@@ -74,6 +88,7 @@ describe("the shot card", () => {
   it("says where it plays in its episode", () => {
     const time = draw({ startsAt: 12 }).querySelector<HTMLElement>("[data-shot-time]")!;
     expect([textOf(time), time.title]).toEqual(["00:12 – 00:17", "At 00:12 – 00:17 in EP01"]);
+    expect(time.className).toContain("font-mono");
     expect(textOf(draw({ startsAt: 0, seconds: undefined, episode: undefined }).querySelector("[data-shot-time]"))).toBe("00:00");
     expect(draw().querySelector("[data-shot-time]")).toBeNull();
   });

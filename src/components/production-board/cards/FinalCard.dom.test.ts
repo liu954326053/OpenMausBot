@@ -23,8 +23,12 @@ describe("the final card", () => {
   it("names its episode's film and lists its shots, each ready or not", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("final");
+    expect(card.dataset.boardSurface).toBe("monitor");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Film · EP01");
     expect(textOf(card.querySelector("[data-final-title]"))).toBe("The lamplighter");
+    expect(card.querySelector("[data-final-headline]")!.className).toContain("text-[32px]");
+    expect(card.querySelector("[data-final-media]")!.className).toContain("aspect-video");
+    expect(card.querySelectorAll("[data-final-audio]")).toHaveLength(CLIPS.length);
     const clips = [...card.querySelectorAll<HTMLElement>("[data-final-clip]")];
     expect(clips.map((clip) => [textOf(clip), clip.dataset.finalClip, clip.title])).toEqual([
       ["SH01", "ready", "SH01: ready"], ["SH02", "ready", "SH02: ready"], ["SH03", "generating", "SH03: not ready yet"], ["SH04", "missing", "SH04: not ready yet"],
@@ -39,7 +43,7 @@ describe("the final card", () => {
     expect(clips.every((clip) => textOf(clip) === "")).toBe(true);
     expect([clips[0]!.title, clips[23]!.title]).toEqual(["SH01: ready", "SH24: not ready yet"]);
     expect(textOf(draw({ clips: many.slice(0, 11) }).querySelector("[data-final-clip]"))).toBe("SH01");
-    expect(textOf(draw({ clips: many.slice(0, 12) }).querySelector("[data-final-clip]"))).toBe("");
+    expect(textOf(draw({ clips: many.slice(0, 13) }).querySelector("[data-final-clip]"))).toBe("");
   });
 
   it("draws a still of each ready shot on the strip while there is room, and colours alone when there is not", () => {
@@ -47,12 +51,12 @@ describe("the final card", () => {
     const card = draw({ clips: CLIPS.map((clip) => ({ ...clip, posterUrl: `/files/sh0${clip.number}.jpg` })) });
     expect(stills(card)).toEqual(["/files/sh01.jpg", "/files/sh02.jpg", null, null]);
     expect(textOf(card.querySelector("[data-final-clip]"))).toBe("SH01");
-    const many: FinalClip[] = Array.from({ length: 12 }, (_, index) => ({ number: index + 1, state: "ready", posterUrl: "/files/still.jpg" }));
+    const many: FinalClip[] = Array.from({ length: 13 }, (_, index) => ({ number: index + 1, state: "ready", posterUrl: "/files/still.jpg" }));
     expect(stills(draw({ clips: many })).every((still) => still === null)).toBe(true);
   });
 
   it("shows no film until there is one", () => {
-    expect(textOf(draw().querySelector("[data-final-media]"))).toBe("No film yet");
+    expect(textOf(draw().querySelector("[data-final-media]"))).toContain("No film yet");
     expect(draw({ coverUrl: "/files/cover.png" }).querySelector("[data-final-media] img")!.getAttribute("src")).toBe("/files/cover.png");
   });
 
