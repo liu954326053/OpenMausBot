@@ -196,11 +196,29 @@
   --shadow-lg: 0 6px 16px -8px rgb(0 0 0 / 0.18), 0 1px 3px rgb(0 0 0 / 0.06);
   --shadow-xl: 0 10px 28px -12px rgb(0 0 0 / 0.24), 0 2px 6px -2px rgb(0 0 0 / 0.08);
   --shadow-2xl: 0 16px 40px -16px rgb(0 0 0 / 0.3), 0 4px 10px -4px rgb(0 0 0 / 0.1);
+  /* Production board props: paper, monitor and ink stay fixed across skins (a sheet of paper is still paper). */
+  --color-board-paper: #ecebe5;
+  --color-board-paper-2: #dddbd2;
+  --color-board-paper-line: #c6c3b8;
+  --color-board-ink: #1c2125;
+  --color-board-ink-2: #454e56;
+  --color-board-ink-3: #5f6870;
+  --color-board-teal: #45bfae;
+  --color-board-teal-ink: #14665b;
+  --color-board-amber: #f2a53c;
+  --color-board-amber-ink: #855000;
+  --color-board-monitor: #0d0f12;
+  --shadow-board: 0 12px 32px rgba(0, 0, 0, 0.4);
 
   /* Add a rounded transition class.
      For situations where multiple transition-properties need to be set simultaneously,
      please use transition-[...], for example, transition-[color,background,border-radius] */
   --transition-property-rounded: border-radius;
+}
+
+/* A pile of episode pages: the top sheet, then two sheets under it, offset down and to the right. */
+.board-paper-stack {
+  box-shadow: var(--shadow-board), 7px 7px 0 -1px var(--color-board-paper-2), 14px 14px 0 -2px var(--color-board-paper-line);
 }
 
 /* Tokens that no utility generates — declared outside `@theme` so Tailwind

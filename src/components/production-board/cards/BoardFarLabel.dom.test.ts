@@ -16,7 +16,7 @@ describe("the far view label", () => {
     expect(label.dataset.boardFar).toBe("bot");
     expect([label.style.width, label.style.height]).toEqual([`${BOARD_CARD_SIZES.bot.width}px`, `${BOARD_CARD_SIZES.bot.height}px`]);
     expect(textOf(label.querySelector("[data-far-name]"))).toBe("Jingchuan EP01");
-    expect(label.querySelector("[data-far-dot]")!.className).toContain("bg-accent");
+    expect(label.querySelector("[data-far-dot]")!.className).toContain("bg-warning");
     expect(label.title).toBe("Jingchuan EP01 · Working");
     expect(draw({ tone: "failed" }).querySelector("[data-far-dot]")!.className).toContain("bg-danger");
   });

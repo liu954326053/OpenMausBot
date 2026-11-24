@@ -9,7 +9,7 @@ import type { BoardLayout } from "@/lib/production-board/layout";
 import { BOARD_STAGES, type BoardStage } from "@/lib/production-board/overlay";
 import { compactStageName } from "@/lib/production-board/stages";
 import type { BoardCardKind, BoardStageState } from "@/lib/production-board/types";
-import { episodeStatus, TONE_DOT, type BoardTone } from "../cards";
+import { episodeStatus, TONE_DOT } from "../cards";
 import type { BoardCamera } from "./camera";
 
 export const CHROME_SURFACE = "popover-surface pointer-events-auto flex items-center gap-1 rounded-xl border border-hairline/50 bg-menu p-1";
@@ -20,7 +20,8 @@ export const PANEL_ROOM = "pe-[20rem]";
 /** What that side panel may take of the board's width, in pixels, until the board has measured it. */
 export const PANEL_ROOM_PX = 320;
 
-const STAGE_TONE: Record<BoardStageState, BoardTone> = { wait: "idle", active: "working", done: "done", failed: "failed" };
+/** The stage bar keeps the board's own accent for the stage at work: it marks where the view is, not a card's state. */
+const STAGE_DOT: Record<BoardStageState, string> = { wait: "bg-ink-tertiary", active: "bg-accent", done: "bg-success", failed: "bg-danger" };
 
 export const stageName = (stage: BoardStage) => t(`productionBoard.stage.${stage}`);
 
@@ -55,7 +56,7 @@ function StageButtons({ stages, named, compact, onFocus }: { stages: Record<Boar
           )}
           onClick={() => onFocus(stage)}
         >
-          <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TONE_DOT[STAGE_TONE[state]])} />
+          <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", STAGE_DOT[state])} />
           {showsName ? stageName(stage) : null}
         </button>
       </li>

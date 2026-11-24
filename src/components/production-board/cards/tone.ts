@@ -7,7 +7,7 @@ export type BoardTone = "idle" | "working" | "done" | "asking" | "failed";
 
 export const TONE_DOT: Readonly<Record<BoardTone, string>> = {
   idle: "bg-ink-tertiary",
-  working: "bg-accent",
+  working: "bg-warning",
   done: "bg-success",
   asking: "bg-warning",
   failed: "bg-danger",
@@ -15,10 +15,19 @@ export const TONE_DOT: Readonly<Record<BoardTone, string>> = {
 
 export const TONE_TEXT: Readonly<Record<BoardTone, string>> = {
   idle: "text-ink-secondary",
-  working: "text-accent-text",
+  working: "text-warning",
   done: "text-success",
   asking: "text-warning",
   failed: "text-danger",
+};
+
+/** Top stripe on a bot card: working/asking amber, done teal, failed red, idle grey. */
+export const TONE_STRIPE: Readonly<Record<BoardTone, string>> = {
+  idle: "bg-ink-tertiary",
+  working: "bg-board-amber",
+  done: "bg-board-teal",
+  asking: "bg-board-amber",
+  failed: "bg-danger",
 };
 
 export interface BoardStatus {

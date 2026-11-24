@@ -21,7 +21,16 @@ describe("the bot card", () => {
   it("is the size the board lays it out at", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("bot");
+    expect(card.dataset.boardSurface).toBe("panel");
     expect([card.style.width, card.style.height]).toEqual([`${BOARD_CARD_SIZES.bot.width}px`, `${BOARD_CARD_SIZES.bot.height}px`]);
+  });
+
+  it("wears its state as a stripe across its top", () => {
+    const stripe = (patch: Partial<BotCardProps>) => draw(patch).querySelector<HTMLElement>("[data-bot-stripe]")!;
+    expect(stripe({}).className).toContain("bg-board-amber");
+    expect(stripe({ bot: bot({ status: "idle" }), job: undefined, task: undefined }).className).toContain("bg-ink-tertiary");
+    expect(stripe({ bot: bot({ status: "idle" }), task: "done" }).className).toContain("bg-board-teal");
+    expect(stripe({ bot: bot({ status: "error" }) }).className).toContain("bg-danger");
   });
 
   it("shows an episode's bot by its own name, its episode code, its job title and what it does for that episode", () => {
@@ -59,7 +68,7 @@ describe("the bot card", () => {
     const card = draw({ progress: { kind: "videos", done: 4, total: 6 } });
     const meter = card.querySelector<HTMLElement>("[role=progressbar]")!;
     expect([meter.getAttribute("aria-valuenow"), meter.getAttribute("aria-valuemax"), meter.getAttribute("aria-label")]).toEqual(["4", "6", "Shot videos 4 / 6"]);
-    expect(textOf(card.querySelector("[data-progress]"))).toBe("Shot videos 4 / 6 67%");
+    expect(textOf(card.querySelector("[data-progress]"))).toBe("Shot videos 4 / 6 done 67%");
     expect(draw({ progress: undefined }).querySelector("[role=progressbar]")).toBeNull();
   });
 
@@ -118,6 +127,18 @@ describe("the bot card", () => {
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
+  it("puts its job and a chat pill at its foot, the pill opening the chat without opening the card twice", () => {
+    const onOpen = vi.fn();
+    const card = draw({ onOpen });
+    expect(textOf(card.querySelector("[data-bot-job]"))).toBe("Storyboards and videos, per episode");
+    const talk = card.querySelector<HTMLButtonElement>("[data-bot-talk]")!;
+    expect(textOf(talk)).toBe("Chat");
+    expect(talk.className).toContain("rounded-full");
+    click(talk);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(draw().querySelector("[data-bot-talk]")).toBeNull();
+  });
+
   it("offers a retry when its task failed, which does not open it", () => {
     const onOpen = vi.fn();
     const onRetry = vi.fn();
@@ -157,6 +178,6 @@ describe("the bot card", () => {
     setLocale("zh");
     const card = draw({ progress: { kind: "videos", done: 4, total: 6 } });
     expect(textOf(status(card))).toBe("工作中");
-    expect(textOf(card.querySelector("[data-progress]"))).toBe("分镜视频 4 / 6 67%");
+    expect(textOf(card.querySelector("[data-progress]"))).toBe("分镜视频 4 / 6 完成 67%");
   });
 });

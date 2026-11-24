@@ -29,15 +29,20 @@ describe("the character card", () => {
   it("shows the character's picture, name, part, line, tags, look and palette", () => {
     const card = character();
     expect(card.dataset.boardCard).toBe("character");
+    expect(card.dataset.boardSurface).toBe("paper");
     expect(card.style.height).toBe(`${BOARD_CARD_SIZES.character.height}px`);
     const picture = card.querySelector("img")!;
     expect([picture.getAttribute("src"), picture.alt]).toEqual(["/files/qingwu.png", "Picture of Qingwu"]);
+    expect(card.querySelector("[data-asset-picture]")!.className).toContain("w-38");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Qingwu");
+    expect(card.querySelector("[data-card-name]")!.className).toContain("text-[21px]");
     expect(textOf(card.querySelector("[data-asset-badge]"))).toBe("Lead");
     expect(textOf(card.querySelector("[data-asset-subtitle]"))).toBe("24 · lamplighter");
     expect([...card.querySelectorAll("[data-asset-tag]")].map(textOf)).toEqual(["Stubborn", "Kind"]);
     expect([...card.querySelectorAll("[data-asset-row]")].map(textOf)).toEqual(["Look Grey coat, blue lamp", "Voice Low and quick"]);
     expect([...card.querySelectorAll<HTMLElement>("[data-asset-swatch]")].map((swatch) => swatch.title)).toEqual(["#334455", "#ddeeff"]);
+    const swatches = [...card.querySelectorAll<HTMLElement>("[data-asset-swatch]")];
+    expect([swatches[0]!.className.includes("size-4"), swatches[0]!.className.includes("-ms-1"), swatches[1]!.className.includes("-ms-1")]).toEqual([true, false, true]);
   });
 
   it("names the shots it is in", () => {
@@ -88,20 +93,26 @@ describe("the scene card", () => {
   it("shows the scene's picture, name, line and the shots that use it, across episodes", () => {
     const card = scene();
     expect(card.dataset.boardCard).toBe("scene");
+    expect(card.dataset.boardSurface).toBe("paper");
     expect(card.querySelector("img")!.getAttribute("src")).toBe("/files/pier.png");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Old pier");
+    expect(card.querySelector("[data-card-name]")!.className).toContain("text-[18px]");
     expect(textOf(card.querySelector("[data-asset-subtitle]"))).toBe("Night, fog");
     expect(textOf(card.querySelector("[data-asset-shots]"))).toBe("Used in EP01 SH01 · EP02 SH04");
   });
 
-  it("draws its palette as a strip along the foot of its picture", () => {
-    const strip = scene({ facts: { subtitle: "Night, fog", palette: ["#223344", "#ffcc88", "blue"] } }).querySelector("[data-scene-palette]");
+  it("draws its palette as a 6px strip along the foot of the card", () => {
+    const strip = scene({ facts: { subtitle: "Night, fog", palette: ["#223344", "#ffcc88", "blue"] } }).querySelector<HTMLElement>("[data-scene-palette]");
+    expect(strip!.className).toContain("h-1.5");
     expect([...strip!.querySelectorAll<HTMLElement>("[data-asset-swatch]")].map((swatch) => swatch.title)).toEqual(["#223344", "#ffcc88"]);
     expect(scene().querySelector("[data-scene-palette]")).toBeNull();
   });
 
-  it("names the bot that refined it", () => {
-    expect(textOf(scene({ refinedBy: "Jingchuan EP01" }).querySelector("[data-scene-refined]"))).toBe("Refined by Jingchuan EP01");
+  it("marks a refined scene with an amber tag naming the bot that refined it", () => {
+    const tag = scene({ refinedBy: "Jingchuan EP01" }).querySelector<HTMLElement>("[data-scene-refined]")!;
+    expect(textOf(tag)).toBe("Refined");
+    expect(tag.title).toBe("Refined by Jingchuan EP01");
+    expect(tag.className).toContain("bg-board-amber");
     expect(scene().querySelector("[data-scene-refined]")).toBeNull();
   });
 

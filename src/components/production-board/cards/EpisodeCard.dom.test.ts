@@ -20,11 +20,20 @@ describe("the episode card", () => {
   it("shows its code, title, state, logline and first lines", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("episode");
+    expect(card.dataset.boardSurface).toBe("paper");
     expect(textOf(card.querySelector("[data-episode-code]"))).toBe("EP01");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("The lamplighter");
     expect(textOf(card.querySelector("[data-board-status]"))).toBe("Making videos");
     expect(textOf(card.querySelector("[data-episode-logline]"))).toBe("The harbour's lamps have been dark for ten years.");
     expect(card.querySelector("[data-episode-text]")!.textContent).toBe(SCRIPT);
+  });
+
+  it("is a punched script page, its code stamped in ink and its last lines fading into the paper", () => {
+    const card = draw();
+    expect(card.querySelectorAll("[data-sc-holes] [data-sc-hole]")).toHaveLength(3);
+    expect(card.querySelector("[data-episode-code] [data-paper-code]")!.className).toContain("bg-board-ink");
+    expect(card.querySelector("[data-episode-fade]")).not.toBeNull();
+    expect(draw({ text: undefined }).querySelector("[data-episode-fade]")).toBeNull();
   });
 
   it("says how many of its shots are ready and whom it went to", () => {
@@ -67,6 +76,6 @@ describe("the episode card", () => {
     const name = card.querySelector<HTMLElement>("[data-card-name]")!;
     expect([name.className.includes("truncate"), name.title]).toEqual([true, long]);
     expect(card.querySelector<HTMLElement>("[data-episode-logline]")!.className).toContain("line-clamp-2");
-    expect(card.querySelector<HTMLElement>("[data-episode-text]")!.className).toContain("overflow-hidden");
+    expect(card.querySelector<HTMLElement>("[data-episode-text]")!.parentElement!.className).toContain("overflow-hidden");
   });
 });
