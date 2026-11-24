@@ -10,7 +10,9 @@
 // a bot who joins is drawn at once clear of the others, a search for a part of the project's name keeps its one row and
 // one for the writer finds no project, a project archived while open gives way to the main bot, and the project's
 // settings cover the whole board while a terminal's sign-in card stays above them; at the app's smallest window, in both
-// skins, the minimap starts folded until its button opens it, and the board's bars neither overlap nor leave the board.
+// skins, the minimap starts folded until its button opens it, the board's bars neither overlap nor leave the board, and
+// the stage bar keeps its five stages inside the board and in reach, naming only the one in view once it has to shrink,
+// in English and Chinese, and a click on the last takes the view to post.
 // Last, the sixty-episode sample on the in-memory backend draws only what is in view; how long it takes to open, and the
 // frames of a zoom and a pan, are kept as evidence. Nothing here reaches the user's data, JianYing or port 8799.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -255,6 +257,7 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
     evidence.midway = midway.production;
     const episodeWire = (episode: number) => midway.production!.episodes.find((one) => one.episode === episode)!;
     const boarderOf = (episode: number) => botNodeId(episodeWire(episode).storyboardBotId!);
+    const posterOf = (episode: number) => botNodeId(episodeWire(episode).postBotId!);
     const brief = midway.nodes.find((one) => one.metadata?.role === "brief")!;
 
     preview = await mountPreview({ info: { url: fixture.url } }, { entry: "/scripts/testing/project-canvas-server-preview.tsx", route: "/__project-canvas.html", title: "Project canvas on a server", logLevel: "warn" });
@@ -590,6 +593,70 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
         smallest[skin] = { folded, opened };
       }
       evidence.smallestWindow = smallest;
+
+      type StageControl = { stage: string; named: boolean; reachable: boolean; inside: boolean };
+      type StagesAtSmallest = { form: string | null; barInside: boolean; overflowX: string; stages: StageControl[] };
+      const stagesAtSmallest = () => evaluate<StagesAtSmallest>(`(() => {
+        const board = document.querySelector(${JSON.stringify(`${view} [data-production-board]`)})?.getBoundingClientRect();
+        const bar = document.querySelector(${JSON.stringify(`${view} [data-board-stage-form]`)});
+        const surface = bar?.querySelector("[data-stage-surface]");
+        const form = bar?.dataset.boardStageForm ?? null;
+        const room = { left: board.left, top: board.top, right: board.right, bottom: board.bottom };
+        const inside = (r) => r.left >= room.left - 1 && r.top >= room.top - 1 && r.right <= room.right + 1 && r.bottom <= room.bottom + 1;
+        const buttons = [...bar.querySelectorAll('[data-stage-list="' + form + '"] [data-board-stage]')];
+        return {
+          form,
+          barInside: inside(bar.getBoundingClientRect()),
+          overflowX: surface ? getComputedStyle(surface).overflowX : "",
+          stages: buttons.map((button) => {
+            const r = button.getBoundingClientRect();
+            const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            return { stage: button.dataset.boardStage, named: button.textContent.trim() !== "", reachable: Boolean(hit && (hit === button || button.contains(hit))), inside: inside(r) };
+          }),
+        };
+      })()`);
+      const smallestStages: Record<string, Record<string, { before: StagesAtSmallest; after: StagesAtSmallest }>> = {};
+      const stagesInOrder = ["brief", "script", "library", "storyboard", "post"];
+      for (const skin of SKINS) {
+        smallestStages[skin] = {};
+        for (const language of ["en", "zh"] as const) {
+          await evaluate(`localStorage.setItem("omb-skin", ${JSON.stringify(skin)}); localStorage.setItem("omb-language", ${JSON.stringify(language)}); true`);
+          await browser("open", preview.previewUrl);
+          await openProject();
+          await settle();
+          const clickStage = async (stageName: string) => {
+            await settle();
+            const form = (await stagesAtSmallest()).form;
+            await clickSelector(`${view} [data-board-stage-form] [data-stage-list="${form}"] [data-board-stage="${stageName}"]`);
+            await settle();
+          };
+          const before = await stagesAtSmallest();
+          expect(["full", "compact"]).toContain(before.form);
+          expect(before.barInside).toBe(true);
+          expect(before.overflowX).toBe("hidden");
+          expect(before.stages.map((one) => one.stage)).toEqual(stagesInOrder);
+          for (const control of before.stages) {
+            expect({ stage: control.stage, reachable: control.reachable, inside: control.inside }).toEqual({ stage: control.stage, reachable: true, inside: true });
+          }
+          await shot(`28-smallest-window-stages-${language}-${skin}.png`);
+          await clickStage("script");
+          await clickSelector(`${view} ${card("stack")} article`);
+          await waitFor(`document.querySelector("[data-board-stack-episode='1']")`, "the stack's menu at the smallest window");
+          await clickSelector("[data-board-stack-episode='1']");
+          await waitFor(`document.querySelector(${JSON.stringify(`${view} ${card("ep-1")}`)})`, "EP01 unfolded at the smallest window");
+          await settle();
+          await clickStage("post");
+          await expect.poll(async () => (await drawn()).includes(posterOf(1)), { timeout: 15_000, message: "the post stage's editor in view" }).toBe(true);
+          const after = await stagesAtSmallest();
+          expect(after.stages.map((one) => [one.stage, one.named])).toEqual(before.form === "compact"
+            ? stagesInOrder.map((stage) => [stage, stage === "post"])
+            : stagesInOrder.map((stage) => [stage, true]));
+          await shot(`29-smallest-window-post-${language}-${skin}.png`);
+          smallestStages[skin]![language] = { before, after };
+        }
+      }
+      evidence.smallestWindowStages = smallestStages;
+      await evaluate('localStorage.setItem("omb-language", "en"); true');
       expect(JSON.stringify((await browser("console")).messages)).not.toMatch(/Uncaught|ReferenceError|TypeError/);
     } catch (error) {
       await shot("failed-app.png").catch(() => {});

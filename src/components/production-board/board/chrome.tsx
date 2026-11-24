@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Check, ChevronRight, Map as MapIcon, Maximize, Waypoints, ZoomIn, ZoomOut } from "lucide-react";
 import { episodeCode, type ProductionEpisodeStatus } from "../../../../shared/production";
 import { MENU_GUTTER, MENU_HEADING, MENU_ITEM, MENU_SHEET } from "@/components/menu-recipe";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { BoardLayout } from "@/lib/production-board/layout";
 import { BOARD_STAGES, type BoardStage } from "@/lib/production-board/overlay";
+import { compactStageName } from "@/lib/production-board/stages";
 import type { BoardCardKind, BoardStageState } from "@/lib/production-board/types";
 import { episodeStatus, TONE_DOT, type BoardTone } from "../cards";
 import type { BoardCamera } from "./camera";
@@ -16,9 +17,14 @@ export const CHROME_SURFACE = "popover-surface pointer-events-auto flex items-ce
 /** Keeps a bar centred at the top clear of the overlay's side panel in the top-right corner. */
 export const PANEL_ROOM = "pe-[20rem]";
 
+/** What that side panel may take of the board's width, in pixels, until the board has measured it. */
+export const PANEL_ROOM_PX = 320;
+
 const STAGE_TONE: Record<BoardStageState, BoardTone> = { wait: "idle", active: "working", done: "done", failed: "failed" };
 
 export const stageName = (stage: BoardStage) => t(`productionBoard.stage.${stage}`);
+
+const stageLabel = (stage: BoardStage, state: BoardStageState) => `${stageName(stage)} · ${t(`productionBoard.stageState.${state}`)}`;
 
 function ChromeButton({ label, pressed, onClick, children }: { label: string; pressed?: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -28,32 +34,104 @@ function ChromeButton({ label, pressed, onClick, children }: { label: string; pr
   );
 }
 
-export function BoardStageBar({ stages, onFocus, roomForPanel }: { stages: Record<BoardStage, BoardStageState>; onFocus: (stage: BoardStage) => void; roomForPanel: boolean }) {
+function StageButtons({ stages, named, compact, onFocus }: { stages: Record<BoardStage, BoardStageState>; named?: BoardStage; compact?: boolean; onFocus: (stage: BoardStage) => void }) {
+  return BOARD_STAGES.map((stage, at) => {
+    const state = stages[stage];
+    const label = stageLabel(stage, state);
+    const showsName = !compact || named === stage;
+    return (
+      <li key={stage} className="flex shrink-0 items-center">
+        {!compact && at > 0 ? <ChevronRight size={14} aria-hidden="true" className="text-ink-tertiary rtl:rotate-180" /> : null}
+        <button
+          type="button"
+          data-board-stage={stage}
+          data-stage-state={state}
+          aria-label={label}
+          title={label}
+          className={cn(
+            "flex h-7 items-center rounded-lg hover:bg-menu-hover",
+            showsName ? "gap-1.5 px-2.5 text-[13px] font-medium leading-5" : "w-7 justify-center",
+            state === "wait" ? "text-ink-secondary" : "text-ink",
+          )}
+          onClick={() => onFocus(stage)}
+        >
+          <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TONE_DOT[STAGE_TONE[state]])} />
+          {showsName ? stageName(stage) : null}
+        </button>
+      </li>
+    );
+  });
+}
+
+/** What the bar keeps between the board's edge and its stages. */
+const BAR_INSET = 12;
+
+/** The whole bar while its stages fit the room beside the side panel, else the compact one, which fits with far less. */
+const stageBarForm = (available: number, fullWidth: number) => (fullWidth <= available ? "full" : "compact");
+
+function stageBarSizes(nav: HTMLElement, insetEnd: number): { available: number; fullWidth: number } {
+  const full = nav.querySelector<HTMLElement>('[data-stage-list="full"]');
+  const surface = nav.querySelector<HTMLElement>("[data-stage-surface]");
+  const style = surface ? getComputedStyle(surface) : null;
+  const surfaceInsets = style ? (Number.parseFloat(style.paddingInlineStart) || 0) + (Number.parseFloat(style.paddingInlineEnd) || 0) : 0;
+  return { available: nav.clientWidth - BAR_INSET * 2 - insetEnd, fullWidth: (full?.scrollWidth ?? 0) + surfaceInsets };
+}
+
+/** The five stages with their states: the whole bar when it fits the room left beside the side panel, else one small
+ * control per stage in the same order, naming only the stage in view. Neither form scrolls across. */
+export function BoardStageBar({ stages, viewStage, insetEnd, onFocus }: {
+  stages: Record<BoardStage, BoardStageState>;
+  /** The stage the view is on, which the compact bar names, or none when the view is beyond them all. */
+  viewStage?: BoardStage;
+  /** What the side panel takes of the board's width, so the bar keeps clear of it. */
+  insetEnd: number;
+  onFocus: (stage: BoardStage) => void;
+}) {
+  const navRef = useRef<HTMLElement>(null);
+  const [measured, setMeasured] = useState<{ available: number; fullWidth: number } | null>(null);
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const take = () => {
+      const next = stageBarSizes(nav, insetEnd);
+      if (!nav.clientWidth || !next.fullWidth) return;
+      setMeasured((last) => (last?.available === next.available && last.fullWidth === next.fullWidth ? last : next));
+    };
+    take();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(take);
+    observer.observe(nav);
+    return () => observer.disconnect();
+  }, [insetEnd]);
+  const form = measured ? stageBarForm(measured.available, measured.fullWidth) : "full";
+  const compact = form === "compact";
+  const named = compactStageName(stages, viewStage);
   return (
-    <nav data-board-chrome="" aria-label={t("productionBoard.stages.label")} className={cn("pointer-events-none absolute inset-x-0 top-3 z-[80] flex justify-center px-3", roomForPanel && PANEL_ROOM)}>
-      <ol className={cn(CHROME_SURFACE, "max-w-full overflow-x-auto")}>
-        {BOARD_STAGES.map((stage, at) => {
-          const state = stages[stage];
-          const label = `${stageName(stage)} · ${t(`productionBoard.stageState.${state}`)}`;
-          return (
-            <li key={stage} className="flex shrink-0 items-center">
-              {at > 0 ? <ChevronRight size={14} aria-hidden="true" className="text-ink-tertiary rtl:rotate-180" /> : null}
-              <button
-                type="button"
-                data-board-stage={stage}
-                data-stage-state={state}
-                aria-label={label}
-                title={label}
-                className={cn("flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium leading-5 hover:bg-menu-hover", state === "wait" ? "text-ink-secondary" : "text-ink")}
-                onClick={() => onFocus(stage)}
-              >
-                <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TONE_DOT[STAGE_TONE[state]])} />
-                {stageName(stage)}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+    <nav
+      ref={navRef}
+      data-board-chrome=""
+      aria-label={t("productionBoard.stages.label")}
+      data-board-stage-form={form}
+      data-board-stage-reserve={String(Math.round(insetEnd))}
+      data-stage-available={measured ? String(measured.available) : ""}
+      data-stage-full={measured ? String(measured.fullWidth) : ""}
+      className="pointer-events-none absolute inset-x-0 top-3 z-[80] flex justify-center"
+      style={{ paddingInlineStart: BAR_INSET, paddingInlineEnd: BAR_INSET + insetEnd }}
+    >
+      <div data-stage-surface="" className={cn(CHROME_SURFACE, "relative max-w-full flex-nowrap overflow-hidden")}>
+        <ol
+          data-stage-list="full"
+          aria-hidden={compact || undefined}
+          className={cn("items-center gap-0.5", compact ? "invisible absolute start-1 top-1 flex w-max" : "flex")}
+        >
+          <StageButtons stages={stages} onFocus={onFocus} />
+        </ol>
+        {compact ? (
+          <ol data-stage-list="compact" className="flex min-w-0 flex-wrap items-center justify-center gap-0.5">
+            <StageButtons stages={stages} named={named} compact onFocus={onFocus} />
+          </ol>
+        ) : null}
+      </div>
     </nav>
   );
 }

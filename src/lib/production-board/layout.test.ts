@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { botNodeId } from "../../../shared/project-canvas";
 import { buildBoard } from "./board";
 import type { Board } from "./types";
-import { layoutBoard, type BoardCardSizes, type BoardRect } from "./layout";
+import { layoutBoard, stageNearest, type BoardCardSizes, type BoardRect } from "./layout";
+import { BOARD_STAGES, type BoardStage } from "./overlay";
 import { BOARD_BOTS, productionBoardSample } from "@/testing/production-board-sample";
 
 const SIZES: BoardCardSizes = {
@@ -79,6 +80,33 @@ describe("the board's layout", () => {
     const again = layoutBoard(buildBoard(moved), sizeOf);
     expect(again.rects.get(WRITER)).toMatchObject({ x: -5000, y: 7000 });
     expect(again.rects.get(LEAD)).toEqual(rect(LEAD));
+  });
+
+  it("knows the stage a point is in, and the nearer one for a point between two", () => {
+    const middle = (one: BoardRect) => ({ x: one.x + one.width / 2, y: one.y + one.height / 2 });
+    for (const stage of BOARD_STAGES) expect(stageNearest(layout.stages, middle(layout.stages[stage]!))).toBe(stage);
+    const brief = layout.stages.brief!;
+    const script = layout.stages.script!;
+    const gap = script.x - (brief.x + brief.width);
+    const y = brief.y + brief.height / 2;
+    expect(gap).toBeGreaterThan(0);
+    expect(stageNearest(layout.stages, { x: brief.x + brief.width + gap / 4, y })).toBe("brief");
+    expect(stageNearest(layout.stages, { x: script.x - gap / 4, y })).toBe("script");
+    expect(stageNearest({}, { x: 0, y: 0 })).toBeUndefined();
+  });
+
+  it("calls a point inside two stages' spans after the earlier stage, and a point beyond them all after the nearest across the board", () => {
+    const spans: Partial<Record<BoardStage, BoardRect>> = {
+      brief: { x: 0, y: 0, width: 400, height: 300 },
+      script: { x: 300, y: 100, width: 200, height: 200 },
+      post: { x: 1200, y: 0, width: 300, height: 300 },
+    };
+    expect(stageNearest(spans, { x: 350, y: 200 })).toBe("brief");
+    expect(stageNearest(spans, { x: 450, y: 200 })).toBe("script");
+    expect(stageNearest(spans, { x: -300, y: 150 })).toBe("brief");
+    expect(stageNearest(spans, { x: 2000, y: 150 })).toBe("post");
+    expect(stageNearest(spans, { x: 1000, y: 900 })).toBe("post");
+    expect(stageNearest(spans, { x: 500, y: 900 })).toBe("script");
   });
 
   it("does not move the rows above an episode the person unfolds", () => {
