@@ -12,7 +12,7 @@ import { splitTranscriptAttachments } from "@/lib/composer-attachments";
 import { t } from "@/lib/i18n";
 import type { CanvasExchangeMessage } from "@/lib/project-canvas/types";
 
-const BUBBLE = "max-w-[85%] rounded-4xl px-3 py-1.5 text-[13px] leading-[18px]";
+const BUBBLE = "max-w-[88%] rounded-xl px-3 py-2 text-[13px] leading-[18px]";
 
 export interface ChatExchangeProps {
   /** Null until the first read comes back. */
@@ -30,18 +30,18 @@ export const ChatExchange = memo(function ChatExchange({ messages, botName, read
   const follow = useCallback(() => followBottomGrowth(scrollRef.current!, following.current), []);
   useBottomFollowResize(scrollRef, listRef, botName, follow);
   return (
-    <div ref={scrollRef} data-board-exchange="" className="min-h-0 flex-1 overflow-y-auto px-4" onScroll={() => (following.current = atBottom(scrollRef.current!))}>
-      <div ref={listRef} className="flex flex-col gap-2 py-3">
+    <div ref={scrollRef} data-board-exchange="" className="min-h-0 max-h-[264px] flex-1 overflow-y-auto p-3 group-data-[placement=sheet]:max-h-[150px]" onScroll={() => (following.current = atBottom(scrollRef.current!))}>
+      <div ref={listRef} role="log" aria-live="polite" aria-label={botName} className="flex flex-col gap-2.5">
         {readError ? <p role="alert" className="text-[12px] leading-4 text-danger">{readError}</p> : null}
         {messages === null && !readError ? <LoaderCircle size={16} role="img" aria-label={t("boardPanels.chat.loading")} className="animate-spin self-center text-ink-tertiary motion-reduce:animate-none" /> : null}
         {messages?.length === 0 ? <p className="text-[12px] leading-4 text-ink-tertiary">{t("boardPanels.chat.empty", { name: botName })}</p> : null}
         {messages?.map((message) => message.role === "person" ? (
-          <div key={message.id} dir="auto" className={cn(BUBBLE, "self-end bg-bubble-user")}>
+          <div key={message.id} dir="auto" className={cn(BUBBLE, "self-end rounded-te-sm bg-bubble-user")}>
             <span className="sr-only">{t("boardPanels.chat.you")}: </span>
             <SentMessage text={message.text} />
           </div>
         ) : (
-          <div key={message.id} dir="auto" className={cn(BUBBLE, "self-start bg-ink/[0.06] text-ink")}>
+          <div key={message.id} dir="auto" className={cn(BUBBLE, "self-start rounded-ts-sm border border-hairline bg-card text-ink")}>
             <span className="sr-only">{botName}: </span>
             <ChatMarkdown text={message.text} />
           </div>

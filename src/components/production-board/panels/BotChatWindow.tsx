@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type KeyboardEvent, type RefObject, type SetStateAction } from "react";
-import { ArrowUp, Crown, ExternalLink, LoaderCircle, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, Crown, ExternalLink, LoaderCircle, Square, X } from "lucide-react";
 import { botNodeId, CANVAS_TASK_REFERENCES_MAX, type CanvasBotState, type CanvasFileRef } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { activeLocale, t } from "@/lib/i18n";
@@ -119,45 +119,64 @@ export const BotChatWindow = memo(function BotChatWindow(props: BotChatWindowPro
       role="dialog"
       aria-label={t("boardPanels.chat.label", { name: bot.name })}
       data-board-chat=""
+      data-bot-state={bot.status}
       style={sheet ? undefined : { left: 0, top: 0 }}
-      className={cn("pointer-events-auto absolute flex", sheet ? "inset-x-0 bottom-0 max-h-[70%]" : "max-h-[min(640px,calc(100%-24px))] w-96")}
+      className={cn(
+        "group/chat pointer-events-auto absolute flex flex-col",
+        sheet ? "inset-x-2 bottom-2 max-h-[min(70%,480px)]" : "max-h-[calc(100%-72px)] w-[420px]",
+      )}
       onKeyDown={onKeyDown}
     >
-      <div className={cn("popover-surface flex min-h-0 w-full animate-pop-in flex-col overflow-hidden border border-hairline/50 bg-menu motion-reduce:animate-none", sheet ? "rounded-t-xl border-b-0" : "rounded-xl")}>
-        <header className="flex items-center gap-2.5 border-b border-hairline/50 px-4 py-3">
-          <BotFace name={bot.name} look={look} size={32} />
+      <span
+        data-chat-arrow=""
+        aria-hidden="true"
+        className="pointer-events-none absolute z-10 hidden size-3 rotate-45 bg-menu group-data-[side=right]/chat:-start-1.5 group-data-[side=right]/chat:block group-data-[side=right]/chat:border-b group-data-[side=right]/chat:border-s group-data-[side=right]/chat:border-hairline group-data-[side=left]/chat:-end-1.5 group-data-[side=left]/chat:block group-data-[side=left]/chat:border-e group-data-[side=left]/chat:border-t group-data-[side=left]/chat:border-hairline"
+      />
+      <div data-chat-surface="" className="popover-surface pointer-events-auto relative flex min-h-0 animate-fade-in flex-col overflow-hidden rounded-[14px] border border-hairline bg-menu motion-reduce:animate-none">
+        <header className="flex flex-none items-center gap-2.5 border-b border-hairline px-2 pb-2.5 pe-2 ps-3 pt-2.5">
+          <span
+            data-chat-avatar=""
+            data-bot-state={bot.status}
+            className={cn(
+              "grid size-[34px] shrink-0 place-items-center overflow-hidden rounded-[9px] border",
+              bot.status === "working" || bot.status === "queued" ? "border-warning bg-warning text-app" : "border-hairline bg-control",
+            )}
+          >
+            <BotFace name={bot.name} look={look} size={26} />
+          </span>
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1 text-[13px] font-medium leading-[18px] text-ink">
-              <span className="truncate">{bot.name}</span>
+            <div className="flex min-w-0 items-center gap-1">
+              <span data-chat-name="" className="truncate text-[15px] font-semibold leading-5 text-ink">{bot.name}</span>
               {bot.lead ? <Crown size={14} role="img" aria-label={t("boardPanels.team.lead")} className="shrink-0 text-warning" /> : null}
             </div>
-            <div className="flex min-w-0 items-center gap-1.5 text-[12px] leading-4 text-ink-tertiary">
-              {bot.title ? <span className="truncate">{bot.title}</span> : null}
-              <BotStatus status={bot.status} />
-            </div>
+            <div data-chat-role="" className="truncate text-[12px] leading-4 text-ink-tertiary">{bot.title}</div>
           </div>
-          <button type="button" className="ui-icon-button size-8" aria-label={t("boardPanels.close")} title={t("boardPanels.close")} onClick={onClose}>
+          <BotStatus status={bot.status} />
+          <button type="button" className="ui-icon-button size-7 shrink-0" aria-label={t("boardPanels.close")} title={t("boardPanels.close")} onClick={onClose}>
             <X size={16} aria-hidden="true" />
           </button>
         </header>
         {picking ? (
-          <div className="flex min-h-0 flex-1 flex-col px-4 py-3">
+          <div data-chat-picker="" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
             <ReferencePicker index={index} taken={taken} pictureUrl={pictureUrl} onAdd={add} onDone={closePicker} />
           </div>
         ) : <ChatExchange messages={messages} botName={bot.name} readError={readError} locale={locale} />}
-        <div className="flex flex-col gap-2 border-t border-hairline/50 px-4 pb-3 pt-2.5">
+        <div className={cn("flex flex-none flex-col gap-2 p-3", picking ? "border-t-0" : "border-t border-hairline")}>
           {bot.waiting ? <ChatWaiting bot={bot} waiting={bot.waiting} onOpenChat={() => backend.openChat(projectId, botId, bot.waiting!.threadId)} /> : null}
           <ReferenceTray connected={connected} extras={extras} botName={bot.name} pictureUrl={pictureUrl} pickerOpen={picking} onPick={() => (picking ? closePicker() : setPicking(true))} onRemove={remove} />
           {overReferences > 0 ? <p className="text-[12px] leading-4 text-danger">{t("boardPanels.chat.tooManyReferences", { max: CANVAS_TASK_REFERENCES_MAX, over: overReferences })}</p> : null}
           <textarea
             ref={composerRef}
             dir="auto"
-            rows={2}
+            rows={3}
             value={session.draft}
             disabled={readOnly}
             aria-label={t("boardPanels.chat.message", { name: bot.name })}
             placeholder={t("boardPanels.chat.placeholder", { name: bot.name })}
-            className="max-h-32 min-h-14 w-full resize-none rounded-lg border border-hairline bg-transparent px-2.5 py-2 text-[13px] leading-[18px] text-ink [field-sizing:content] placeholder:text-ink-tertiary disabled:opacity-60"
+            className={cn(
+              "w-full resize-none rounded-[10px] border border-hairline bg-app px-3 py-2.5 text-[14px] leading-[1.55] text-ink outline-none placeholder:text-ink-tertiary focus:border-ink-secondary disabled:opacity-60",
+              sheet ? "h-16" : "h-[92px]",
+            )}
             onChange={(event) => setSession((current) => ({ ...current, draft: event.target.value }))}
             onKeyDown={(event) => {
               if (!sendsMessage(event.nativeEvent, sendKey)) return;
@@ -169,19 +188,36 @@ export const BotChatWindow = memo(function BotChatWindow(props: BotChatWindowPro
           {problem ? <p role="alert" className="text-[12px] leading-4 text-danger">{problem}</p> : null}
           {notice ? <p role="status" className="text-[12px] leading-4 text-ink-secondary">{notice}</p> : null}
           <div className="flex items-center gap-2">
-            <button type="button" className="ui-button ui-button-md" onClick={() => backend.openChat(projectId, botId, bot.output?.threadId)}>
-              <ExternalLink size={14} aria-hidden="true" />
-              {t("boardPanels.chat.openInChat")}
+            <button
+              type="button"
+              data-chat-reference-pill=""
+              aria-expanded={picking}
+              title={t("boardPanels.chat.addReference")}
+              className="inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full border border-hairline pe-3.5 ps-3 text-[14px] leading-none text-ink-secondary transition-colors duration-[120ms] hover:bg-card hover:text-ink motion-reduce:transition-none"
+              onClick={() => (picking ? closePicker() : setPicking(true))}
+            >
+              <AtSign size={15} aria-hidden="true" />
+              {t("boardPanels.chat.mention")}
             </button>
             <span className="flex-1" />
             {busy ? (
-              <button type="button" className="ui-button ui-button-md" disabled={readOnly} onClick={stop}>
+              <button type="button" className="ui-button ui-button-sm" disabled={readOnly} onClick={stop}>
                 <Square size={14} aria-hidden="true" />
                 {t("boardPanels.chat.stop")}
               </button>
             ) : null}
-            <button type="button" className="ui-button ui-button-md ui-button-primary" disabled={!sendable} onClick={() => void send()}>
-              {sending ? <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={14} aria-hidden="true" />}
+            <button type="button" className="ui-button ui-button-sm" onClick={() => backend.openChat(projectId, botId, bot.output?.threadId)}>
+              <ExternalLink size={14} aria-hidden="true" />
+              {t("boardPanels.chat.openInChat")}
+            </button>
+            <button
+              type="button"
+              data-chat-send=""
+              disabled={!sendable}
+              onClick={() => void send()}
+              className="inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full bg-warning pe-4 ps-3 text-[14px] font-semibold leading-none text-app transition-colors duration-[120ms] hover:brightness-105 disabled:bg-control disabled:text-ink-tertiary motion-reduce:transition-none"
+            >
+              {sending ? <LoaderCircle size={15} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={15} aria-hidden="true" />}
               {t("boardPanels.chat.send")}
             </button>
           </div>
@@ -201,6 +237,13 @@ function usePlacement(windowRef: RefObject<HTMLElement | null>, { bot, layer, re
     const placement = placeChat({ anchor: anchorOf(anchorId), size: { width: element.offsetWidth, height: element.offsetHeight }, layer, reserved });
     element.style.transform = placement.mode === "sheet" ? "" : `translate(${Math.round(placement.x)}px, ${Math.round(placement.y)}px)`;
     element.dataset.placement = placement.mode;
+    const arrow = element.querySelector<HTMLElement>("[data-chat-arrow]");
+    if (placement.mode !== "beside" || placement.arrow === null) {
+      delete element.dataset.side;
+      return;
+    }
+    element.dataset.side = placement.side;
+    if (arrow) arrow.style.top = `${Math.round(placement.arrow) - 6}px`;
   }, [windowRef]);
   useLayoutEffect(() => {
     input.current = { anchorId: botNodeId(bot.botId), layer, reserved, anchorOf };

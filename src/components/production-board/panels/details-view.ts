@@ -19,7 +19,13 @@ const DRAFT_UNAVAILABLE_KEYS: Record<NonNullable<ProjectDraftWire["reason"]>, Lo
   "unsupported-version": "boardPanels.draft.unsupportedVersion",
 };
 
-export type DetailsFact = { label: string; text: string; danger?: true } | { label: string; colors: readonly string[] };
+export type DetailsFact = { label: string; text: string; danger?: true };
+
+/** A take of a shot's video, numbered from one; `current` is the one the film uses. */
+export interface DetailsTake {
+  number: number;
+  current: boolean;
+}
 
 /** What an asset's details show, worded in the language of the moment. */
 export interface DetailsView {
@@ -33,17 +39,27 @@ export interface DetailsView {
   /** An episode shows its logline among its facts instead. */
   subtitle: string | undefined;
   tags: readonly string[];
+  /** A character's or a scene's colours, shown under its picture. */
+  palette: readonly string[];
   preview: { type: "image" | "video" | "audio"; url: string } | null;
+  /** A picture's or a video's own size, such as "768 × 1024". */
+  resolution: string | undefined;
+  /** A shot video's takes, oldest first. */
+  takes: readonly DetailsTake[];
+  /** A document's words, or a shot's design, set as a still sheet in place of a picture. */
+  still: { heading: string; body: string | undefined; sketch: boolean } | undefined;
   facts: readonly DetailsFact[];
   content: string | undefined;
   contentHeading: LocaleKey | undefined;
   /** What it was generated from: a picture's prompt for a character or a scene, a shot's own for a shot and its video. */
   prompt: string | undefined;
   /** The shots a character or a scene is in; null for anything else. */
-  appearances: ReadonlyArray<{ nodeId: string; cardId: string; code: string; title: string }> | null;
+  appearances: ReadonlyArray<{ nodeId: string; cardId: string; code: string; title: string; picture: string | undefined }> | null;
   /** The bot asked to change it, when it is in the project. */
   owner: { botId: string; name: string } | null;
 }
+
+const DOCUMENT_KINDS = new Set<AssetKind>(["brief", "plan", "text", "file"]);
 
 export function detailsView(
   asset: BoardAsset,
@@ -55,6 +71,7 @@ export function detailsView(
   const metadata = asset.node.metadata;
   const card = metadata?.card;
   const shown = previewOf(asset);
+  const content = metadata?.content;
   return {
     nodeId: asset.node.id,
     cardId: asset.cardId,
@@ -64,16 +81,47 @@ export function detailsView(
     badge: card?.badge,
     subtitle: asset.kind === "episode" ? undefined : card?.subtitle,
     tags: card?.tags ?? [],
+    palette: card?.palette ?? [],
     preview: shown ? { type: shown.type, url: fileUrl(shown.file) } : null,
+    resolution: resolutionOf(asset),
+    takes: takesOf(asset),
+    still: shown ? undefined : stillOf(asset, content),
     facts: factsOf(asset, index, drafts),
-    content: metadata?.content,
+    content,
     contentHeading: CONTENT_HEADINGS[asset.kind],
     prompt: promptOf(asset, index),
     appearances: asset.kind === "character" || asset.kind === "scene"
-      ? index.appearances(asset).map((shot) => ({ nodeId: shot.node.id, cardId: shot.cardId, code: assetCode(shot), title: shot.title }))
+      ? index.appearances(asset).map((shot) => {
+        const file = shot.media?.metadata?.file;
+        return { nodeId: shot.node.id, cardId: shot.cardId, code: assetCode(shot), title: shot.title, picture: file ? fileUrl(file) : undefined };
+      })
       : null,
     owner: owner ? { botId: owner.botId, name: owner.name } : null,
   };
+}
+
+function resolutionOf(asset: BoardAsset): string | undefined {
+  const media = asset.media?.metadata;
+  return media?.naturalWidth && media.naturalHeight ? `${media.naturalWidth} × ${media.naturalHeight}` : undefined;
+}
+
+function takesOf(asset: BoardAsset): DetailsTake[] {
+  return (asset.takes ?? []).map((take, at) => ({ number: at + 1, current: take.metadata?.selected === true }));
+}
+
+/** A shot's design, or a document's words, as the paper its card would be on the board. */
+function stillOf(asset: BoardAsset, content: string | undefined): DetailsView["still"] {
+  if (asset.kind === "shot") {
+    const design = asset.node.metadata?.shot;
+    const length = asset.node.metadata?.settings?.seconds;
+    return {
+      heading: asset.title,
+      sketch: true,
+      body: [design?.size, design?.move, length ? t("boardPanels.fact.seconds", { count: length }) : undefined, design?.audio].filter(Boolean).join(" · "),
+    };
+  }
+  if (content && DOCUMENT_KINDS.has(asset.kind)) return { heading: asset.title, body: content, sketch: false };
+  return undefined;
 }
 
 function previewOf(asset: BoardAsset): { type: "image" | "video" | "audio"; file: CanvasFileRef } | null {
@@ -131,11 +179,7 @@ function factsOf(asset: BoardAsset, index: BoardIndex, drafts: Record<number, Pr
       ];
     }
     default: {
-      const palette = metadata?.card?.palette;
-      return [
-        ...(metadata?.card?.rows ?? []).map(([label, value]) => fact(label, value)),
-        ...(palette?.length ? [{ label: t("boardPanels.fact.colors"), colors: palette } satisfies DetailsFact] : []),
-      ];
+      return (metadata?.card?.rows ?? []).map(([label, value]) => fact(label, value));
     }
   }
 }

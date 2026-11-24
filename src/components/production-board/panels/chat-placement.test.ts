@@ -8,18 +8,23 @@ const panel = 320;
 
 describe("placeChat", () => {
   it("puts the window to the right of the card, clear of the side panel", () => {
-    expect(placeChat({ anchor: { ...card, x: 100 }, size, layer, reserved: panel })).toEqual({ mode: "beside", side: "right", x: 436, y: 200 });
+    expect(placeChat({ anchor: { ...card, x: 100 }, size, layer, reserved: panel })).toEqual({ mode: "beside", side: "right", x: 436, y: 200, arrow: 28 });
   });
 
   it("flips to the card's left when the right has no room", () => {
-    expect(placeChat({ anchor: { ...card, x: 700 }, size, layer, reserved: panel })).toEqual({ mode: "beside", side: "left", x: 284, y: 200 });
-    expect(placeChat({ anchor: { ...card, x: 1000 }, size, layer, reserved: 0 })).toEqual({ mode: "beside", side: "left", x: 584, y: 200 });
+    expect(placeChat({ anchor: { ...card, x: 700 }, size, layer, reserved: panel })).toMatchObject({ mode: "beside", side: "left", x: 284, y: 200 });
+    expect(placeChat({ anchor: { ...card, x: 1000 }, size, layer, reserved: 0 })).toMatchObject({ mode: "beside", side: "left", x: 584 });
   });
 
-  it("stays on the screen when neither side has room", () => {
-    expect(placeChat({ anchor: { x: 300, y: 200, width: 700, height: 600 }, size, layer, reserved: panel })).toEqual({ mode: "beside", side: "right", x: 720, y: 200 });
-    expect(placeChat({ anchor: { ...card, x: 100, y: 700 }, size, layer, reserved: panel })).toMatchObject({ mode: "beside", y: 388 });
-    expect(placeChat({ anchor: { ...card, x: 100, y: -100 }, size, layer, reserved: panel })).toMatchObject({ mode: "beside", y: 12 });
+  it("stays on the screen when neither side has room, and drops the pointer when it would leave the edge", () => {
+    expect(placeChat({ anchor: { x: 300, y: 200, width: 700, height: 600 }, size, layer, reserved: panel })).toEqual({ mode: "beside", side: "right", x: 720, y: 200, arrow: 28 });
+    expect(placeChat({ anchor: { ...card, x: 100, y: 700 }, size, layer, reserved: panel })).toMatchObject({ mode: "beside", y: 388, arrow: 340 });
+    expect(placeChat({ anchor: { ...card, x: 100, y: -100 }, size, layer, reserved: panel })).toMatchObject({ mode: "beside", y: 12, arrow: null });
+  });
+
+  it("keeps the pointer on the card's top edge while the window stops at the bottom, and drops it past that", () => {
+    expect(placeChat({ anchor: { ...card, x: 100, y: 470 }, size, layer, reserved: panel })).toMatchObject({ mode: "beside", y: 388, arrow: 110 });
+    expect(placeChat({ anchor: { ...card, x: 100, y: 900 }, size, layer, reserved: panel })).toMatchObject({ arrow: null });
   });
 
   it("docks at the top beside the side panel when the card is not on the screen", () => {
