@@ -1,3 +1,4 @@
+import type { CanvasPoint } from "../../../shared/project-canvas";
 import type { Board, BoardCard, BoardCardKind } from "./types";
 import { BOARD_STAGES, type BoardStage } from "./overlay";
 
@@ -45,6 +46,34 @@ export function unionRect(rects: Iterable<BoardRect>): BoardRect | undefined {
     y2 = Math.max(y2, rect.y + rect.height);
   }
   return x1 === Infinity ? undefined : { x: x1, y: y1, width: x2 - x1, height: y2 - y1 };
+}
+
+const nearestDistance = (rect: BoardRect, point: CanvasPoint) => {
+  const dx = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.width));
+  const dy = Math.max(rect.y - point.y, 0, point.y - (rect.y + rect.height));
+  return dx * 4 + dy;
+};
+
+/** The stage a point of the board lies in: the first of two that overlap there, else the nearest, a step across the
+ * board weighing more than one down it; none when the board has no stage. */
+export function stageNearest(stages: Partial<Record<BoardStage, BoardRect>>, point: CanvasPoint): BoardStage | undefined {
+  const spans: Array<readonly [BoardStage, BoardRect]> = [];
+  for (const stage of BOARD_STAGES) {
+    const rect = stages[stage];
+    if (rect) spans.push([stage, rect]);
+  }
+  const inside = spans.find(([, rect]) => point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height);
+  if (inside) return inside[0];
+  let nearest: BoardStage | undefined;
+  let best = Infinity;
+  for (const [stage, rect] of spans) {
+    const distance = nearestDistance(rect, point);
+    if (distance < best) {
+      best = distance;
+      nearest = stage;
+    }
+  }
+  return nearest;
 }
 
 const columnOf = (card: BoardCard): Column | undefined => {

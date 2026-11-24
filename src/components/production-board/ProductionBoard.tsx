@@ -7,7 +7,7 @@ import { buildBoard } from "@/lib/production-board/board";
 import { centreOn, FAR_ZOOM, fitRect, intersects, toScreen, visibleRect, wheelZoomFactor, zoomAt, type BoardView } from "@/lib/production-board/camera";
 import { edgePaths } from "@/lib/production-board/edge-paths";
 import { visibleEdges } from "@/lib/production-board/edges";
-import { layoutBoard, unionRect, type BoardLayout, type BoardRect } from "@/lib/production-board/layout";
+import { layoutBoard, stageNearest, unionRect, type BoardLayout, type BoardRect } from "@/lib/production-board/layout";
 import { BOARD_STAGES, type BoardAnchor, type BoardOpened, type BoardOverlayProps, type BoardStage } from "@/lib/production-board/overlay";
 import type { Board, BoardCard, RetryTarget } from "@/lib/production-board/types";
 import { canvasErrorText, type CanvasBackend } from "@/lib/project-canvas/backend";
@@ -15,7 +15,7 @@ import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { BoardEdges } from "./board/BoardEdges";
 import { BoardCamera } from "./board/camera";
 import { BoardCardView, cardSize, FarCard, type BoardCardActions } from "./board/card-view";
-import { BoardMinimap, BoardStageBar, BoardToolbar, PANEL_ROOM, StackMenu, type StackMenuEpisode } from "./board/chrome";
+import { BoardMinimap, BoardStageBar, BoardToolbar, PANEL_ROOM_PX, StackMenu, type StackMenuEpisode } from "./board/chrome";
 
 /** What the board asks of the project; each may fail with an error the board shows. */
 export interface BoardHost {
@@ -45,6 +45,7 @@ interface Shown {
   edges: ReadonlySet<string>;
   far: boolean;
   zoom: number;
+  stage?: BoardStage;
 }
 
 type Press =
@@ -61,7 +62,17 @@ const PAN_STEP = 80;
 const KEY_ZOOM = 1.2;
 const GRID = 24;
 const FOCUS_ZOOM = 0.8;
+const MINIMAP_UNFOLDS_FROM = 900;
 const CHROME = "[data-board-chrome], [data-board-overlay]";
+
+/** The room the overlay takes from the board's right edge: the width it marks on the element it draws beside that edge
+ * (`data-board-room`, its panel or its folded button, the gap already counted in), else the panel's width. */
+function markedRoom(layer: HTMLElement): number {
+  let width = 0;
+  for (const room of layer.querySelectorAll<HTMLElement>("[data-board-room]")) width = Math.max(width, room.getBoundingClientRect().width);
+  return width > 0 ? Math.round(width) : PANEL_ROOM_PX;
+}
+
 /** Controls that use a pressed pointer's movement themselves: a field selects text, a player scrubs, a link starts the browser's own drag. */
 const HOLDS_POINTER = "a[href], input, textarea, select, video[controls], audio[controls], [contenteditable]";
 const TYPING = "input, textarea, select, [contenteditable], [role=dialog], [role=menu], [data-canvas-shortcuts-ignore]";
@@ -115,12 +126,16 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
   const [drag, setDrag] = useState<{ cardId: string; dx: number; dy: number } | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [showRefs, setShowRefs] = useState(false);
-  const [minimap, setMinimap] = useState(true);
+  const [wide, setWide] = useState(false);
+  const [minimapChoice, setMinimapChoice] = useState<boolean | null>(null);
+  const minimap = minimapChoice ?? wide;
   const [stackMenu, setStackMenu] = useState<CanvasPoint | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [reserve, setReserve] = useState(PANEL_ROOM_PX);
   const [shown, setShown] = useState<Shown>(NOTHING_SHOWN);
   const rootRef = useRef<HTMLElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const layerRef = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
   const pressMovedCard = useRef(false);
   const placed = useRef(Boolean(memory));
@@ -161,7 +176,8 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     for (const [id, path] of lines) if (intersects(path.bounds, area)) edgeIds.push(id);
     const far = view.k <= FAR_ZOOM;
     const zoom = far ? Math.round(view.k * 100) / 100 : 1;
-    setShown((last) => (last.far === far && last.zoom === zoom && sameSet(last.cards, cardIds) && sameSet(last.edges, edgeIds) ? last : { cards: new Set(cardIds), edges: new Set(edgeIds), far, zoom }));
+    const stage = stageNearest(latest.current.layout.stages, { x: -view.x / view.k + camera.size.width / 2 / view.k, y: -view.y / view.k + camera.size.height / 2 / view.k });
+    setShown((last) => (last.far === far && last.zoom === zoom && last.stage === stage && sameSet(last.cards, cardIds) && sameSet(last.edges, edgeIds) ? last : { cards: new Set(cardIds), edges: new Set(edgeIds), far, zoom, stage }));
   }, [camera]);
 
   const notifyView = useCallback(() => {
@@ -254,6 +270,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     if (!root) return;
     const resize = (width: number, height: number) => {
       if (!width || !height) return;
+      setWide(width >= MINIMAP_UNFOLDS_FROM);
       camera.size = { width, height };
       if (!placed.current) {
         placed.current = true;
@@ -277,6 +294,30 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     focusedBot.current = focusBotId;
     focusNode(botNodeId(focusBotId));
   }, [focusBotId, focusNode]);
+
+  useLayoutEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    let rooms: HTMLElement[] = [];
+    const measure = () => setReserve(markedRoom(layer));
+    const sizes = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : undefined;
+    const watch = () => {
+      const marked = [...layer.querySelectorAll<HTMLElement>("[data-board-room]")];
+      if (marked.length !== rooms.length || marked.some((room, at) => room !== rooms[at])) {
+        for (const room of rooms) sizes?.unobserve(room);
+        rooms = marked;
+        for (const room of rooms) sizes?.observe(room);
+      }
+      measure();
+    };
+    const mutations = typeof MutationObserver === "function" ? new MutationObserver(watch) : undefined;
+    mutations?.observe(layer, { childList: true, subtree: true, attributes: true });
+    watch();
+    return () => {
+      mutations?.disconnect();
+      sizes?.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -503,14 +544,14 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
           </p>
         ) : null}
       </div>
-      <BoardStageBar stages={board.stages} onFocus={focusStage} roomForPanel={Boolean(Overlay)} />
+      <BoardStageBar stages={board.stages} viewStage={shown.stage} insetEnd={Overlay ? reserve : 0} onFocus={focusStage} />
       <div data-board-chrome="" className="pointer-events-none absolute bottom-4 start-4 z-[80] flex flex-col items-start gap-2">
         <BoardToolbar
           camera={camera}
           showRefs={showRefs}
           minimap={minimap}
           onRefs={() => setShowRefs((on) => !on)}
-          onMinimap={() => setMinimap((on) => !on)}
+          onMinimap={() => setMinimapChoice(!minimap)}
           onZoom={(factor) => camera.glide(zoomAt(camera.view, factor, { x: camera.size.width / 2, y: camera.size.height / 2 }))}
           onFit={fitAll}
         />
@@ -518,7 +559,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
       </div>
       {stackMenu ? <StackMenu episodes={stackEpisodes} at={stackMenu} onChoose={chooseEpisode} onClose={() => setStackMenu(null)} /> : null}
       {notice ? (
-        <div data-board-chrome="" className={cn("pointer-events-none absolute inset-x-0 top-14 z-[95] flex justify-center px-3", Overlay && PANEL_ROOM)}>
+        <div data-board-chrome="" className="pointer-events-none absolute inset-x-0 top-14 z-[95] flex justify-center px-3" style={Overlay ? { paddingInlineEnd: 12 + reserve } : undefined}>
           <div role="status" className="popover-surface pointer-events-auto flex max-w-md items-center gap-2 rounded-xl border border-hairline/50 bg-menu py-1.5 pe-1.5 ps-3 text-[13px] leading-[18px] text-ink">
             <span className="min-w-0 flex-1">{notice}</span>
             <button type="button" className="ui-icon-button" aria-label={t("productionBoard.dismiss")} onClick={() => setNotice(null)}>
@@ -528,7 +569,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
         </div>
       ) : null}
       {Overlay ? (
-        <div data-board-overlay="" className="pointer-events-none absolute inset-0 z-[90]">
+        <div ref={layerRef} data-board-overlay="" className="pointer-events-none absolute inset-0 z-[90]">
           <Overlay {...overlayProps} />
         </div>
       ) : null}

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState } from "react";
+import { act, createElement, useState, type ComponentType } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId, type CanvasSnapshot } from "../../../shared/project-canvas";
@@ -24,14 +24,32 @@ import { ProductionBoard, type BoardHost } from "./ProductionBoard";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let size = { width: 1280, height: 800 };
+const observers = new Set<SizedObserver>();
 
 class SizedObserver {
+  private target: Element | null = null;
   constructor(private readonly callback: ResizeObserverCallback) {}
   observe(target: Element) {
-    this.callback([{ target, contentRect: { ...size } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+    this.target = target;
+    observers.add(this);
+    this.report();
+  }
+  report() {
+    const element = this.target as HTMLElement | null;
+    const width = element && "clientWidth" in element && element.clientWidth ? element.clientWidth : size.width;
+    const height = element && "clientHeight" in element && element.clientHeight ? element.clientHeight : size.height;
+    this.callback([{ target: this.target, contentRect: { x: 0, y: 0, width, height, top: 0, right: width, bottom: height, left: 0 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
   }
   unobserve() {}
-  disconnect() {}
+  disconnect() {
+    observers.delete(this);
+  }
+}
+
+async function resizeBoard(width: number) {
+  size = { ...size, width };
+  await act(async () => { for (const observer of observers) observer.report(); });
+  await settle();
 }
 
 let root: Root;
@@ -83,6 +101,8 @@ const drawnIds = () => [...page.querySelectorAll<HTMLElement>("[data-board-card-
 const edge = (id: string) => page.querySelector<SVGGElement>(`[data-board-edge="${id}"]`);
 const buttonNamed = (scope: ParentNode, name: string) =>
   [...scope.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === name);
+const minimap = () => page.querySelector('svg[role="img"][aria-label="Minimap"]');
+const minimapButton = () => buttonNamed(page, "Minimap")!;
 const layoutOf = (snapshot: CanvasSnapshot, opened: number[] = []) => layoutBoard(buildBoard(snapshot, { opened: new Set(opened) }), cardSize);
 
 function view(): BoardView {
@@ -101,6 +121,29 @@ async function mount(mounted: Mounted) {
       await settle();
     },
   };
+}
+
+function BoardWithOverlay({ projectId, snapshot, overlay }: Mounted & { projectId: string; overlay: ComponentType<BoardOverlayProps> }) {
+  const [opened, setOpened] = useState<BoardOpened | null>(null);
+  return createElement(ProductionBoard, {
+    projectId,
+    snapshot,
+    backend: productionBoardBackend({ episodes: 1 }),
+    looks: PRODUCTION_BOARD_LOOKS,
+    host,
+    opened,
+    onOpenedChange: (next: BoardOpened | null) => {
+      onOpened(next);
+      setOpened(next);
+    },
+    overlay,
+  });
+}
+
+async function mountWithOverlay(snapshot: CanvasSnapshot, overlay: ComponentType<BoardOverlayProps>) {
+  const projectId = `board-${(mounts += 1)}`;
+  await act(async () => root.render(createElement(BoardWithOverlay, { projectId, snapshot, overlay })));
+  await settle();
 }
 
 /** A viewport the whole board fits in at full size, so every card and line is drawn once the board is fitted. */
@@ -125,6 +168,44 @@ async function key(name: string) {
 
 function pointer(target: Element, type: string, clientX: number, clientY: number) {
   act(() => { target.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, buttons: 1, pointerId: 1, clientX, clientY })); });
+}
+
+const stageBar = () => page.querySelector<HTMLElement>("[data-board-stage-form]")!;
+const stageSurface = () => page.querySelector<HTMLElement>("[data-stage-surface]")!;
+const stageForm = () => stageBar().dataset.boardStageForm!;
+const activeStages = () => [...page.querySelectorAll<HTMLElement>(`[data-stage-list="${stageForm()}"] [data-board-stage]`)];
+const stageNames = () => activeStages().map((one) => one.dataset.boardStage!);
+/** How a browser lays the bar out: the board's width the bar spans, and how wide the full bar asks to be. */
+const layOutBar = (board: number, full: number) => {
+  Object.defineProperty(stageBar(), "clientWidth", { configurable: true, get: () => board });
+  Object.defineProperty(stageBar(), "clientHeight", { configurable: true, get: () => 36 });
+  Object.defineProperty(page.querySelector('[data-stage-list="full"]')!, "scrollWidth", { configurable: true, get: () => full });
+};
+
+/** The side panel as the overlay marks it: the visible room reports its width, the hidden one nothing. */
+function RoomPanel() {
+  const [open, setOpen] = useState(true);
+  const place = (element: HTMLElement | null, width: number) => {
+    if (!element) return;
+    element.getBoundingClientRect = () => ({ x: 600 - width, y: 16, left: 600 - width, top: 16, width, height: width ? 300 : 0, right: 600, bottom: 316, toJSON: () => ({}) });
+  };
+  return createElement(
+    "div",
+    null,
+    createElement(
+      "aside",
+      { "data-board-room": "", hidden: !open, ref: (element: HTMLElement | null) => place(element, open ? 304 : 0) },
+      open ? createElement("button", { type: "button", "aria-label": "Hide side panel", onClick: () => setOpen(false) }) : null,
+    ),
+    createElement("button", {
+      type: "button",
+      "data-board-room": "",
+      hidden: open,
+      "aria-label": "Show side panel",
+      ref: (element: HTMLElement | null) => place(element, open ? 0 : 68),
+      onClick: () => setOpen(true),
+    }),
+  );
 }
 
 const onScreen = (rect: BoardRect) => {
@@ -230,6 +311,103 @@ describe("the production board", () => {
     expect(page.querySelector("[data-board-card]")).toBeNull();
     expect(page.querySelector("[data-board-edge]")).not.toBeNull();
     expect(page.querySelector("[data-board-edge-label]")).toBeNull();
+  });
+
+  it("starts with its minimap folded on a board narrower than 900 and follows the board's width, until the person opens it", async () => {
+    size = { width: 899, height: 620 };
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    expect(minimap()).toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("false");
+    await resizeBoard(900);
+    expect(minimap()).not.toBeNull();
+    await resizeBoard(580);
+    expect(minimap()).toBeNull();
+
+    await click(minimapButton());
+    expect(minimap()).not.toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("true");
+    await resizeBoard(1280);
+    await resizeBoard(580);
+    expect(minimap()).not.toBeNull();
+  });
+
+  it("starts with its minimap open on a board 900 wide, and keeps it as the person leaves it whatever the width", async () => {
+    size = { width: 900, height: 620 };
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    expect(minimap()).not.toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("true");
+
+    await click(minimapButton());
+    expect(minimap()).toBeNull();
+    expect(minimapButton().getAttribute("aria-pressed")).toBe("false");
+    await resizeBoard(580);
+    await resizeBoard(1440);
+    expect(minimap()).toBeNull();
+    await click(minimapButton());
+    expect(minimap()).not.toBeNull();
+    await resizeBoard(580);
+    expect(minimap()).not.toBeNull();
+  });
+
+  it("keeps five stage controls in reading order in the compact bar, and the one in view keeps its name", async () => {
+    size = { width: 800, height: 620 };
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    layOutBar(800, 700);
+    await resizeBoard(800);
+    const bar = stageBar();
+    expect({ available: bar.dataset.stageAvailable, full: bar.dataset.stageFull, form: bar.dataset.boardStageForm, reserve: bar.dataset.boardStageReserve })
+      .toEqual({ available: "456", full: "700", form: "compact", reserve: "320" });
+    expect(stageNames()).toEqual(["brief", "script", "library", "storyboard", "post"]);
+    const names: Record<string, string> = { brief: "Brief", script: "Episodes", library: "Characters · scenes", storyboard: "Storyboards · videos", post: "Post" };
+    const states: Record<string, string> = { brief: "Done", script: "Done", library: "Done", storyboard: "Failed", post: "In progress" };
+    const dots: Record<string, string> = { Done: "bg-success", Failed: "bg-danger", "In progress": "bg-accent" };
+    for (const button of activeStages()) {
+      const stage = button.dataset.boardStage!;
+      expect(button.getAttribute("title")).toBe(`${names[stage]} · ${states[stage]}`);
+      expect(button.getAttribute("aria-label")).toBe(button.getAttribute("title"));
+      expect(button.querySelector("[aria-hidden=true]")?.className).toContain(dots[states[stage]!]!);
+    }
+    expect(activeStages().filter((one) => one.textContent)).toHaveLength(1);
+    expect(stageSurface().className).toContain("overflow-hidden");
+
+    await key("4");
+    expect(stageForm()).toBe("compact");
+    expect(page.querySelector('[data-stage-list="compact"] [data-board-stage="storyboard"]')?.textContent).toBe("Storyboards · videos");
+    expect(activeStages().filter((one) => one.textContent)).toHaveLength(1);
+    await key("1");
+    expect(page.querySelector('[data-stage-list="compact"] [data-board-stage="brief"]')?.textContent).toBe("Brief");
+  });
+
+  it("gives the stage bar only the room the side panel marks, and the whole bar back once the panel folds into its button", async () => {
+    size = { width: 760, height: 520 };
+    await mountWithOverlay(productionBoardSample({ episodes: 4 }), RoomPanel);
+    layOutBar(760, 620);
+    await resizeBoard(760);
+    expect(stageForm()).toBe("compact");
+    expect(stageBar().dataset.boardStageReserve).toBe("304");
+    expect(stageBar().style.paddingInlineEnd).toBe("316px");
+    expect(activeStages()).toHaveLength(5);
+
+    await click(buttonNamed(page, "Hide side panel"));
+    expect(stageForm()).toBe("full");
+    expect(stageBar().dataset.boardStageReserve).toBe("68");
+    expect(stageBar().style.paddingInlineEnd).toBe("80px");
+    expect(stageNames()).toEqual(["brief", "script", "library", "storyboard", "post"]);
+    for (const button of activeStages()) expect(button.textContent).toBeTruthy();
+
+    await click(buttonNamed(page, "Show side panel"));
+    expect(stageForm()).toBe("compact");
+    expect(stageBar().dataset.boardStageReserve).toBe("304");
+  });
+
+  it("takes a compact stage control to its stage as the whole bar does", async () => {
+    size = { width: 800, height: 620 };
+    await mount({ snapshot: productionBoardSample({ episodes: 12 }) });
+    layOutBar(800, 700);
+    await resizeBoard(800);
+    expect(stageForm()).toBe("compact");
+    await click(page.querySelector('[data-stage-list="compact"] [data-board-stage="post"]'));
+    expect(view()).toEqual(fitRect(layoutOf(productionBoardSample({ episodes: 12 })).stages.post!, size, { minZoom: 0.12, maxZoom: 1 }));
   });
 
   it("moves a card the person drags, by its name too, to where they let go, takes a press that hardly moves as a click, and pans from anywhere else", async () => {

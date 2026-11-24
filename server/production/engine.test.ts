@@ -495,6 +495,22 @@ describe("a task that fails", () => {
     expect(world.to("boarder-ep1")).toHaveLength(2);
   });
 
+  it("of an episode the person retries while a later one runs waits its turn, and opens once that one is done", async () => {
+    const world = setup({ concurrency: { episodes: 1 } });
+    await library(world, 2);
+    await world.fail("boarder-ep1");
+    expect(world.statuses()?.slice(3)).toEqual(["1:failed", "2:storyboard"]);
+
+    await world.productions.retry("p1", { episode: 1 });
+    expect(world.statuses()?.slice(3)).toEqual(["1:waiting", "2:storyboard"]);
+    world.shots(2, 1);
+    await world.reply("boarder-ep2", "One shot.");
+    await world.taken(["s2-1"]);
+    await world.reply("cutter-ep2", "The cut is ready.");
+    expect(world.statuses()?.slice(3)).toEqual(["1:storyboard", "2:done"]);
+    expect(world.to("boarder-ep1")).toHaveLength(2);
+  });
+
   it("is an episode whose storyboard left no shot, and one whose videos do not generate, with what the generation said", async () => {
     const world = setup();
     await library(world, 2);

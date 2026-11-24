@@ -1,7 +1,7 @@
 import type { ProductionEpisodeStatus, ProductionTaskStatus } from "../../../shared/production";
 import type { BoardIndex } from "./board";
 import type { BoardStageState } from "./types";
-import type { BoardStage } from "./overlay";
+import { BOARD_STAGES, type BoardStage } from "./overlay";
 
 const taskStage = (status: ProductionTaskStatus | undefined): BoardStageState =>
   status === "done" ? "done" : status === "working" ? "active" : status === "failed" ? "failed" : "wait";
@@ -43,4 +43,12 @@ export function boardStages(index: BoardIndex): Record<BoardStage, BoardStageSta
     return passed(new Set(["done"]));
   };
   return { brief: "done", script: taskStage(job("script")?.status), library: together(library), storyboard: storyboard(), post: post() };
+}
+
+/** The one stage a compact bar names: the stage in view, else the work in progress, else the last one worked on. */
+export function compactStageName(stages: Record<BoardStage, BoardStageState>, view: BoardStage | undefined): BoardStage {
+  if (view) return view;
+  return BOARD_STAGES.find((stage) => stages[stage] === "active")
+    ?? [...BOARD_STAGES].reverse().find((stage) => stages[stage] !== "wait")
+    ?? BOARD_STAGES[0];
 }
