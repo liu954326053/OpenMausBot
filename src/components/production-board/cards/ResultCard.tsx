@@ -1,10 +1,10 @@
-import { Check, Clapperboard, Sparkles } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { Check, Circle, Clapperboard, LoaderCircle, Sparkles, X } from "lucide-react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { shotCode } from "../../../../shared/production";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, CardName, CardShell, clockLength, failureText, InlineVideo, PicturePlaceholder, StaleMark, type BoardGeneration } from "./parts";
+import { CardName, CardShell, clockLength, failureText, InlineVideo, MonitorButton, StaleMark, type BoardGeneration } from "./parts";
 
 /** One video made of a shot. */
 export interface BoardTake {
@@ -49,7 +49,7 @@ function TakeButton({ index, pressed, onShow }: { index: number; pressed: boolea
       data-result-take=""
       aria-pressed={pressed}
       title={t("boardCards.result.take", { n: index + 1 })}
-      className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", pressed ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
+      className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", pressed ? "bg-board-paper text-board-ink" : "text-board-paper/60 hover:text-board-paper")}
       onClick={(event) => {
         event.stopPropagation();
         onShow();
@@ -86,7 +86,7 @@ function TakeStrip({ takes, shown, onShow }: { takes: readonly BoardTake[]; show
             aria-controls={panelId}
             aria-label={t("boardCards.result.moreTakes", { count: others.length })}
             title={t("boardCards.result.moreTakes", { count: others.length })}
-            className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", open ? "bg-control text-ink" : "text-ink-tertiary hover:text-ink")}
+            className={cn("h-6 min-w-7 shrink-0 rounded-full px-1.5 font-mono text-[12px]", open ? "bg-board-paper text-board-ink" : "text-board-paper/60 hover:text-board-paper")}
             onClick={(event) => {
               event.stopPropagation();
               setOpen((was) => !was);
@@ -112,6 +112,14 @@ function TakeStrip({ takes, shown, onShow }: { takes: readonly BoardTake[]; show
   );
 }
 
+function takeTone(take: BoardTake | undefined, generation: BoardGeneration | undefined): { tone: "idle" | "working" | "done" | "failed"; icon: ReactNode; label: string; className: string } {
+  if (generation?.status === "loading") return { tone: "working", icon: <LoaderCircle size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" />, label: t("boardCards.generating"), className: "text-board-amber" };
+  if (generation?.status === "error") return { tone: "failed", icon: <X size={14} aria-hidden="true" />, label: t("boardCards.generationFailed"), className: "text-board-paper" };
+  if (take?.selected) return { tone: "done", icon: <Check size={14} aria-hidden="true" />, label: t("boardCards.result.inFilm"), className: "text-board-teal" };
+  if (take) return { tone: "idle", icon: <Clapperboard size={14} aria-hidden="true" />, label: t("boardCards.video.ready"), className: "text-board-paper/60" };
+  return { tone: "idle", icon: <Circle size={14} aria-hidden="true" />, label: t("boardCards.video.none"), className: "text-board-paper/60" };
+}
+
 export function ResultCard({ number, title, takes, generation, onOpen, onGenerate, onPlay, onSelectTake }: ResultCardProps) {
   const [shownId, setShownId] = useState<string>();
   const take = takes.find((one) => one.id === shownId) ?? takes.find((one) => one.selected) ?? takes.at(-1);
@@ -119,61 +127,55 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
   const failed = generation?.status === "error";
   const code = shotCode(number);
   const name = `${code} ${title}`;
+  const tone = takeTone(take, generation);
   return (
-    <CardShell kind="result" label={name} tone={failed ? "failed" : undefined} onOpen={onOpen}>
-      <div data-result-media="" className="relative h-42 shrink-0">
+    <CardShell kind="result" label={name} tone={failed ? "failed" : undefined} surface="monitor" onOpen={onOpen}>
+      <div data-result-media="" className="relative m-1 mb-0 aspect-video shrink-0 overflow-hidden rounded-md bg-board-monitor">
         {take?.videoUrl ? (
           <InlineVideo src={take.videoUrl} posterUrl={take.posterUrl} label={t("boardCards.result.play", { name })} onPlay={() => onPlay?.(take.id)} className="size-full" />
         ) : making ? (
-          <PicturePlaceholder>{t("boardCards.generating")}</PicturePlaceholder>
+          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-board-paper/60">{t("boardCards.generating")}</div>
         ) : failed && !take ? (
-          <PicturePlaceholder>
-            <span data-result-failure="" title={failureText(generation)} className="line-clamp-3 text-danger">{failureText(generation)}</span>
-            {onGenerate ? <CardAction label={t("boardCards.generateAgain")} onClick={onGenerate} /> : null}
-          </PicturePlaceholder>
+          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-board-paper">
+            <span data-result-failure="" title={failureText(generation)} className="line-clamp-3">{failureText(generation)}</span>
+            {onGenerate ? <MonitorButton label={t("boardCards.generateAgain")} onClick={onGenerate} /> : null}
+          </div>
         ) : (
-          <PicturePlaceholder>
-            <Clapperboard size={14} aria-hidden="true" />
+          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-board-paper/60">
+            <Clapperboard size={16} aria-hidden="true" />
             <span>{t("boardCards.video.none")}</span>
-            {onGenerate ? <CardAction icon={<Sparkles size={14} aria-hidden="true" />} label={t("boardCards.video.generate")} onClick={onGenerate} /> : null}
-          </PicturePlaceholder>
+            {onGenerate ? <MonitorButton icon={<Sparkles size={12} aria-hidden="true" />} label={t("boardCards.video.generate")} onClick={onGenerate} /> : null}
+          </div>
         )}
-        {take && making ? <span data-result-generating="" className="ui-chip absolute start-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
-        {take?.stale ? <StaleMark reason={t("boardCards.stale.take")} className="absolute end-2 top-2 bg-card text-ink-secondary" /> : null}
+        {take && making ? <span data-result-generating="" className="absolute start-2 top-2 inline-flex h-5 items-center rounded border border-board-paper/20 bg-board-monitor/85 px-1.5 text-[12px] leading-4 text-board-paper">{t("boardCards.generating")}</span> : null}
+        {take?.stale ? <StaleMark reason={t("boardCards.stale.take")} className="absolute end-2 top-2 bg-board-monitor/85 text-board-paper/70" /> : null}
         {take && failed ? (
-          <span data-result-failure="" title={failureText(generation)} className="absolute inset-x-2 bottom-2 truncate rounded-md bg-card px-2 py-1 text-[12px] leading-4 text-danger">{failureText(generation)}</span>
+          <span data-result-failure="" title={failureText(generation)} className="absolute inset-x-2 bottom-2 truncate rounded bg-board-monitor/90 px-2 py-1 text-[12px] leading-4 text-board-paper ring-1 ring-board-paper/20">{failureText(generation)}</span>
         ) : null}
       </div>
-      <header className="flex items-center gap-2 px-3 pt-2.5">
-        <span data-shot-code="" className="ui-chip shrink-0 bg-control font-mono text-ink-secondary">{code}</span>
-        <CardName text={title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6" />
-        {takes.length > 0 ? <span data-result-count="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary">{t("boardCards.result.takes", { count: takes.length })}</span> : null}
-        {take?.durationMs ? <span data-result-length="" className="shrink-0 text-[12px] leading-4 text-ink-tertiary tabular-nums">{clockLength(take.durationMs)}</span> : null}
-      </header>
-      <footer className="relative mt-auto flex min-w-0 items-center gap-2 px-3 pb-3 pt-2">
+      <div className="flex min-w-0 items-center gap-1.5 px-2 pt-1.5">
+        <span data-shot-code="" className="shrink-0 font-mono text-[12px] leading-4 text-board-paper/60">{code}</span>
+        <CardName text={title} onOpen={onOpen} className="flex-1 text-[13px] font-medium leading-[18px] text-board-paper" />
+        {take?.durationMs ? <span data-result-length="" className="shrink-0 font-mono text-[12px] leading-4 text-board-paper/60 tabular-nums">{clockLength(take.durationMs)}</span> : null}
+        <span data-result-status={tone.tone} title={tone.label} className={cn("inline-flex shrink-0 items-center", tone.className)}>
+          {tone.icon}
+          <span className="sr-only">{tone.label}</span>
+        </span>
+      </div>
+      <footer className="relative mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-1.5 pt-0.5">
         {takes.length > 0 ? <TakeStrip takes={takes} shown={take} onShow={setShownId} /> : null}
+        {takes.length > 0 && takes.length <= TAKE_BUTTONS_MAX ? <span data-result-count="" className="shrink-0 font-mono text-[12px] leading-4 text-board-paper/60">{t("boardCards.result.takes", { count: takes.length })}</span> : null}
         <span className="flex-1" />
         {take?.selected ? (
-          <span data-result-selected="" className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium leading-4 text-success">
-            <Check size={14} aria-hidden="true" />
+          <span data-result-selected="" className="inline-flex shrink-0 items-center gap-1 text-[12px] font-medium leading-4 text-board-teal">
+            <Check size={12} aria-hidden="true" />
             {t("boardCards.result.inFilm")}
           </span>
         ) : take && onSelectTake ? (
-          <CardAction label={t("boardCards.result.select")} onClick={() => onSelectTake(take.id)} />
+          <MonitorButton label={t("boardCards.result.select")} onClick={() => onSelectTake(take.id)} />
         ) : null}
         {take && onGenerate && !making ? (
-          <button
-            type="button"
-            aria-label={t("boardCards.generateAgain")}
-            title={t("boardCards.generateAgain")}
-            className="ui-button ui-button-sm shrink-0 px-1.5"
-            onClick={(event) => {
-              event.stopPropagation();
-              onGenerate();
-            }}
-          >
-            <Sparkles size={14} aria-hidden="true" />
-          </button>
+          <MonitorButton iconOnly icon={<Sparkles size={12} aria-hidden="true" />} label={t("boardCards.generateAgain")} onClick={onGenerate} />
         ) : null}
       </footer>
     </CardShell>

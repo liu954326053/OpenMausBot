@@ -1,6 +1,6 @@
 export { BOARD_CARD_KINDS, BOARD_CARD_SIZES, type BoardCardKind, type BoardCardSize } from "./sizes";
-export { botStatus, episodeStatus, generationTone, taskStatus, TONE_DOT, TONE_TEXT, type BoardStatus, type BoardTone } from "./tone";
-export type { BoardBotRef, BoardGeneration, BoardShotRef } from "./parts";
+export { botStatus, episodeStatus, generationTone, taskStatus, TONE_DOT, TONE_STRIPE, TONE_TEXT, type BoardStatus, type BoardTone } from "./tone";
+export type { BoardBotRef, BoardCardSurface, BoardGeneration, BoardShotRef } from "./parts";
 export { BotCard, type BoardCount, type BoardGate, type BoardProgress, type BoardProgressKind, type BoardStep, type BotCardProps } from "./BotCard";
 export { BriefCard, type BriefCardProps } from "./BriefCard";
 export { PlanCard, type PlanCardProps, type PlanTask } from "./PlanCard";

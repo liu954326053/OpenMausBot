@@ -9,6 +9,9 @@ const css = readFileSync(join(src, "styles.css"), "utf8");
 
 const theme = css.match(/@theme\s*\{([^}]*)\}/)?.[1] ?? "";
 const defined = new Set([...theme.matchAll(/--color-([\w-]+)\s*:/g)].map(([, name]) => name));
+// `shadow-<name>` is its own utility family, generated from `--shadow-<name>`, not a colour; the colour guard below
+// would otherwise read a shadow's name as one.
+const shadows = new Set([...theme.matchAll(/--shadow-([\w-]+)\s*:/g)].map(([, name]) => name));
 
 // Only names that read like the app's own tokens, so Tailwind's built-in palette never trips it.
 const families = new Set([...[...defined].map((name) => name.split("-")[0]), "line", "surface"]);
@@ -35,6 +38,7 @@ describe("colour utilities", () => {
     expect(defined.size).toBeGreaterThan(15);
     expect(defined).toContain("hairline");
     expect(defined).toContain("inset");
+    expect(shadows).toContain("board");
   });
 
   it("only names colour tokens the theme defines", () => {
@@ -42,6 +46,7 @@ describe("colour utilities", () => {
     for (const file of sources(src)) {
       readFileSync(file, "utf8").split("\n").forEach((line, index) => {
         for (const [utility, name] of line.matchAll(UTILITY)) {
+          if (/(?:^|:)shadow-/.test(utility) && shadows.has(name)) continue;
           if (!families.has(name.split("-")[0]) || defined.has(name) || name in inkCarriedByFill) continue;
           unknown.push(`${relative(src, file)}:${index + 1} ${utility}`);
         }

@@ -1,9 +1,7 @@
-import { ImageOff } from "lucide-react";
-import type { CanvasCardFacts } from "../../../../shared/project-canvas";
 import { episodeCode, shotCode } from "../../../../shared/production";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { CardAction, failureText, PicturePlaceholder, type BoardGeneration, type BoardShotRef } from "./parts";
+import type { BoardShotRef } from "./parts";
 
 const COLOUR = /^#[0-9a-f]{6}$/i;
 
@@ -18,70 +16,4 @@ export function AssetShots({ shots, verb, className }: { shots: readonly BoardSh
   return <span data-asset-shots="" title={text} className={cn("min-w-0 truncate text-[12px] leading-4 text-ink-tertiary", className)}>{text}</span>;
 }
 
-/** A character's or a scene's picture, or what stands in its place while there is none. */
-export function AssetPicture({ name, pictureUrl, generation, onGenerate, className }: {
-  name: string;
-  pictureUrl?: string;
-  generation?: BoardGeneration;
-  onGenerate?: () => void;
-  className?: string;
-}) {
-  const making = generation?.status === "loading";
-  if (pictureUrl) {
-    return (
-      <div data-asset-picture="" className={cn("relative overflow-hidden bg-ink/[0.04]", className)}>
-        <img src={pictureUrl} alt={t("boardCards.asset.picture", { name })} draggable={false} className="size-full object-cover" />
-        {making ? <span data-asset-generating="" className="ui-chip absolute start-2 top-2 bg-card text-ink-secondary">{t("boardCards.generating")}</span> : null}
-      </div>
-    );
-  }
-  return (
-    <div data-asset-picture="" className={cn("overflow-hidden", className)}>
-      {making ? (
-        <PicturePlaceholder>{t("boardCards.generating")}</PicturePlaceholder>
-      ) : generation?.status === "error" ? (
-        <PicturePlaceholder>
-          <span data-asset-failure="" title={failureText(generation)} className="line-clamp-3 text-danger">{failureText(generation)}</span>
-          {onGenerate ? <CardAction label={t("boardCards.generateAgain")} onClick={onGenerate} /> : null}
-        </PicturePlaceholder>
-      ) : (
-        <PicturePlaceholder>
-          <ImageOff size={14} aria-hidden="true" />
-          <span>{t("boardCards.asset.noPicture")}</span>
-          {onGenerate ? <CardAction label={t("boardCards.asset.generatePicture")} onClick={onGenerate} /> : null}
-        </PicturePlaceholder>
-      )}
-    </div>
-  );
-}
-
-export function AssetSubtitle({ facts }: { facts?: CanvasCardFacts }) {
-  const subtitle = facts?.subtitle?.trim();
-  return subtitle ? <div data-asset-subtitle="" dir="auto" title={subtitle} className="truncate text-[12px] leading-4 text-ink-tertiary">{subtitle}</div> : null;
-}
-
-/** The tags, as many whole rows of them as `rows` allows; a tag that does not fit goes to a row that is not shown. */
-export function AssetTags({ tags, rows, className }: { tags?: readonly string[]; rows: 1 | 2; className?: string }) {
-  if (!tags?.length) return null;
-  return (
-    <div className={cn("flex flex-wrap gap-1 overflow-hidden", rows === 1 ? "max-h-[22px]" : "max-h-[48px]", className)}>
-      {tags.map((tag, index) => (
-        <span key={index} data-asset-tag="" dir="auto" title={tag} className="ui-chip bg-control text-ink-secondary">
-          <span className="truncate">{tag}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 export const paletteColours = (palette: readonly string[] | undefined): string[] => palette?.filter((colour) => COLOUR.test(colour)) ?? [];
-
-export function AssetPalette({ palette }: { palette?: readonly string[] }) {
-  const colours = paletteColours(palette);
-  if (colours.length === 0) return null;
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      {colours.map((colour, index) => <span key={index} data-asset-swatch="" title={colour} className="size-3 rounded-full border border-hairline" style={{ backgroundColor: colour }} />)}
-    </div>
-  );
-}

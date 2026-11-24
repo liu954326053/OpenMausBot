@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { Check, Circle, CircleDot, LoaderCircle, Play, X } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { CanvasNodeMetadata } from "../../../../shared/project-canvas";
 import { BotAvatar } from "@/components/Avatar";
@@ -27,6 +27,14 @@ export interface BoardShotRef {
 /** The look of a bot whose own look the board does not have. */
 export const SILVER: CanvasBotLook = { color: "silver" };
 
+export type BoardCardSurface = "panel" | "paper" | "monitor";
+
+const SURFACE: Readonly<Record<BoardCardSurface, string>> = {
+  panel: "rounded-[10px] border-hairline bg-card text-ink shadow-board",
+  paper: "rounded-[10px] border-board-paper-line bg-board-paper text-board-ink shadow-board",
+  monitor: "rounded-xl border-board-paper/15 bg-board-monitor text-board-paper shadow-board",
+};
+
 export function clockLength(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -36,10 +44,11 @@ export const failureText = (generation: BoardGeneration | undefined): string =>
   serverErrorText(generation, generation?.errorDetails || t("boardCards.generationFailed"));
 
 /** The board's card: its kind's size, flat on the board, opening on a click anywhere that is not one of its actions. */
-export function CardShell({ kind, label, tone, onOpen, className, children }: {
+export function CardShell({ kind, label, tone, surface = "panel", onOpen, className, children }: {
   kind: BoardCardKind;
   label: string;
   tone?: BoardTone;
+  surface?: BoardCardSurface;
   onOpen?: () => void;
   className?: string;
   children: ReactNode;
@@ -48,12 +57,14 @@ export function CardShell({ kind, label, tone, onOpen, className, children }: {
   return (
     <article
       data-board-card={kind}
+      data-board-surface={surface}
       data-board-tone={tone}
       aria-label={label}
       style={{ width, height }}
       className={cn(
-        "relative flex flex-col overflow-hidden rounded-xl border bg-card text-ink",
-        tone === "failed" ? "border-danger/60" : tone === "asking" ? "border-warning/60" : "border-hairline",
+        "relative flex flex-col overflow-hidden border",
+        SURFACE[surface],
+        tone === "failed" ? "border-danger/60" : tone === "asking" ? "border-warning/60" : null,
         onOpen && "cursor-pointer",
         className,
       )}
@@ -114,27 +125,159 @@ export function StatusMark({ status, className }: { status: BoardStatus; classNa
 
 export function Meter({ done, total, tone, label }: { done: number; total: number; tone: BoardTone; label: string }) {
   const share = total > 0 ? Math.min(1, Math.max(0, done / total)) : 0;
+  const fill = tone === "done" ? "bg-success" : tone === "failed" ? "bg-danger" : tone === "working" || tone === "asking" ? "bg-warning" : "bg-ink-tertiary";
   return (
     <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} className="h-1 overflow-hidden rounded-full bg-ink/[0.08]">
-      <div className={cn("h-full rounded-full", tone === "done" ? "bg-success" : tone === "failed" ? "bg-danger" : tone === "working" || tone === "asking" ? "bg-accent" : "bg-ink-tertiary")} style={{ width: `${share * 100}%` }} />
+      <div className={cn("h-full rounded-full", fill)} style={{ width: `${share * 100}%` }} />
     </div>
   );
 }
 
 export const percentOf = (done: number, total: number): number => (total > 0 ? Math.round((Math.min(done, total) / total) * 100) : 0);
 
-export function BotChip({ bot, label }: { bot: BoardBotRef; label?: string }) {
+/** Ink capsule naming a bot on a paper card (task owner / episode handoff). */
+export function PaperBotChip({ bot, label }: { bot: BoardBotRef; label?: string }) {
   return (
-    <span data-bot-chip="" title={label ?? bot.name} className="inline-flex min-w-0 items-center gap-1.5">
-      <BotAvatar bot={{ name: bot.name, ...(bot.look ?? SILVER) }} size={16} />
-      <span data-bot-chip-name="" dir="auto" className="min-w-0 truncate text-[12px] leading-4 text-ink-secondary">{bot.name}</span>
+    <span data-bot-chip="" title={label ?? bot.name} className="inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-full bg-board-ink pe-2 ps-1.5 text-board-paper">
+      <BotAvatar bot={{ name: bot.name, ...(bot.look ?? SILVER) }} size={14} />
+      <span data-bot-chip-name="" dir="auto" className="min-w-0 truncate text-[12px] leading-4">{bot.name}</span>
     </span>
   );
 }
 
 /** A group label inside a card. */
-export function CardLabel({ children }: { children: ReactNode }) {
-  return <span className="text-[12px] font-medium leading-4 text-ink-tertiary">{children}</span>;
+export function CardLabel({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cn("text-[12px] font-medium leading-4 text-ink-tertiary", className)}>{children}</span>;
+}
+
+/** Mono code stamp on paper: EP01 / SH03 / REQ-001. */
+export function PaperCode({ text, className }: { text: string; className?: string }) {
+  return (
+    <span data-paper-code="" className={cn("inline-flex h-6 shrink-0 items-center rounded bg-board-ink px-1.5 font-mono text-[12px] font-semibold leading-4 text-board-paper", className)}>
+      {text}
+    </span>
+  );
+}
+
+/** The paper's rules: a heavier ink line under a head, a hairline of paper under a foot. */
+export const PAPER_HEAD_RULE = "border-b-[1.5px] border-board-ink";
+export const PAPER_FOOT_RULE = "border-t border-board-paper-line";
+
+interface PaperStatusLook {
+  className: string;
+  icon: ReactNode;
+}
+
+const PAPER_STATUS: Readonly<Record<BoardTone, PaperStatusLook>> = {
+  done: { className: "text-board-teal-ink", icon: <Check size={12} aria-hidden="true" /> },
+  working: { className: "text-board-amber-ink", icon: <LoaderCircle size={12} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> },
+  asking: { className: "text-board-amber-ink", icon: <CircleDot size={12} aria-hidden="true" /> },
+  idle: { className: "text-board-ink-3", icon: <Circle size={12} aria-hidden="true" /> },
+  failed: { className: "text-board-ink-2", icon: <X size={12} aria-hidden="true" /> },
+};
+
+/** A state written in ink on paper: its mark, then its words. */
+export function PaperStatus({ status, className }: { status: BoardStatus; className?: string }) {
+  const look = PAPER_STATUS[status.tone];
+  return (
+    <span data-board-status={status.tone} title={status.label} className={cn("inline-flex min-w-0 shrink-0 items-center gap-1.5 text-[12px] font-medium leading-4", look.className, className)}>
+      {look.icon}
+      <span data-card-status-text="" className="truncate">{status.label}</span>
+    </span>
+  );
+}
+
+/** A state struck as a round seal on a task line: filled teal for done, amber for work, an empty ring for waiting. */
+export function StatusStamp({ status }: { status: BoardStatus }) {
+  const look: Record<BoardTone, string> = {
+    done: "border-board-teal-ink bg-board-teal-ink text-board-paper",
+    working: "border-board-amber bg-board-amber text-board-ink",
+    asking: "border-board-amber bg-board-amber text-board-ink",
+    idle: "border-[1.5px] border-board-ink-3 text-board-ink-3",
+    failed: "border-board-ink bg-board-ink text-board-paper",
+  };
+  return (
+    <span data-board-status={status.tone} title={status.label} className={cn("inline-flex size-5 shrink-0 items-center justify-center rounded-full border", look[status.tone])}>
+      {status.tone === "idle" ? null : PAPER_STATUS[status.tone].icon}
+      <span className="sr-only">{status.label}</span>
+    </span>
+  );
+}
+
+/** A button struck on paper: an ink outline for the quieter action, the amber plate for the one that makes something. */
+export function PaperButton({ label, icon, onClick, kind = "ink", iconOnly = false, className }: {
+  label: string;
+  icon?: ReactNode;
+  onClick: () => void;
+  kind?: "ink" | "generate";
+  iconOnly?: boolean;
+  className?: string;
+}) {
+  const plate = kind === "generate"
+    ? "h-[30px] bg-board-amber px-3 text-[13px] font-semibold text-board-ink hover:bg-board-amber/90"
+    : "h-7 border border-board-ink-3 px-2.5 text-[12px] font-medium text-board-ink hover:border-board-ink hover:bg-board-ink hover:text-board-paper";
+  return (
+    <button
+      type="button"
+      data-paper-button={kind}
+      aria-label={iconOnly ? label : undefined}
+      title={iconOnly ? label : undefined}
+      className={cn("inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md transition-colors motion-reduce:transition-none", iconOnly && "w-7 px-0", plate, className)}
+      onClick={alone(onClick)}
+    >
+      {icon}
+      {iconOnly ? <span className="sr-only">{label}</span> : label}
+    </button>
+  );
+}
+
+/** The agreed brief's seal, struck a little off straight. */
+export function PaperStamp({ label }: { label: string }) {
+  return (
+    <span data-brief-agreed="" data-paper-stamp="" className="inline-flex h-[26px] -rotate-4 items-center gap-1 rounded border-[1.5px] border-board-teal-ink px-2 text-[13px] font-semibold leading-4 text-board-teal-ink">
+      <Check size={14} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+/** Binder holes on an episode script page; colour matches the canvas behind the card. */
+export function ScriptHoles({ count = 3 }: { count?: number }) {
+  return (
+    <div data-sc-holes="" aria-hidden="true" className="pointer-events-none absolute inset-y-0 start-[9px] flex flex-col justify-around py-11">
+      {Array.from({ length: count }, (_, index) => (
+        <i key={index} data-sc-hole="" className="size-[11px] rounded-full bg-app shadow-[inset_0_1px_2px_var(--color-board-monitor)]" />
+      ))}
+    </div>
+  );
+}
+
+/** A button on a monitor: an outline in the screen's own light, or a plain mark for one action. */
+export function MonitorButton({ label, icon, onClick, iconOnly = false, title, className }: {
+  label: string;
+  icon?: ReactNode;
+  onClick: () => void;
+  iconOnly?: boolean;
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      data-monitor-button=""
+      aria-label={iconOnly ? label : undefined}
+      title={title ?? (iconOnly ? label : undefined)}
+      className={cn(
+        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-board-paper/40 text-[12px] font-medium text-board-paper transition-colors motion-reduce:transition-none hover:border-board-paper hover:bg-board-paper hover:text-board-ink",
+        iconOnly ? "w-7 px-0" : "px-2.5",
+        className,
+      )}
+      onClick={alone(onClick)}
+    >
+      {icon}
+      {iconOnly ? <span className="sr-only">{label}</span> : label}
+    </button>
+  );
 }
 
 /** A video that waits on its first frame until the person plays it, then plays where it is with its controls. */
@@ -154,11 +297,11 @@ export function InlineVideo({ src, posterUrl, label, onPlay, className }: {
     onPlay?.();
   };
   return (
-    <div className={cn("relative overflow-hidden bg-black", className)}>
+    <div className={cn("relative overflow-hidden bg-board-monitor", className)}>
       <video ref={video} src={src} poster={posterUrl} preload="metadata" playsInline controls={playing} className="size-full object-cover" onClick={keepClosed} />
       {playing ? null : (
-        <button type="button" aria-label={label} title={label} className="absolute inset-0 m-auto flex size-10 items-center justify-center rounded-full bg-black/55 text-white" onClick={alone(play)}>
-          <Play size={16} aria-hidden="true" className="translate-x-px" />
+        <button type="button" aria-label={label} title={label} className="absolute inset-0 m-auto flex size-12 items-center justify-center rounded-full border border-board-paper/85 bg-board-monitor/70 text-board-paper transition-colors motion-reduce:transition-none hover:bg-board-paper hover:text-board-ink" onClick={alone(play)}>
+          <Play size={20} aria-hidden="true" className="translate-x-px fill-current" />
         </button>
       )}
     </div>

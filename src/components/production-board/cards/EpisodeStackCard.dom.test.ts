@@ -17,8 +17,16 @@ describe("the episode stack", () => {
   it("names the episodes it holds and how many", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("episodeStack");
+    expect(card.dataset.boardSurface).toBe("paper");
     expect(textOf(card.querySelector("[data-stack-range]"))).toBe("EP04 – EP60");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("57 more episodes");
+  });
+
+  it("is a pile of punched script pages, its range stamped in ink", () => {
+    const card = draw();
+    expect(card.className).toContain("board-paper-stack");
+    expect(card.querySelectorAll("[data-sc-holes] [data-sc-hole]")).toHaveLength(3);
+    expect(card.querySelector("[data-stack-range] [data-paper-code]")!.className).toContain("bg-board-ink");
   });
 
   it("lists a few titles, with a gap where episodes are left out", () => {
