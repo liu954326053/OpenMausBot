@@ -427,7 +427,8 @@ export function reportMarkdown(input: { meta: ReportMeta; elements: ElementParit
   lines.push("- **差距分**：每个属性归一成 0–1，按权重加权后乘 100。排序从差得多到差得少；两边都没有这个元素记 100 分。");
   lines.push("- 权重：尺寸 0.20、背景 0.16、边框 0.17、内边距 0.15、阴影 0.10、字号行高 0.14、圆角 0.08。");
   lines.push("- 比较用的是布局尺寸（`getComputedStyle`），不受看板缩放影响；「屏幕」一行是 `getBoundingClientRect` × 当前缩放，方便对照截图。");
-  lines.push("- 颜色都归一成 RGBA 再比；阴影按第一层的偏移、模糊、扩散近似。", "");
+  lines.push("- 颜色都归一成 RGBA 再比；阴影按第一层的偏移、模糊、扩散近似。");
+  lines.push("- 设计（`docs/superpowers/specs/2026-11-24-production-board-design.md`）说颜色用程序现有皮肤、不照搬效果图的配色：纯配色的色差要结合这一条读，形态、尺寸、圆角、间距、字号仍照效果图。", "");
 
   lines.push("## 整板", "");
   for (const board of boards) {
