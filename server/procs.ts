@@ -21,6 +21,7 @@ import { engineOwners } from "./engine-owners.ts";
 import { ENGINE_TAG_ENV, engineRunTag, engineStopped, recordEngine } from "./engine-records.ts";
 import { engineHomes } from "./engine-homes/engine-homes.ts";
 import { currentTurn } from "./crash-guard.ts";
+import { withPythonTrustEnv } from "./python-trust.ts";
 import type { HomedSpawn } from "./engine-homes/layout.ts";
 import { resolveCliSpawn, type ResolvedSpawn } from "./env-path.ts";
 import { spawnBotWork } from "./oom-score.ts";
@@ -333,10 +334,15 @@ export function spawnCli(
   assertSafeCliArgv(resolved);
   const homed = owner === "bot" || opts.engineHome ? engineHomes.forSpawn(opts.env ?? process.env) : null;
   const env = homed?.env ?? opts.env;
-  const options: CliSpawnOptions = resolved.env
+  const launchOptions: CliSpawnOptions = resolved.env
     ? { ...opts, env: { ...(env ?? process.env), ...resolved.env } }
     : homed ? { ...opts, env } : opts;
-  const boxed = boxedSpawn(resolved, options, owner, homed);
+  const boxed = boxedSpawn(resolved, launchOptions, owner, homed);
+  // A box runs against its own mounts, where the host's trust folders do not exist, so only processes that run as this
+  // user get the bundle; a bot's engine, its shell and the Python it runs inherit it.
+  const options: CliSpawnOptions = !boxed && (owner === "bot" || opts.botWork)
+    ? { ...launchOptions, env: withPythonTrustEnv(launchOptions.env ?? process.env) }
+    : launchOptions;
   const { box: _box, engineHome: _engineHome, botWork, ...spawnOpts } = boxed ? options : outsideBoxOptions(resolved.command, options);
   // The box's extra descriptors (its seccomp filter) follow stdio; only a plain three-entry stdio can take them.
   const stdio = boxed?.extraFds.length && Array.isArray(spawnOpts.stdio) && spawnOpts.stdio.length === 3 ? [...spawnOpts.stdio, ...boxed.extraFds] : spawnOpts.stdio;
