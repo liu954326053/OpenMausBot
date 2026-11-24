@@ -3,6 +3,7 @@ import { ChevronDown, Loader2, Puzzle, Trash2, Upload } from "lucide-react";
 
 import { PLUGIN_ZIP_MAX_BYTES, type GenerationPluginField, type GenerationPluginSummary, type GenerationPluginValue } from "../../shared/generation-plugins.ts";
 import { Switch } from "./SettingsPrimitives";
+import { Select } from "./Select";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import {
@@ -59,10 +60,10 @@ function FieldInput({ field, value, saved, disabled, onChange }: { field: Genera
     );
   }
   const input = field.type === "select" ? (
-    <select className={FIELD} value={value} disabled={disabled} aria-label={field.label} onChange={(event) => onChange(event.target.value)}>
+    <Select value={value} disabled={disabled} aria-label={field.label} onChange={(event) => onChange(event.target.value)}>
       <option value="">{t("generationPlugins.choose")}</option>
       {(field.choices ?? []).map((choice) => <option key={choice} value={choice}>{choice}</option>)}
-    </select>
+    </Select>
   ) : (
     <input
       className={FIELD}
