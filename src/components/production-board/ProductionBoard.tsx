@@ -15,7 +15,7 @@ import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { BoardEdges } from "./board/BoardEdges";
 import { BoardCamera } from "./board/camera";
 import { BoardCardView, cardSize, FarCard, type BoardCardActions } from "./board/card-view";
-import { BoardMinimap, BoardStageBar, BoardToolbar, PANEL_ROOM_PX, StackMenu, type StackMenuEpisode } from "./board/chrome";
+import { BoardMinimap, BoardStageBar, BoardToolbar, minimapBoxWidth, PANEL_ROOM_PX, StackMenu, type StackMenuEpisode } from "./board/chrome";
 
 /** What the board asks of the project; each may fail with an error the board shows. */
 export interface BoardHost {
@@ -60,9 +60,9 @@ const CULL_MARGIN = 480;
 const DRAG_THRESHOLD = 4;
 const PAN_STEP = 80;
 const KEY_ZOOM = 1.2;
-const GRID = 24;
+const GRID = 28;
 const FOCUS_ZOOM = 0.8;
-const MINIMAP_UNFOLDS_FROM = 900;
+const MINIMAP_UNFOLDS_FROM = 720;
 const CHROME = "[data-board-chrome], [data-board-overlay]";
 
 /** The room the overlay takes from the board's right edge: the width it marks on the element it draws beside that edge
@@ -127,8 +127,11 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
   const [hovered, setHovered] = useState<string | null>(null);
   const [showRefs, setShowRefs] = useState(false);
   const [wide, setWide] = useState(false);
+  const [touched, setTouched] = useState(false);
   const [minimapChoice, setMinimapChoice] = useState<boolean | null>(null);
   const minimap = minimapChoice ?? wide;
+  const [boardWidth, setBoardWidth] = useState(0);
+  const [toolbarWidth, setToolbarWidth] = useState(0);
   const [stackMenu, setStackMenu] = useState<CanvasPoint | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [reserve, setReserve] = useState(PANEL_ROOM_PX);
@@ -136,6 +139,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
   const rootRef = useRef<HTMLElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const press = useRef<Press | null>(null);
   const pressMovedCard = useRef(false);
   const placed = useRef(Boolean(memory));
@@ -270,6 +274,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     if (!root) return;
     const resize = (width: number, height: number) => {
       if (!width || !height) return;
+      setBoardWidth(width);
       setWide(width >= MINIMAP_UNFOLDS_FROM);
       camera.size = { width, height };
       if (!placed.current) {
@@ -287,6 +292,17 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     observer.observe(root);
     return () => observer.disconnect();
   }, [camera]);
+
+  useLayoutEffect(() => {
+    const bar = toolbarRef.current;
+    if (!bar) return;
+    const measure = () => setToolbarWidth(Number(bar.offsetWidth) || 0);
+    measure();
+    if (typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, []);
 
   const focusedBot = useRef(focusBotId);
   useEffect(() => {
@@ -362,6 +378,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
       const pinch = event.ctrlKey || event.metaKey;
       if (!pinch && target.closest("[data-board-card-id]") && scrollsInside(target, root)) return;
       event.preventDefault();
+      setTouched(true);
       const box = root.getBoundingClientRect();
       camera.set(zoomAt(camera.view, wheelZoomFactor(event.deltaY, pinch), { x: event.clientX - box.left, y: event.clientY - box.top }));
     };
@@ -398,6 +415,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     pressMovedCard.current = false;
     const target = event.target as Element;
     if (target.closest(CHROME)) return;
+    setTouched(true);
     const start = { x: event.clientX, y: event.clientY };
     const cardElement = event.button === 0 ? target.closest<HTMLElement>("[data-board-card-id]") : null;
     if (cardElement) {
@@ -499,6 +517,10 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
   };
 
   const lead = board.empty ? rects.get(board.cards.find((card) => card.kind === "bot")?.id ?? "") : undefined;
+  const minimapEnd = 12 + (Overlay ? reserve : 0);
+  const minimapMeetsToolbar = boardWidth > 0 && toolbarWidth > 0
+    && boardWidth - minimapEnd - minimapBoxWidth(!wide) < 12 + toolbarWidth + 8;
+  const minimapBottom = minimapMeetsToolbar ? (wide ? 86 : 62) : undefined;
 
   return (
     <section
@@ -508,7 +530,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
       data-production-board=""
       data-project-canvas-stage=""
       className="relative h-full w-full touch-none select-none overflow-hidden bg-app outline-none"
-      style={{ backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--color-ink) 9%, transparent) 1px, transparent 1.5px)" }}
+      style={{ backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--color-ink) 10%, transparent) 1px, transparent 1.5px)" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
@@ -545,18 +567,42 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
         ) : null}
       </div>
       <BoardStageBar stages={board.stages} viewStage={shown.stage} insetEnd={Overlay ? reserve : 0} onFocus={focusStage} />
-      <div data-board-chrome="" className="pointer-events-none absolute bottom-4 start-4 z-[80] flex flex-col items-start gap-2">
+      <div data-board-chrome="" className="pointer-events-none absolute bottom-3 start-3 z-[80] flex flex-col items-start gap-2">
+        {wide ? (
+          <p
+            data-board-hint=""
+            data-board-hint-gone={touched ? "" : undefined}
+            className={cn(
+              "pointer-events-none text-[12px] leading-4 text-ink-tertiary transition-opacity duration-300 motion-reduce:transition-none",
+              touched && "opacity-0",
+            )}
+          >
+            {t("productionBoard.hint")}
+          </p>
+        ) : null}
         <BoardToolbar
           camera={camera}
           showRefs={showRefs}
           minimap={minimap}
+          compact={!wide}
+          domRef={toolbarRef}
           onRefs={() => setShowRefs((on) => !on)}
           onMinimap={() => setMinimapChoice(!minimap)}
           onZoom={(factor) => camera.glide(zoomAt(camera.view, factor, { x: camera.size.width / 2, y: camera.size.height / 2 }))}
           onFit={fitAll}
         />
-        {minimap ? <BoardMinimap layout={layout} kinds={kinds} camera={camera} onCentre={(point) => camera.set({ ...camera.view, x: camera.size.width / 2 - point.x * camera.view.k, y: camera.size.height / 2 - point.y * camera.view.k })} /> : null}
       </div>
+      {minimap ? (
+        <BoardMinimap
+          layout={layout}
+          kinds={kinds}
+          camera={camera}
+          insetEnd={Overlay ? reserve : 0}
+          compact={!wide}
+          {...(minimapBottom === undefined ? {} : { bottom: minimapBottom })}
+          onCentre={(point) => camera.set({ ...camera.view, x: camera.size.width / 2 - point.x * camera.view.k, y: camera.size.height / 2 - point.y * camera.view.k })}
+        />
+      ) : null}
       {stackMenu ? <StackMenu episodes={stackEpisodes} at={stackMenu} onChoose={chooseEpisode} onClose={() => setStackMenu(null)} /> : null}
       {notice ? (
         <div data-board-chrome="" className="pointer-events-none absolute inset-x-0 top-14 z-[95] flex justify-center px-3" style={Overlay ? { paddingInlineEnd: 12 + reserve } : undefined}>

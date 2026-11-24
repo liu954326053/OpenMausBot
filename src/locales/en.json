@@ -11815,5 +11815,8 @@
   "productionBoard.toolbar.fit": "Fit to view",
   "productionBoard.stack.title": "Episodes",
   "productionBoard.actionFailed": "That didn't go through: {reason}",
-  "productionBoard.dismiss": "Dismiss"
+  "productionBoard.dismiss": "Dismiss",
+  "productionBoard.toolbar.fitLabel": "Fit",
+  "productionBoard.toolbar.referencesLabel": "Reference lines",
+  "productionBoard.hint": "Click a bot to talk · click an asset for its details · drag empty space to pan · scroll to zoom"
 }

@@ -11815,5 +11815,8 @@
   "productionBoard.toolbar.fit": "适合视图",
   "productionBoard.stack.title": "分集",
   "productionBoard.actionFailed": "没有成功：{reason}",
-  "productionBoard.dismiss": "关闭"
+  "productionBoard.dismiss": "关闭",
+  "productionBoard.toolbar.fitLabel": "全局",
+  "productionBoard.toolbar.referencesLabel": "角色、场景引用线",
+  "productionBoard.hint": "点击智能体与它对话 · 点击素材节点预览详情 · 拖动空白处平移 · 滚轮缩放"
 }
