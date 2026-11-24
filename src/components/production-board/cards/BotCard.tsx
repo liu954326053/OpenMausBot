@@ -217,7 +217,7 @@ export function BotCard({ bot, look, job, task, progress, steps, gate, onOpen, o
             <button
               type="button"
               data-bot-talk=""
-              className="inline-flex h-[26px] shrink-0 items-center gap-1 rounded-full bg-ink pe-2.5 ps-2 text-[12px] font-semibold leading-4 text-app transition-colors hover:bg-board-amber hover:text-board-ink motion-reduce:transition-none"
+              className="inline-flex h-[26px] shrink-0 items-center gap-1 rounded-full bg-ink pe-2.5 ps-2 text-[12px] font-semibold leading-4 text-app transition-colors hover:bg-board-amber hover:text-board-ink active:bg-board-amber/90 motion-reduce:transition-none"
               onClick={(event) => {
                 event.stopPropagation();
                 onOpen();

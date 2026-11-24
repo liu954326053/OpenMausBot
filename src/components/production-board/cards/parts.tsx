@@ -214,8 +214,8 @@ export function PaperButton({ label, icon, onClick, kind = "ink", iconOnly = fal
   className?: string;
 }) {
   const plate = kind === "generate"
-    ? "h-[30px] bg-board-amber px-3 text-[13px] font-semibold text-board-ink hover:bg-board-amber/90"
-    : "h-7 border border-board-ink-3 px-2.5 text-[12px] font-medium text-board-ink hover:border-board-ink hover:bg-board-ink hover:text-board-paper";
+    ? "h-[30px] bg-board-amber px-3 text-[13px] font-semibold text-board-ink hover:bg-board-amber/90 active:bg-board-amber/80"
+    : "h-7 border border-board-ink-3 px-2.5 text-[12px] font-medium text-board-ink hover:border-board-ink hover:bg-board-ink hover:text-board-paper active:bg-board-ink/90";
   return (
     <button
       type="button"
@@ -268,7 +268,7 @@ export function MonitorButton({ label, icon, onClick, iconOnly = false, title, c
       aria-label={iconOnly ? label : undefined}
       title={title ?? (iconOnly ? label : undefined)}
       className={cn(
-        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-board-paper/40 text-[12px] font-medium text-board-paper transition-colors motion-reduce:transition-none hover:border-board-paper hover:bg-board-paper hover:text-board-ink",
+        "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-board-paper/40 text-[12px] font-medium text-board-paper transition-colors motion-reduce:transition-none hover:border-board-paper hover:bg-board-paper hover:text-board-ink active:bg-board-paper/90",
         iconOnly ? "w-7 px-0" : "px-2.5",
         className,
       )}
