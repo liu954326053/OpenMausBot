@@ -352,7 +352,7 @@ async function shootElement(page: HeadlessPage, captured: Captured, relative: st
   captured.shot = relative;
 }
 
-async function auditMockup(page: HeadlessPage, baseUrl: string, elements: AuditElement[], options: Options): Promise<{ elements: Record<string, Captured>; openScale: number; fitScale: number }> {
+async function auditMockup(page: HeadlessPage, baseUrl: string, elements: AuditElement[], options: Options): Promise<{ elements: Record<string, Captured>; openScale: number; fitScale: number; stageScale: number }> {
   await navigate(page, `${baseUrl}/index.html`);
   await page.until("window.MJ && window.MJ.app && window.MJ.ui && document.querySelectorAll('#nodes .node').length > 30", 30_000);
   await page.evaluate("(async () => { await document.fonts.ready; return true; })()");
@@ -365,6 +365,10 @@ async function auditMockup(page: HeadlessPage, baseUrl: string, elements: AuditE
   await delay(200);
   const fitScale = Number(await page.evaluate("window.MJ?.app?.cam?.z ?? 1")) || 1;
   await shoot(page, "mockup/board.png");
+  await page.evaluate("document.querySelector('[data-act=\"stage\"][data-id=\"0\"]')?.click(); true");
+  await delay(1_100);
+  const stageScale = Number(await page.evaluate("window.MJ?.app?.cam?.z ?? 1")) || 1;
+  await shoot(page, "mockup/board-stage1.png");
 
   for (const element of elements) {
     if (element.section !== "chrome") continue;
@@ -411,7 +415,7 @@ async function auditMockup(page: HeadlessPage, baseUrl: string, elements: AuditE
     await delay(100);
   }
 
-  return { elements: captured, openScale, fitScale };
+  return { elements: captured, openScale, fitScale, stageScale };
 }
 
 const closeOverlay = `(() => {
@@ -515,7 +519,7 @@ async function focusCard(page: HeadlessPage, kind: string, viewport: Options["vi
   return { ok: true };
 }
 
-async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditElement[], options: Options): Promise<{ elements: Record<string, Captured>; openScale: number; fitScale: number }> {
+async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditElement[], options: Options): Promise<{ elements: Record<string, Captured>; openScale: number; fitScale: number; stageScale: number }> {
   await navigate(page, appUrl);
   await page.until("document.querySelector('[data-production-board]') && document.querySelectorAll('[data-board-card]').length > 0", 60_000);
   await delay(300);
@@ -528,6 +532,10 @@ async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditEleme
   await delay(250);
   const fitScale = (await page.evaluate(VIEW)).k;
   await shoot(page, "app/board.png");
+  await pressReal(page, "1");
+  await delay(250);
+  const stageScale = (await page.evaluate(VIEW)).k;
+  await shoot(page, "app/board-stage1.png");
 
   for (const element of elements) {
     if (element.section !== "chrome") continue;
@@ -582,7 +590,7 @@ async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditEleme
       await delay(150);
     }
   }
-  return { elements: captured, openScale, fitScale };
+  return { elements: captured, openScale, fitScale, stageScale };
 }
 
 async function composePair(page: HeadlessPage, pair: { id: string; left: string; right: string; label: string }, baseUrl: string): Promise<void> {
@@ -692,8 +700,9 @@ async function run(argv: string[]): Promise<void> {
       };
     };
     const boards = [
-      boardPair("board", "整板 · 全局（Fit）", mockup.fitScale, app.fitScale),
       boardPair("board-open", "打开时", mockup.openScale, app.openScale),
+      boardPair("board-stage1", "阶段 1 · 需求", mockup.stageScale, app.stageScale),
+      boardPair("board", "整板 · 全局（Fit）", mockup.fitScale, app.fitScale),
     ].filter((board): board is BoardPair => Boolean(board));
 
     const pairs = [

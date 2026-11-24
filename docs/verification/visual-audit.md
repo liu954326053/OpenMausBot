@@ -65,7 +65,7 @@ pnpm vis:audit --app-url http://127.0.0.1:8790/__production-board.html
 默认写到 `/tmp/omb-vis-audit/`：
 
 ```
-mockup/            效果图整板（board-open.png 打开时、board.png 全局）与每个元素的原图
+mockup/            效果图整板（board-open.png 打开时、board-stage1.png 阶段 1、board.png 全局）与每个元素的原图
 app/               实现侧同样的图
 side-by-side/      左右等高拼图（.png 给老板看，.html 可单独打开）
 parity.json        元素 → 效果图值 / 实现值 / 差异 / 分数
