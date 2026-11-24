@@ -1,5 +1,9 @@
 # Pictures and videos for a project, through an MCP server
 
+> New projects can choose an installed **generation plugin** instead of an MCP server:
+> see [Generation plugins](generation-plugins.md). The convention below stays the same,
+> and a project that already names a server keeps working.
+
 A project's canvas makes pictures and videos through an MCP server the person
 set up in **Apps → MCP servers**. MagicBot ships no image or video model of its
 own here: it speaks one small convention, and any MCP server that follows it
