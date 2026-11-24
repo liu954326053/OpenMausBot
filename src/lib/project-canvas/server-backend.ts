@@ -214,7 +214,8 @@ export function createServerCanvasBackend(store: StoreRef): ServerCanvasBackend 
 
     listModels(projectId, kind, preview) {
       const query = new URLSearchParams({ kind });
-      if (preview) query.set("server", preview.server);
+      if (preview?.plugin) query.set("plugin", preview.plugin);
+      else if (preview?.server) query.set("server", preview.server);
       return generationCall<GenerationModelsWire>(`${generationPath(projectId)}/models?${query}`);
     },
 

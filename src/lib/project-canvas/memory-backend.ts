@@ -389,7 +389,7 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
 
     async readGenerationSettings(id) {
       ensureProject(id);
-      return { settings: structuredClone(generation), servers: [...options.generation.servers] };
+      return { settings: structuredClone(generation), servers: [...options.generation.servers], plugins: [] };
     },
 
     async saveGenerationSettings(id, settings) {
@@ -402,15 +402,15 @@ export function createMemoryCanvasBackend(options: MemoryCanvasOptions): MemoryC
         if (problems.length) return failure(problems[0]!.key === "model" ? "model_unknown" : "setting_refused", "The model doesn't offer that setting.", { problems });
       }
       generation = structuredClone(settings);
-      return { settings: structuredClone(generation), servers: [...options.generation.servers] };
+      return { settings: structuredClone(generation), servers: [...options.generation.servers], plugins: [] };
     },
 
     async listModels(id, kind, preview) {
       ensureProject(id);
-      const server = preview?.server ?? generation[kind].server;
-      if (!server) return failure("no_server", "Choose an MCP server for this project first.");
-      const models = options.generation.models[server];
-      if (!models) return failure("server_unusable", `The MCP server ${server} can't be used.`, { errorParams: { server } });
+      const key = preview?.plugin ?? preview?.server ?? generation[kind].plugin ?? generation[kind].server;
+      if (!key) return failure("no_server", "Choose a plugin or an MCP server for this project first.");
+      const models = options.generation.models[key];
+      if (!models) return failure("server_unusable", `The MCP server ${key} can't be used.`, { errorParams: { server: key } });
       return { models: models.filter((model) => model.kind === kind) };
     },
 

@@ -73,8 +73,8 @@ export interface CanvasBackend {
   readGenerationSettings(projectId: string): Promise<GenerationSettingsWire>;
   /** `PUT /api/team-projects/:id/generation/settings`. */
   saveGenerationSettings(projectId: string, settings: ProjectGenerationSettings): Promise<GenerationSettingsWire | Refused>;
-  /** `GET /api/team-projects/:id/generation/models`; `preview` names a server not saved yet. */
-  listModels(projectId: string, kind: GenerationKind, preview?: { server: string }): Promise<GenerationModelsWire | Refused>;
+  /** `GET /api/team-projects/:id/generation/models`; `preview` names a server or plugin not saved yet. */
+  listModels(projectId: string, kind: GenerationKind, preview?: { plugin?: string; server?: string }): Promise<GenerationModelsWire | Refused>;
   /** `POST /api/team-projects/:id/canvas/generate`: generation starts from the node's saved prompt and settings and the
    * files connected into it, and the node shows the job as it goes. */
   startGeneration(projectId: string, request: CanvasGenerateRequest): Promise<CanvasGenerateResponse | Refused>;
