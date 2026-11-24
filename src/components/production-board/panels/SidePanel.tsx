@@ -19,7 +19,11 @@ const TAB_KEYS: Record<Tab, LocaleKey> = { team: "boardPanels.tab.team", assets:
  * button, and a gap beside it. */
 export const SIDE_PANEL_ROOM = { open: 16 + 288 + 16, folded: 16 + 36 + 16 } as const;
 
-const FLOATING = "popover-surface pointer-events-auto absolute end-4 top-4 rounded-xl border border-hairline/50 bg-menu";
+/** The room the side panel keeps at the board's right edge, its inset included: the open panel, or the folded button
+ * and the gap beside it. The board reads it off whichever of the two is showing. */
+export const BOARD_ROOM = { open: 16 + 288, folded: 16 + 36 + 16 } as const;
+
+const SURFACE = "popover-surface pointer-events-auto rounded-xl border border-hairline/50 bg-menu";
 
 export interface SidePanelProps {
   rows: PanelRows;
@@ -54,69 +58,75 @@ export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChan
   return (
     <>
       {open ? null : (
-        <button
-          type="button"
-          className={cn(FLOATING, "ui-icon-button size-9")}
-          aria-label={t("boardPanels.panel.show")}
-          title={t("boardPanels.panel.show")}
-          aria-expanded={false}
-          aria-controls={panelId}
-          onClick={() => onOpenChange(true)}
-        >
-          <PanelRightOpen size={16} aria-hidden="true" className="rtl:-scale-x-100" />
-        </button>
+        <div data-board-room="" style={{ width: BOARD_ROOM.folded }} className="pointer-events-none absolute end-0 top-4 flex justify-end pe-4">
+          <button
+            type="button"
+            className={cn(SURFACE, "ui-icon-button size-9")}
+            aria-label={t("boardPanels.panel.show")}
+            title={t("boardPanels.panel.show")}
+            aria-expanded={false}
+            aria-controls={panelId}
+            onClick={() => onOpenChange(true)}
+          >
+            <PanelRightOpen size={16} aria-hidden="true" className="rtl:-scale-x-100" />
+          </button>
+        </div>
       )}
       <aside
         id={panelId}
         data-board-side-panel=""
+        data-board-room={open ? "" : undefined}
         hidden={!open}
         aria-label={t("boardPanels.panel.label")}
-        className={cn(FLOATING, "flex max-h-[calc(100%-2rem)] w-72 flex-col gap-1 p-1.5 animate-pop-in motion-reduce:animate-none")}
+        style={{ width: BOARD_ROOM.open }}
+        className="pointer-events-none absolute end-0 top-4 flex max-h-[calc(100%-2rem)] justify-end pe-4 animate-pop-in motion-reduce:animate-none"
       >
-        <div className="flex items-center gap-1">
-          <div role="tablist" aria-label={t("boardPanels.panel.label")} className="flex min-w-0 flex-1 gap-0.5 rounded-full bg-ink/[0.05] p-[3px]" onKeyDown={onTabKey}>
-            {TABS.map((each) => (
-              <button
-                key={each}
-                ref={(element) => {
-                  if (element) tabRefs.current.set(each, element);
-                  else tabRefs.current.delete(each);
-                }}
-                type="button"
-                role="tab"
-                id={`${id}-tab-${each}`}
-                aria-selected={each === tab}
-                aria-controls={`${id}-tabpanel`}
-                tabIndex={each === tab ? 0 : -1}
-                className={cn(
-                  "h-[26px] min-w-0 flex-1 truncate rounded-full px-2 text-[13px] leading-[18px] transition-colors duration-[120ms] motion-reduce:transition-none",
-                  each === tab ? "bg-ink/[0.1] font-medium text-ink" : "text-ink-secondary hover:text-ink",
-                )}
-                onClick={() => setTab(each)}
-              >
-                {t(TAB_KEYS[each])}
-              </button>
-            ))}
+        <div className={cn(SURFACE, "flex min-h-0 w-72 flex-col gap-1 p-1.5")}>
+          <div className="flex items-center gap-1">
+            <div role="tablist" aria-label={t("boardPanels.panel.label")} className="flex min-w-0 flex-1 gap-0.5 rounded-full bg-ink/[0.05] p-[3px]" onKeyDown={onTabKey}>
+              {TABS.map((each) => (
+                <button
+                  key={each}
+                  ref={(element) => {
+                    if (element) tabRefs.current.set(each, element);
+                    else tabRefs.current.delete(each);
+                  }}
+                  type="button"
+                  role="tab"
+                  id={`${id}-tab-${each}`}
+                  aria-selected={each === tab}
+                  aria-controls={`${id}-tabpanel`}
+                  tabIndex={each === tab ? 0 : -1}
+                  className={cn(
+                    "h-[26px] min-w-0 flex-1 truncate rounded-full px-2 text-[13px] leading-[18px] transition-colors duration-[120ms] motion-reduce:transition-none",
+                    each === tab ? "bg-ink/[0.1] font-medium text-ink" : "text-ink-secondary hover:text-ink",
+                  )}
+                  onClick={() => setTab(each)}
+                >
+                  {t(TAB_KEYS[each])}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="ui-icon-button size-8 shrink-0"
+              aria-label={t("boardPanels.panel.hide")}
+              title={t("boardPanels.panel.hide")}
+              aria-expanded={true}
+              aria-controls={panelId}
+              onClick={() => onOpenChange(false)}
+            >
+              <PanelRightClose size={16} aria-hidden="true" className="rtl:-scale-x-100" />
+            </button>
           </div>
-          <button
-            type="button"
-            className="ui-icon-button size-8 shrink-0"
-            aria-label={t("boardPanels.panel.hide")}
-            title={t("boardPanels.panel.hide")}
-            aria-expanded={true}
-            aria-controls={panelId}
-            onClick={() => onOpenChange(false)}
-          >
-            <PanelRightClose size={16} aria-hidden="true" className="rtl:-scale-x-100" />
-          </button>
+          {open ? (
+            <div role="tabpanel" id={`${id}-tabpanel`} aria-labelledby={`${id}-tab-${tab}`} className="-mx-1.5 min-h-0 flex-1 overflow-y-auto px-1.5">
+              {tab === "team" ? <TeamTab team={rows.team} looks={looks} chatBotId={chatBotId} onBot={onBot} locale={locale} /> : null}
+              {tab === "assets" ? <AssetsTab characters={rows.characters} scenes={rows.scenes} shots={rows.shots} finals={rows.finals} onAsset={onAsset} locale={locale} /> : null}
+              {tab === "episodes" ? <EpisodesTab episodes={rows.episodes} onEpisode={onEpisode} locale={locale} /> : null}
+            </div>
+          ) : null}
         </div>
-        {open ? (
-          <div role="tabpanel" id={`${id}-tabpanel`} aria-labelledby={`${id}-tab-${tab}`} className="-mx-1.5 min-h-0 flex-1 overflow-y-auto px-1.5">
-            {tab === "team" ? <TeamTab team={rows.team} looks={looks} chatBotId={chatBotId} onBot={onBot} locale={locale} /> : null}
-            {tab === "assets" ? <AssetsTab characters={rows.characters} scenes={rows.scenes} shots={rows.shots} finals={rows.finals} onAsset={onAsset} locale={locale} /> : null}
-            {tab === "episodes" ? <EpisodesTab episodes={rows.episodes} onEpisode={onEpisode} locale={locale} /> : null}
-          </div>
-        ) : null}
       </aside>
     </>
   );

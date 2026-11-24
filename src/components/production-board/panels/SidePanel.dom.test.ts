@@ -56,6 +56,24 @@ describe("the board's side panel", () => {
     expect(panel().hidden).toBe(true);
   });
 
+  it("measures out the room it keeps at the board's right edge: the open panel with its inset, the folded button with the gap beside it", async () => {
+    harness = await renderOverlay();
+    const rooms = () => [...harness.host.querySelectorAll<HTMLElement>("[data-board-room]")];
+    expect(rooms()).toHaveLength(1);
+    expect(rooms()[0]).toBe(panel());
+    expect(rooms()[0].style.width).toBe("304px");
+    await click(harness.host.querySelector<HTMLButtonElement>("button[aria-label='Hide the team and assets']")!);
+    expect(rooms()).toHaveLength(1);
+    expect(rooms()[0]).not.toBe(panel());
+    expect(rooms()[0].style.width).toBe("68px");
+    const show = harness.host.querySelector<HTMLButtonElement>("button[aria-label='Show the team and assets']")!;
+    expect(rooms()[0].contains(show)).toBe(true);
+    await click(show);
+    expect(rooms()).toHaveLength(1);
+    expect(rooms()[0]).toBe(panel());
+    expect(rooms()[0].style.width).toBe("304px");
+  });
+
   it("brings a bot's card into view and opens its chat", async () => {
     harness = await renderOverlay();
     await click(row("墨白"));
