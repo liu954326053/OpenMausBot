@@ -269,6 +269,10 @@ cards the person moves, retries and takes, the far view, the app's smallest
 window and how fast sixty episodes open, zoom and pan, against disposable
 servers with the scripted fake engine and a sample drama in the page.
 
+The [visual audit](visual-audit.md) measures the production board against the
+owner's mockup element by element, at one viewport, and writes a ranked gap
+report and side-by-side pictures to `/tmp/omb-vis-audit/`.
+
 The [avatar provider fixture](avatar-providers.md) checks image-provider settings,
 keyless local generation, saved-key handling, and safe errors with a local fake API.
 

@@ -1,0 +1,136 @@
+{
+  "note": "效果图（docs/无限画布效果图/index-v5）与 MagicBot 制作看板的对照表。一行一个元素：效果图选择器、我方选择器、先把哪种卡片移到画面中央、打开浮层前要点哪张卡。改造后改这里就能重跑；选择器写错时工具会报出是哪一个。",
+  "elements": [
+    {
+      "id": "stagebar",
+      "name": "阶段条",
+      "section": "chrome",
+      "mockup": ".stagebar",
+      "app": "[data-stage-surface]"
+    },
+    {
+      "id": "toolbar",
+      "name": "画布工具栏",
+      "section": "chrome",
+      "mockup": ".toolbar",
+      "app": "[role=\"toolbar\"]"
+    },
+    {
+      "id": "minimap",
+      "name": "小地图",
+      "section": "chrome",
+      "mockup": ".minimap",
+      "app": "[data-board-chrome] svg[role=\"img\"]"
+    },
+    {
+      "id": "k-bot",
+      "name": "智能体卡片",
+      "section": "cards",
+      "mockup": ".k-bot",
+      "mockupNode": "lead",
+      "app": "[data-board-card=\"bot\"]",
+      "appCardKind": "bot"
+    },
+    {
+      "id": "k-brief",
+      "name": "需求单",
+      "section": "cards",
+      "mockup": ".k-brief",
+      "mockupNode": "brief",
+      "app": "[data-board-card=\"brief\"]",
+      "appCardKind": "brief"
+    },
+    {
+      "id": "k-tasks",
+      "name": "任务拆分",
+      "section": "cards",
+      "mockup": ".k-tasks",
+      "mockupNode": "tasks",
+      "app": "[data-board-card=\"plan\"]",
+      "appCardKind": "plan"
+    },
+    {
+      "id": "k-ep",
+      "name": "分集剧本",
+      "section": "cards",
+      "mockup": ".k-ep",
+      "mockupNode": "ep1",
+      "app": "[data-board-card=\"episode\"]",
+      "appCardKind": "episode"
+    },
+    {
+      "id": "k-epmore",
+      "name": "分集摞",
+      "section": "cards",
+      "mockup": ".k-epmore",
+      "mockupNode": "epmore",
+      "app": "[data-board-card=\"episodeStack\"]",
+      "appCardKind": "episodeStack"
+    },
+    {
+      "id": "k-shot",
+      "name": "镜头",
+      "section": "cards",
+      "mockup": ".k-shot",
+      "mockupNode": "sh1",
+      "app": "[data-board-card=\"shot\"]",
+      "appCardKind": "shot"
+    },
+    {
+      "id": "k-char",
+      "name": "角色",
+      "section": "cards",
+      "mockup": ".k-char",
+      "mockupNode": "c1",
+      "app": "[data-board-card=\"character\"]",
+      "appCardKind": "character"
+    },
+    {
+      "id": "k-scene",
+      "name": "场景",
+      "section": "cards",
+      "mockup": ".k-scene",
+      "mockupNode": "s1",
+      "app": "[data-board-card=\"scene\"]",
+      "appCardKind": "scene"
+    },
+    {
+      "id": "k-result",
+      "name": "分镜视频",
+      "section": "cards",
+      "mockup": ".k-result",
+      "mockupNode": "v1",
+      "app": "[data-board-card=\"result\"]",
+      "appCardKind": "result"
+    },
+    {
+      "id": "k-final",
+      "name": "成片",
+      "section": "cards",
+      "mockup": ".k-final",
+      "mockupNode": "final",
+      "app": "[data-board-card=\"final\"]",
+      "appCardKind": "final"
+    },
+    {
+      "id": "bchat",
+      "name": "对话窗",
+      "section": "panels",
+      "mockup": ".bchat",
+      "mockupOpen": { "chat": "lead" },
+      "app": "[data-board-chat] > div",
+      "appCardKind": "bot",
+      "appClick": "[data-board-card=\"bot\"]"
+    },
+    {
+      "id": "dm-box",
+      "name": "详情弹窗",
+      "section": "panels",
+      "mockup": ".dm-box",
+      "mockupOpen": { "modal": "c1" },
+      "app": "[data-board-asset]",
+      "appCardKind": "character",
+      "appClick": "[data-board-card=\"character\"]"
+    }
+  ]
+}
