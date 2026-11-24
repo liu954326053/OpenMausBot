@@ -11815,5 +11815,8 @@
   "productionBoard.toolbar.fit": "Ajustar à tela",
   "productionBoard.stack.title": "Episódios",
   "productionBoard.actionFailed": "Não deu certo: {reason}",
-  "productionBoard.dismiss": "Dispensar"
+  "productionBoard.dismiss": "Dispensar",
+  "productionBoard.toolbar.fitLabel": "Ajustar",
+  "productionBoard.toolbar.referencesLabel": "Linhas de referência",
+  "productionBoard.hint": "Clique em um bot para conversar · clique em um material para ver detalhes · arraste o vazio para mover · role para zoom"
 }

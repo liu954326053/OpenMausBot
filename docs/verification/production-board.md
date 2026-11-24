@@ -26,9 +26,9 @@ or JianYing's own folder.
    production ends by itself. Generate again adds a take, Use this take chooses the one the episode uses, and a
    refusal stays until it is dismissed. An archived project's cards offer no action.
 8. Before the lead has written anything the board shows only the lead and how to begin.
-9. The minimap starts folded on a board narrower than 900 px, as the side panel does, and open on a wider one. It
+9. The minimap starts folded on a board narrower than 720 px, and open on a wider one. It
    follows the board's width until the person uses its button; from then on their choice holds while the board is
-   open.
+   open. On a narrow board the minimap is smaller, and the toolbar gives it room.
 10. In the app, the sidebar's project row opens the project's group chat under the project's top bar, and its switch
     opens the board and goes back. A bot who joins the project is drawn at once, clear of the others. The project's
     settings cover the whole board, and a terminal's sign-in card stays above them.
@@ -114,17 +114,18 @@ with the zoom's. It does not pan.
 
 Look at each picture in both skins, Daylight and Midnight:
 
-- The stage bar's dots in their states' colours, green for done, blue at work, red failed and grey waiting, and the
-  same states on the cards and their lines. Every word on the cards and the lines' labels is readable.
-- `03-` to `05-`, at 1440×900 and at a small 760×560: nothing clipped and nothing overlapping, the minimap folded
-  at the small window.
+- The stage bar's numbered chips in their states' colours, green for done, amber at work, red failed and grey
+  waiting, and the same states on the cards and their lines. Every word on the cards and the lines' labels is readable.
+- `03-` to `05-`, at 1440×900 and at a small 760×560: nothing clipped and nothing overlapping, the minimap clear of
+  the toolbar and the side panel.
 - `11-far-out-labels-only.png` and `31-sixty-episodes-far-`: labels only, each readable.
 - `26-smallest-window-`: the app's smallest window with the sidebar open. The board is 560 px wide, the minimap is
   folded and the toolbar's corner takes about 3% of the board. `27-smallest-window-minimap-opened-`: the minimap its
   button opened, still clear of the bars, the corner now about 13%. `evidence.json` keeps these measurements under
   `smallestWindow`.
-- At the smallest window, in English, the stage bar is wider than the board and scrolls sideways: Post is reached by
-  scrolling it.
+- At the smallest window, in English and Chinese, the stage bar keeps its five numbered stages inside the board
+  and in reach: the whole bar when it fits, else the compact one, which names only the stage in view and never
+  scrolls sideways.
 
 ## Out of scope
 

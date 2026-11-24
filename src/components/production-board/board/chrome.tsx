@@ -1,5 +1,5 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Check, ChevronRight, Map as MapIcon, Maximize, Waypoints, ZoomIn, ZoomOut } from "lucide-react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Check, Map as MapIcon, Maximize, Waypoints, ZoomIn, ZoomOut } from "lucide-react";
 import { episodeCode, type ProductionEpisodeStatus } from "../../../../shared/production";
 import { MENU_GUTTER, MENU_HEADING, MENU_ITEM, MENU_SHEET } from "@/components/menu-recipe";
 import { usePopoverDismiss } from "@/hooks/use-popover-dismiss";
@@ -9,10 +9,10 @@ import type { BoardLayout } from "@/lib/production-board/layout";
 import { BOARD_STAGES, type BoardStage } from "@/lib/production-board/overlay";
 import { compactStageName } from "@/lib/production-board/stages";
 import type { BoardCardKind, BoardStageState } from "@/lib/production-board/types";
-import { episodeStatus, TONE_DOT, type BoardTone } from "../cards";
+import { episodeStatus, TONE_DOT } from "../cards";
 import type { BoardCamera } from "./camera";
 
-export const CHROME_SURFACE = "popover-surface pointer-events-auto flex items-center gap-1 rounded-xl border border-hairline/50 bg-menu p-1";
+export const CHROME_SURFACE = "pointer-events-auto flex items-center gap-1 rounded-xl border border-hairline bg-panel/94 p-1";
 
 /** Keeps a bar centred at the top clear of the overlay's side panel in the top-right corner. */
 export const PANEL_ROOM = "pe-[20rem]";
@@ -20,43 +20,73 @@ export const PANEL_ROOM = "pe-[20rem]";
 /** What that side panel may take of the board's width, in pixels, until the board has measured it. */
 export const PANEL_ROOM_PX = 320;
 
-const STAGE_TONE: Record<BoardStageState, BoardTone> = { wait: "idle", active: "working", done: "done", failed: "failed" };
-
 export const stageName = (stage: BoardStage) => t(`productionBoard.stage.${stage}`);
 
 const stageLabel = (stage: BoardStage, state: BoardStageState) => `${stageName(stage)} · ${t(`productionBoard.stageState.${state}`)}`;
 
-function ChromeButton({ label, pressed, onClick, children }: { label: string; pressed?: boolean; onClick: () => void; children: ReactNode }) {
+const STAGE_NUMBER_TONE: Record<BoardStageState, string> = {
+  wait: "bg-control text-ink-secondary",
+  done: "bg-success text-success-ink",
+  active: "bg-warning text-app",
+  failed: "bg-danger text-danger-ink",
+};
+
+function ChromeButton({ label, pressed, wide, onClick, children }: { label: string; pressed?: boolean; wide?: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" className={cn("ui-icon-button hover:bg-menu-hover", pressed && "bg-ink/[0.08] text-ink")} aria-label={label} title={label} aria-pressed={pressed} onClick={onClick}>
+    <button
+      type="button"
+      className={cn(
+        "inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-[13px] leading-4 text-ink-secondary",
+        "transition-colors duration-100 hover:bg-ink/[0.06] active:bg-ink/[0.08]",
+        wide ? "gap-1.5 px-2.5" : "w-8",
+        pressed ? "bg-ink/[0.08] text-warning" : null,
+      )}
+      aria-label={label}
+      title={label}
+      aria-pressed={pressed}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
 }
 
-function StageButtons({ stages, named, compact, onFocus }: { stages: Record<BoardStage, BoardStageState>; named?: BoardStage; compact?: boolean; onFocus: (stage: BoardStage) => void }) {
+function StageButtons({ stages, viewStage, named, compact, measure, onFocus }: {
+  stages: Record<BoardStage, BoardStageState>;
+  viewStage?: BoardStage;
+  named?: BoardStage;
+  compact?: boolean;
+  /** The hidden copy the bar measures, which is not a control of its own. */
+  measure?: boolean;
+  onFocus: (stage: BoardStage) => void;
+}) {
   return BOARD_STAGES.map((stage, at) => {
     const state = stages[stage];
     const label = stageLabel(stage, state);
     const showsName = !compact || named === stage;
+    const current = !measure && viewStage === stage;
     return (
       <li key={stage} className="flex shrink-0 items-center">
-        {!compact && at > 0 ? <ChevronRight size={14} aria-hidden="true" className="text-ink-tertiary rtl:rotate-180" /> : null}
+        {at > 0 ? <span data-stage-sep="" aria-hidden="true" className="mx-1 h-px w-2.5 shrink-0 bg-hairline" /> : null}
         <button
           type="button"
-          data-board-stage={stage}
+          data-board-stage={measure ? undefined : stage}
           data-stage-state={state}
+          aria-current={current ? "true" : undefined}
           aria-label={label}
           title={label}
           className={cn(
-            "flex h-7 items-center rounded-lg hover:bg-menu-hover",
-            showsName ? "gap-1.5 px-2.5 text-[13px] font-medium leading-5" : "w-7 justify-center",
-            state === "wait" ? "text-ink-secondary" : "text-ink",
+            "flex h-7 items-center rounded-lg transition-colors duration-100",
+            showsName ? "gap-1.5 px-2" : "w-7 justify-center",
+            current ? "bg-control text-ink" : state === "wait" ? "text-ink-secondary hover:bg-menu-hover" : "text-ink hover:bg-menu-hover",
           )}
+          tabIndex={measure ? -1 : undefined}
           onClick={() => onFocus(stage)}
         >
-          <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TONE_DOT[STAGE_TONE[state]])} />
-          {showsName ? stageName(stage) : null}
+          <span data-stage-number="" aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded-full font-mono text-[11px] font-semibold tabular-nums", STAGE_NUMBER_TONE[state])}>
+            {at + 1}
+          </span>
+          {showsName ? <span data-stage-name="" className="whitespace-nowrap text-[13px] font-medium leading-[18px]">{stageName(stage)}</span> : null}
         </button>
       </li>
     );
@@ -122,13 +152,13 @@ export function BoardStageBar({ stages, viewStage, insetEnd, onFocus }: {
         <ol
           data-stage-list="full"
           aria-hidden={compact || undefined}
-          className={cn("items-center gap-0.5", compact ? "invisible absolute start-1 top-1 flex w-max" : "flex")}
+          className={cn("items-center gap-1", compact ? "invisible absolute start-1 top-1 flex w-max" : "flex")}
         >
-          <StageButtons stages={stages} onFocus={onFocus} />
+          <StageButtons stages={stages} viewStage={viewStage} measure={compact} onFocus={onFocus} />
         </ol>
         {compact ? (
-          <ol data-stage-list="compact" className="flex min-w-0 flex-wrap items-center justify-center gap-0.5">
-            <StageButtons stages={stages} named={named} compact onFocus={onFocus} />
+          <ol data-stage-list="compact" className="flex min-w-0 flex-wrap items-center justify-center gap-1">
+            <StageButtons stages={stages} viewStage={viewStage} named={named} compact onFocus={onFocus} />
           </ol>
         ) : null}
       </div>
@@ -136,10 +166,13 @@ export function BoardStageBar({ stages, viewStage, insetEnd, onFocus }: {
   );
 }
 
-export function BoardToolbar({ camera, showRefs, minimap, onRefs, onMinimap, onZoom, onFit }: {
+export function BoardToolbar({ camera, showRefs, minimap, compact, domRef, onRefs, onMinimap, onZoom, onFit }: {
   camera: BoardCamera;
   showRefs: boolean;
   minimap: boolean;
+  /** A board too narrow for the words beside the icons. */
+  compact?: boolean;
+  domRef?: RefObject<HTMLDivElement | null>;
   onRefs: () => void;
   onMinimap: () => void;
   onZoom: (factor: number) => void;
@@ -147,30 +180,47 @@ export function BoardToolbar({ camera, showRefs, minimap, onRefs, onMinimap, onZ
 }) {
   const zoom = useSyncExternalStore(camera.subscribe, () => Math.round(camera.view.k * 100));
   return (
-    <div role="toolbar" aria-label={t("productionBoard.toolbar.label")} className={CHROME_SURFACE}>
-      <ChromeButton label={t("productionBoard.toolbar.references")} pressed={showRefs} onClick={onRefs}>
-        <Waypoints size={16} aria-hidden="true" />
-      </ChromeButton>
-      <ChromeButton label={t("productionBoard.toolbar.minimap")} pressed={minimap} onClick={onMinimap}>
-        <MapIcon size={16} aria-hidden="true" />
-      </ChromeButton>
-      <span aria-hidden="true" className="mx-1 h-5 w-px bg-hairline" />
+    <div ref={domRef} role="toolbar" data-board-toolbar="" aria-label={t("productionBoard.toolbar.label")} className={CHROME_SURFACE}>
       <ChromeButton label={t("productionBoard.toolbar.zoomOut")} onClick={() => onZoom(1 / 1.2)}>
         <ZoomOut size={16} aria-hidden="true" />
       </ChromeButton>
-      <span data-board-zoom="" className="w-11 text-center text-[12px] leading-4 text-ink-secondary tabular-nums">{t("productionBoard.toolbar.zoom", { percent: zoom })}</span>
+      <span data-board-zoom="" className="min-w-13 text-center text-[12px] leading-4 text-ink-secondary tabular-nums">{t("productionBoard.toolbar.zoom", { percent: zoom })}</span>
       <ChromeButton label={t("productionBoard.toolbar.zoomIn")} onClick={() => onZoom(1.2)}>
         <ZoomIn size={16} aria-hidden="true" />
       </ChromeButton>
-      <ChromeButton label={t("productionBoard.toolbar.fit")} onClick={onFit}>
+      <span data-board-toolbar-sep="" aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-hairline" />
+      <ChromeButton wide={!compact} label={t("productionBoard.toolbar.fit")} onClick={onFit}>
         <Maximize size={16} aria-hidden="true" />
+        {compact ? null : <span>{t("productionBoard.toolbar.fitLabel")}</span>}
+      </ChromeButton>
+      <ChromeButton wide={!compact} label={t("productionBoard.toolbar.references")} pressed={showRefs} onClick={onRefs}>
+        <Waypoints size={16} aria-hidden="true" />
+        {compact ? null : <span>{t("productionBoard.toolbar.referencesLabel")}</span>}
+      </ChromeButton>
+      <ChromeButton label={t("productionBoard.toolbar.minimap")} pressed={minimap} onClick={onMinimap}>
+        <MapIcon size={16} aria-hidden="true" />
       </ChromeButton>
     </div>
   );
 }
 
-const MINIMAP = { width: 220, height: 140, padding: 400 };
-const MINIMAP_FILL: Partial<Record<BoardCardKind, string>> = { bot: "fill-accent/70", final: "fill-success/60", stack: "fill-ink/40" };
+/** The minimap's frame: an inner map 12 short of the box, 6px around it, 12 from the board's edge. */
+const MINIMAP = { maxHeight: 140, padding: 400, inset: 12, box: 220, narrowBox: 150 };
+
+/** How wide the minimap's frame is on a board of this width. */
+export const minimapBoxWidth = (compact: boolean) => (compact ? MINIMAP.narrowBox : MINIMAP.box);
+const MINIMAP_FILL: Partial<Record<BoardCardKind, string>> = {
+  bot: "fill-accent/60",
+  brief: "fill-ink/30",
+  plan: "fill-ink/30",
+  episode: "fill-ink/30",
+  stack: "fill-ink/30",
+  shot: "fill-ink/30",
+  character: "fill-ink-tertiary/60",
+  scene: "fill-ink-tertiary/60",
+  result: "fill-warning/80",
+  final: "fill-ink/80",
+};
 
 const MinimapCards = memo(function MinimapCards({ layout, kinds, scale }: { layout: BoardLayout; kinds: ReadonlyMap<string, BoardCardKind>; scale: { left: number; top: number; k: number } }) {
   return (
@@ -205,34 +255,56 @@ function MinimapView({ camera, scale }: { camera: BoardCamera; scale: { left: nu
   );
 }
 
-export function BoardMinimap({ layout, kinds, camera, onCentre }: { layout: BoardLayout; kinds: ReadonlyMap<string, BoardCardKind>; camera: BoardCamera; onCentre: (world: { x: number; y: number }) => void }) {
+export function BoardMinimap({ layout, kinds, camera, insetEnd, bottom, compact, onCentre }: {
+  layout: BoardLayout;
+  kinds: ReadonlyMap<string, BoardCardKind>;
+  camera: BoardCamera;
+  /** What the side panel takes of the board's width, so the map keeps clear of it. */
+  insetEnd: number;
+  /** Where to sit, above the toolbar's corner, when the two would meet at the bottom. */
+  bottom?: number;
+  /** A narrow board gets the smaller map, leaving the toolbar its corner. */
+  compact?: boolean;
+  onCentre: (world: { x: number; y: number }) => void;
+}) {
   const { bounds } = layout;
+  const box = minimapBoxWidth(Boolean(compact));
+  const width = box - 12;
   const left = bounds.x - MINIMAP.padding;
   const top = bounds.y - MINIMAP.padding;
-  const k = Math.min(MINIMAP.width / (bounds.width + MINIMAP.padding * 2), MINIMAP.height / (bounds.height + MINIMAP.padding * 2));
+  const k = Math.min(width / (bounds.width + MINIMAP.padding * 2), MINIMAP.maxHeight / (bounds.height + MINIMAP.padding * 2));
+  const height = Math.max(40, Math.round((bounds.height + MINIMAP.padding * 2) * k));
   const scale = { left, top, k };
   const centre = (event: React.PointerEvent<SVGSVGElement>) => {
-    const box = event.currentTarget.getBoundingClientRect();
-    onCentre({ x: left + (event.clientX - box.left) / k, y: top + (event.clientY - box.top) / k });
+    const rect = event.currentTarget.getBoundingClientRect();
+    const unit = rect.width ? width / rect.width : 1;
+    onCentre({ x: left + ((event.clientX - rect.left) * unit) / k, y: top + ((event.clientY - rect.top) * unit) / k });
   };
   return (
-    <svg
-      role="img"
-      aria-label={t("productionBoard.toolbar.minimap")}
-      className="popover-surface pointer-events-auto cursor-pointer rounded-xl border border-hairline/50 bg-menu"
-      width={MINIMAP.width}
-      height={MINIMAP.height}
-      onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture?.(event.pointerId);
-        centre(event);
-      }}
-      onPointerMove={(event) => {
-        if (event.buttons === 1) centre(event);
-      }}
+    <div
+      data-board-minimap=""
+      className="pointer-events-auto absolute bottom-3 z-[80] rounded-xl border border-hairline bg-panel/94 p-1.5"
+      style={{ width: box, insetInlineEnd: MINIMAP.inset + insetEnd, ...(bottom === undefined ? {} : { bottom }) }}
     >
-      <MinimapCards layout={layout} kinds={kinds} scale={scale} />
-      <MinimapView camera={camera} scale={scale} />
-    </svg>
+      <svg
+        role="img"
+        aria-label={t("productionBoard.toolbar.minimap")}
+        className="block h-auto w-full cursor-pointer touch-none rounded-md bg-app"
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          centre(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.buttons === 1) centre(event);
+        }}
+      >
+        <MinimapCards layout={layout} kinds={kinds} scale={scale} />
+        <MinimapView camera={camera} scale={scale} />
+      </svg>
+    </div>
   );
 }
 

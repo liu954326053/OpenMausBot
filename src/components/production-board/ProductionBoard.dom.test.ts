@@ -101,8 +101,10 @@ const drawnIds = () => [...page.querySelectorAll<HTMLElement>("[data-board-card-
 const edge = (id: string) => page.querySelector<SVGGElement>(`[data-board-edge="${id}"]`);
 const buttonNamed = (scope: ParentNode, name: string) =>
   [...scope.querySelectorAll("button")].find((button) => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === name);
-const minimap = () => page.querySelector('svg[role="img"][aria-label="Minimap"]');
+const minimap = () => page.querySelector<HTMLElement>("[data-board-minimap]");
 const minimapButton = () => buttonNamed(page, "Minimap")!;
+const toolbar = () => page.querySelector<HTMLElement>("[data-board-toolbar]")!;
+const hint = () => page.querySelector<HTMLElement>("[data-board-hint]");
 const layoutOf = (snapshot: CanvasSnapshot, opened: number[] = []) => layoutBoard(buildBoard(snapshot, { opened: new Set(opened) }), cardSize);
 
 function view(): BoardView {
@@ -301,6 +303,53 @@ describe("the production board", () => {
     expect(page.querySelectorAll('[data-edge-kind="ref"]')).toHaveLength(0);
   });
 
+  it("colours each line by the work it carries: teal when done, dashed amber while it runs, grey while it waits", async () => {
+    await mountWhole(productionBoardSample({ episodes: 4 }));
+    const style = (id: string) => edge(id)!.querySelector("path")!.getAttribute("style") ?? "";
+
+    const done = `output:${botNodeId(BOARD_BOTS.lead)}>brief`;
+    expect(edge(done)!.getAttribute("class")).toContain("text-success");
+    expect(style(done)).toContain("calc(1.5px");
+    expect(style(done)).not.toContain("stroke-dasharray");
+    expect(edge(done)!.querySelector("[data-edge-flow]")).toBeNull();
+
+    const active = `gen:${SAMPLE_GENERATING_SHOT}>result:${SAMPLE_GENERATING_SHOT}`;
+    expect(edge(active)!.getAttribute("class")).toContain("text-warning");
+    expect(style(active)).toContain("calc(10px");
+    expect(style(active)).toContain("calc(14px");
+    expect(edge(active)!.querySelector("[data-edge-flow]")).not.toBeNull();
+
+    const waiting = `dispatch:ep${SAMPLE_FAILED_EPISODE}>${botNodeId(boarderOf(SAMPLE_FAILED_EPISODE))}`;
+    expect(edge(waiting)!.getAttribute("class")).toContain("text-ink-tertiary");
+    expect(style(waiting)).toContain("calc(5px");
+    expect(style(waiting)).toContain("calc(6px");
+    expect(edge(waiting)!.querySelector("[data-edge-flow]")).toBeNull();
+
+    expect(page.querySelector('[data-edge-kind="derive"] path')!.getAttribute("style")).toContain("calc(2px");
+    const references = buttonNamed(page, "Show reference lines")!;
+    await click(references);
+    expect(page.querySelector('[data-edge-kind="ref"] path')!.getAttribute("style")).toContain("calc(3px");
+    expect(page.querySelector('[data-edge-kind="ref"] path')!.getAttribute("style")).toContain("calc(7px");
+  });
+
+  it("fills a dispatch label with teal and its ink, dashes a waiting one, and leaves the rest on the panel", async () => {
+    await mountWhole(productionBoardSample({ episodes: 4 }));
+    const dispatch = page.querySelector<HTMLElement>(`[data-board-edge-label="dispatch:plan>${botNodeId(BOARD_BOTS.writer)}"]`)!;
+    expect(dispatch.textContent).toBe("Dispatch · episodes");
+    expect(dispatch.className).toContain("bg-success");
+    expect(dispatch.className).toContain("text-success-ink");
+    expect(dispatch.className).toContain("font-semibold");
+
+    const waiting = page.querySelector<HTMLElement>(`[data-board-edge-label="dispatch:ep${SAMPLE_FAILED_EPISODE}>${botNodeId(boarderOf(SAMPLE_FAILED_EPISODE))}"]`)!;
+    expect(waiting.className).toContain("border-dashed");
+    expect(waiting.className).toContain("bg-panel");
+
+    const cut = page.querySelector<HTMLElement>(`[data-board-edge-label="output:${botNodeId(editorOf(1))}>film-1"]`)!;
+    expect(cut.className).toContain("bg-panel");
+    expect(cut.className).toContain("border-hairline");
+    expect(cut.className).not.toContain("bg-success");
+  });
+
   it("shows each card as a label, and its lines without labels, once zoomed far out", async () => {
     await mount({ snapshot: productionBoardSample({ episodes: 12 }) });
     expect(page.querySelector("[data-board-far]")).toBeNull();
@@ -313,12 +362,12 @@ describe("the production board", () => {
     expect(page.querySelector("[data-board-edge-label]")).toBeNull();
   });
 
-  it("starts with its minimap folded on a board narrower than 900 and follows the board's width, until the person opens it", async () => {
-    size = { width: 899, height: 620 };
+  it("starts with its minimap folded on a board narrower than 720 and follows the board's width, until the person opens it", async () => {
+    size = { width: 719, height: 620 };
     await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
     expect(minimap()).toBeNull();
     expect(minimapButton().getAttribute("aria-pressed")).toBe("false");
-    await resizeBoard(900);
+    await resizeBoard(720);
     expect(minimap()).not.toBeNull();
     await resizeBoard(580);
     expect(minimap()).toBeNull();
@@ -331,8 +380,8 @@ describe("the production board", () => {
     expect(minimap()).not.toBeNull();
   });
 
-  it("starts with its minimap open on a board 900 wide, and keeps it as the person leaves it whatever the width", async () => {
-    size = { width: 900, height: 620 };
+  it("starts with its minimap open on a board 720 wide, and keeps it as the person leaves it whatever the width", async () => {
+    size = { width: 720, height: 620 };
     await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
     expect(minimap()).not.toBeNull();
     expect(minimapButton().getAttribute("aria-pressed")).toBe("true");
@@ -360,22 +409,108 @@ describe("the production board", () => {
     expect(stageNames()).toEqual(["brief", "script", "library", "storyboard", "post"]);
     const names: Record<string, string> = { brief: "Brief", script: "Episodes", library: "Characters · scenes", storyboard: "Storyboards · videos", post: "Post" };
     const states: Record<string, string> = { brief: "Done", script: "Done", library: "Done", storyboard: "Failed", post: "In progress" };
-    const dots: Record<string, string> = { Done: "bg-success", Failed: "bg-danger", "In progress": "bg-accent" };
+    const numbers: Record<string, string> = { short: "bg-control", Done: "bg-success", Failed: "bg-danger", "In progress": "bg-warning" };
     for (const button of activeStages()) {
       const stage = button.dataset.boardStage!;
       expect(button.getAttribute("title")).toBe(`${names[stage]} · ${states[stage]}`);
       expect(button.getAttribute("aria-label")).toBe(button.getAttribute("title"));
-      expect(button.querySelector("[aria-hidden=true]")?.className).toContain(dots[states[stage]!]!);
+      expect(button.querySelector("[data-stage-number]")?.className).toContain(numbers[states[stage]!]!);
     }
-    expect(activeStages().filter((one) => one.textContent)).toHaveLength(1);
+    expect(page.querySelectorAll("[data-board-stage] [data-stage-name]")).toHaveLength(1);
     expect(stageSurface().className).toContain("overflow-hidden");
 
     await key("4");
     expect(stageForm()).toBe("compact");
-    expect(page.querySelector('[data-stage-list="compact"] [data-board-stage="storyboard"]')?.textContent).toBe("Storyboards · videos");
-    expect(activeStages().filter((one) => one.textContent)).toHaveLength(1);
+    expect(page.querySelector('[data-stage-list="compact"] [data-board-stage="storyboard"] [data-stage-name]')?.textContent).toBe("Storyboards · videos");
+    expect(page.querySelectorAll("[data-board-stage] [data-stage-name]")).toHaveLength(1);
     await key("1");
-    expect(page.querySelector('[data-stage-list="compact"] [data-board-stage="brief"]')?.textContent).toBe("Brief");
+    expect(page.querySelector('[data-stage-list="compact"] [data-board-stage="brief"] [data-stage-name]')?.textContent).toBe("Brief");
+  });
+
+  it("numbers the five stages, tints each number by its state, sets them apart with a hairline and marks the one in view", async () => {
+    await mountWhole(productionBoardSample({ episodes: 4 }));
+    const number = (stage: string) => page.querySelector<HTMLElement>(`[data-board-stage="${stage}"] [data-stage-number]`)!;
+    expect(["brief", "script", "library", "storyboard", "post"].map((stage) => number(stage).textContent)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(number("brief").className).toContain("bg-success");
+    expect(number("brief").className).toContain("text-success-ink");
+    expect(number("post").className).toContain("bg-warning");
+    expect(number("storyboard").className).toContain("bg-danger");
+    expect(number("brief").className).toContain("size-5");
+    expect(number("brief").className).toContain("text-[11px]");
+    expect(page.querySelector('[data-board-stage="brief"] [data-stage-name]')!.className).toContain("text-[13px]");
+    expect(page.querySelectorAll("[data-stage-sep]")).toHaveLength(4);
+    expect(page.querySelector("[data-stage-sep]")!.className).toContain("h-px");
+    expect(page.querySelector("[data-stage-sep]")!.className).toContain("w-2.5");
+    expect(page.querySelector("[data-board-stage] [aria-hidden=true] svg")).toBeNull();
+
+    await key("1");
+    const current = [...page.querySelectorAll<HTMLElement>("[data-board-stage]")].filter((one) => one.getAttribute("aria-current") === "true");
+    expect(current).toHaveLength(1);
+    expect(current[0]!.dataset.boardStage).toBe("brief");
+    expect(current[0]!.className).toContain("bg-control");
+    expect(stageSurface().className).toContain("bg-panel/94");
+    expect(stageSurface().className).toContain("rounded-xl");
+  });
+
+  it("wears the control tone on the numbers of the stages that have not started", async () => {
+    await mount({ snapshot: productionBoardSample({ empty: true }) });
+    const numbers = [...page.querySelectorAll<HTMLElement>("[data-board-stage] [data-stage-number]")];
+    expect(numbers.map((one) => one.className.includes("bg-control"))).toEqual([false, true, true, true, true]);
+  });
+
+  it("puts the tools in the mockup's order, naming fit and reference lines in words, and lights a pressed tool amber", async () => {
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    expect([...toolbar().querySelectorAll("button")].map((one) => one.getAttribute("aria-label"))).toEqual([
+      "Zoom out", "Zoom in", "Fit to view", "Show reference lines", "Minimap",
+    ]);
+    expect(page.querySelector("[data-board-zoom]")?.textContent).toBe(`${Math.round(view().k * 100)}%`);
+    expect(buttonNamed(toolbar(), "Fit to view")!.textContent).toBe("Fit");
+    expect(buttonNamed(toolbar(), "Show reference lines")!.textContent).toBe("Reference lines");
+    expect(page.querySelectorAll("[data-board-toolbar-sep]")).toHaveLength(1);
+
+    expect(toolbar().className).toContain("bg-panel/94");
+    expect(toolbar().className).toContain("rounded-xl");
+    expect(toolbar().className).toContain("border-hairline");
+    expect(toolbar().parentElement!.className).toContain("bottom-3");
+    expect(toolbar().parentElement!.className).toContain("start-3");
+
+    const references = buttonNamed(toolbar(), "Show reference lines")!;
+    expect(references.className).not.toContain("text-warning");
+    await click(references);
+    expect(references.className).toContain("text-warning");
+  });
+
+  it("keeps its minimap at the bottom right, 220 wide, and clear of the room the side panel marks", async () => {
+    size = { width: 1280, height: 800 };
+    await mountWithOverlay(productionBoardSample({ episodes: 4 }), RoomPanel);
+    const panel = minimap()!;
+    expect(panel.style.width).toBe("220px");
+    expect(panel.style.insetInlineEnd).toBe("316px");
+    expect(panel.className).toContain("bottom-3");
+    expect(panel.className).toContain("bg-panel/94");
+    expect(panel.className).toContain("rounded-xl");
+    expect(panel.className).toContain("p-1.5");
+    expect(panel.querySelector("svg")!.getAttribute("width")).toBe("208");
+
+    await click(buttonNamed(page, "Hide side panel"));
+    expect(minimap()!.style.insetInlineEnd).toBe("80px");
+  });
+
+  it("tells the person how the board works until they first touch it, and mentions nothing at a narrow width", async () => {
+    size = { width: 1280, height: 800 };
+    await mount({ snapshot: productionBoardSample({ episodes: 4 }) });
+    expect(hint()!.textContent).toBe("Click a bot to talk · click an asset for its details · drag empty space to pan · scroll to zoom");
+    expect(hint()!.className).toContain("text-ink-tertiary");
+    expect(hint()!.hasAttribute("data-board-hint-gone")).toBe(false);
+
+    await resizeBoard(580);
+    expect(hint()).toBeNull();
+    await resizeBoard(1280);
+
+    pointer(stage(), "pointerdown", 20, 20);
+    pointer(stage(), "pointerup", 20, 20);
+    expect(hint()!.hasAttribute("data-board-hint-gone")).toBe(true);
+    expect(hint()!.className).toContain("opacity-0");
   });
 
   it("gives the stage bar only the room the side panel marks, and the whole bar back once the panel folds into its button", async () => {

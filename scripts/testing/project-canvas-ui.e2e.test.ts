@@ -611,7 +611,7 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
           stages: buttons.map((button) => {
             const r = button.getBoundingClientRect();
             const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            return { stage: button.dataset.boardStage, named: button.textContent.trim() !== "", reachable: Boolean(hit && (hit === button || button.contains(hit))), inside: inside(r) };
+            return { stage: button.dataset.boardStage, named: Boolean(button.querySelector("[data-stage-name]")), reachable: Boolean(hit && (hit === button || button.contains(hit))), inside: inside(r) };
           }),
         };
       })()`);
