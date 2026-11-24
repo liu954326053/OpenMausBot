@@ -3,6 +3,7 @@
 // generation job, the wire of `/api/team-projects/:id/generation/*`, and the server's own API for whoever starts a job.
 
 import { DEFAULT_PRODUCTION_CONCURRENCY, type ProductionConcurrency } from "./production.ts";
+import type { GenerationPluginSummary } from "./generation-plugins.ts";
 
 export type GenerationKind = "image" | "video";
 
@@ -43,6 +44,8 @@ export interface GenerationTools {
 }
 
 export interface GenerationKindSettings<S> {
+  /** An installed plugin's id. Chosen instead of `server`: a plugin answers both, and only one of them is set. */
+  plugin?: string | null;
   /** The MCP server's name, as in Apps → MCP servers. Null: none chosen, and generation is refused until one is. */
   server: string | null;
   tools: GenerationTools;
@@ -75,11 +78,13 @@ function frozen<T>(value: T): T {
 /** The settings of a project that has none of its own and nothing saved before. Frozen: copy it to change it. */
 export const DEFAULT_GENERATION_SETTINGS: ProjectGenerationSettings = frozen({
   image: {
+    plugin: null,
     server: null,
     tools: { listModels: "list_models", generate: "generate_image", taskStatus: "task_status", cancelTask: "cancel_task" },
     defaults: { model: "", aspect: "1:1", quality: "auto", count: 1 },
   },
   video: {
+    plugin: null,
     server: null,
     tools: { listModels: "list_models", generate: "generate_video", taskStatus: "task_status", cancelTask: "cancel_task" },
     defaults: { model: "", resolution: "720p", aspect: "16:9", seconds: 5 },
@@ -308,9 +313,11 @@ interface GenerationJobBase {
   /** As handed to the MCP tool. */
   prompt: string;
   references: GenerationReferences;
-  /** The MCP server and tool it is handed to. */
+  /** The MCP server and tool it is handed to, or the plugin: `plugin` is the id when a plugin makes it. */
   server: string;
   tool: string;
+  /** The installed plugin's id, when a plugin makes this generation rather than an MCP server. */
+  plugin?: string;
   /** The server's task id, once it gave one. */
   taskId?: string;
   /** From 0 to 1, when the server says. */
@@ -368,6 +375,8 @@ export interface GenerationSettingsWire {
   settings: ProjectGenerationSettings;
   /** The MCP servers that can be chosen: on, run here, and every bot's. */
   servers: string[];
+  /** The installed plugins a project may choose, whatever their state: a disabled one says so when chosen. */
+  plugins: GenerationPluginSummary[];
 }
 
 /** `GET /api/team-projects/:id/generation/models?kind=image|video`, optionally `&server=…&tool=…` to look at a server not saved yet. */
@@ -399,8 +408,8 @@ export interface ProjectGenerationApi {
   settings(projectId: string): ProjectGenerationSettings | null;
   /** Refused with what the chosen model offers when it does not offer a default; saved as the person's last settings too. */
   saveSettings(projectId: string, settings: ProjectGenerationSettings): Promise<{ settings: ProjectGenerationSettings } | Refused>;
-  /** The models of this kind the project's server lists, or `preview`'s server not saved yet. */
-  models(projectId: string, kind: GenerationKind, preview?: { server: string; tool?: string }): Promise<{ models: GenerationModel[] } | Refused>;
+  /** The models of this kind the project's plugin or server lists, or `preview`'s one not saved yet. */
+  models(projectId: string, kind: GenerationKind, preview?: { plugin?: string; server?: string; tool?: string }): Promise<{ models: GenerationModel[] } | Refused>;
   /** The same for the person and for a bot. A bot past its ceiling is refused `confirmation_needed` unless `confirmed`. */
   start(projectId: string, input: StartGenerationInput, options: StartGenerationOptions): Promise<{ job: GenerationJob } | Refused>;
   job(projectId: string, jobId: string): GenerationJob | null;

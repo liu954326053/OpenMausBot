@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import type { GenerationJob } from "../../shared/project-generation.ts";
 import type { McpOAuthManager } from "../mcp-oauth.ts";
+import { GenerationPlugins } from "../generation-plugins/store.ts";
 import { createProjectGeneration, type ProjectGeneration } from "../project-generation/host.ts";
 import type { JobTiming } from "../project-generation/jobs.ts";
 import { startFakeGenerationMcp, type FakeGenerationMcpOptions } from "./fake-generation-mcp-server.ts";
@@ -29,9 +30,10 @@ export async function generationHarness(options: GenerationHarnessOptions = {}) 
   const projects = new Map<string, { folder: string; archivedAt?: number }>();
   const logs: string[] = [];
   let servers: Record<string, unknown> = { gen: { type: "http", url: fake.url, headers: { Authorization: `Bearer ${GENERATION_KEY}` }, enabled: true } };
+  const plugins = new GenerationPlugins({ dataDir, log: (line) => logs.push(line) });
   const open = (): ProjectGeneration => createProjectGeneration({
     dataDir, lookup: (id) => projects.get(id), storedServers: () => servers, oauth: SIGNED_OUT, personMcp: () => [], policyRefusal: () => undefined,
-    probeAs: () => ({}), log: (line) => logs.push(line), timing: { pollMs: 100, minPollMs: 50, maxPollMs: 200, ...options.timing },
+    probeAs: () => ({}), log: (line) => logs.push(line), timing: { pollMs: 100, minPollMs: 50, maxPollMs: 200, ...options.timing }, plugins,
   });
   let generation = open();
 
@@ -46,7 +48,7 @@ export async function generationHarness(options: GenerationHarnessOptions = {}) 
   };
 
   return {
-    fake, root, dataDir, logs,
+    fake, root, dataDir, logs, plugins,
     get generation() { return generation; },
     get api() { return generation.api; },
     project(id: string, archivedAt?: number): string {

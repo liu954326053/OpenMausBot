@@ -45,10 +45,17 @@ export function mergeSettings(current: ProjectGenerationSettings, patch: unknown
     const part = patch[kind];
     if (part === undefined) continue;
     if (!isRecord(part)) return `${kind} must be an object`;
+    if (part.plugin !== undefined) {
+      const plugin = part.plugin;
+      if (plugin !== null && !(typeof plugin === "string" && plugin.trim() !== "" && plugin.length <= NAME_MAX)) return `${kind}.plugin must be an installed plugin's id, or null`;
+      merged[kind].plugin = plugin;
+      if (plugin !== null) merged[kind].server = null;
+    }
     if (part.server !== undefined) {
       const server = part.server;
       if (server !== null && !(typeof server === "string" && server.trim() !== "" && server.length <= NAME_MAX)) return `${kind}.server must be an MCP server's name, or null`;
       merged[kind].server = server;
+      if (server !== null) merged[kind].plugin = null;
     }
     if (part.tools !== undefined) {
       if (!isRecord(part.tools)) return `${kind}.tools must be an object`;
