@@ -26,7 +26,7 @@ const stageLabel = (stage: BoardStage, state: BoardStageState) => `${stageName(s
 
 const STAGE_NUMBER_TONE: Record<BoardStageState, string> = {
   wait: "bg-control text-ink-secondary",
-  done: "bg-success text-success-ink",
+  done: "bg-success text-[color:var(--color-success-ink)]",
   active: "bg-warning text-app",
   failed: "bg-danger text-danger-ink",
 };

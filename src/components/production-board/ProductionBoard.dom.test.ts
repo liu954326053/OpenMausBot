@@ -337,7 +337,7 @@ describe("the production board", () => {
     const dispatch = page.querySelector<HTMLElement>(`[data-board-edge-label="dispatch:plan>${botNodeId(BOARD_BOTS.writer)}"]`)!;
     expect(dispatch.textContent).toBe("Dispatch · episodes");
     expect(dispatch.className).toContain("bg-success");
-    expect(dispatch.className).toContain("text-success-ink");
+    expect(dispatch.className).toContain("text-[color:var(--color-success-ink)]");
     expect(dispatch.className).toContain("font-semibold");
 
     const waiting = page.querySelector<HTMLElement>(`[data-board-edge-label="dispatch:ep${SAMPLE_FAILED_EPISODE}>${botNodeId(boarderOf(SAMPLE_FAILED_EPISODE))}"]`)!;
@@ -432,7 +432,7 @@ describe("the production board", () => {
     const number = (stage: string) => page.querySelector<HTMLElement>(`[data-board-stage="${stage}"] [data-stage-number]`)!;
     expect(["brief", "script", "library", "storyboard", "post"].map((stage) => number(stage).textContent)).toEqual(["1", "2", "3", "4", "5"]);
     expect(number("brief").className).toContain("bg-success");
-    expect(number("brief").className).toContain("text-success-ink");
+    expect(number("brief").className).toContain("text-[color:var(--color-success-ink)]");
     expect(number("post").className).toContain("bg-warning");
     expect(number("storyboard").className).toContain("bg-danger");
     expect(number("brief").className).toContain("size-5");

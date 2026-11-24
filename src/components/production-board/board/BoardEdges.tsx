@@ -57,7 +57,7 @@ function isDispatch(label: BoardEdgeLabel | undefined): boolean {
 
 function labelClass(edge: BoardEdge): string {
   if (edge.state === "wait") return "border-dashed border-hairline bg-panel text-ink-tertiary";
-  if (isDispatch(edge.label)) return "border-success bg-success font-semibold text-success-ink";
+  if (isDispatch(edge.label)) return "border-success bg-success font-semibold text-[color:var(--color-success-ink)]";
   return "border-hairline bg-panel text-ink-secondary";
 }
 
