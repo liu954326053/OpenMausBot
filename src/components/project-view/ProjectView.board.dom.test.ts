@@ -96,7 +96,11 @@ describe("a project's board in the app", () => {
     const layer = board.querySelector<HTMLElement>(":scope > [data-board-overlay]")!;
     expect([...layer.classList]).toEqual(expect.arrayContaining(["absolute", "inset-0"]));
     expect(layer.querySelector("aside[data-board-side-panel]")?.getAttribute("aria-label")).toBe("Team and assets");
-    expect(board.querySelector("nav[aria-label='Stages']")?.classList).toContain("pe-[20rem]");
+    const rooms = layer.querySelectorAll<HTMLElement>("[data-board-room]");
+    expect([...rooms].map((room) => room.style.width)).toEqual(["304px"]);
+    const stages = board.querySelector<HTMLElement>("nav[aria-label='Stages']")!;
+    expect(stages.dataset.boardStageReserve).toBe("320");
+    expect(stages.style.paddingInlineEnd).toBe("332px");
   });
 
   it("opens a bot's chat window beside its card when the card is clicked", async () => {
