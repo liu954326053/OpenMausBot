@@ -20,7 +20,8 @@
       "name": "小地图",
       "section": "chrome",
       "mockup": ".minimap",
-      "app": "[data-board-chrome] svg[role=\"img\"]"
+      "app": "[data-board-minimap]",
+      "appReveal": "[data-board-chrome-button=\"minimap\"][aria-pressed=\"false\"]"
     },
     {
       "id": "k-bot",

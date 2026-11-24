@@ -65,7 +65,7 @@ export const AssetDetails = memo(function AssetDetails({ view, onAsk, onLocate, 
         tabIndex={-1}
         data-board-asset={view.nodeId}
         data-kind={view.kind}
-        className="ui-modal flex max-h-full w-full max-w-[980px] flex-col overflow-hidden rounded-[14px] text-ink outline-none animate-details-in motion-reduce:animate-none"
+        className="ui-modal board-type board-modal-shadow flex max-h-full w-full max-w-[980px] flex-col overflow-hidden rounded-[14px] border border-board-line-2 text-ink outline-none animate-details-in motion-reduce:animate-none"
       >
         <header className="flex flex-none items-center gap-2.5 border-b border-hairline py-2.5 pe-2.5 ps-4">
           <span data-details-kind="" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] leading-4 text-ink-tertiary">

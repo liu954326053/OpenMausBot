@@ -56,7 +56,9 @@ describe("a bot's chat window", () => {
     expect(window.className).toContain("max-h-[calc(100%-72px)]");
     expect(surface.className).toContain("rounded-[14px]");
     expect(surface.className).toContain("bg-menu");
-    expect(surface.className).toContain("popover-surface");
+    expect(surface.className).toContain("border-board-line-2");
+    expect(surface.className).toContain("board-panel-shadow");
+    expect(surface.className).not.toContain("popover-surface");
     expect(surface.className).toContain("animate-fade-in");
   });
 

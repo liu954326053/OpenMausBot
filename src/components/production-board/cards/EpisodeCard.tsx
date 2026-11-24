@@ -24,23 +24,23 @@ export function EpisodeCard({ episode, logline, text, to, seconds, onOpen, onRet
   const shots = episode.shots ?? 0;
   const script = text?.trim();
   return (
-    <CardShell kind="episode" label={`${episodeCode(episode.episode)} ${episode.title}`} tone={status?.tone} surface="paper" onOpen={onOpen}>
+    <CardShell kind="episode" label={`${episodeCode(episode.episode)} ${episode.title}`} tone={status?.tone} surface="paper" onOpen={onOpen} className="ps-7">
       <ScriptHoles />
-      <header className={cn("flex min-w-0 items-center gap-2 pe-3 ps-7 pb-2 pt-2.5", PAPER_HEAD_RULE)}>
+      <header className={cn("flex min-w-0 items-center gap-2 pe-3 pb-2 pt-2.5", PAPER_HEAD_RULE)}>
         <span data-episode-code=""><PaperCode text={episodeCode(episode.episode)} /></span>
         <CardName text={episode.title} onOpen={onOpen} className="flex-1 text-[17px] font-semibold leading-6 text-board-ink" />
         {status ? <PaperStatus status={status} className="max-w-[46%]" /> : null}
       </header>
       {logline?.trim() ? (
-        <p data-episode-logline="" dir="auto" title={logline} className="line-clamp-2 px-3 ps-7 pt-2 text-[13px] font-medium leading-[18px] text-board-ink">{logline}</p>
+        <p data-episode-logline="" dir="auto" title={logline} className="line-clamp-2 px-3 pt-2 text-[13px] font-medium leading-[18px] text-board-ink">{logline}</p>
       ) : null}
-      <div className="relative min-h-0 flex-1 overflow-hidden px-3 ps-7 pt-2">
+      <div className="relative min-h-0 flex-1 overflow-hidden px-3 pt-2">
         <p data-episode-text="" dir="auto" className={cn("whitespace-pre-line text-[12px] leading-[17px]", script ? "text-board-ink-2" : "text-board-ink-3")}>
           {script ? text : t("boardCards.episode.noText")}
         </p>
         {script ? <div data-episode-fade="" aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-board-paper to-transparent" /> : null}
       </div>
-      <footer className={cn("flex min-w-0 items-center gap-2 pe-3 ps-7 pb-2.5 pt-1.5", PAPER_FOOT_RULE)}>
+      <footer className={cn("flex min-w-0 items-center gap-2 pe-3 pb-2.5 pt-1.5", PAPER_FOOT_RULE)}>
         {shots > 0 ? (
           <span data-episode-shots="" className="shrink-0 text-[12px] leading-4 text-board-ink-2 tabular-nums">
             {t("boardCards.episode.shotsReady", { ready: episode.ready ?? 0, shots })}

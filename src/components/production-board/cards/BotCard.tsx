@@ -7,7 +7,7 @@ import { formatTime } from "@/lib/clock-time";
 import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { CardAction, CardLabel, CardName, CardShell, Meter, percentOf, SILVER, StatusMark } from "./parts";
-import { botStatus, TONE_STRIPE, TONE_TEXT } from "./tone";
+import { botStatus, TONE_EDGE, TONE_TEXT } from "./tone";
 
 export type BoardProgressKind = "tasks" | "episodes" | "characters" | "scenes" | "videos";
 
@@ -149,8 +149,14 @@ export function BotCard({ bot, look, job, task, progress, steps, gate, onOpen, o
   const reply = bot.output?.text.trim();
   const jobLabel = job ? t(`boardCards.plan.job.${job}`) : bot.lead ? t("boardCards.bot.lead") : null;
   return (
-    <CardShell kind="bot" label={bot.name} tone={status.tone} surface="panel" onOpen={onOpen}>
-      <div data-bot-stripe="" aria-hidden="true" className={cn("absolute inset-x-0 top-0 h-[3px]", TONE_STRIPE[status.tone])} />
+    <CardShell
+      kind="bot"
+      label={bot.name}
+      surface="panel"
+      onOpen={onOpen}
+      className={cn("border-t-[3px]", TONE_EDGE[status.tone], status.tone === "working" && "board-bot-glow")}
+      data={{ "data-bot-stripe": status.tone }}
+    >
       <header className="flex items-center gap-2.5 px-3.5 pt-3.5">
         <BotAvatar bot={{ name: bot.name, ...(look ?? SILVER) }} size={40} />
         <div className="min-w-0 flex-1">

@@ -18,6 +18,8 @@ describe("the episode stack", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("episodeStack");
     expect(card.dataset.boardSurface).toBe("paper");
+    expect(card.className).toContain("ps-7");
+    expect(card.querySelector("[data-stack-range]")!.parentElement!.className).not.toContain("ps-7");
     expect(textOf(card.querySelector("[data-stack-range]"))).toBe("EP04 – EP60");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("57 more episodes");
   });

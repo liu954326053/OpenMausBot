@@ -129,8 +129,8 @@ export function ResultCard({ number, title, takes, generation, onOpen, onGenerat
   const name = `${code} ${title}`;
   const tone = takeTone(take, generation);
   return (
-    <CardShell kind="result" label={name} tone={failed ? "failed" : undefined} surface="monitor" onOpen={onOpen}>
-      <div data-result-media="" className="relative m-1 mb-0 aspect-video shrink-0 overflow-hidden rounded-md bg-board-monitor">
+    <CardShell kind="result" label={name} tone={failed ? "failed" : undefined} surface="monitor" onOpen={onOpen} className="p-1.5 pb-0">
+      <div data-result-media="" className="relative mb-0 aspect-video shrink-0 overflow-hidden rounded-md bg-board-monitor">
         {take?.videoUrl ? (
           <InlineVideo src={take.videoUrl} posterUrl={take.posterUrl} label={t("boardCards.result.play", { name })} onPlay={() => onPlay?.(take.id)} className="size-full" />
         ) : making ? (

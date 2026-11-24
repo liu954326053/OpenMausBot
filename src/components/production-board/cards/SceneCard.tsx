@@ -22,12 +22,12 @@ export function SceneCard({ name, facts, pictureUrl, generation, shots, refinedB
   const subtitle = facts?.subtitle?.trim();
   const tags = facts?.tags?.filter((tag) => tag.trim()) ?? [];
   return (
-    <CardShell kind="scene" label={name} surface="paper" onOpen={onOpen}>
-      <div data-asset-picture="" className="relative aspect-video w-full shrink-0 overflow-hidden bg-board-paper-2">
+    <CardShell kind="scene" label={name} surface="panel" onOpen={onOpen}>
+      <div data-asset-picture="" className="relative aspect-video w-full shrink-0 overflow-hidden bg-app">
         {pictureUrl ? (
           <img src={pictureUrl} alt={t("boardCards.asset.picture", { name })} draggable={false} className="size-full object-cover" />
         ) : (
-          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-board-ink-3">
+          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-ink-tertiary">
             {generation?.status === "error" ? (
               <>
                 <span data-asset-failure="" title={failureText(generation)} className="line-clamp-3">{failureText(generation)}</span>
@@ -63,8 +63,8 @@ export function SceneCard({ name, facts, pictureUrl, generation, shots, refinedB
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 px-3 pb-1.5 pt-2">
         <div data-scene-meta="" className="flex min-w-0 items-center justify-between gap-2 text-[12px] leading-4">
-          <span dir="auto" title={tags.join(" · ")} className="min-w-0 flex-1 truncate text-board-ink-2">{tags.join(" · ")}</span>
-          <AssetShots shots={shots} verb="usedIn" className="min-w-0 max-w-[55%] text-end text-board-ink-3" />
+          <span dir="auto" title={tags.join(" · ")} className="min-w-0 flex-1 truncate text-ink-secondary">{tags.join(" · ")}</span>
+          <AssetShots shots={shots} verb="usedIn" className="min-w-0 max-w-[55%] text-end text-ink-tertiary" />
         </div>
       </div>
       {palette.length ? (

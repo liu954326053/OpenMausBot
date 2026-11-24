@@ -37,6 +37,8 @@ describe("an asset's details", () => {
     const modal = details()!;
     expect(modal.className).toContain("max-w-[980px]");
     expect(modal.className).toContain("rounded-[14px]");
+    expect(modal.className).toContain("border-board-line-2");
+    expect(modal.className).toContain("board-modal-shadow");
     expect(modal.className).toContain("animate-details-in");
     expect(modal.className).toContain("motion-reduce:animate-none");
     expect(modal.parentElement!.className).toContain("ui-scrim");

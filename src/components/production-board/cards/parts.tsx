@@ -30,9 +30,9 @@ export const SILVER: CanvasBotLook = { color: "silver" };
 export type BoardCardSurface = "panel" | "paper" | "monitor";
 
 const SURFACE: Readonly<Record<BoardCardSurface, string>> = {
-  panel: "rounded-[10px] border-hairline bg-card text-ink",
+  panel: "rounded-[10px] border-board-line bg-card text-ink",
   paper: "rounded-[10px] border-board-paper-line bg-board-paper text-board-ink",
-  monitor: "rounded-xl border-board-paper/15 bg-board-monitor text-board-paper",
+  monitor: "rounded-xl border-board-line-2 bg-board-monitor text-board-paper",
 };
 
 export function clockLength(ms: number): string {
@@ -69,9 +69,9 @@ export function CardShell({ kind, label, tone, surface = "panel", static: isStat
       aria-label={label}
       style={box ? { width: box.width, height: box.height } : undefined}
       className={cn(
-        "relative flex flex-col overflow-hidden border",
+        "relative flex flex-col overflow-hidden border board-type",
         SURFACE[surface],
-        !isStatic && "shadow-board",
+        !isStatic && "board-card-shadow",
         isStatic && "w-full",
         tone === "failed" ? "border-danger/60" : tone === "asking" ? "border-warning/60" : null,
         onOpen && "cursor-pointer",

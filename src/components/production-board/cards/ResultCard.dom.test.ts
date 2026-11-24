@@ -22,7 +22,11 @@ describe("the result card", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("result");
     expect(card.dataset.boardSurface).toBe("monitor");
+    expect(card.className).toContain("border-board-line-2");
+    expect(card.className).toContain("p-1.5");
+    expect(card.className).toContain("pb-0");
     expect(card.querySelector("[data-result-media]")!.className).toContain("aspect-video");
+    expect(card.querySelector("[data-result-media]")!.className).not.toContain("m-1");
     expect(textOf(card.querySelector("[data-shot-code]"))).toBe("SH03");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Qingwu lights the lamp");
     expect(textOf(card.querySelector("[data-result-count]"))).toBe("Takes: 3");

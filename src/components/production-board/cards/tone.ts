@@ -21,13 +21,13 @@ export const TONE_TEXT: Readonly<Record<BoardTone, string>> = {
   failed: "text-danger",
 };
 
-/** Top stripe on a bot card: working/asking amber, done teal, failed red, idle grey. */
-export const TONE_STRIPE: Readonly<Record<BoardTone, string>> = {
-  idle: "bg-ink-tertiary",
-  working: "bg-board-amber",
-  done: "bg-board-teal",
-  asking: "bg-board-amber",
-  failed: "bg-danger",
+/** Top edge on a bot card: the mockup's three-pixel state band, `line-2` while nothing is under way. */
+export const TONE_EDGE: Readonly<Record<BoardTone, string>> = {
+  idle: "border-t-board-line-2",
+  working: "border-t-board-amber",
+  done: "border-t-board-teal",
+  asking: "border-t-board-amber",
+  failed: "border-t-danger",
 };
 
 export interface BoardStatus {

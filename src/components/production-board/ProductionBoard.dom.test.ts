@@ -471,6 +471,7 @@ describe("the production board", () => {
     expect(toolbar().className).toContain("bg-panel/94");
     expect(toolbar().className).toContain("rounded-xl");
     expect(toolbar().className).toContain("border-hairline");
+    expect(toolbar().className).toContain("board-type");
     expect(toolbar().parentElement!.className).toContain("bottom-3");
     expect(toolbar().parentElement!.className).toContain("start-3");
 
@@ -491,6 +492,7 @@ describe("the production board", () => {
     expect(panel.className).toContain("rounded-xl");
     expect(panel.className).toContain("p-1.5");
     expect(panel.querySelector("svg")!.getAttribute("width")).toBe("208");
+    expect(page.querySelector('[data-board-chrome-button="minimap"]')!.getAttribute("aria-pressed")).toBe("true");
 
     await click(buttonNamed(page, "Hide side panel"));
     expect(minimap()!.style.insetInlineEnd).toBe("80px");

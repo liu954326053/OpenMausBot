@@ -12,7 +12,7 @@ import type { BoardCardKind, BoardStageState } from "@/lib/production-board/type
 import { episodeStatus, TONE_DOT } from "../cards";
 import type { BoardCamera } from "./camera";
 
-export const CHROME_SURFACE = "pointer-events-auto flex items-center gap-1 rounded-xl border border-hairline bg-panel/94 p-1";
+export const CHROME_SURFACE = "board-type pointer-events-auto flex items-center gap-1 rounded-xl border border-hairline bg-panel/94 p-1";
 
 /** Keeps a bar centred at the top clear of the overlay's side panel in the top-right corner. */
 export const PANEL_ROOM = "pe-[20rem]";
@@ -31,10 +31,11 @@ const STAGE_NUMBER_TONE: Record<BoardStageState, string> = {
   failed: "bg-danger text-danger-ink",
 };
 
-function ChromeButton({ label, pressed, wide, onClick, children }: { label: string; pressed?: boolean; wide?: boolean; onClick: () => void; children: ReactNode }) {
+function ChromeButton({ label, pressed, wide, mark, onClick, children }: { label: string; pressed?: boolean; wide?: boolean; mark?: string; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
+      data-board-chrome-button={mark}
       className={cn(
         "inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-[13px] leading-4 text-ink-secondary",
         "transition-colors duration-100 hover:bg-ink/[0.06] active:bg-ink/[0.08]",
@@ -197,7 +198,7 @@ export function BoardToolbar({ camera, showRefs, minimap, compact, domRef, onRef
         <Waypoints size={16} aria-hidden="true" />
         {compact ? null : <span>{t("productionBoard.toolbar.referencesLabel")}</span>}
       </ChromeButton>
-      <ChromeButton label={t("productionBoard.toolbar.minimap")} pressed={minimap} onClick={onMinimap}>
+      <ChromeButton mark="minimap" label={t("productionBoard.toolbar.minimap")} pressed={minimap} onClick={onMinimap}>
         <MapIcon size={16} aria-hidden="true" />
       </ChromeButton>
     </div>
@@ -283,7 +284,7 @@ export function BoardMinimap({ layout, kinds, camera, insetEnd, bottom, compact,
   return (
     <div
       data-board-minimap=""
-      className="pointer-events-auto absolute bottom-3 z-[80] rounded-xl border border-hairline bg-panel/94 p-1.5"
+      className="board-type pointer-events-auto absolute bottom-3 z-[80] rounded-xl border border-board-line bg-panel/94 p-1.5"
       style={{ width: box, insetInlineEnd: MINIMAP.inset + insetEnd, ...(bottom === undefined ? {} : { bottom }) }}
     >
       <svg

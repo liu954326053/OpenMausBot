@@ -22,15 +22,26 @@ describe("the bot card", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("bot");
     expect(card.dataset.boardSurface).toBe("panel");
+    expect(card.className).toContain("board-type");
     expect([card.style.width, card.style.height]).toEqual([`${BOARD_CARD_SIZES.bot.width}px`, `${BOARD_CARD_SIZES.bot.height}px`]);
   });
 
-  it("wears its state as a stripe across its top", () => {
-    const stripe = (patch: Partial<BotCardProps>) => draw(patch).querySelector<HTMLElement>("[data-bot-stripe]")!;
-    expect(stripe({}).className).toContain("bg-board-amber");
-    expect(stripe({ bot: bot({ status: "idle" }), job: undefined, task: undefined }).className).toContain("bg-ink-tertiary");
-    expect(stripe({ bot: bot({ status: "idle" }), task: "done" }).className).toContain("bg-board-teal");
-    expect(stripe({ bot: bot({ status: "error" }) }).className).toContain("bg-danger");
+  it("wears its state as a three-pixel stripe along its top edge, and glows while it works", () => {
+    const top = (patch: Partial<BotCardProps>) => {
+      const card = draw(patch);
+      return [card.dataset.botStripe, card.className];
+    };
+    const [tone, amber] = top({});
+    expect(tone).toBe("working");
+    expect(amber).toContain("border-t-[3px]");
+    expect(amber).toContain("border-t-board-amber");
+    expect(amber).toContain("board-bot-glow");
+    const [idle] = top({ bot: bot({ status: "idle" }), job: undefined, task: undefined });
+    expect(idle).toBe("idle");
+    const done = top({ bot: bot({ status: "idle" }), task: "done" })[1];
+    expect(done).toContain("border-t-board-teal");
+    expect(done).not.toContain("board-bot-glow");
+    expect(top({ bot: bot({ status: "error" }) })[1]).toContain("border-t-danger");
   });
 
   it("shows an episode's bot by its own name, its episode code, its job title and what it does for that episode", () => {

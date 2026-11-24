@@ -335,6 +335,24 @@ async function measure(page: HeadlessPage, selector: string): Promise<Captured> 
   return toCaptured(selector, await page.evaluate(measureScript(selector)));
 }
 
+/** Clicks a selector the way `appClick` does, reporting whether anything was there to click. */
+async function press(page: HeadlessPage, selector: string): Promise<boolean> {
+  return Boolean(await page.evaluate(`(() => {
+    const target = document.querySelector(${JSON.stringify(selector)});
+    target?.click();
+    return Boolean(target);
+  })()`));
+}
+
+/** An element the board keeps folded until it is asked for: the reveal switch is pressed once, then it is measured again. */
+async function measureRevealed(page: HeadlessPage, element: AuditElement): Promise<Captured> {
+  const measured = await measure(page, element.app);
+  if (measured.found || !element.appReveal) return measured;
+  if (!(await press(page, element.appReveal))) return measured;
+  await delay(200);
+  return measure(page, element.app);
+}
+
 async function shootElement(page: HeadlessPage, captured: Captured, relative: string, viewport: Options["viewport"]): Promise<void> {
   const rect = captured.rect;
   if (!captured.found || !rect) return;
@@ -539,7 +557,7 @@ async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditEleme
 
   for (const element of elements) {
     if (element.section !== "chrome") continue;
-    const measured = await measure(page, element.app);
+    const measured = await measureRevealed(page, element);
     if (measured.found) await shootElement(page, measured, `app/${element.section}/${element.id}.png`, options.viewport);
     captured[element.id] = measured;
   }
@@ -578,7 +596,7 @@ async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditEleme
       await page.until(`Boolean(document.querySelector(${JSON.stringify(element.app)}))`, 8_000).catch(() => {});
       await delay(250);
     }
-    const measured = await measure(page, element.app);
+    const measured = await measureRevealed(page, element);
     if (!measured.found) {
       captured[element.id] = { ...measured, reason: `看板里没有 ${element.app}${element.appCardKind ? `（把 ${element.appCardKind} 卡片移到中央后仍没有）` : ""}` };
       continue;

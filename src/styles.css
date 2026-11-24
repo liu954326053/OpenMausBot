@@ -210,7 +210,12 @@
   --color-board-amber: #f2a53c;
   --color-board-amber-ink: #855000;
   --color-board-monitor: #0d0f12;
+  --color-board-line: #333a42;
+  --color-board-line-2: #4d5660;
   --shadow-board: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-board-glow: 0 0 0 1px rgba(242, 165, 60, 0.4), 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 70px rgba(242, 165, 60, 0.14);
+  --shadow-board-panel: 0 24px 70px rgba(0, 0, 0, 0.62);
+  --shadow-board-modal: 0 30px 90px rgba(0, 0, 0, 0.7);
 
   /* Add a rounded transition class.
      For situations where multiple transition-properties need to be set simultaneously,
@@ -218,9 +223,31 @@
   --transition-property-rounded: border-radius;
 }
 
+/* Board cards cast the mockup's one shadow. Tailwind's `shadow-*` utility prefixes four transparent ring layers, so a
+   computed style starts at `0 0 0 0`; these classes keep the real layer first, where reading tools see it. */
+.board-card-shadow {
+  box-shadow: var(--shadow-board);
+}
+/* The board's own type: the mockup inherits 14/21 from its canvas, and a part of the board that is not given a size of
+   its own takes this one. */
+.board-type {
+  font-size: 14px;
+  line-height: 21px;
+}
+.board-bot-glow {
+  box-shadow: var(--shadow-board-glow);
+}
+
 /* A pile of episode pages: the top sheet, then two sheets under it, offset down and to the right. */
 .board-paper-stack {
   box-shadow: var(--shadow-board), 7px 7px 0 -1px var(--color-board-paper-2), 14px 14px 0 -2px var(--color-board-paper-line);
+}
+
+.board-panel-shadow {
+  box-shadow: var(--shadow-board-panel);
+}
+.board-modal-shadow {
+  box-shadow: var(--shadow-board-modal);
 }
 
 /* Tokens that no utility generates — declared outside `@theme` so Tailwind

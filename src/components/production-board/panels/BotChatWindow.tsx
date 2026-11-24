@@ -130,9 +130,9 @@ export const BotChatWindow = memo(function BotChatWindow(props: BotChatWindowPro
       <span
         data-chat-arrow=""
         aria-hidden="true"
-        className="pointer-events-none absolute z-10 hidden size-3 rotate-45 bg-menu group-data-[side=right]/chat:-start-1.5 group-data-[side=right]/chat:block group-data-[side=right]/chat:border-b group-data-[side=right]/chat:border-s group-data-[side=right]/chat:border-hairline group-data-[side=left]/chat:-end-1.5 group-data-[side=left]/chat:block group-data-[side=left]/chat:border-e group-data-[side=left]/chat:border-t group-data-[side=left]/chat:border-hairline"
+        className="pointer-events-none absolute z-10 hidden size-3 rotate-45 bg-menu group-data-[side=right]/chat:-start-1.5 group-data-[side=right]/chat:block group-data-[side=right]/chat:border-b group-data-[side=right]/chat:border-s group-data-[side=right]/chat:border-board-line-2 group-data-[side=left]/chat:-end-1.5 group-data-[side=left]/chat:block group-data-[side=left]/chat:border-e group-data-[side=left]/chat:border-t group-data-[side=left]/chat:border-board-line-2"
       />
-      <div data-chat-surface="" className="popover-surface pointer-events-auto relative flex min-h-0 animate-fade-in flex-col overflow-hidden rounded-[14px] border border-hairline bg-menu motion-reduce:animate-none">
+      <div data-chat-surface="" className="board-type board-panel-shadow pointer-events-auto relative flex min-h-0 animate-fade-in flex-col overflow-hidden rounded-[14px] border border-board-line-2 bg-menu motion-reduce:animate-none">
         <header className="flex flex-none items-center gap-2.5 border-b border-hairline px-2 pb-2.5 pe-2 ps-3 pt-2.5">
           <span
             data-chat-avatar=""

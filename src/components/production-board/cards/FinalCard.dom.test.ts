@@ -24,6 +24,7 @@ describe("the final card", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("final");
     expect(card.dataset.boardSurface).toBe("monitor");
+    expect(card.className).toContain("border-board-line-2");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Film · EP01");
     expect(textOf(card.querySelector("[data-final-title]"))).toBe("The lamplighter");
     expect(card.querySelector("[data-final-headline]")!.className).toContain("text-[32px]");

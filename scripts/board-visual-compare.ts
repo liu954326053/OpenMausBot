@@ -22,6 +22,8 @@ export interface AuditElement {
   appCardKind?: string;
   /** 量之前先在我方看板里点的卡片（打开对话窗或详情弹窗）。 */
   appClick?: string;
+  /** 我方看板里把元素显示出来的开关：找不到元素时先点它一次，再量。 */
+  appReveal?: string;
 }
 
 export interface AuditMap {
@@ -259,6 +261,7 @@ export function loadMap(path: string, elements?: unknown): AuditMap {
       app: textOf(one.app, `${where}（${id}）的 app 选择器`),
       ...(stage !== undefined ? { appCardKind: stage.trim() } : {}),
       ...(one.appClick !== undefined ? { appClick: textOf(one.appClick, `${where}（${id}）的 appClick`) } : {}),
+      ...(one.appReveal !== undefined ? { appReveal: textOf(one.appReveal, `${where}（${id}）的 appReveal`) } : {}),
     };
   });
   return { ...(typeof record.note === "string" ? { note: record.note } : {}), elements: parsed };

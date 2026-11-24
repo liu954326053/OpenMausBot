@@ -29,13 +29,17 @@ describe("the character card", () => {
   it("shows the character's picture, name, part, line, tags, look and palette", () => {
     const card = character();
     expect(card.dataset.boardCard).toBe("character");
-    expect(card.dataset.boardSurface).toBe("paper");
+    expect(card.dataset.boardSurface).toBe("panel");
+    expect(card.className).toContain("bg-card");
+    expect(card.className).not.toContain("bg-board-paper");
     expect(card.style.height).toBe(`${BOARD_CARD_SIZES.character.height}px`);
     const picture = card.querySelector("img")!;
     expect([picture.getAttribute("src"), picture.alt]).toEqual(["/files/qingwu.png", "Picture of Qingwu"]);
     expect(card.querySelector("[data-asset-picture]")!.className).toContain("w-38");
+    expect(card.querySelector("[data-asset-picture]")!.className).toContain("bg-app");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Qingwu");
     expect(card.querySelector("[data-card-name]")!.className).toContain("text-[21px]");
+    expect(card.querySelector("[data-card-name]")!.className).toContain("text-ink");
     expect(textOf(card.querySelector("[data-asset-badge]"))).toBe("Lead");
     expect(textOf(card.querySelector("[data-asset-subtitle]"))).toBe("24 · lamplighter");
     expect([...card.querySelectorAll("[data-asset-tag]")].map(textOf)).toEqual(["Stubborn", "Kind"]);
@@ -93,7 +97,10 @@ describe("the scene card", () => {
   it("shows the scene's picture, name, line and the shots that use it, across episodes", () => {
     const card = scene();
     expect(card.dataset.boardCard).toBe("scene");
-    expect(card.dataset.boardSurface).toBe("paper");
+    expect(card.dataset.boardSurface).toBe("panel");
+    expect(card.className).toContain("bg-card");
+    expect(card.className).not.toContain("bg-board-paper");
+    expect(card.querySelector("[data-asset-picture]")!.className).toContain("bg-app");
     expect(card.querySelector("img")!.getAttribute("src")).toBe("/files/pier.png");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("Old pier");
     expect(card.querySelector("[data-card-name]")!.className).toContain("text-[18px]");

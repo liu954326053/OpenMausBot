@@ -91,6 +91,8 @@ report.md          按差距排序的中文报告，每个元素带截图路径
 - `section`：`cards`、`chrome`、`panels`，配合 `--only`。
 - `mockupNode`：效果图里代表这个元素的节点 id；工具会把它移到画面中央再量。
 - `appStage`：先按数字键 1–5 聚焦看板的这个阶段，再找元素。
+- `appReveal`：看板里把元素显示出来的开关；找不到元素时先点它一次再量（小地图在窄于 720 的看板上默认折叠，
+  用工具条上的 `[data-board-chrome-button="minimap"]` 打开）。
 - `mockupOpen` / `appClick`：量对话窗、详情弹窗前要先打开它们。
 
 改完选择器重跑即可；选择器写错时工具会报出是哪个元素、哪个选择器。新增一种卡片就在表里加一行，

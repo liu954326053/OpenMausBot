@@ -21,6 +21,8 @@ describe("the episode card", () => {
     const card = draw();
     expect(card.dataset.boardCard).toBe("episode");
     expect(card.dataset.boardSurface).toBe("paper");
+    expect(card.className).toContain("ps-7");
+    expect(card.querySelector("[data-episode-code]")!.parentElement!.className).not.toContain("ps-7");
     expect(textOf(card.querySelector("[data-episode-code]"))).toBe("EP01");
     expect(textOf(card.querySelector("[data-card-name]"))).toBe("The lamplighter");
     expect(textOf(card.querySelector("[data-board-status]"))).toBe("Making videos");

@@ -119,6 +119,15 @@ describe("the shipped map", () => {
     expect(() => loadMap(MAP_PATH, [
       { id: "x", name: "X", section: "cards", mockup: ".x", app: ".x", appCardKind: "" },
     ])).toThrow(/appCardKind/);
+    expect(() => loadMap(MAP_PATH, [
+      { id: "x", name: "X", section: "chrome", mockup: ".x", app: ".x", appReveal: "  " },
+    ])).toThrow(/appReveal/);
+  });
+
+  it("finds the minimap by the marker the board wraps it in, with a switch to unfold it", () => {
+    const minimap = MAP.elements.find((element) => element.id === "minimap")!;
+    expect(minimap.app).toBe("[data-board-minimap]");
+    expect(minimap.appReveal).toBe('[data-board-chrome-button="minimap"][aria-pressed="false"]');
   });
 });
 

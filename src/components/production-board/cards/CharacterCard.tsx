@@ -23,12 +23,12 @@ export function CharacterCard({ name, facts, pictureUrl, generation, shots, onOp
   const colours = paletteColours(facts?.palette);
   const tags = facts?.tags?.filter((tag) => tag.trim()) ?? [];
   return (
-    <CardShell kind="character" label={name} surface="paper" onOpen={onOpen} className="flex-row">
-      <div data-asset-picture="" className="relative w-38 shrink-0 overflow-hidden bg-board-paper-2">
+    <CardShell kind="character" label={name} surface="panel" onOpen={onOpen} className="flex-row">
+      <div data-asset-picture="" className="relative w-38 shrink-0 overflow-hidden bg-app">
         {pictureUrl ? (
           <img src={pictureUrl} alt={t("boardCards.asset.picture", { name })} draggable={false} className="size-full object-cover object-top" />
         ) : (
-          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-board-ink-3">
+          <div className="flex size-full flex-col items-center justify-center gap-2 p-3 text-center text-[12px] leading-4 text-ink-tertiary">
             {generation?.status === "error" ? (
               <>
                 <span data-asset-failure="" title={failureText(generation)} className="line-clamp-3">{failureText(generation)}</span>
@@ -49,14 +49,14 @@ export function CharacterCard({ name, facts, pictureUrl, generation, shots, onOp
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 px-3.5 py-3">
         <div className="flex h-5 min-w-0 items-center gap-1.5">
-          {badge ? <span data-asset-badge="" dir="auto" className="inline-flex h-5 shrink-0 items-center rounded bg-board-ink px-2 text-[12px] font-semibold leading-4 text-board-paper">{badge}</span> : null}
+          {badge ? <span data-asset-badge="" dir="auto" className="inline-flex h-5 shrink-0 items-center rounded bg-ink px-2 text-[12px] font-semibold leading-4 text-app">{badge}</span> : null}
         </div>
-        <h3 data-card-name="" title={name} dir="auto" className="truncate text-[21px] font-semibold leading-7 tracking-[0.02em] text-board-ink">{name}</h3>
-        {facts?.subtitle?.trim() ? <div data-asset-subtitle="" dir="auto" title={facts.subtitle} className="truncate text-[13px] leading-[18px] text-board-ink-2">{facts.subtitle}</div> : null}
+        <h3 data-card-name="" title={name} dir="auto" className="truncate text-[21px] font-semibold leading-7 tracking-[0.02em] text-ink">{name}</h3>
+        {facts?.subtitle?.trim() ? <div data-asset-subtitle="" dir="auto" title={facts.subtitle} className="truncate text-[13px] leading-[18px] text-ink-secondary">{facts.subtitle}</div> : null}
         {tags.length ? (
           <div className="flex h-5 min-w-0 flex-nowrap gap-1 overflow-hidden">
             {tags.map((tag, index) => (
-              <span key={index} data-asset-tag="" dir="auto" title={tag} className="inline-flex h-5 shrink-0 items-center rounded border border-board-paper-line px-1.5 text-[11px] leading-4 text-board-ink-2">
+              <span key={index} data-asset-tag="" dir="auto" title={tag} className="inline-flex h-5 shrink-0 items-center rounded border border-hairline px-1.5 text-[11px] leading-4 text-ink-secondary">
                 <span className="truncate">{tag}</span>
               </span>
             ))}
@@ -66,8 +66,8 @@ export function CharacterCard({ name, facts, pictureUrl, generation, shots, onOp
           <dl className="flex min-h-0 flex-col gap-1 pt-0.5">
             {facts.rows.slice(0, ROWS_SHOWN).map(([label, value], index) => (
               <div key={index} data-asset-row="" className="flex min-w-0 gap-2 text-[12px] leading-4">
-                <dt dir="auto" className="w-8 shrink-0 truncate text-board-ink-3">{label}</dt>
-                <dd dir="auto" title={value} className="min-w-0 truncate text-board-ink-2">{value}</dd>
+                <dt dir="auto" className="w-8 shrink-0 truncate text-ink-tertiary">{label}</dt>
+                <dd dir="auto" title={value} className="min-w-0 truncate text-ink-secondary">{value}</dd>
               </div>
             ))}
           </dl>
@@ -76,11 +76,11 @@ export function CharacterCard({ name, facts, pictureUrl, generation, shots, onOp
           {colours.length ? (
             <span data-asset-palette="" aria-hidden="true" className="flex shrink-0">
               {colours.map((colour, index) => (
-                <i key={index} data-asset-swatch="" title={colour} className={cn("size-4 rounded-full border-2 border-board-paper", index > 0 && "-ms-1")} style={{ backgroundColor: colour }} />
+                <i key={index} data-asset-swatch="" title={colour} className={cn("size-4 rounded-full border-2 border-card", index > 0 && "-ms-1")} style={{ backgroundColor: colour }} />
               ))}
             </span>
           ) : <span />}
-          <AssetShots shots={shots} verb="appearsIn" className="text-board-ink-3" />
+          <AssetShots shots={shots} verb="appearsIn" className="text-ink-tertiary" />
         </div>
       </div>
     </CardShell>
