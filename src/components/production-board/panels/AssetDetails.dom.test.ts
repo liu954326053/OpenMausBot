@@ -37,7 +37,7 @@ describe("an asset's details", () => {
     const modal = details()!;
     expect(modal.className).toContain("max-w-[980px]");
     expect(modal.className).toContain("rounded-[14px]");
-    expect(modal.className).toContain("animate-pop-in");
+    expect(modal.className).toContain("animate-details-in");
     expect(modal.className).toContain("motion-reduce:animate-none");
     expect(modal.parentElement!.className).toContain("ui-scrim");
   });
@@ -92,6 +92,7 @@ describe("an asset's details", () => {
     expect(sheet.textContent).toContain("把《雾港灯语》改成竖屏漫剧");
     expect(sheet.querySelector("[draggable]")).toBeNull();
     expect(sheet.getAttribute("data-board-card")).toBeNull();
+    expect(sheet.dataset.boardSurface).toBe("paper");
   });
 
   it("sets a shot still to be drawn on a still sheet, with a dashed frame where its sketch goes", async () => {
@@ -112,8 +113,8 @@ describe("an asset's details", () => {
     expect(details()!.querySelector("video")!.closest("[data-screen]")!.className).toContain("aspect-video");    const takes = [...details()!.querySelectorAll<HTMLElement>("[data-take]")];
     expect(takes.map((take) => take.textContent?.replace("✓", ""))).toEqual(["V1", "V2", "V3"]);
     expect(takes[2]!.hasAttribute("data-cur")).toBe(true);
-    expect(takes[2]!.className).toContain("border-success");
-    expect(takes[2]!.className).toContain("text-success");
+    expect(takes[2]!.className).toContain("border-board-teal-ink");
+    expect(takes[2]!.className).toContain("text-board-teal-ink");
     expect(takes[0]!.hasAttribute("data-cur")).toBe(false);
     expect(takes[0]!.className).toContain("h-6");
     expect(takes[0]!.className).toContain("font-mono");

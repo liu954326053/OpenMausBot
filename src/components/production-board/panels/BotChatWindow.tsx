@@ -139,7 +139,7 @@ export const BotChatWindow = memo(function BotChatWindow(props: BotChatWindowPro
             data-bot-state={bot.status}
             className={cn(
               "grid size-[34px] shrink-0 place-items-center overflow-hidden rounded-[9px] border",
-              bot.status === "working" || bot.status === "queued" ? "border-warning bg-warning text-app" : "border-hairline bg-control",
+              bot.status === "working" || bot.status === "queued" ? "border-board-amber bg-board-amber text-board-ink" : "border-hairline bg-control",
             )}
           >
             <BotFace name={bot.name} look={look} size={26} />
@@ -215,7 +215,7 @@ export const BotChatWindow = memo(function BotChatWindow(props: BotChatWindowPro
               data-chat-send=""
               disabled={!sendable}
               onClick={() => void send()}
-              className="inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full bg-warning pe-4 ps-3 text-[14px] font-semibold leading-none text-app transition-colors duration-[120ms] hover:brightness-105 disabled:bg-control disabled:text-ink-tertiary motion-reduce:transition-none"
+              className="inline-flex h-[34px] shrink-0 items-center gap-1.5 rounded-full bg-board-amber pe-4 ps-3 text-[14px] font-semibold leading-none text-board-ink transition-colors duration-[120ms] hover:brightness-105 disabled:bg-control disabled:text-ink-tertiary motion-reduce:transition-none"
             >
               {sending ? <LoaderCircle size={15} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <ArrowUp size={15} aria-hidden="true" />}
               {t("boardPanels.chat.send")}

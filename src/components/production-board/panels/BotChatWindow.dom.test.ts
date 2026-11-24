@@ -98,13 +98,14 @@ describe("a bot's chat window", () => {
     await openChat("board-2");
     const plate = chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!;
     expect(plate.dataset.botState).toBe("working");
-    expect(plate.className).toContain("bg-warning");
+    expect(plate.className).toContain("bg-board-amber");
+    expect(plate.className).toContain("text-board-ink");
     expect(chat()!.querySelector("[data-chat-name]")!.className).toContain("text-[15px]");
     expect(chat()!.querySelector("[data-chat-name]")!.className).toContain("font-semibold");
     expect(chat()!.querySelector("[data-chat-role]")!.className).toContain("text-ink-tertiary");
     await openChat("writer");
     expect(chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!.dataset.botState).toBe("idle");
-    expect(chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!.className).not.toContain("bg-warning");
+    expect(chat()!.querySelector<HTMLElement>("[data-chat-avatar]")!.className).not.toContain("bg-board-amber");
   });
 
   it("offers @ references and an amber send pill, grey while there is nothing to send", async () => {
@@ -115,7 +116,8 @@ describe("a bot's chat window", () => {
     const send = named("Send")!;
     expect(send.dataset.chatSend).toBe("");
     expect(send.className).toContain("h-[34px]");
-    expect(send.className).toContain("bg-warning");
+    expect(send.className).toContain("bg-board-amber");
+    expect(send.className).toContain("text-board-ink");
     expect(send.className).toContain("disabled:bg-control");
     expect(send.disabled).toBe(true);
     await typeInto(composer(), "加一场雨");

@@ -5,6 +5,8 @@ import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { useModalDialog } from "@/hooks/use-modal-dialog";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
+import type { BoardCardKind } from "../cards";
+import { CardShell } from "../cards/parts";
 import { KIND_KEYS } from "./asset-words";
 import type { AssetKind } from "./board-index";
 import type { DetailsFact, DetailsView } from "./details-view";
@@ -63,7 +65,7 @@ export const AssetDetails = memo(function AssetDetails({ view, onAsk, onLocate, 
         tabIndex={-1}
         data-board-asset={view.nodeId}
         data-kind={view.kind}
-        className="ui-modal flex max-h-full w-full max-w-[980px] flex-col overflow-hidden rounded-[14px] text-ink outline-none animate-pop-in motion-reduce:animate-none"
+        className="ui-modal flex max-h-full w-full max-w-[980px] flex-col overflow-hidden rounded-[14px] text-ink outline-none animate-details-in motion-reduce:animate-none"
       >
         <header className="flex flex-none items-center gap-2.5 border-b border-hairline py-2.5 pe-2.5 ps-4">
           <span data-details-kind="" className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] leading-4 text-ink-tertiary">
@@ -152,8 +154,8 @@ function Media({ view }: { view: DetailsView }) {
   if (preview?.type === "video") {
     return (
       <>
-        <div data-screen="" className="aspect-video w-full overflow-hidden rounded-lg bg-app">
-          <video src={preview.url} controls playsInline preload="metadata" aria-label={view.title} className="aspect-video w-full bg-black object-contain" />
+        <div data-screen="" className="aspect-video w-full overflow-hidden rounded-lg bg-board-monitor">
+          <video src={preview.url} controls playsInline preload="metadata" aria-label={view.title} className="aspect-video w-full bg-board-monitor object-contain" />
         </div>
         {takes.length ? (
           <div className="flex flex-wrap items-center gap-1.5 text-[12px] leading-4 text-ink-tertiary">
@@ -165,7 +167,7 @@ function Media({ view }: { view: DetailsView }) {
                 data-cur={take.current || undefined}
                 className={cn(
                   "inline-flex h-6 items-center gap-1 rounded-md border px-2 font-mono text-[12px] leading-none",
-                  take.current ? "border-success text-success" : "border-hairline text-ink-secondary",
+                  take.current ? "border-board-teal-ink bg-board-paper text-board-teal-ink" : "border-hairline text-ink-secondary",
                 )}
               >
                 {t("boardPanels.details.take", { number: take.number })}
@@ -198,21 +200,34 @@ function Media({ view }: { view: DetailsView }) {
   }
   if (still) {
     return (
-      <div data-sheet="" data-sketch={still.sketch || undefined} className="w-full cursor-default select-text overflow-hidden rounded-[10px] border border-hairline bg-card p-4 text-ink">
-        <h3 className="text-[16px] font-semibold leading-[1.3] text-ink">{still.heading}</h3>
+      <CardShell
+        kind={sheetKind(view.kind)}
+        label={still.heading}
+        surface="paper"
+        static
+        className="cursor-default select-text p-4"
+        data={{ "data-sheet": "", "data-sketch": still.sketch ? "" : undefined }}
+      >
+        <h3 className="text-[16px] font-semibold leading-[1.3] text-board-ink">{still.heading}</h3>
         {still.sketch ? (
-          <div data-sketch-frame="" className="mt-2 grid aspect-video w-full place-items-center rounded border-[1.5px] border-dashed border-hairline text-[12px] text-ink-tertiary">
+          <div data-sketch-frame="" className="mt-2 grid aspect-video w-full place-items-center rounded border-[1.5px] border-dashed border-board-paper-line text-[12px] text-board-ink-3">
             {still.body}
           </div>
         ) : still.body ? (
-          <div className="mt-2 border-t border-hairline pt-2 text-[13px] leading-[1.6] text-ink-secondary" dir="auto">
+          <div className="mt-2 border-t border-board-paper-line pt-2 text-[13px] leading-[1.6] text-board-ink-2" dir="auto">
             <ChatMarkdown text={still.body} />
           </div>
         ) : null}
-      </div>
+      </CardShell>
     );
   }
   return null;
+}
+
+/** The paper a document reads as: the kind of card the board draws for it, or the plain sheet of a loose file. */
+function sheetKind(kind: AssetKind): BoardCardKind {
+  if (kind === "shot" || kind === "episode" || kind === "brief" || kind === "plan") return kind;
+  return "generic";
 }
 
 /** What the picture is, under it: its colours, then its size. */

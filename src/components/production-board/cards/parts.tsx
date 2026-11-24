@@ -30,9 +30,9 @@ export const SILVER: CanvasBotLook = { color: "silver" };
 export type BoardCardSurface = "panel" | "paper" | "monitor";
 
 const SURFACE: Readonly<Record<BoardCardSurface, string>> = {
-  panel: "rounded-[10px] border-hairline bg-card text-ink shadow-board",
-  paper: "rounded-[10px] border-board-paper-line bg-board-paper text-board-ink shadow-board",
-  monitor: "rounded-xl border-board-paper/15 bg-board-monitor text-board-paper shadow-board",
+  panel: "rounded-[10px] border-hairline bg-card text-ink",
+  paper: "rounded-[10px] border-board-paper-line bg-board-paper text-board-ink",
+  monitor: "rounded-xl border-board-paper/15 bg-board-monitor text-board-paper",
 };
 
 export function clockLength(ms: number): string {
@@ -43,27 +43,36 @@ export function clockLength(ms: number): string {
 export const failureText = (generation: BoardGeneration | undefined): string =>
   serverErrorText(generation, generation?.errorDetails || t("boardCards.generationFailed"));
 
-/** The board's card: its kind's size, flat on the board, opening on a click anywhere that is not one of its actions. */
-export function CardShell({ kind, label, tone, surface = "panel", onOpen, className, children }: {
+/** The board's card: its kind's size, flat on the board, opening on a click anywhere that is not one of its actions.
+ * A `static` card is the same surface off the board — a sheet read inside a panel: the width of its column, no board
+ * marker, no lift, nothing to open. */
+export function CardShell({ kind, label, tone, surface = "panel", static: isStatic = false, onOpen, className, data, children }: {
   kind: BoardCardKind;
   label: string;
   tone?: BoardTone;
   surface?: BoardCardSurface;
+  /** A sheet in a panel rather than a card on the board. */
+  static?: boolean;
   onOpen?: () => void;
   className?: string;
+  /** Data attributes the call site keeps on the element — a sheet's own state, which its panel reads. */
+  data?: Readonly<Record<string, string | true | undefined>>;
   children: ReactNode;
 }) {
-  const { width, height } = BOARD_CARD_SIZES[kind];
+  const box = isStatic ? undefined : BOARD_CARD_SIZES[kind];
   return (
     <article
-      data-board-card={kind}
+      {...data}
+      data-board-card={isStatic ? undefined : kind}
       data-board-surface={surface}
       data-board-tone={tone}
       aria-label={label}
-      style={{ width, height }}
+      style={box ? { width: box.width, height: box.height } : undefined}
       className={cn(
         "relative flex flex-col overflow-hidden border",
         SURFACE[surface],
+        !isStatic && "shadow-board",
+        isStatic && "w-full",
         tone === "failed" ? "border-danger/60" : tone === "asking" ? "border-warning/60" : null,
         onOpen && "cursor-pointer",
         className,
