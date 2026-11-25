@@ -372,6 +372,8 @@ const bridge = {
   permStatus: () => ipcRenderer.invoke("perm:status"),
   permRequestMic: () => ipcRenderer.invoke("perm:request-mic"),
   permOpenSettings: (pane) => ipcRenderer.invoke("perm:open-settings", pane),
+  /** A floating card whose app icon can be dragged into a macOS privacy list; false where that does not apply. */
+  permShowDragHelper: () => ipcRenderer.invoke("perm:show-drag-helper"),
   relaunch: () => ipcRenderer.invoke("desktop:relaunch"),
 
   openInstallTerminal: (command) => ipcRenderer.invoke("engine:open-terminal", command),

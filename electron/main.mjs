@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildErrorPage, desktopViewerErrorPage, showBootFailure } from "./error-pages.mjs";
+import { appBundlePath, permissionDragPage } from "./permission-drag.mjs";
 import { startCua, stopCua, registerCuaIpc, requestComputerUse, setCuaStateListener, grantLocalComputer } from "./cua.mjs";
 import { createAndroidDeviceController } from "./android-device.mjs";
 import { finishSpeech, speechBusy, startSpeech, stopSpeech } from "./speech.mjs";
@@ -136,13 +137,14 @@ const DEV_URL = process.env.ELECTRON_START_URL ?? "http://127.0.0.1:5199";
 let SERVER_PORT = 8799;
 const APP_ICON = path.join(__dirname, "resources/app-icon.png");
 let desktopViewerWindow = null;
+let permissionDragWindow = null;
 let desktopViewerOwner = null;
 let desktopViewerContextId = null;
 let desktopWorkspaceManager = null;
 let desktopWorkspaceOwner = null;
 let pendingOrganizationEntry = takeOrganizationDeepLink(process.argv);
 function appWindows() {
-  return BrowserWindow.getAllWindows().filter((win) => !isTalkPanel(win));
+  return BrowserWindow.getAllWindows().filter((win) => !isTalkPanel(win) && win !== permissionDragWindow);
 }
 const cloudEntry = createCloudEntry({
   reveal: () => { if (!desktopTray?.show()) activateExistingWindow(appWindows()); },
@@ -2336,6 +2338,57 @@ ipcMain.handle("perm:status", (event) => ({
 ipcMain.handle("perm:request-mic", localOnly("perm:request-mic", () => askForMicrophone({ available: nativeActions.appleMediaPermissions, systemPreferences })));
 const privacySettings = pane => openPrivacySettings(pane, { available: nativeActions.applePrivacySettings, openExternal: url => shell.openExternal(url) });
 ipcMain.handle("perm:open-settings", localOnly("perm:open-settings", (_event, pane) => privacySettings(pane)));
+
+// The person adds the app to a privacy list by dragging it there; only this helper window may start that drag.
+let permissionDragIcon = null;
+let permissionDragBundle = null;
+async function showPermissionDragHelper() {
+  if (process.platform !== "darwin" || !nativeActions.applePrivacySettings) return false;
+  const bundle = appBundlePath(process.execPath);
+  if (!bundle) return false;
+  if (permissionDragWindow && !permissionDragWindow.isDestroyed()) {
+    permissionDragWindow.show();
+    permissionDragWindow.focus();
+    return true;
+  }
+  if (!permissionDragIcon) {
+    try { permissionDragIcon = await app.getFileIcon(bundle, { size: "large" }); } catch { permissionDragIcon = nativeImage.createEmpty(); }
+  }
+  permissionDragBundle = bundle;
+  const appName = path.basename(bundle, ".app");
+  const win = new BrowserWindow({
+    width: 300, height: 252, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    alwaysOnTop: true, show: false, title: nativeT("native.permissionDrag.title"),
+    webPreferences: { preload: path.join(__dirname, "permission-drag-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  permissionDragWindow = win;
+  win.setAlwaysOnTop(true, "floating");
+  win.once("ready-to-show", () => win.show());
+  win.on("closed", () => { if (permissionDragWindow === win) permissionDragWindow = null; });
+  const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.resize({ width: 96 }).toDataURL();
+  const page = permissionDragPage({
+    appName, icon,
+    title: nativeT("native.permissionDrag.title"),
+    body: nativeT("native.permissionDrag.body", { app: appName }),
+    dragLabel: nativeT("native.permissionDrag.drag"),
+    revealLabel: nativeT("native.permissionDrag.reveal"),
+  });
+  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`);
+  return true;
+}
+const fromPermissionDragHelper = (event) => Boolean(permissionDragWindow && !permissionDragWindow.isDestroyed() && event.sender === permissionDragWindow.webContents);
+ipcMain.handle("perm:show-drag-helper", localOnly("perm:show-drag-helper", () => showPermissionDragHelper()));
+ipcMain.on("perm:drag-app", (event) => {
+  if (!fromPermissionDragHelper(event) || !permissionDragBundle) return;
+  try {
+    event.sender.startDrag({ files: [permissionDragBundle], icon: permissionDragIcon ?? nativeImage.createEmpty() });
+  } catch (error) {
+    slog(`[perm] the app bundle could not be dragged: ${error instanceof Error ? error.message : String(error)}`);
+  }
+});
+ipcMain.on("perm:reveal-app", (event) => {
+  if (fromPermissionDragHelper(event) && permissionDragBundle) shell.showItemInFolder(permissionDragBundle);
+});
 
 ipcMain.handle("desktop:relaunch", localOnly("desktop:relaunch", (event) => {
   requireMainWindowSender(event);

@@ -193,6 +193,7 @@
   "organization.settingsOpened",
   "organization.state",
   "permOpenSettings",
+  "permShowDragHelper",
   "permRequestMic",
   "permStatus",
   "pickFolder",

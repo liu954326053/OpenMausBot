@@ -23,6 +23,8 @@ export async function openMacControlSettings(
   await open("accessibility");
   if (hiddenUntilRelaunch) return;
   await open("screen");
+  // The person adds the app to each list by dragging it in; the card names the exact bundle macOS records.
+  await window.ogb?.permShowDragHelper?.();
 }
 
 export function MacLocalControl() {

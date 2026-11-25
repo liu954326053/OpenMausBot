@@ -376,6 +376,9 @@ const __APP_VERSION__: string;
       permRequestMic(): Promise<boolean>;
       /** Opens System Settings on a privacy pane: mic|screen|speech|accessibility. */
       permOpenSettings(pane: "mic" | "screen" | "speech" | "accessibility"): Promise<void>;
+      /** A floating card whose app icon can be dragged into the privacy list; false where that is not offered.
+       * Absent in older builds of the shell. */
+      permShowDragHelper?(): Promise<boolean>;
       /** Relaunch the local desktop app through its normal shutdown cleanup. */
       relaunch?(): Promise<boolean>;
       /** Copies an engine install command and opens a blank terminal. False

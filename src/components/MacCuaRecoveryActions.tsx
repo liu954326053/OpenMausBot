@@ -21,6 +21,7 @@ export function MacCuaRecoveryActions({ reason }: { reason: string }) {
   const openSettings = async (permission: MacCuaPermission) => {
     try {
       await window.ogb?.permOpenSettings(permission);
+      await window.ogb?.permShowDragHelper?.();
       setError(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
