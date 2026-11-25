@@ -196,8 +196,9 @@ describe.skipIf(process.platform === "win32")("an OpenAI-compatible bot", () => 
     expect(answer.result).toContain(SKILL_BODY);
   }, 90_000);
 
-  it("has no run_command while features.runCommand is off, and the route runs nothing for anyone", async () => {
-    expect((await api("GET", "/api/config")).features.runCommand).toBe(false);
+  it("offers run_command without being switched on, and switching it off removes it and runs nothing for anyone", async () => {
+    expect((await api("GET", "/api/config")).features.runCommand).toBe(true);
+    expect((await api("PATCH", "/api/config", { features: { runCommand: false } })).features?.runCommand ?? (await api("GET", "/api/config")).features.runCommand).toBe(false);
     const made = await turn(lead.id, "List the files.");
     expect(reachable(made[0])).toContain("skill");
     expect(reachable(made[0])).not.toContain("run_command");
@@ -208,7 +209,7 @@ describe.skipIf(process.platform === "win32")("an OpenAI-compatible bot", () => 
     expect(auditRows()).toEqual([]);
   }, 90_000);
 
-  it("lists run_command once it is switched on, and runs in the project folder and below it", async () => {
+  it("lists run_command once it is switched back on, and runs in the project folder and below it", async () => {
     expect((await api("PATCH", "/api/config", { features: { runCommand: true } })).features?.runCommand ?? (await api("GET", "/api/config")).features.runCommand).toBe(true);
     const made = await turn(lead.id, "Fetch the source.", [
       run({ command: "pwd; printf 'chapter one' > source.txt; env" }),

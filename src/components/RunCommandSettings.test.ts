@@ -44,28 +44,28 @@ describe("Let API bots run commands setting", () => {
     expect(host.textContent).toBe("");
   });
 
-  it("starts off, says what it allows, and turns on as features.runCommand with the server's answer", async () => {
-    fixture.config = { features: { runCommand: false } };
-    const saved = { features: { runCommand: true } };
+  it("follows the server's answer, says what it allows, and saves the switch", async () => {
+    fixture.config = { features: { runCommand: true } };
+    const saved = { features: { runCommand: false } };
     fixture.api.mockResolvedValue(saved);
     render();
-    expect(toggle()!.getAttribute("aria-checked")).toBe("false");
+    expect(toggle()!.getAttribute("aria-checked")).toBe("true");
     expect(host.textContent).toContain("can run shell commands in their own folder");
     flushSync(() => [...host.querySelectorAll("button")].find((button) => !button.hasAttribute("aria-label"))!.click());
-    expect(host.textContent).toContain("Off by default.");
+    expect(host.textContent).toContain("On by default.");
     expect(host.textContent).toContain("logs/run-command.log");
 
     flushSync(() => toggle()!.click());
     await vi.waitFor(() => expect(fixture.dispatch).toHaveBeenCalledWith({ type: "configStatus", config: saved }));
     expect(fixture.api).toHaveBeenCalledExactlyOnceWith("/api/config", {
       method: "PATCH",
-      body: JSON.stringify({ features: { runCommand: true } }),
+      body: JSON.stringify({ features: { runCommand: false } }),
     });
     render();
-    expect(toggle()!.getAttribute("aria-checked")).toBe("true");
+    expect(toggle()!.getAttribute("aria-checked")).toBe("false");
   });
 
-  it("turns off again, and shows a refusal from the server", async () => {
+  it("shows a refusal from the server when saving the switch", async () => {
     fixture.config = { features: { runCommand: true } };
     fixture.api.mockRejectedValue(new Error("only an admin may change this"));
     render();

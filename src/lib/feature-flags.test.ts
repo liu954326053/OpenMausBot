@@ -82,11 +82,11 @@ describe("experimental feature flags", () => {
     expect(usbPhoneTakeoverEnabled({ features: { usbPhoneTakeover: true } })).toBe(true);
   });
 
-  it("keeps run_command for API bots off until switched on", () => {
-    expect(runCommandEnabled(null)).toBe(false);
-    expect(runCommandEnabled({ features: {} })).toBe(false);
-    expect(runCommandEnabled({ features: { runCommand: false } })).toBe(false);
+  it("keeps run_command for API bots on until switched off", () => {
+    expect(runCommandEnabled(null)).toBe(true);
+    expect(runCommandEnabled({ features: {} })).toBe(true);
     expect(runCommandEnabled({ features: { runCommand: true } })).toBe(true);
+    expect(runCommandEnabled({ features: { runCommand: false } })).toBe(false);
   });
 
   it("keeps Published apps out of the sidebar until a home that publishes sets it", () => {
