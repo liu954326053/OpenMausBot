@@ -215,6 +215,26 @@ const browserProfilesSchema = z.array(browserProfileSchema).max(20).superRefine(
     });
   });
 });
+export const MAX_RUN_COMMAND_ENV_NAMES = 20;
+const RUN_COMMAND_ENV_NAME = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** `features.runCommandEnv` holds names only. Each value is read from the server's own environment when a command runs. */
+const runCommandEnvNamesSchema = z.array(z.string())
+  .transform((names) => [...new Set(names)])
+  .superRefine((names, ctx) => {
+    if (names.length > MAX_RUN_COMMAND_ENV_NAMES) {
+      ctx.addIssue({ code: "custom", message: `keep at most ${MAX_RUN_COMMAND_ENV_NAMES} variable names, or the list would be too long to review` });
+    }
+    names.forEach((name, index) => {
+      if (RUN_COMMAND_ENV_NAME.test(name)) return;
+      ctx.addIssue({
+        code: "custom",
+        path: [index],
+        message: `“${name}” is not a variable name. Use capitals, digits and underscores, beginning with a letter, at most 64 characters, such as IP_SCOUT_KEY.`,
+      });
+    });
+  });
+
 // Not strict: a stale client's unknown flag must be dropped, not fail the whole config.
 const featureConfigSchema = z.object({
   /** Bots may draft skills for your review. On unless false. */
@@ -245,7 +265,7 @@ const featureConfigSchema = z.object({
   /** Room jobs to several members run side by side, each in a thread of its own. On unless false. */
   parallelRoomJobs: z.boolean().optional(),
   acpPlanLines: z.boolean().optional(), // An ACP agent's plan as activity lines. Off unless true.
-}).extend({ agentsToolBridge: z.boolean().optional(), savedSteps: z.boolean().optional(), usbPhoneTakeover: z.boolean().optional(), cloudComputerAutoReplace: z.boolean().optional(), phonePush: z.boolean().optional(), publishedApps: z.boolean().optional(), runCommand: z.boolean().optional() }); // runCommand: the run_command tool runs shell commands on this server, in the bot's own folder, off unless true; cloudComputerAutoReplace: set a dead or silent cloud computer aside (kept seven days with its files) and give its bot a new one by itself, on unless false (OMB_CLOUD_COMPUTER_AUTO_REPLACE wins); agentsToolBridge: the find_tool / use_tool bridge, off unless true; savedSteps: repeat a computer task from its saved steps, on unless false; usbPhoneTakeover: watch and take over the bots' USB phone, off unless true; phonePush: wake a paired phone whose app is closed through the hosted push relay, off unless true (OMB_PHONE_PUSH wins); publishedApps: the sidebar's entry to Published apps, off unless true, set by hand
+}).extend({ agentsToolBridge: z.boolean().optional(), savedSteps: z.boolean().optional(), usbPhoneTakeover: z.boolean().optional(), cloudComputerAutoReplace: z.boolean().optional(), phonePush: z.boolean().optional(), publishedApps: z.boolean().optional(), runCommand: z.boolean().optional(), runCommandEnv: runCommandEnvNamesSchema.optional() }); // runCommand: the run_command tool runs shell commands on this server, in the bot's own folder, off unless true; cloudComputerAutoReplace: set a dead or silent cloud computer aside (kept seven days with its files) and give its bot a new one by itself, on unless false (OMB_CLOUD_COMPUTER_AUTO_REPLACE wins); agentsToolBridge: the find_tool / use_tool bridge, off unless true; savedSteps: repeat a computer task from its saved steps, on unless false; usbPhoneTakeover: watch and take over the bots' USB phone, off unless true; phonePush: wake a paired phone whose app is closed through the hosted push relay, off unless true (OMB_PHONE_PUSH wins); publishedApps: the sidebar's entry to Published apps, off unless true, set by hand
 const onboardingConfigSchema = z.object({
   completedAt: z.string().trim().max(40).optional(),
   version: z.number().int().min(0).max(1000).optional(),
@@ -484,7 +504,7 @@ export interface AppConfig extends HelperConfig {
   context?: { rebuildBytes?: number; compactAt?: number; autoCompact?: boolean; roomCompactAt?: number; roomSessions?: boolean; replayToolHistory?: boolean };
   memory?: { captureQuietMs?: number; tidyHour?: number };
   localVm?: { mode?: "shared" | "per-bot" | "pool"; maxInstances?: number; idleTimeoutMinutes?: number; preserveInstalledApps?: boolean; memoryGb?: number; cpus?: number };
-  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; smartSetupChoices?: boolean; autoRecall?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; publishedApps?: boolean; roomMemoryCapture?: boolean; parallelRoomJobs?: boolean; acpPlanLines?: boolean; agentsToolBridge?: boolean; savedSteps?: boolean; usbPhoneTakeover?: boolean; cloudComputerAutoReplace?: boolean; phonePush?: boolean; runCommand?: boolean };
+  features?: { skillAuthoring?: boolean; skillReview?: boolean; skillReviewSteps?: number; showToolCalls?: boolean; browser?: boolean; sharedComputers?: boolean; claudeUserMcp?: boolean; claudeUserSkills?: boolean; llmThreadTitles?: boolean; smartSetupChoices?: boolean; autoRecall?: boolean; skillsLibrary?: boolean; shareLearnedSkills?: "off" | "ask" | "auto"; publishedApps?: boolean; roomMemoryCapture?: boolean; parallelRoomJobs?: boolean; acpPlanLines?: boolean; agentsToolBridge?: boolean; savedSteps?: boolean; usbPhoneTakeover?: boolean; cloudComputerAutoReplace?: boolean; phonePush?: boolean; runCommand?: boolean; runCommandEnv?: string[] };
   onboarding?: { completedAt?: string; version?: number; reelSeen?: boolean; hintsSeen?: string[]; firstTurnAt?: string };
   browserProfiles?: BrowserProfile[];
   browserEngine?: BrowserEngineConfig;
@@ -665,6 +685,11 @@ export function ownerLendingEnabled(cfg: AppConfig): boolean { return cfg.featur
 
 export function claudeUserMcpEnabled(cfg: Pick<AppConfig, "features">): boolean {
   return cfg.features?.claudeUserMcp === true;
+}
+
+/** `features.runCommandEnv`: names only, copied so a caller cannot edit the loaded config through the list. */
+export function runCommandEnvNames(cfg: Pick<AppConfig, "features">): string[] {
+  return [...(cfg.features?.runCommandEnv ?? [])];
 }
 
 export function engineLaunches(configs: InstanceConfigMap, env: Record<string, string | undefined> = process.env): Record<string, unknown> {

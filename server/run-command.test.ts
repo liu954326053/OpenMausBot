@@ -45,7 +45,7 @@ describe("run_command", () => {
     for (const botId of [writer, plain]) rmSync(privateBotFolder(botId), { recursive: true, force: true });
   });
 
-  const run = (botId: string, command: string, extra: { cwd?: string; timeoutSeconds?: number } = {}) =>
+  const run = (botId: string, command: string, extra: { cwd?: string; timeoutSeconds?: number; envNames?: string[] } = {}) =>
     runCommand({ bot: { id: botId, name: "Writer" }, threadId: "thread-1", command, dataDir: data, ...extra });
 
   it("is off unless features.runCommand is true", () => {
@@ -160,6 +160,42 @@ describe("run_command", () => {
     expect(env.OMB_INTERNAL_TOKEN).toBeUndefined();
     expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined();
     expect(env.PATH).not.toBe("/nowhere");
+  });
+
+  it("adds the operator's own names on top of the fixed list, and a fixed name keeps the fixed value", () => {
+    const env = shellEnvironment(
+      { HOME: "/home/a", PATH: "/nowhere", IP_SCOUT_KEY: "scout-1", HOMEBREW_PREFIX: "/opt/homebrew" },
+      ["IP_SCOUT_KEY", "HOMEBREW_PREFIX", "MISSING_KEY", "HOME", "PATH"],
+    );
+    expect(env.IP_SCOUT_KEY).toBe("scout-1");
+    expect(env.HOMEBREW_PREFIX).toBe("/opt/homebrew");
+    expect(env.MISSING_KEY).toBeUndefined();
+    expect(env.HOME).toBe("/home/a");
+    expect(env.PATH).not.toBe("/nowhere");
+  });
+
+  it.runIf(posix)("hands an allow-listed name to the command, and only that name", async () => {
+    process.env.OMB_RUN_COMMAND_TEST_KEY = "scout-value";
+    try {
+      const without = await run(writer, "printf 'none:%s' \"$OMB_RUN_COMMAND_TEST_KEY\"");
+      expect(without.stdout).toBe("none:");
+      const withName = await run(writer, "printf 'seen:%s' \"$OMB_RUN_COMMAND_TEST_KEY\"", { envNames: ["OMB_RUN_COMMAND_TEST_KEY"] });
+      expect(withName.stdout).toBe("seen:scout-value");
+    } finally {
+      delete process.env.OMB_RUN_COMMAND_TEST_KEY;
+    }
+  });
+
+  it.runIf(posix)("records the allow-listed names in the audit row, never their values", async () => {
+    process.env.OMB_RUN_COMMAND_TEST_KEY = "scout-value";
+    try {
+      await run(writer, "true", { envNames: ["OMB_RUN_COMMAND_TEST_KEY"] });
+      const rows = readFileSync(join(data, "logs", "run-command.log"), "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(rows.at(-1)).toMatchObject({ envNames: ["OMB_RUN_COMMAND_TEST_KEY"] });
+      expect(JSON.stringify(rows.at(-1))).not.toContain("scout-value");
+    } finally {
+      delete process.env.OMB_RUN_COMMAND_TEST_KEY;
+    }
   });
 
   it.runIf(posix)("does not hand the server's environment to the shell", async () => {

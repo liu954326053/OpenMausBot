@@ -255,6 +255,16 @@ describe("configuration boundaries", () => {
     expect(() => parseConfigPatch({ features: { runCommand: "yes" } })).toThrow();
   });
 
+  it("keeps features.runCommandEnv as variable names, de-duplicated, and refuses anything else", () => {
+    expect(parseConfigPatch({ features: { runCommandEnv: ["IP_SCOUT_KEY", "IP_SCOUT_KEY", "WBM_KEY_2"] } }))
+      .toEqual({ features: { runCommandEnv: ["IP_SCOUT_KEY", "WBM_KEY_2"] } });
+    expect(parseConfigPatch({ features: { runCommandEnv: [] } })).toEqual({ features: { runCommandEnv: [] } });
+    expect(() => parseConfigPatch({ features: { runCommandEnv: ["IP_SCOUT_KEY; rm -rf /"] } })).toThrow();
+    expect(() => parseConfigPatch({ features: { runCommandEnv: ["lower_case"] } })).toThrow();
+    expect(() => parseConfigPatch({ features: { runCommandEnv: ["9LIVES"] } })).toThrow();
+    expect(() => parseConfigPatch({ features: { runCommandEnv: Array.from({ length: 21 }, (_, index) => `KEY_${index}`) } })).toThrow();
+  });
+
   it("rejects malformed stored instances and API patches", () => {
     expect(() => parseStoredConfig({ instances: { claude: { driver: 42 } } })).toThrow("instances.claude.driver");
     expect(() => parseStoredConfig({ browserProfiles: [{ id: "../evil", name: "Unsafe" }] })).toThrow(

@@ -172,6 +172,7 @@ import {
   roomMemoryCaptureEnabled,
   tidyHour,
   sharedComputersEnabled, ownerLendingEnabled,
+  runCommandEnvNames,
   builtInBrowserEnabled,
   persistableInstanceConfigs,
   type AppConfig,
@@ -11856,6 +11857,7 @@ function configStatus() {
       savedSteps: savedStepsEnabled(cfg), savedStepsHere: savedSteps.here(),
       usbPhoneTakeover: HAS_USB_PORT ? usbPhoneTakeoverEnabled(cfg) : undefined,
       runCommand: RUN_COMMAND_HERE ? runCommandEnabled(cfg) : undefined,
+      runCommandEnv: RUN_COMMAND_HERE ? runCommandEnvNames(cfg) : undefined,
     },
     onboarding: {
       completedAt: cfg.onboarding?.completedAt ?? "",
@@ -13346,6 +13348,7 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           requireActiveInternalCapability();
           const outcome = await runCommand({
             bot: { id: internalSender.id, name: internalSender.name }, threadId, command: body.command,
+            envNames: runCommandEnvNames(cfg),
             ...(typeof body.cwd === "string" ? { cwd: body.cwd } : {}),
             ...(typeof body.timeout_seconds === "number" ? { timeoutSeconds: body.timeout_seconds } : {}),
             signal: gone.signal,

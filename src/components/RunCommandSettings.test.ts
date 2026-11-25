@@ -76,4 +76,34 @@ describe("Let API bots run commands setting", () => {
       body: JSON.stringify({ features: { runCommand: false } }),
     });
   });
+
+  it("saves the environment allow-list as names, split on commas and spaces and de-duplicated", async () => {
+    fixture.config = { features: { runCommand: true, runCommandEnv: ["IP_SCOUT_KEY"] } };
+    const saved = { features: { runCommand: true, runCommandEnv: ["IP_SCOUT_KEY", "WBM_KEY"] } };
+    fixture.api.mockResolvedValue(saved);
+    render();
+    const input = host.querySelector<HTMLInputElement>('[data-testid="run-command-env"]')!;
+    expect(input.value).toBe("IP_SCOUT_KEY");
+    expect(host.textContent).toContain("never written to logs or project files");
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    flushSync(() => {
+      setter.call(input, " IP_SCOUT_KEY, WBM_KEY  WBM_KEY ");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    flushSync(() => input.dispatchEvent(new Event("blur", { bubbles: true })));
+    await vi.waitFor(() => expect(fixture.dispatch).toHaveBeenCalledWith({ type: "configStatus", config: saved }));
+    expect(fixture.api).toHaveBeenCalledExactlyOnceWith("/api/config", {
+      method: "PATCH",
+      body: JSON.stringify({ features: { runCommandEnv: ["IP_SCOUT_KEY", "WBM_KEY"] } }),
+    });
+    expect(host.querySelector<HTMLInputElement>('[data-testid="run-command-env"]')!.value).toBe("IP_SCOUT_KEY WBM_KEY");
+  });
+
+  it("does not save an unchanged environment list", () => {
+    fixture.config = { features: { runCommand: true, runCommandEnv: ["IP_SCOUT_KEY"] } };
+    render();
+    const input = host.querySelector<HTMLInputElement>('[data-testid="run-command-env"]')!;
+    flushSync(() => input.dispatchEvent(new Event("blur", { bubbles: true })));
+    expect(fixture.api).not.toHaveBeenCalled();
+  });
 });

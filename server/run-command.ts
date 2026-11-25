@@ -7,7 +7,8 @@
 //   followed, to that folder or below it. The shell itself has no sandbox: a command that names a path outside it runs
 //   there. Audit rows are how an operator sees that happen.
 // - Each call ends: a hard stop of the child's process group after its limit, closed stdin, no TTY, and bounded output.
-// - The child gets an allow-list of environment names, never the server's own environment.
+// - The child gets an allow-list of environment names, never the server's own environment: the fixed list, plus names an
+//   operator set in features.runCommandEnv. Values are read here, never stored, and the audit row keeps names only.
 // - Every run leaves one audit row in <data>/logs/run-command.log: the command, the folder, the outcome, never output.
 import { appendFileSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
@@ -47,10 +48,19 @@ export const SHELL_ENV_NAMES: readonly string[] = [
   "SystemRoot", "WINDIR", "ComSpec", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
 ];
 
-/** A bot's shell environment: PATH as a GUI launch needs it, TERM not claiming a terminal, and nothing else of the server's. */
-export function shellEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+/** A bot's shell environment: PATH as a GUI launch needs it, TERM not claiming a terminal, and nothing else of the server's
+ * but the operator's own names. A name in both lists keeps the fixed list's value, so no entry is ambiguous. */
+export function shellEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+  extraNames: readonly string[] = [],
+): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const name of SHELL_ENV_NAMES) {
+    const value = source[name];
+    if (value !== undefined) env[name] = value;
+  }
+  for (const name of extraNames) {
+    if (Object.hasOwn(env, name)) continue;
     const value = source[name];
     if (value !== undefined) env[name] = value;
   }
@@ -135,6 +145,8 @@ export interface RunCommandRequest {
   timeoutSeconds?: number;
   /** The caller went away (the turn ended): the command is stopped as at its limit. */
   signal?: AbortSignal;
+  /** `features.runCommandEnv`: names whose values the operator lets this command read from the server's environment. */
+  envNames?: string[];
   /** For tests: where the audit row goes. */
   dataDir?: string;
 }
@@ -149,10 +161,11 @@ export async function runCommand(request: RunCommandRequest): Promise<RunCommand
   const started = Date.now();
   const out = collected(), err = collected();
   let timedOut = false;
+  const envNames = request.envNames ?? [];
 
   const child = spawnCli(shell.file, shell.args, {
     cwd: dir,
-    env: shellEnvironment(),
+    env: shellEnvironment(process.env, envNames),
     // No terminal and no input: a command that asks a question reads end-of-file and fails instead of waiting a person.
     stdio: ["ignore", "pipe", "pipe"],
     // The bot's own work, not its engine: the bot box where this server has one, with this folder writable; memory runs
@@ -203,12 +216,12 @@ export async function runCommand(request: RunCommandRequest): Promise<RunCommand
     cwd: relative(root, dir) || ".",
     durationMs: Date.now() - started,
   };
-  audit(request, root, outcome);
+  audit(request, root, outcome, envNames);
   return outcome;
 }
 
 /** One row per run: who, what, where and how it ended. Never what it printed, which may hold anything. */
-function audit(request: RunCommandRequest, root: string, outcome: RunCommandOutcome): void {
+function audit(request: RunCommandRequest, root: string, outcome: RunCommandOutcome, envNames: readonly string[]): void {
   const row = redactSecrets({
     at: new Date().toISOString(),
     botId: request.bot.id,
@@ -218,6 +231,7 @@ function audit(request: RunCommandRequest, root: string, outcome: RunCommandOutc
     command: request.command.length > 2_000 ? `${request.command.slice(0, 2_000)}…` : request.command,
     cwd: outcome.cwd,
     root,
+    envNames,
     exitCode: outcome.exitCode,
     signal: outcome.signal,
     timedOut: outcome.timedOut,
