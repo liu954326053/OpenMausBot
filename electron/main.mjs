@@ -1,12 +1,13 @@
 import { launchRecord } from "./launch-record-main.mjs"; import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Tray, WebContentsView, clipboard, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, net, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences, utilityProcess, nativeTheme } from "electron";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildErrorPage, desktopViewerErrorPage, showBootFailure } from "./error-pages.mjs";
-import { appBundlePath, permissionDragPage } from "./permission-drag.mjs";
+import { appBundlePath, iconFileCandidates, permissionDragPage } from "./permission-drag.mjs";
 import { startCua, stopCua, registerCuaIpc, requestComputerUse, setCuaStateListener, grantLocalComputer } from "./cua.mjs";
 import { createAndroidDeviceController } from "./android-device.mjs";
 import { finishSpeech, speechBusy, startSpeech, stopSpeech } from "./speech.mjs";
@@ -2342,6 +2343,23 @@ ipcMain.handle("perm:open-settings", localOnly("perm:open-settings", (_event, pa
 // The person adds the app to a privacy list by dragging it there; only this helper window may start that drag.
 let permissionDragIcon = null;
 let permissionDragBundle = null;
+/** The bundle's own icon, so the card and the drag show the app macOS records. `app.getFileIcon` crashes this Electron
+ * build on a bundle under node_modules, so the .icns is converted with sips instead. */
+function bundleIconImage(bundle) {
+  try {
+    const info = JSON.parse(execFileSync("/usr/bin/plutil", ["-convert", "json", "-o", "-", path.join(bundle, "Contents", "Info.plist")], { encoding: "utf8" }));
+    for (const candidate of iconFileCandidates(path.join(bundle, "Contents", "Resources"), info?.CFBundleIconFile)) {
+      if (!fs.existsSync(candidate)) continue;
+      const png = path.join(app.getPath("temp"), `magicbot-permission-icon-${process.pid}.png`);
+      execFileSync("/usr/bin/sips", ["-s", "format", "png", "-Z", "256", candidate, "--out", png], { stdio: "ignore" });
+      const image = nativeImage.createFromPath(png);
+      if (!image.isEmpty()) return image;
+    }
+  } catch (error) {
+    slog(`[perm] the app bundle's icon could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return nativeImage.createFromPath(APP_ICON);
+}
 async function showPermissionDragHelper() {
   if (process.platform !== "darwin" || !nativeActions.applePrivacySettings) return false;
   const bundle = appBundlePath(process.execPath);
@@ -2352,27 +2370,36 @@ async function showPermissionDragHelper() {
     return true;
   }
   try {
-    // app.getFileIcon crashes this Electron build on a .app bundle under node_modules (EXC_BREAKPOINT), so the card
-    // and the drag use the app's own icon instead.
-    if (!permissionDragIcon) permissionDragIcon = nativeImage.createFromPath(APP_ICON);
+    if (!permissionDragIcon) permissionDragIcon = bundleIconImage(bundle);
     permissionDragBundle = bundle;
     const appName = path.basename(bundle, ".app");
+    const area = screen.getPrimaryDisplay().workArea;
     const win = new BrowserWindow({
-      width: 300, height: 252, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
-      alwaysOnTop: true, show: false, title: nativeT("native.permissionDrag.title"),
+      width: 372, height: 332, x: area.x + area.width - 388, y: area.y + 24,
+      frame: false, transparent: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000",
+      hasShadow: true, roundedCorners: true, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      alwaysOnTop: true, skipTaskbar: true, show: false, title: nativeT("native.permissionDrag.title"),
       webPreferences: { preload: path.join(__dirname, "permission-drag-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     permissionDragWindow = win;
     win.setAlwaysOnTop(true, "floating");
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.once("ready-to-show", () => win.show());
     win.on("closed", () => { if (permissionDragWindow === win) permissionDragWindow = null; });
-    const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.resize({ width: 96 }).toDataURL();
+    const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.toDataURL();
     const page = permissionDragPage({
       appName, icon,
-      title: nativeT("native.permissionDrag.title"),
+      title: nativeT("native.permissionDrag.title", { app: appName }),
       body: nativeT("native.permissionDrag.body", { app: appName }),
       dragLabel: nativeT("native.permissionDrag.drag"),
+      openLabel: nativeT("native.permissionDrag.open"),
       revealLabel: nativeT("native.permissionDrag.reveal"),
+      closeLabel: nativeT("native.permissionDrag.close"),
+      steps: [
+        nativeT("native.permissionDrag.step1", { app: appName }),
+        nativeT("native.permissionDrag.step2", { app: appName }),
+        nativeT("native.permissionDrag.step3", { app: appName }),
+      ],
     });
     const file = path.join(app.getPath("temp"), `magicbot-permission-${process.pid}.html`);
     fs.writeFileSync(file, page, { mode: 0o600 });
@@ -2387,6 +2414,11 @@ async function showPermissionDragHelper() {
 }
 const fromPermissionDragHelper = (event) => Boolean(permissionDragWindow && !permissionDragWindow.isDestroyed() && event.sender === permissionDragWindow.webContents);
 ipcMain.handle("perm:show-drag-helper", localOnly("perm:show-drag-helper", () => showPermissionDragHelper()));
+ipcMain.on("perm:open-panes", (event) => {
+  if (!fromPermissionDragHelper(event)) return;
+  privacySettings("accessibility");
+  privacySettings("screen");
+});
 ipcMain.on("perm:drag-app", (event) => {
   if (!fromPermissionDragHelper(event) || !permissionDragBundle) return;
   try {
@@ -2397,6 +2429,9 @@ ipcMain.on("perm:drag-app", (event) => {
 });
 ipcMain.on("perm:reveal-app", (event) => {
   if (fromPermissionDragHelper(event) && permissionDragBundle) shell.showItemInFolder(permissionDragBundle);
+});
+ipcMain.on("perm:close-helper", (event) => {
+  if (fromPermissionDragHelper(event)) permissionDragWindow.close();
 });
 
 ipcMain.handle("desktop:relaunch", localOnly("desktop:relaunch", (event) => {
