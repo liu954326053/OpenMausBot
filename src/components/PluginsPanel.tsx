@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw, Search, Server, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Puzzle, RefreshCw, Search, Server, TriangleAlert, X } from "lucide-react";
 import { api, type Bot, type InstanceInfo } from "@/state/store";
 import { useStoreDispatch, useStoreSelector } from "@/state/store-select";
 import { cn } from "@/lib/cn";
@@ -43,6 +43,7 @@ import { botAppScope } from "@/lib/bot-app-access";
 import { AppGrantPrompt, botsForApps, useAppGrants } from "./AppGrantPrompt";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ServiceIcon, type ToolkitCard } from "./ServiceIcon"; import { AppsSection } from "./AppsSection";
+import { GenerationPluginsPanel } from "./GenerationPluginsPanel";
 import { AppTile, tileStanding, useTileActions } from "./AppTile";
 import { appCatalogMemory, loadAppCatalog, onAppCatalog, type AppCatalog, type CatalogPagination, type ConnectorSetup } from "@/lib/app-catalog-cache";
 export { ServiceIcon, type ToolkitCard } from "./ServiceIcon";
@@ -92,7 +93,7 @@ export function connectorSetupNotice(state: {
   return { key: "connectors.notConfigured", tone: "warning" };
 }
 
-export type AppsFilter = "all" | "connected" | "mcp";
+export type AppsFilter = "all" | "connected" | "mcp" | "plugins";
 
 export const APPS_PREVIEW_COUNT = 48;
 
@@ -400,7 +401,7 @@ export function PluginsPanel() {
   const matching = useMemo(() => (cards ?? []).filter((c) => (!managedConnectorUnavailableReason(mode, c.slug) || hasActiveConnection(status[c.slug]))
     && matchesCatalogSearch(`${c.label} ${c.slug} ${connectorDescription(c)} ${(c.categories ?? []).join(" ")}`, search)), [cards, mode, status, search]);
   const isConnected = useCallback((slug: string) => Boolean(status[slug]?.connected || status[slug]?.accounts?.length), [status]);
-  const filter: AppsFilter = surface === "mcp" ? "mcp" : tab === "connected" ? "connected" : "all";
+  const filter: AppsFilter = surface === "mcp" ? "mcp" : surface === "plugins" ? "plugins" : tab === "connected" ? "connected" : "all";
   const searching = search.trim().length > 0;
   /** A search covers the whole catalog, whichever view it was typed in. */
   const listing: AppsFilter = searching && filter === "connected" ? "all" : filter;
@@ -421,8 +422,8 @@ export function PluginsPanel() {
   const setupNotice = connectorSetupNotice({ configured, stale, setup, remoteClient });
   const chooseFilter = (next: AppsFilter) => {
     setCategory(null);
-    if (next === "mcp") {
-      dispatch({ type: "togglePlugins", open: true, surface: "mcp" });
+    if (next === "mcp" || next === "plugins") {
+      dispatch({ type: "togglePlugins", open: true, surface: next });
       return;
     }
     setTab(next === "connected" ? "connected" : "marketplace");
@@ -542,7 +543,7 @@ export function PluginsPanel() {
           <p className="mt-0.5 text-[13px] leading-5 text-ink-secondary">{t("apps.subtitle")}</p>
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-control/70 px-3.5 focus-within:ring-1 focus-within:ring-accent">
+            <label className={cn("flex h-9 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-control/70 px-3.5 focus-within:ring-1 focus-within:ring-accent", filter === "plugins" && "hidden")}>
               <Search size={15} className="shrink-0 text-ink-secondary" />
               <input
                 value={typed}
@@ -562,6 +563,17 @@ export function PluginsPanel() {
               <Server size={14} aria-hidden="true" />
               <span className="hidden sm:inline">{t("apps.filter.mcp")}</span>
               <span className="sr-only sm:hidden">{t("apps.filter.mcp")}</span>
+            </button>
+            <button
+              type="button"
+              data-apps-filter="plugins"
+              aria-pressed={filter === "plugins"}
+              onClick={() => chooseFilter(filter === "plugins" ? "all" : "plugins")}
+              className={cn(pill, "h-9 border border-hairline/40 px-3.5", filter === "plugins" ? "bg-ink text-app" : "text-ink hover:bg-raised")}
+            >
+              <Puzzle size={14} aria-hidden="true" />
+              <span className="hidden sm:inline">{t("apps.filter.plugins")}</span>
+              <span className="sr-only sm:hidden">{t("apps.filter.plugins")}</span>
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("apps.categoriesAria")}>
@@ -652,7 +664,9 @@ export function PluginsPanel() {
           )}
           {error && <div role="alert" className="mb-3 rounded-xl bg-danger/10 px-3 py-2 text-[12px] text-danger">{typeof error === "string" ? error : t(error.key)}</div>}
 
-          {filter !== "mcp" && (
+          {filter === "plugins" && <GenerationPluginsPanel />}
+
+          {filter !== "mcp" && filter !== "plugins" && (
             <div data-apps-grid className="@container flex flex-col gap-7 pt-1">
               {!sections.some((section) => section.kind === "connected") && renderSuggested()}
               {sections.filter((section) => section.kind !== "all").map((section) => section.kind === "connected" ? (
@@ -742,7 +756,7 @@ export function PluginsPanel() {
             </div>
           )}
 
-          {filter !== "connected" && category === null && (
+          {filter !== "connected" && filter !== "plugins" && category === null && (
             <div className={cn(filter === "all" && "mt-8 border-t border-hairline/30 pt-6", filter === "mcp" && "pt-1")}>
               <McpServersPanel embedded hideHosted={filter === "all"} />
             </div>

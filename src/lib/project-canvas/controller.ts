@@ -173,9 +173,9 @@ export class CanvasController {
     return null;
   }
 
-  /** The models a server lists, before it is saved as the project's. */
-  previewModels(kind: GenerationKind, server: string) {
-    return this.backend.listModels(this.projectId, kind, { server });
+  /** The models a plugin or server lists, before it is saved as the project's. */
+  previewModels(kind: GenerationKind, target: { plugin?: string; server?: string }) {
+    return this.backend.listModels(this.projectId, kind, target);
   }
 
   async loadModels(): Promise<void> {

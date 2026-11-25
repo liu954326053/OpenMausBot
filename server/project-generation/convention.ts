@@ -1,34 +1,16 @@
 import type { GenerationKind, GenerationModel, GenerationTools, ImageSettings, VideoSettings } from "../../shared/project-generation.ts";
+import { normalizeStatus, type GenerationEndpoint, type GenerationRequest, type Submitted, type TaskState } from "./endpoint.ts";
 import { refused } from "./failure.ts";
 import type { GenerationMcp, McpCaller } from "./mcp-access.ts";
-import type { ReferenceFile, ResultSource } from "./project-files.ts";
+import type { ResultSource } from "./project-files.ts";
 
-export interface GenerationRequest {
-  prompt: string;
-  references: { images: ReferenceFile[]; audio: ReferenceFile[] };
-}
-
-export type TaskState =
-  | { status: "queued" | "running"; progress?: number; pollAfterMs?: number }
-  | { status: "succeeded"; files: ResultSource[] }
-  | { status: "failed"; reason: string }
-  | { status: "cancelled" };
-
-export type Submitted = { files: ResultSource[] } | { taskId: string };
+export type { GenerationRequest, Submitted, TaskState } from "./endpoint.ts";
 
 const MODELS_MAX = 200;
 const LIST_MAX = 50;
 const FILES_MAX = 10;
 const TEXT_MAX = 200;
 const NO_REASON = "the server gave no reason";
-
-const STATUS: Readonly<Record<string, TaskState["status"]>> = {
-  queued: "queued", pending: "queued", submitted: "queued", waiting: "queued",
-  running: "running", processing: "running", in_progress: "running", generating: "running", started: "running",
-  succeeded: "succeeded", success: "succeeded", completed: "succeeded", complete: "succeeded", done: "succeeded", finished: "succeeded",
-  failed: "failed", failure: "failed", error: "failed",
-  cancelled: "cancelled", canceled: "cancelled",
-};
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() && value.length <= TEXT_MAX ? value : undefined);
@@ -99,7 +81,7 @@ function parseFiles(answer: Record<string, unknown>, result: Record<string, unkn
 
 /** The task's state, or what made the answer unreadable. */
 function parseState(answer: Record<string, unknown>, result: Record<string, unknown>, mask: (text: string) => string): TaskState | string {
-  const status = typeof answer.status === "string" ? STATUS[answer.status.toLowerCase()] : undefined;
+  const status = normalizeStatus(answer.status);
   if (!status) return "it gave no status MagicBot knows";
   if (status === "succeeded") {
     const files = parseFiles(answer, result);
@@ -180,3 +162,18 @@ export function conventionServer(mcp: GenerationMcp, server: string, tools: Gene
 }
 
 export type ConventionServer = ReturnType<typeof conventionServer>;
+
+/** The MCP convention behind the same interface an installed plugin answers. */
+export function conventionEndpoint(mcp: GenerationMcp, server: string, tools: GenerationTools, as: McpCaller, serverUrl: string | null): GenerationEndpoint {
+  const convention = conventionServer(mcp, server, tools, as);
+  return {
+    label: server,
+    listModels: (signal) => convention.listModels(signal),
+    generate: (kind, settings, request, signal) => convention.generate(kind, settings as ImageSettings | VideoSettings, request, signal),
+    status: (taskId, signal) => convention.status(taskId, signal),
+    cancel: (taskId, signal) => convention.cancel(taskId, signal),
+    resultOrigin: () => {
+      try { return serverUrl ? new URL(serverUrl).origin : null; } catch { return null; }
+    },
+  };
+}

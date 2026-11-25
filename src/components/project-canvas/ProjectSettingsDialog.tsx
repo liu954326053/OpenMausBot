@@ -117,10 +117,11 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const [modelsRefused, setModelsRefused] = useState<GenerationFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<GenerationFailure | null>(null);
-  const server = draft?.[kind].server ?? null;
+  const plugin = draft?.[kind].plugin ?? null;
+  const server = plugin ? null : (draft?.[kind].server ?? null);
 
   useEffect(() => {
-    if (!server) {
+    if (!plugin && !server) {
       setModels(null);
       setModelsRefused(null);
       return;
@@ -128,7 +129,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     let live = true;
     setModels(null);
     setModelsRefused(null);
-    ui.controller.previewModels(kind, server).then((result) => {
+    ui.controller.previewModels(kind, plugin ? { plugin } : { server: server! }).then((result) => {
       if (!live) return;
       if ("refused" in result) {
         setModelsRefused(result.refused);
@@ -140,11 +141,23 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
     return () => {
       live = false;
     };
-  }, [kind, server, ui.controller]);
+  }, [kind, plugin, server, ui.controller]);
 
+  const changePlugin = (next: string | null) => {
+    setRefusal(null);
+    setDraft((current) => (current ? {
+      ...current,
+      [kind]: {
+        ...current[kind],
+        plugin: next,
+        ...(next ? { server: null } : {}),
+        defaults: { ...current[kind].defaults, model: "" } as ImageSettings | VideoSettings,
+      },
+    } : current));
+  };
   const changeServer = (next: string | null) => {
     setRefusal(null);
-    setDraft((current) => (current ? { ...current, [kind]: { ...current[kind], server: next } } : current));
+    setDraft((current) => (current ? { ...current, [kind]: { ...current[kind], server: next, ...(next ? { plugin: null } : {}) } } : current));
   };
   const changeDefault = (key: SettingKey, value: SettingValue) => {
     setRefusal(null);
@@ -186,7 +199,8 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const defaults = draft?.[kind].defaults as unknown as Record<string, SettingValue> | undefined;
   const model = models?.find((candidate) => candidate.id === defaults?.model);
   const servers = saved?.servers ?? [];
-  const loadingModels = Boolean(server) && !models && !modelsRefused;
+  const plugins = (saved?.plugins ?? []).filter((one) => !one.problem && one.kinds.includes(kind));
+  const loadingModels = Boolean(plugin || server) && !models && !modelsRefused;
   const refusalLines = !refusal || !draft ? [] : [...new Set(refusal.problems?.length
     ? refusal.problems.map((problem) => refusedText(problem, draft[kind], models))
     : [tFromServer(refusal.errorKey, refusal.error, refusal.errorParams)])];
@@ -206,13 +220,23 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-4">
             <div className="flex flex-col gap-1">
-              <span className={LABEL}>{t("projectCanvas.settings.server")}</span>
-              <Select aria-label={t("projectCanvas.settings.server")} value={server ?? ""} disabled={ui.readOnly} onChange={(event) => changeServer(event.target.value || null)}>
-                <option value="">{t("projectCanvas.settings.noServer")}</option>
-                {servers.map((name) => <option key={name} value={name}>{name}</option>)}
+              <span className={LABEL}>{t("projectCanvas.settings.plugin")}</span>
+              <Select aria-label={t("projectCanvas.settings.plugin")} value={plugin ?? ""} disabled={ui.readOnly} onChange={(event) => changePlugin(event.target.value || null)}>
+                <option value="">{t("projectCanvas.settings.noPlugin")}</option>
+                {plugins.map((one) => <option key={one.id} value={one.id}>{one.name}</option>)}
               </Select>
-              <span className={NOTE}>{t("projectCanvas.settings.serverNote")}</span>
+              <span className={NOTE}>{t("projectCanvas.settings.pluginNote")}</span>
             </div>
+            {plugin ? null : (
+              <div className="flex flex-col gap-1">
+                <span className={LABEL}>{t("projectCanvas.settings.server")}</span>
+                <Select aria-label={t("projectCanvas.settings.server")} value={server ?? ""} disabled={ui.readOnly} onChange={(event) => changeServer(event.target.value || null)}>
+                  <option value="">{t("projectCanvas.settings.noServer")}</option>
+                  {servers.map((name) => <option key={name} value={name}>{name}</option>)}
+                </Select>
+                <span className={NOTE}>{t("projectCanvas.settings.serverNote")}</span>
+              </div>
+            )}
             {loadingModels ? <LoaderCircle size={16} aria-label={t("projectCanvas.loading")} className="animate-spin text-ink-tertiary motion-reduce:animate-none" /> : null}
             {modelsText && !refusalLines.includes(modelsText) ? <p role="alert" className={PROBLEM}>{modelsText}</p> : null}
             {defaults ? SETTING_KEYS[kind].map((key) => {

@@ -357,6 +357,12 @@ desktop routing, cancellation, and computer authority cleanup.
 
 ## Evidence
 
+The [generation plugins preview](generation-plugins.md) mounts the real plugin
+manager and a project settings dialog that chooses a plugin against an in-memory
+`/api`, at `scripts/verify-generation-plugins-ui.ts`: uploading, editing settings and
+the saved word are proven in the page, and nothing installed, no key and no project
+is touched.
+
 The [Gemini speech fixture](gemini-speech.md) checks write-only credentials,
 voice selection and WAV synthesis against an offline provider in an isolated
 server, with manual steps for real Google access and playback.

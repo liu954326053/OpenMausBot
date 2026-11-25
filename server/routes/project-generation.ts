@@ -7,6 +7,7 @@ import { PASS, type RouteHandler } from "./table.ts";
 
 export interface ProjectGenerationRouteHost extends ProjectGenerationApi {
   servers(): string[];
+  plugins(): GenerationSettingsWire["plugins"];
 }
 
 const ROUTE = /^\/api\/team-projects\/([\w-]+)\/generation\/(settings|models|jobs)(?:\/([\w-]+)(\/cancel)?)?$/;
@@ -28,7 +29,7 @@ export function createProjectGenerationRoutes(host: ProjectGenerationRouteHost):
     if (!ownerOrAdmin(auth)) return json(res, 403, userError("serverError.chat.ownerOrAdmin"));
     const [, projectId = "", area, jobId, cancel] = match;
     const refuse = (refusal: GenerationFailure) => json(res, statusOf(refusal), refusal);
-    const settingsWire = (settings: ProjectGenerationSettings): GenerationSettingsWire => ({ settings, servers: host.servers() });
+    const settingsWire = (settings: ProjectGenerationSettings): GenerationSettingsWire => ({ settings, servers: host.servers(), plugins: host.plugins() });
 
     if (area === "settings" && !jobId) {
       if (method === "GET") {
@@ -44,8 +45,12 @@ export function createProjectGenerationRoutes(host: ProjectGenerationRouteHost):
       const kind = url.searchParams.get("kind");
       if (kind !== "image" && kind !== "video") return json(res, 400, userError("serverError.projectGeneration.invalid", { detail: "kind must be image or video" }));
       const server = url.searchParams.get("server");
+      const plugin = url.searchParams.get("plugin");
       const tool = url.searchParams.get("tool");
-      const listed = await host.models(projectId, kind, server ? { server, ...(tool ? { tool } : {}) } : undefined);
+      const listed = await host.models(projectId, kind, {
+        ...(plugin ? { plugin } : server ? { server } : {}),
+        ...(tool ? { tool } : {}),
+      });
       return "refused" in listed ? refuse(listed.refused) : json(res, 200, { models: listed.models } satisfies GenerationModelsWire);
     }
     if (area === "jobs" && !jobId) {

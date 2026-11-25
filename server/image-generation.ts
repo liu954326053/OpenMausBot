@@ -72,6 +72,8 @@ export interface GeneratedSlotImage extends GeneratedImage, ImageSlot {
   usedFallback: boolean;
   /** Why the base did not make it, when the backup did. */
   baseError?: string;
+  /** Who made it, when the answer is not a provider and model, such as a plugin's name and model. */
+  by?: string;
 }
 
 const OPENAI_SIZES: Record<ImageAspect, string> = { "1:1": "1024x1024", "16:9": "1536x1024", "9:16": "1024x1536" };
@@ -192,6 +194,22 @@ export function imageSlotConfigured(cfg: ImageCredentials, slot: ImageSlot): boo
 export function imageGenerationReady(cfg: ImageCredentials): boolean {
   const { primary, fallback } = imageSlots(cfg);
   return imageSlotConfigured(cfg, primary) || Boolean(fallback && imageSlotConfigured(cfg, fallback));
+}
+
+/** The chat's own pictures may come from an installed plugin instead of a provider (docs/generation-plugins.md). */
+let pluginImages: { ready(): boolean; by(): string; generate(request: { prompt: string; aspect?: ImageAspect; signal?: AbortSignal }): Promise<GeneratedImage> } | null = null;
+
+export function configurePluginImages(next: typeof pluginImages): void {
+  pluginImages = next;
+}
+
+export function pluginImagesReady(): boolean {
+  return pluginImages?.ready() ?? false;
+}
+
+/** Whether the chat can make a picture at all: a provider, a backup, or a plugin. Avatars stay on providers. */
+export function imageToolReady(cfg: ImageCredentials): boolean {
+  return imageGenerationReady(cfg) || pluginImagesReady();
 }
 
 /** The image API returns base64 JSON, so a byte cap on the untrusted body is the real memory boundary. */
@@ -358,6 +376,10 @@ export async function generateImage(
   request: ImageRequest,
   options: { slot?: "primary" | "fallback"; fetchImpl?: typeof fetch; timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<GeneratedSlotImage> {
+  if (!options.slot && !request.draft && !request.edit && !request.gif && pluginImages?.ready()) {
+    const image = await pluginImages.generate({ prompt: request.prompt, ...(request.aspect && { aspect: request.aspect }), ...(options.signal && { signal: options.signal }) });
+    return { ...image, provider: "custom", model: pluginImages.by(), usedFallback: false, by: pluginImages.by() };
+  }
   const { primary, fallback } = imageSlots(cfg);
   const attempt = async (slot: ImageSlot, usedFallback: boolean): Promise<GeneratedSlotImage> => ({
     ...await generateImageWith(cfg, slot, request, options.fetchImpl, options.timeoutMs, options.signal),

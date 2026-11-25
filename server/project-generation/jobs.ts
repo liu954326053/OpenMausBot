@@ -4,9 +4,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type {
   GenerationFailure, GenerationFile, GenerationJob, GenerationJobStatus, GenerationKind, GenerationRequester, GenerationTools,
 } from "../../shared/project-generation.ts";
-import { conventionServer, type ConventionServer, type TaskState } from "./convention.ts";
 import { failure, GenerationRefused, refused } from "./failure.ts";
-import { LONGEST_CALL_MS, type GenerationMcp, type McpCaller } from "./mcp-access.ts";
+import { LONGEST_CALL_MS, type GenerationMcp } from "./mcp-access.ts";
+import type { GenerationEndpoint } from "./endpoint.ts";
 import { readReferences, removeResults, resultBaseName, resultBytes, saveResult, type ResultSource } from "./project-files.ts";
 import type { GenerationStore } from "./store.ts";
 
@@ -54,6 +54,8 @@ export interface NewJob {
   references: GenerationJob["references"];
   settings: GenerationJob["settings"];
   server: string;
+  /** The installed plugin's id, when a plugin makes this job. */
+  plugin?: string;
   tools: GenerationTools;
   name?: string;
 }
@@ -64,7 +66,7 @@ export interface JobsDeps {
   /** The project's folder; throws why nothing can be saved in it. */
   folderOf(projectId: string): string;
   /** The MCP server's own address, from which its results may be fetched. */
-  serverUrl(server: string): string | null;
+  endpointOf(job: GenerationJob, tools: GenerationTools): GenerationEndpoint;
   log(line: string): void;
   now?(): number;
   timing?: Partial<JobTiming>;
@@ -72,7 +74,6 @@ export interface JobsDeps {
 
 const ENDED: ReadonlySet<GenerationJobStatus> = new Set(["done", "failed", "cancelled"]);
 const ended = (job: GenerationJob) => ENDED.has(job.status);
-const callerOf = (requester: GenerationRequester): McpCaller => (requester.kind === "bot" ? { botId: requester.botId } : {});
 /** These won't mend by asking again. */
 const LASTING: ReadonlySet<GenerationFailure["code"]> = new Set(["server_unusable", "sign_in", "keys", "tool_missing", "bad_answer"]);
 
@@ -119,6 +120,7 @@ export class GenerationJobs {
     const job = {
       id: `gen-${randomUUID()}`, projectId: input.projectId, kind: input.kind, status: "queued", nodeId: input.nodeId, requester: input.requester,
       prompt: input.prompt, references: input.references, settings: input.settings, server: input.server, tool: input.tools.generate,
+      ...(input.plugin ? { plugin: input.plugin } : {}),
       files: [], createdAt: at, updatedAt: at,
     } as GenerationJob;
     const stored: StoredJob = { job, tools: input.tools, phase: "waiting", ...(input.name ? { name: input.name } : {}) };
@@ -153,7 +155,10 @@ export class GenerationJobs {
     if (ended(stored.job)) return structuredClone(stored.job);
     this.finish(stored, "cancelled");
     if (stored.phase !== "submitting") this.running.get(jobId)?.control.abort();
-    if (stored.job.taskId) void this.cancelAtServer(stored, stored.job.taskId);
+    if (stored.job.taskId) {
+      try { void this.cancelAtServer(stored, stored.job.taskId, this.deps.endpointOf(stored.job, stored.tools)); }
+      catch { this.deps.log(`project generation: job ${jobId}'s task could not be cancelled on ${stored.job.server}`); }
+    }
     return structuredClone(stored.job);
   }
 
@@ -239,7 +244,17 @@ export class GenerationJobs {
     if (this.running.has(job.id) || this.closed) return;
     const control = new AbortController();
     this.running.set(job.id, { stored, control });
-    const server = conventionServer(this.deps.mcp, job.server, stored.tools, callerOf(job.requester));
+    let server: GenerationEndpoint;
+    try {
+      server = this.deps.endpointOf(job, stored.tools);
+    } catch (error) {
+      this.running.delete(job.id);
+      this.finish(stored, "failed", {
+        failure: error instanceof GenerationRefused ? error.failure : failure("server_unusable", "pluginGone", { plugin: job.plugin ?? job.server }),
+      });
+      this.pump();
+      return;
+    }
     try {
       if (stored.phase === "waiting") {
         stored.phase = "submitting";
@@ -247,10 +262,10 @@ export class GenerationJobs {
         const references = readReferences(this.deps.folderOf(job.projectId), job.references);
         const submitted = await this.within(control, LONGEST_CALL_MS, job.server, (signal) => server.generate(job.kind, job.settings, { prompt: job.prompt, references }, signal));
         if (ended(job)) {
-          if ("taskId" in submitted) void this.cancelAtServer(stored, submitted.taskId);
+          if ("taskId" in submitted) void this.cancelAtServer(stored, submitted.taskId, server);
           return;
         }
-        if ("files" in submitted) return await this.collect(stored, submitted.files);
+        if ("files" in submitted) return await this.collect(stored, submitted.files, server);
         stored.phase = "submitted";
         this.changed(stored, { taskId: submitted.taskId });
       }
@@ -258,7 +273,7 @@ export class GenerationJobs {
     } catch (error) {
       if (this.closed || ended(job)) return;
       if (!(error instanceof GenerationRefused)) this.deps.log(`project generation: job ${job.id} stopped: ${error instanceof Error ? error.name : "error"}`);
-      if (error instanceof GenerationRefused && error.failure.code === "timed_out" && job.taskId) void this.cancelAtServer(stored, job.taskId);
+      if (error instanceof GenerationRefused && error.failure.code === "timed_out" && job.taskId) void this.cancelAtServer(stored, job.taskId, server);
       this.finish(stored, "failed", {
         failure: error instanceof GenerationRefused ? error.failure : failure("unreachable", "unreachable", { server: job.server, detail: "MagicBot lost track of it" }),
       });
@@ -268,7 +283,7 @@ export class GenerationJobs {
     }
   }
 
-  private async follow(stored: StoredJob, server: ConventionServer, control: AbortController): Promise<void> {
+  private async follow(stored: StoredJob, server: GenerationEndpoint, control: AbortController): Promise<void> {
     const { job } = stored;
     const deadline = (job.submittedAt ?? job.createdAt) + this.timing.deadlineMs[job.kind];
     let wait = this.timing.pollMs;
@@ -289,7 +304,7 @@ export class GenerationJobs {
         continue;
       }
       if (ended(job)) return;
-      if (state.status === "succeeded") return this.collect(stored, state.files);
+      if (state.status === "succeeded") return this.collect(stored, state.files, server);
       if (state.status === "failed") throw refused("task_failed", "taskFailed", { server: job.server, reason: state.reason }, { reason: state.reason });
       if (state.status === "cancelled") return this.finish(stored, "cancelled");
       if (state.progress !== undefined && state.progress !== job.progress) this.changed(stored, { progress: state.progress });
@@ -297,13 +312,13 @@ export class GenerationJobs {
     }
   }
 
-  private async collect(stored: StoredJob, sources: ResultSource[]): Promise<void> {
+  private async collect(stored: StoredJob, sources: ResultSource[], endpoint: GenerationEndpoint): Promise<void> {
     const { job } = stored;
     const folder = this.deps.folderOf(job.projectId);
     const saved: GenerationFile[] = [];
     try {
       for (const [index, source] of sources.entries()) {
-        const { bytes, mime } = await resultBytes(source, job.kind, this.deps.serverUrl(job.server), job.server);
+        const { bytes, mime } = await resultBytes(source, job.kind, endpoint.resultOrigin(), job.server);
         if (ended(job)) break;
         const base = resultBaseName(stored.name, job.kind, job.createdAt, job.id);
         saved.push(saveResult(folder, job.kind, sources.length > 1 ? `${base}-${index + 1}` : base, bytes, mime));
@@ -316,10 +331,10 @@ export class GenerationJobs {
     this.finish(stored, "done", { files: saved, progress: 1 });
   }
 
-  private async cancelAtServer(stored: StoredJob, taskId: string): Promise<void> {
+  private async cancelAtServer(stored: StoredJob, taskId: string, endpoint: GenerationEndpoint): Promise<void> {
     const { job } = stored;
     try {
-      await conventionServer(this.deps.mcp, job.server, stored.tools, callerOf(job.requester)).cancel(taskId, AbortSignal.timeout(CANCEL_CALL_MS));
+      await endpoint.cancel(taskId, AbortSignal.timeout(CANCEL_CALL_MS));
     } catch {
       this.deps.log(`project generation: job ${job.id}'s task could not be cancelled on ${job.server}`);
     }
