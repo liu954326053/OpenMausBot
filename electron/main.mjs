@@ -2360,8 +2360,21 @@ function bundleIconImage(bundle) {
   }
   return nativeImage.createFromPath(APP_ICON);
 }
-let permissionDragTracking = null;
-let permissionDragPolling = false;
+/** The same re-check the panel's Retry button runs, so a grant made by dragging shows up without a click. */
+function recheckLocalComputer() {
+  if (desktopShutdownStarted) return;
+  void requestComputerUse()
+    .then(() => broadcastDesktopCapabilities())
+    .catch((error) => slog(`[perm] the local computer could not be checked again: ${error instanceof Error ? error.message : String(error)}`));
+}
+function finishPermissionDragGuide() {
+  if (permissionDragFallback) clearTimeout(permissionDragFallback);
+  permissionDragFallback = null;
+  const dragged = permissionDragDragged;
+  permissionDragDragged = false;
+  if (permissionDragWindow && !permissionDragWindow.isDestroyed()) permissionDragWindow.close();
+  if (dragged) recheckLocalComputer();
+}
 function stopPermissionDragTracking() {
   if (permissionDragTracking) clearInterval(permissionDragTracking);
   permissionDragTracking = null;
@@ -2404,7 +2417,7 @@ function trackPermissionGuide(win) {
       if (!permissionDragWindow || permissionDragWindow !== win || win.isDestroyed()) { stopPermissionDragTracking(); return; }
       if (found.kind === "found") { misses = 0; placePermissionGuide(win, found.frame); return; }
       // A pane switch closes and reopens the window: only a window gone for a few polls ends the guide.
-      if (found.kind === "none" && ++misses >= 6) { win.close(); stopPermissionDragTracking(); }
+      if (found.kind === "none" && ++misses >= 6) finishPermissionDragGuide();
     } finally {
       permissionDragPolling = false;
     }
@@ -2441,6 +2454,9 @@ async function showPermissionDragHelper() {
     win.on("closed", () => {
       if (permissionDragWindow === win) permissionDragWindow = null;
       stopPermissionDragTracking();
+      if (permissionDragFallback) clearTimeout(permissionDragFallback);
+      permissionDragFallback = null;
+      if (permissionDragDragged) { permissionDragDragged = false; recheckLocalComputer(); }
     });
     const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.toDataURL();
     const page = permissionDragPage({ appName, icon, dragLabel: nativeT("native.permissionDrag.drag") });
@@ -2462,9 +2478,17 @@ ipcMain.on("perm:drag-app", (event) => {
   if (!fromPermissionDragHelper(event) || !permissionDragBundle) return;
   try {
     event.sender.startDrag({ files: [permissionDragBundle], icon: permissionDragIcon ?? nativeImage.createEmpty() });
+    // The drop lands in another app, which reports nothing back: once the person is done dragging, the guide's job is
+    // over, and the app checks the permission again instead of waiting to be asked.
+    permissionDragDragged = true;
+    if (permissionDragFallback) clearTimeout(permissionDragFallback);
+    permissionDragFallback = setTimeout(() => finishPermissionDragGuide(), 15_000);
   } catch (error) {
     slog(`[perm] the app bundle could not be dragged: ${error instanceof Error ? error.message : String(error)}`);
   }
+});
+app.on("browser-window-focus", (_event, win) => {
+  if (win === mainWindow && permissionDragDragged && permissionDragWindow && !permissionDragWindow.isDestroyed()) finishPermissionDragGuide();
 });
 
 ipcMain.handle("desktop:relaunch", localOnly("desktop:relaunch", (event) => {
