@@ -1,13 +1,13 @@
 import { launchRecord } from "./launch-record-main.mjs"; import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Tray, WebContentsView, clipboard, desktopCapturer, dialog, globalShortcut, ipcMain, Menu, nativeImage, Notification, net, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences, utilityProcess, nativeTheme } from "electron";
 import { createRequire } from "node:module";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildErrorPage, desktopViewerErrorPage, showBootFailure } from "./error-pages.mjs";
-import { appBundlePath, iconFileCandidates, permissionDragPage } from "./permission-drag.mjs";
+import { appBundlePath, guidePosition, iconFileCandidates, permissionDragPage } from "./permission-drag.mjs";
 import { startCua, stopCua, registerCuaIpc, requestComputerUse, setCuaStateListener, grantLocalComputer } from "./cua.mjs";
 import { createAndroidDeviceController } from "./android-device.mjs";
 import { finishSpeech, speechBusy, startSpeech, stopSpeech } from "./speech.mjs";
@@ -2360,6 +2360,58 @@ function bundleIconImage(bundle) {
   }
   return nativeImage.createFromPath(APP_ICON);
 }
+let permissionDragTracking = null;
+let permissionDragPolling = false;
+function stopPermissionDragTracking() {
+  if (permissionDragTracking) clearInterval(permissionDragTracking);
+  permissionDragTracking = null;
+}
+/** Where System Settings is on screen now, or that it is closed; `blocked` when System Events cannot be asked. */
+function systemSettingsFrame() {
+  const script = `tell application "System Events"
+  set matches to (every application process whose bundle identifier is "com.apple.systempreferences")
+  if (count of matches) is 0 then return ""
+  set p to item 1 of matches
+  if (count of windows of p) is 0 then return ""
+  set pos to position of window 1 of p
+  set siz to size of window 1 of p
+  return ((item 1 of pos) as text) & "," & ((item 2 of pos) as text) & "," & ((item 1 of siz) as text) & "," & ((item 2 of siz) as text)
+end tell`;
+  return new Promise((resolve) => {
+    execFile("/usr/bin/osascript", ["-e", script], { timeout: 3_000 }, (error, stdout) => {
+      if (error) return resolve({ kind: "blocked" });
+      const [x, y, width, height] = String(stdout).trim().split(",").map(Number);
+      resolve(Number.isFinite(x) && Number.isFinite(y) && width > 0 && height > 0 ? { kind: "found", frame: { x, y, width, height } } : { kind: "none" });
+    });
+  });
+}
+function placePermissionGuide(win, frame) {
+  if (!permissionDragWindow || permissionDragWindow !== win || win.isDestroyed()) return;
+  const { width, height } = win.getBounds();
+  const at = guidePosition({ settings: frame, guide: { width, height }, workArea: screen.getDisplayMatching(frame).workArea });
+  win.setPosition(at.x, at.y, false);
+}
+/** Keeps the guide under the System Settings window; it goes away with that window. */
+function trackPermissionGuide(win) {
+  stopPermissionDragTracking();
+  let misses = 0;
+  const tick = async () => {
+    if (permissionDragPolling) return;
+    if (!permissionDragWindow || permissionDragWindow !== win || win.isDestroyed()) { stopPermissionDragTracking(); return; }
+    permissionDragPolling = true;
+    try {
+      const found = await systemSettingsFrame();
+      if (!permissionDragWindow || permissionDragWindow !== win || win.isDestroyed()) { stopPermissionDragTracking(); return; }
+      if (found.kind === "found") { misses = 0; placePermissionGuide(win, found.frame); return; }
+      // A pane switch closes and reopens the window: only a window gone for a few polls ends the guide.
+      if (found.kind === "none" && ++misses >= 6) { win.close(); stopPermissionDragTracking(); }
+    } finally {
+      permissionDragPolling = false;
+    }
+  };
+  void tick();
+  permissionDragTracking = setInterval(() => void tick(), 500);
+}
 async function showPermissionDragHelper() {
   if (process.platform !== "darwin" || !nativeActions.applePrivacySettings) return false;
   const bundle = appBundlePath(process.execPath);
@@ -2367,46 +2419,38 @@ async function showPermissionDragHelper() {
   if (permissionDragWindow && !permissionDragWindow.isDestroyed()) {
     permissionDragWindow.show();
     permissionDragWindow.focus();
+    trackPermissionGuide(permissionDragWindow);
     return true;
   }
   try {
     if (!permissionDragIcon) permissionDragIcon = bundleIconImage(bundle);
     permissionDragBundle = bundle;
     const appName = path.basename(bundle, ".app");
-    const area = screen.getPrimaryDisplay().workArea;
+    const width = 352, height = 104, area = screen.getPrimaryDisplay().workArea;
     const win = new BrowserWindow({
-      width: 372, height: 332, x: area.x + area.width - 388, y: area.y + 24,
+      width, height, x: Math.round(area.x + (area.width - width) / 2), y: area.y + area.height - height - 28,
       frame: false, transparent: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000",
       hasShadow: true, roundedCorners: true, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
-      alwaysOnTop: true, skipTaskbar: true, show: false, title: nativeT("native.permissionDrag.title"),
+      alwaysOnTop: true, skipTaskbar: true, show: false, title: nativeT("native.permissionDrag.title", { app: appName }),
       webPreferences: { preload: path.join(__dirname, "permission-drag-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
     permissionDragWindow = win;
     win.setAlwaysOnTop(true, "floating");
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     win.once("ready-to-show", () => win.show());
-    win.on("closed", () => { if (permissionDragWindow === win) permissionDragWindow = null; });
-    const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.toDataURL();
-    const page = permissionDragPage({
-      appName, icon,
-      title: nativeT("native.permissionDrag.title", { app: appName }),
-      body: nativeT("native.permissionDrag.body", { app: appName }),
-      dragLabel: nativeT("native.permissionDrag.drag"),
-      openLabel: nativeT("native.permissionDrag.open"),
-      revealLabel: nativeT("native.permissionDrag.reveal"),
-      closeLabel: nativeT("native.permissionDrag.close"),
-      steps: [
-        nativeT("native.permissionDrag.step1", { app: appName }),
-        nativeT("native.permissionDrag.step2", { app: appName }),
-        nativeT("native.permissionDrag.step3", { app: appName }),
-      ],
+    win.on("closed", () => {
+      if (permissionDragWindow === win) permissionDragWindow = null;
+      stopPermissionDragTracking();
     });
+    const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.toDataURL();
+    const page = permissionDragPage({ appName, icon, dragLabel: nativeT("native.permissionDrag.drag") });
     const file = path.join(app.getPath("temp"), `magicbot-permission-${process.pid}.html`);
     fs.writeFileSync(file, page, { mode: 0o600 });
     await win.loadFile(file);
+    trackPermissionGuide(win);
     return true;
   } catch (error) {
-    slog(`[perm] the drag helper did not open: ${error instanceof Error ? error.message : String(error)}`);
+    slog(`[perm] the drag guide did not open: ${error instanceof Error ? error.message : String(error)}`);
     if (permissionDragWindow && !permissionDragWindow.isDestroyed()) permissionDragWindow.destroy();
     permissionDragWindow = null;
     return false;
@@ -2414,11 +2458,6 @@ async function showPermissionDragHelper() {
 }
 const fromPermissionDragHelper = (event) => Boolean(permissionDragWindow && !permissionDragWindow.isDestroyed() && event.sender === permissionDragWindow.webContents);
 ipcMain.handle("perm:show-drag-helper", localOnly("perm:show-drag-helper", () => showPermissionDragHelper()));
-ipcMain.on("perm:open-panes", (event) => {
-  if (!fromPermissionDragHelper(event)) return;
-  privacySettings("accessibility");
-  privacySettings("screen");
-});
 ipcMain.on("perm:drag-app", (event) => {
   if (!fromPermissionDragHelper(event) || !permissionDragBundle) return;
   try {
@@ -2426,12 +2465,6 @@ ipcMain.on("perm:drag-app", (event) => {
   } catch (error) {
     slog(`[perm] the app bundle could not be dragged: ${error instanceof Error ? error.message : String(error)}`);
   }
-});
-ipcMain.on("perm:reveal-app", (event) => {
-  if (fromPermissionDragHelper(event) && permissionDragBundle) shell.showItemInFolder(permissionDragBundle);
-});
-ipcMain.on("perm:close-helper", (event) => {
-  if (fromPermissionDragHelper(event)) permissionDragWindow.close();
 });
 
 ipcMain.handle("desktop:relaunch", localOnly("desktop:relaunch", (event) => {
