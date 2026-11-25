@@ -1,7 +1,7 @@
 // The run_command tool's command, run through a shell as the server's own user. Security invariants, in the order a call
 // meets them:
-// - features.runCommand is off unless a person set it, and the route refuses while it is off. No Cloud home or hosted
-//   workspace offers it: there a bot's work runs on someone else's server, and it has no folder of its own to run in.
+// - features.runCommand is on unless a person switched it off, and the route refuses while it is off. No Cloud home or
+//   hosted workspace offers it: there a bot's work runs on someone else's server, and it has no folder of its own to run in.
 // - The command line comes from the model, so the only thing keeping it inside the bot's own files is the folder it starts
 //   in: that is the bot's writable range (its project's folder, or its private workspace), and `cwd` must resolve, links
 //   followed, to that folder or below it. The shell itself has no sandbox: a command that names a path outside it runs
@@ -21,9 +21,9 @@ import { killCliTree, spawnCli } from "./procs.ts";
 import { redactSecrets } from "./redact.ts";
 import { privateBotFolder, teamProjectFolder, teamProjectFolderProblem } from "./workspace.ts";
 
-/** `features.runCommand`: the run_command tool runs shell commands on this server. Off unless true. */
+/** `features.runCommand`: the run_command tool runs shell commands on this server. On unless false. */
 export function runCommandEnabled({ features }: { features?: unknown }): boolean {
-  return typeof features === "object" && features !== null && "runCommand" in features && features.runCommand === true;
+  return !(typeof features === "object" && features !== null && "runCommand" in features && features.runCommand === false);
 }
 
 /** A refusal a person can read and act on: a status the route answers with, never a stack. */

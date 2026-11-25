@@ -104,5 +104,5 @@ export function usbPhoneTakeoverEnabled(config: FeatureFlagConfig | null | undef
 }
 
 export function runCommandEnabled(config: FeatureFlagConfig | null | undefined): boolean {
-  return config?.features?.runCommand === true;
+  return config?.features?.runCommand !== false;
 }

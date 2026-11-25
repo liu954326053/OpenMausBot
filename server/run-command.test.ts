@@ -48,11 +48,11 @@ describe("run_command", () => {
   const run = (botId: string, command: string, extra: { cwd?: string; timeoutSeconds?: number; envNames?: string[] } = {}) =>
     runCommand({ bot: { id: botId, name: "Writer" }, threadId: "thread-1", command, dataDir: data, ...extra });
 
-  it("is off unless features.runCommand is true", () => {
-    expect(runCommandEnabled({})).toBe(false);
-    expect(runCommandEnabled({ features: {} })).toBe(false);
-    expect(runCommandEnabled({ features: { runCommand: "true" } })).toBe(false);
+  it("is on unless features.runCommand is false", () => {
+    expect(runCommandEnabled({})).toBe(true);
+    expect(runCommandEnabled({ features: {} })).toBe(true);
     expect(runCommandEnabled({ features: { runCommand: true } })).toBe(true);
+    expect(runCommandEnabled({ features: { runCommand: false } })).toBe(false);
   });
 
   it("starts a project bot in its project folder and a bot with no project in its private workspace", () => {
