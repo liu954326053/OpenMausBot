@@ -2360,6 +2360,10 @@ function bundleIconImage(bundle) {
   }
   return nativeImage.createFromPath(APP_ICON);
 }
+let permissionDragTracking = null;
+let permissionDragPolling = false;
+let permissionDragDragged = false;
+let permissionDragFallback = null;
 /** The same re-check the panel's Retry button runs, so a grant made by dragging shows up without a click. */
 function recheckLocalComputer() {
   if (desktopShutdownStarted) return;
@@ -2439,7 +2443,7 @@ async function showPermissionDragHelper() {
     if (!permissionDragIcon) permissionDragIcon = bundleIconImage(bundle);
     permissionDragBundle = bundle;
     const appName = path.basename(bundle, ".app");
-    const width = 352, height = 104, area = screen.getPrimaryDisplay().workArea;
+    const width = 352, height = 76, area = screen.getPrimaryDisplay().workArea;
     const win = new BrowserWindow({
       width, height, x: Math.round(area.x + (area.width - width) / 2), y: area.y + area.height - height - 28,
       frame: false, transparent: true, vibrancy: "popover", visualEffectState: "active", backgroundColor: "#00000000",
