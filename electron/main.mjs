@@ -2351,30 +2351,39 @@ async function showPermissionDragHelper() {
     permissionDragWindow.focus();
     return true;
   }
-  if (!permissionDragIcon) {
-    try { permissionDragIcon = await app.getFileIcon(bundle, { size: "large" }); } catch { permissionDragIcon = nativeImage.createEmpty(); }
+  try {
+    // app.getFileIcon crashes this Electron build on a .app bundle under node_modules (EXC_BREAKPOINT), so the card
+    // and the drag use the app's own icon instead.
+    if (!permissionDragIcon) permissionDragIcon = nativeImage.createFromPath(APP_ICON);
+    permissionDragBundle = bundle;
+    const appName = path.basename(bundle, ".app");
+    const win = new BrowserWindow({
+      width: 300, height: 252, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+      alwaysOnTop: true, show: false, title: nativeT("native.permissionDrag.title"),
+      webPreferences: { preload: path.join(__dirname, "permission-drag-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    permissionDragWindow = win;
+    win.setAlwaysOnTop(true, "floating");
+    win.once("ready-to-show", () => win.show());
+    win.on("closed", () => { if (permissionDragWindow === win) permissionDragWindow = null; });
+    const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.resize({ width: 96 }).toDataURL();
+    const page = permissionDragPage({
+      appName, icon,
+      title: nativeT("native.permissionDrag.title"),
+      body: nativeT("native.permissionDrag.body", { app: appName }),
+      dragLabel: nativeT("native.permissionDrag.drag"),
+      revealLabel: nativeT("native.permissionDrag.reveal"),
+    });
+    const file = path.join(app.getPath("temp"), `magicbot-permission-${process.pid}.html`);
+    fs.writeFileSync(file, page, { mode: 0o600 });
+    await win.loadFile(file);
+    return true;
+  } catch (error) {
+    slog(`[perm] the drag helper did not open: ${error instanceof Error ? error.message : String(error)}`);
+    if (permissionDragWindow && !permissionDragWindow.isDestroyed()) permissionDragWindow.destroy();
+    permissionDragWindow = null;
+    return false;
   }
-  permissionDragBundle = bundle;
-  const appName = path.basename(bundle, ".app");
-  const win = new BrowserWindow({
-    width: 300, height: 252, resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
-    alwaysOnTop: true, show: false, title: nativeT("native.permissionDrag.title"),
-    webPreferences: { preload: path.join(__dirname, "permission-drag-preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: true },
-  });
-  permissionDragWindow = win;
-  win.setAlwaysOnTop(true, "floating");
-  win.once("ready-to-show", () => win.show());
-  win.on("closed", () => { if (permissionDragWindow === win) permissionDragWindow = null; });
-  const icon = permissionDragIcon.isEmpty() ? "" : permissionDragIcon.resize({ width: 96 }).toDataURL();
-  const page = permissionDragPage({
-    appName, icon,
-    title: nativeT("native.permissionDrag.title"),
-    body: nativeT("native.permissionDrag.body", { app: appName }),
-    dragLabel: nativeT("native.permissionDrag.drag"),
-    revealLabel: nativeT("native.permissionDrag.reveal"),
-  });
-  await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(page)}`);
-  return true;
 }
 const fromPermissionDragHelper = (event) => Boolean(permissionDragWindow && !permissionDragWindow.isDestroyed() && event.sender === permissionDragWindow.webContents);
 ipcMain.handle("perm:show-drag-helper", localOnly("perm:show-drag-helper", () => showPermissionDragHelper()));
