@@ -332,6 +332,24 @@ const steps: Step[] = [
       if (settings.status >= 300) throw new StepFailure("project", "设不了项目的生成配置", `PUT generation/settings 回答 ${settings.status} ${JSON.stringify(settings.body).slice(0, 300)}`);
       const rooms = await api("GET", "/api/team-projects");
       const listed = (rooms.body.projects as any[]).find((one) => one.id === run.projectId);
+      // Creating a project imports its own copies of the team, each with `teamProject` set: the bots made before it are a
+      // different, folder-less set, and a turn in one of those mounts no production tools at all.
+      run.leadId = made.body.project.leadBotId;
+      run.bots = [];
+      const provider = ctx.provider;
+      if (!provider) throw new StepFailure("project", "没有可用的模型配置", "config 步骤没有留下 provider");
+      for (const botId of made.body.project.botIds as string[]) {
+        const model = await api("PATCH", `/api/bots/${botId}/model`, { instanceId: provider.instanceId, model: provider.model });
+        if (model.status !== 200) throw new StepFailure("project", `项目成员 ${botId} 的模型设不上`, `PATCH /api/bots/${botId}/model 回答 ${model.status}`);
+      }
+      const chief = await api("PATCH", `/api/bots/${run.leadId}`, { chiefOfStaff: true });
+      if (chief.status !== 200) throw new StepFailure("project", "指定不了项目负责人", `PATCH /api/bots/${run.leadId} 回答 ${chief.status}`);
+      const after = await api("GET", "/api/bots?messages=0");
+      run.threadIds = Object.fromEntries((after.body.bots as any[]).map((bot) => [bot.id, bot.threadId]));
+      for (const botId of made.body.project.botIds as string[]) {
+        const bot = (after.body.bots as any[]).find((one) => one.id === botId);
+        if (bot) run.bots.push({ id: bot.id, name: bot.name, title: bot.title ?? "", threadId: bot.threadId });
+      }
       return {
         projectId: run.projectId, name: PROJECT, folder: run.folder, leadBotId: made.body.project.leadBotId,
         roomId: listed?.roomId, botIds: made.body.project.botIds, generation: { server: "gen", url: run.generationUrl, image: "pixel-1", video: "motion-1" },
@@ -376,6 +394,16 @@ const steps: Step[] = [
     name: "plan",
     run: async (run, ctx) => {
       const api = ctx.api;
+      // The lead will not plan from a title alone: tell it where the source text is, as a person who dropped the file would.
+      const source = process.env.OMB_E2E_SOURCE_DIR?.trim();
+      if (source && run.threadIds[run.leadId]) {
+        const dropped = await api("POST", `/api/bots/${run.leadId}/messages`, {
+          text: `原著正文已经放进项目文件夹了：\`${join(run.folder, "原文")}\`（463 章、约 107 万字，已修好章号）。请按这份正文调用 production_plan 写需求单并开始制作。`,
+          threadId: run.threadIds[run.leadId], sendId: crypto.randomUUID(),
+        });
+        if (dropped.status >= 300) throw new StepFailure("plan", "告诉不了负责人原文在哪", `POST /api/bots/${run.leadId}/messages 回答 ${dropped.status}`);
+        await settleAndReply(run, api, run.leadId, Number(arg("timeout") || 240) * 1000);
+      }
       const production = await until("负责人调用 production_plan（画布上出现需求单）", async () => {
         const canvas = await api("GET", `/api/team-projects/${run.projectId}/canvas`);
         if (canvas.status !== 200) return false;
