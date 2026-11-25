@@ -164,15 +164,14 @@ describe("My Cloud takes a webhook and a call", () => {
 });
 
 describe("My Cloud sets a bot's move-only fields", () => {
-  it("as this computer has them: its own projects kept beside, an engine or library skill it lacks left out, and absent ones cleared", async () => {
+  it("as this computer has them: its own projects kept beside, and absent ones cleared", async () => {
     installLibrarySkill({ name: "digest", instructions: "---\nname: digest\ndescription: Digest.\n---\n\nDigest.\n", source: "test" });
     const d = deps("/data");
     const fields = { hidden: null, pinned: true, chiefOfStaff: true, managedSections: ["Ops", "Ops"], fallback: [{ instanceId: "claude", model: "h" }, { instanceId: "gone", model: "x" }],
-      projects: [{ id: "p1", name: "Launch", emoji: "🚀" }], playbooks: [{ key: "k", name: "Close", summary: "s", triggers: ["t"], instructions: "i" }], installedPackage: null,
-      assignedSkills: ["digest", "missing"] };
+      projects: [{ id: "p1", name: "Launch", emoji: "🚀" }], playbooks: [{ key: "k", name: "Close", summary: "s", triggers: ["t"], instructions: "i" }], installedPackage: null };
     expect((await take(d, "bot:b1", fields)).status).toBe(200);
     expect(d.patched[0]![1]).toEqual({ pinned: true, managedSections: ["Ops"], fallback: [{ instanceId: "claude", model: "h" }],
-      projects: [{ id: "p1", name: "Launch", emoji: "🚀" }, { id: "p-cloud", name: "Mine" }], playbooks: fields.playbooks, installedPackage: undefined, assignedSkills: ["digest"] });
+      projects: [{ id: "p1", name: "Launch", emoji: "🚀" }, { id: "p-cloud", name: "Mine" }], playbooks: fields.playbooks, installedPackage: undefined });
     expect(d.chief).toEqual(["b1"]);
     expect((await take(d, "bot:b1", { hidden: true, chiefOfStaff: false })).status).toBe(200);
     expect(d.patched.at(-1)![1]).toEqual({ hidden: true, chiefOfStaff: false });

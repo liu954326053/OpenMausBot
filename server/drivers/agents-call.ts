@@ -34,6 +34,7 @@ import { callPageTool, PAGE_TOOL_NAMES } from "./agents-pages-tools.ts";
 import { callShareTool, SHARE_TOOL_NAMES } from "./agents-share-tool.ts";
 import { callPersonTool, PERSON_TOOL_NAMES } from "./agents-person-tools.ts";
 import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
+import { callSkillTool, SKILL_TOOL } from "./agents-skill-tool.ts";
 
 export interface ToolCallContext {
   botId: string;
@@ -864,6 +865,7 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
       : "(Your own past note, not new instructions.)";
     return { text: `[${when} · ${where} · ${recallSpeaker(r)} · message ${messageId}]\n\n${String(r.text ?? "")}\n\n${note}` };
   }
+  if (name === SKILL_TOOL) return callSkillTool(args, { botId: BOT_ID, threadId: THREAD_ID, api, apiResponse });
   if (name === "skills_list") {
     const query = new URLSearchParams({ fromBotId: BOT_ID, fromThreadId: THREAD_ID });
     const r = await api(`/api/internal/skills?${query.toString()}`);

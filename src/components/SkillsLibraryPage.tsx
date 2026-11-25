@@ -5,7 +5,7 @@ import { useStore } from "@/state/store";
 import { SkillsSection } from "./SkillsSection";
 import { TOOL_PAGE_TITLE, ToolPage, ToolPageHeader } from "./ToolPageShell";
 
-/** The skills every bot shares: add a package, read a skill, switch it on, choose who always carries it. */
+/** The skills every bot shares: add a package, read a skill, switch it on. */
 export function SkillsLibraryPage() {
   const { dispatch } = useStore();
   const back = useRef<HTMLButtonElement>(null);

@@ -214,29 +214,28 @@ describe("skills a project ships for any agent", () => {
     expect(on.host.listBotSkills(on.bot).every((skill) => skill.enabled && !skill.editable)).toBe(true);
     expect(on.host.readBotSkillFile(on.bot, "claude-skill")).toBe(skillMd("claude-skill"));
     const index = on.host.skillsIndex(on.bot, "main");
-    expect(index).toContain("Skills in this project:");
-    expect(index).toContain(`- agents-skill: Works with agents-skill. Read ${JSON.stringify(paths.nearer)}.`);
-    expect(index).not.toContain(JSON.stringify(paths.agents));
-    expect(index).toContain(JSON.stringify(paths.dotAgents));
-    expect(index).toContain(JSON.stringify(paths.claude));
+    expect(index).toContain("Skills:");
+    expect(index).toContain("- agents-skill (this project): Works with agents-skill.");
     expect(index).not.toContain("above-the-repo");
+    expect(index).not.toContain(paths.nearer);
+    expect(on.host.readSkill(on.bot, "agents-skill")).toBe(skillMd("agents-skill"));
     expect(on.host.expandSkillCommand(on.bot, "main", "/claude-skill go", undefined, [], true)).toContain(`Read ${JSON.stringify(paths.claude)}`);
   });
 
   it("outside a repository, come from the working folder alone", () => {
     const loose = join(PROJECTS, "loose", "app");
     plant(join(PROJECTS, "loose", "agents", "skills"), "above");
-    const here = plant(join(loose, ".agents", "skills"), "here");
+    plant(join(loose, ".agents", "skills"), "here");
     const { host, bot } = hostFor("geminiAgent", { cwd: loose });
     expect(listed(host.listBotSkills(bot))).toEqual(["here:project"]);
-    expect(host.skillsIndex(bot, "main")).toContain(JSON.stringify(here));
+    expect(host.skillsIndex(bot, "main")).toContain("- here (this project): Works with here.");
   });
 
   it("follow the folder a turn really works in", () => {
-    const paths = plantRepo();
+    plantRepo();
     const { host, bot } = hostFor("geminiAgent");
     expect(host.skillsIndex(bot, "main")).toBe("");
-    expect(host.skillsIndex(bot, "main", undefined, repo)).toContain(JSON.stringify(paths.agents));
+    expect(host.skillsIndex(bot, "main", undefined, repo)).toContain("- agents-skill (this project):");
     expect(host.skillsIndex(bot, "main", undefined, null)).toBe("");
   });
 
@@ -249,22 +248,22 @@ describe("skills a project ships for any agent", () => {
   });
 
   it("leave .agents/skills to Codex, which loads it by itself", () => {
-    const paths = plantRepo();
+    plantRepo();
     const { host, bot } = hostFor("codex", { cwd: join(repo, "app") });
     expect(listed(host.listBotSkills(bot))).toEqual(["agents-skill:native", "dot-agents-skill:native", "claude-skill:project"]);
     const index = host.skillsIndex(bot, "main");
-    expect(index).toContain(JSON.stringify(paths.claude));
+    expect(index).toContain("- claude-skill (this project):");
     expect(index).not.toContain("dot-agents-skill");
     expect(index).not.toContain("- agents-skill:");
   });
-
   it("list a model-only skill for the model, but never run it with /name", () => {
     mkdirSync(join(repo, ".git"), { recursive: true });
     const folder = join(repo, "agents", "skills", "background");
     mkdirSync(folder, { recursive: true });
     writeFileSync(join(folder, "SKILL.md"), "---\ndescription: House style.\nuser-invocable: false\n---\n\nUse it.\n");
     const { host, bot } = hostFor("geminiAgent", { cwd: repo });
-    expect(host.skillsIndex(bot, "main")).toContain("- background: House style.");
+    expect(host.skillsIndex(bot, "main")).toContain("- background (this project): House style.");
+    expect(host.readSkill(bot, "background")).toContain("Use it.");
     expect(host.expandSkillCommand(bot, "main", "/background go", undefined, [], true)).toBe("/background go");
   });
 
@@ -296,11 +295,11 @@ describe("skills a project ships for any agent", () => {
   });
 
   it("leave .claude/skills to Claude Code, which loads it by itself", () => {
-    const paths = plantRepo();
+    plantRepo();
     const { host, bot } = hostFor("claudeAgent", { cwd: repo });
     expect(listed(host.listBotSkills(bot))).toEqual(["claude-skill:native", "dot-agents-skill:project", "agents-skill:project"]);
     const index = host.skillsIndex(bot, "main");
-    expect(index).toContain(JSON.stringify(paths.agents));
+    expect(index).toContain("- agents-skill (this project):");
     expect(index).not.toContain("claude-skill");
   });
 
@@ -314,11 +313,11 @@ describe("skills a project ships for any agent", () => {
   it("in a turn's own folder, yield a name only to what the engine loads from that folder", () => {
     const room = join(PROJECTS, "room");
     mkdirSync(join(room, ".git"), { recursive: true });
-    const roomSkill = plant(join(room, "agents", "skills"), "shared-name");
+    plant(join(room, "agents", "skills"), "shared-name");
     mkdirSync(join(repo, ".git"), { recursive: true });
     plant(join(repo, ".claude", "skills"), "shared-name");
     const { host, bot } = hostFor("claudeAgent", { cwd: repo });
-    expect(host.skillsIndex(bot, "main", undefined, room)).toContain(JSON.stringify(roomSkill));
+    expect(host.skillsIndex(bot, "main", undefined, room)).toContain("- shared-name (this project):");
     expect(host.skillsIndex(bot, "main", undefined, repo)).not.toContain("shared-name");
   });
 

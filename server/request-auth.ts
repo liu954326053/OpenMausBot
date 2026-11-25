@@ -539,7 +539,7 @@ export function clientBotPatchViolation(body: unknown, ownMagicBot = false, team
  * bot) only an admin on the host sets. */
 const BOT_PROFILE_SETTINGS: ReadonlySet<string> = new Set([
   ...CLIENT_BOT_PATCH_FIELDS, ...BOT_PROFILE_PATCH_FIELDS, "hidden",
-  "modelSelection", "requireAvailableModel", "fallback", "projects", "playbooks", "assignedSkills",
+  "modelSelection", "requireAvailableModel", "fallback", "projects", "playbooks",
 ]);
 
 /** The first field of `fields` beyond a bot's profile; null when there is none. */

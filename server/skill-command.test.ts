@@ -62,37 +62,36 @@ describe("parseSkillCommand", () => {
 });
 
 describe("words a person typed", () => {
-  it("stages an explicitly called team skill shared after the conversation started", () => {
+  it("lets any bot call a skill shared into the library, with no assignment", () => {
     const name = "late-" + randomUUID().slice(0, 8);
     const author = { id: "author-" + randomUUID().slice(0, 8), name: "Author", section: "Team" };
-    const mate = { id: "mate-" + randomUUID().slice(0, 8), name: "Mate", section: "Team", assignedSkills: [] as string[] } as BotRecord;
+    const mate = { id: "mate-" + randomUUID().slice(0, 8), name: "Mate", section: "Team", threadId: "thread" } as unknown as BotRecord;
     const staged = stageSkillWrite(author.id, { action: "create", files: [{ path: "SKILL.md", content: SKILL(name) }], source: "learn:conversation" });
     if ("error" in staged) throw new Error(staged.error);
     expect(applyStagedSkillWrite(author.id, staged.id, { expectedSha256: staged.sha256 })).not.toHaveProperty("error");
-    expect(shareLearnedSkill({ author, bots: [author, mate], name, now: 1000,
-      patchAssigned: (id, assigned) => { if (id === mate.id) mate.assignedSkills = assigned; },
-    })).not.toHaveProperty("error");
+    expect(shareLearnedSkill({ author, name, now: 1000 })).not.toHaveProperty("error");
     const libraryHost = createSkillsLibraryHost({
       store: { bot: () => mate, messagesFor: () => [{ at: 500 }], taskByThread: () => undefined } as unknown as Store,
       cfg: { features: { skillsLibrary: true } } as AppConfig,
       appendSkillRequestCard: () => ({ requestId: "", summary: "" }),
     });
     const engine = { instanceId: "antigravity", driverKind: "antigravityAgent" };
-    expect(libraryHost.skillsIndex(mate, "thread", engine)).not.toContain(name);
+    expect(libraryHost.skillsIndex(mate, "thread", engine)).toContain(`- ${name} (the skills library)`);
     expect(libraryHost.expandSkillCommand(mate, "thread", "/" + name, engine, [], true)).toContain(JSON.stringify(librarySkillFilePath(name)));
-    expect(libraryHost.turnSkillFiles(mate, "thread", engine)).toContain(librarySkillFilePath(name));
+    expect(libraryHost.turnSkillFiles(mate, engine)).toContain(librarySkillFilePath(name));
+    expect(libraryHost.readSkill(mate, name)).toContain("# Standup");
   });
 
   it("offers only enabled skill files for driver staging", () => {
     const bot = botWith("standup");
     const record = { id: bot } as BotRecord;
-    expect(host.turnSkillFiles(record, "thread")).toEqual([enabledSkillFile(bot, "standup")]);
-    expect(host.turnSettings(record, "thread", { instanceId: "antigravity", driverKind: "antigravityAgent" }, true))
-      .toMatchObject({ skillFiles: [enabledSkillFile(bot, "standup")], mcpFromUserConfig: false });
-    expect(host.turnSettings(record, "thread", { instanceId: "claude", driverKind: "claudeAgent" }, false))
+    expect(host.turnSkillFiles(record)).toEqual(expect.arrayContaining([enabledSkillFile(bot, "standup")]));
+    expect(host.turnSettings(record, { instanceId: "antigravity", driverKind: "antigravityAgent" }, true))
+      .toMatchObject({ skillFiles: expect.arrayContaining([enabledSkillFile(bot, "standup")]), mcpFromUserConfig: false });
+    expect(host.turnSettings(record, { instanceId: "claude", driverKind: "claudeAgent" }, false))
       .not.toHaveProperty("skillFiles");
     expect("error" in setSkillEnabled(bot, "standup", false)).toBe(false);
-    expect(host.turnSkillFiles(record, "thread")).toEqual([]);
+    expect(host.turnSkillFiles(record)).not.toContain(enabledSkillFile(bot, "standup"));
   });
 
   it("points the engine at the enabled skill's reviewed SKILL.md", () => {

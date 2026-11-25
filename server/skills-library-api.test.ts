@@ -47,10 +47,9 @@ describe("skills library routes through an isolated HTTP fixture", () => {
     expect((await api("PUT", `/api/bots/${botId}/skills-library`, { skills: ["order-audit"] })).status).toBe(404);
     const legacy = await api("GET", `/api/bots/${botId}/skills`);
     expect(legacy.status).toBe(200);
-    expect(Object.keys(legacy.body).sort()).toEqual(["skills", "staged"]);
-  });
+    expect(Object.keys(legacy.body).sort()).toEqual(["skills", "staged"]);  });
 
-  it("lists, imports, assigns, and reviews pasted skills once the flag is on", async () => {
+  it("lists, imports and reviews pasted skills once the flag is on", async () => {
     expect((await api("PATCH", "/api/config", { features: { skillsLibrary: true } })).status).toBe(200);
 
     expect(await api("GET", "/api/skills-library")).toMatchObject({ status: 200, body: { skills: [] } });
@@ -67,39 +66,32 @@ describe("skills library routes through an isolated HTTP fixture", () => {
         enabled: false,
         tags: ["orders", "review"],
         version: null,
-        assignedBots: [],
       }),
     ]);
+    // A library skill is global: the row says nothing about bots any more.
+    expect(listed.body.skills[0]).not.toHaveProperty("everyBot");
+    expect(listed.body.skills[0]).not.toHaveProperty("assignedBots");
 
     expect((await api("POST", "/api/skills-library", { text: "not a skill" })).status).toBe(400);
 
-    expect((await api("PUT", `/api/bots/${botId}/skills-library`, { skills: ["order-audit"] }))).toMatchObject({
-      status: 200,
-      body: { assignedSkills: ["order-audit"] },
-    });
-    const withSkill = await api("GET", `/api/bots/${botId}/skills`);
-    expect(withSkill.body.skills).toEqual([expect.objectContaining({ name: "order-audit", origin: "library" })]);
-    expect(withSkill.body.library).toEqual([]);
-    expect(withSkill.body.assignedSkills).toEqual(["order-audit"]);
-
-    expect((await api("PUT", `/api/bots/${botId}/skills-library`, { skills: ["nope"] })).status).toBe(422);
-
     expect((await api("PATCH", "/api/skills-library/order-audit", { enabled: true }))).toMatchObject({ status: 200 });
-    expect((await api("PATCH", "/api/skills-library/order-audit", { everyBot: true }))).toMatchObject({ status: 200 });
     const text = await api("GET", "/api/skills-library/order-audit");
     expect(text.body.text).toContain("Check every line item");
     const enabled = await api("GET", "/api/skills-library");
-    expect(enabled.body.skills[0]).toMatchObject({ enabled: true, everyBot: true });
-    expect(enabled.body.skills[0].assignedBots).toEqual(expect.arrayContaining([{ id: botId, name: "Skills fixture" }]));
-    expect((await api("PATCH", "/api/skills-library/order-audit", { everyBot: false }))).toMatchObject({ status: 200 });
+    expect(enabled.body.skills[0]).toMatchObject({ enabled: true, onOffer: true });
 
-    expect((await api("PUT", `/api/bots/${botId}/skills-library`, { skills: [] }))).toMatchObject({
-      status: 200,
-      body: { assignedSkills: [] },
-    });
-    const afterRemove = await api("GET", `/api/bots/${botId}/skills`);
-    expect(afterRemove.body.skills).toEqual([]);
-    expect(afterRemove.body.library.map((entry: { name: string }) => entry.name)).toEqual(["order-audit"]);
-    expect(afterRemove.body.assignedSkills).toEqual([]);
+    // Both a bot with no assignment and one made later read it, once on.
+    const botSkills = await api("GET", `/api/bots/${botId}/skills`);
+    expect(botSkills.body.skills).toEqual([expect.objectContaining({ name: "order-audit", origin: "library" })]);
+    const later = (await api("POST", "/api/bots", { name: "Later fixture" })).body.bot.id;
+    const laterSkills = await api("GET", `/api/bots/${later}/skills`);
+    expect(laterSkills.body.skills.map((skill: { name: string }) => skill.name)).toContain("order-audit");
+    // The old per-bot assignment route is gone.
+    expect((await api("PUT", `/api/bots/${botId}/skills-library`, { skills: ["order-audit"] })).status).toBe(404);
+    // One bot cannot delete a shared skill; the library's switch is where it goes.
+    expect((await api("DELETE", `/api/bots/${botId}/skills/order-audit`)).status).toBe(404);
+
+    expect((await api("PATCH", "/api/skills-library/order-audit", { enabled: false }))).toMatchObject({ status: 200 });
+    expect((await api("GET", `/api/bots/${botId}/skills`)).body.skills).toEqual([]);
   });
 });

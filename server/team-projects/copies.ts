@@ -52,7 +52,6 @@ export function renderTeamProjectCopies(project: TeamProjectRecord, sources: Tea
       title: bot.title ?? "",
       description: bot.description ?? "",
       model: { ...bot.modelSelection },
-      librarySkills: [...(bot.assignedSkills ?? [])],
       ...(bot.mcpServers ? { mcpServers: [...bot.mcpServers] } : {}),
     })),
   };

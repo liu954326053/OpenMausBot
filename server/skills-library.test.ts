@@ -10,6 +10,7 @@ process.env.OMB_DATA_DIR = mkdtempSync(join(tmpdir(), "omb-skills-library-"));
 
 const library = await import("./skill-library.ts");
 const skills = await import("./skills.ts");
+const { renderSkillsIndex } = await import("./skills-index.ts");
 const config = await import("./config.ts");
 
 const SKILL = (name: string, body = "Do the thing.") =>
@@ -140,31 +141,28 @@ describe("skills library store", () => {
     expect(events).toContainEqual({ kind: "review-state", name: "triage" });
   });
 
-  it("makes a reviewed library skill available to every bot, including bots without an assignment", () => {
+  it("makes a reviewed library skill available to every bot, switched on", () => {
     const name = `universal-${Math.random().toString(36).slice(2, 10)}`;
     const universal = library.installLibrarySkill({ name, instructions: SKILL(name), source: "lib", reviewState: "approved" });
     expect("error" in universal).toBe(false);
-    expect(library.setLibrarySkillEveryBot(name, true)).toMatchObject({ everyBot: true });
-    try {
-      expect(skills.resolveBotSkills(`universal-${Math.random()}`, [])).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name, enabled: true }),
-      ]));
-      // No assignment list means the library is off: an every-bot skill stays out too.
-      expect(skills.resolveBotSkills(`universal-${Math.random()}`, undefined).map((skill) => skill.name)).not.toContain(name);
-      // The bot's Skills page lists it as the bot's own library skill, not as one still to assign.
-      const page = skills.listBotSkillsWithOrigin(`universal-${Math.random()}`, undefined);
-      expect(page.skills.map((skill) => skill.name)).toContain(name);
-      expect(page.library.map((skill) => skill.name)).not.toContain(name);
-    } finally {
-      expect(library.setLibrarySkillEveryBot(name, false)).toMatchObject({ everyBot: false });
-    }
+    expect(skills.resolveBotSkills(`universal-${Math.random()}`, true)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name, enabled: true }),
+    ]));
+    // Library off: no library skill either.
+    expect(skills.resolveBotSkills(`universal-${Math.random()}`, false).map((skill) => skill.name)).not.toContain(name);
+    // The bot's Skills page lists it as a library skill.
+    const page = skills.listBotSkillsWithOrigin(`universal-${Math.random()}`);
+    expect(page.find((skill) => skill.name === name)?.origin).toBe("library");
+    // Switched off, no bot reads it.
+    expect("error" in library.setLibrarySkillReviewState(name, "disabled")).toBe(false);
+    expect(skills.resolveBotSkills(`universal-${Math.random()}`, true).map((skill) => skill.name)).not.toContain(name);
+    expect("error" in library.setLibrarySkillReviewState(name, "approved")).toBe(false);
   });
 
-  it("lists an every-bot skill in the turn index of a bot with no assignments, only while the library is on", async () => {
+  it("lists a switched-on library skill in the turn index of any bot, only while the library is on", async () => {
     const { createSkillsLibraryHost } = await import("./host/skills-library.ts");
     const name = `everyone-${Math.random().toString(36).slice(2, 10)}`;
     library.installLibrarySkill({ name, instructions: SKILL(name), source: "lib", reviewState: "approved" });
-    library.setLibrarySkillEveryBot(name, true);
     try {
       const record = { id: bot, threadId: "main" } as import("./store.ts").BotRecord;
       const hostWith = (cfg: AppConfig) => createSkillsLibraryHost({
@@ -173,14 +171,16 @@ describe("skills library store", () => {
         appendSkillRequestCard: () => ({ requestId: "", summary: "" }),
       });
       const on = hostWith({ features: { skillsLibrary: true } } as AppConfig);
-      expect(on.skillsIndex(record, "main")).toContain(name);
+      expect(on.skillsIndex(record, "main")).toContain(`- ${name} (the skills library):`);
       expect(on.skillsIndex(record, undefined)).toContain(name);
+      expect(on.readSkill(record, name)).toContain(`# ${name}`);
       expect(on.expandSkillCommand(record, "main", `/${name}`, undefined, [], true)).toContain(`ran your ${name} skill`);
       const off = hostWith({ features: { skillsLibrary: false } } as AppConfig);
       expect(off.skillsIndex(record, "main")).not.toContain(name);
+      expect(off.readSkill(record, name)).toBeNull();
       expect(off.expandSkillCommand(record, "main", `/${name}`, undefined, [], true)).toBe(`/${name}`);
     } finally {
-      library.setLibrarySkillEveryBot(name, false);
+      library.setLibrarySkillReviewState(name, "disabled");
     }
   });
 
@@ -203,14 +203,14 @@ describe("skills library store", () => {
 });
 
 describe("assignment resolution", () => {
-  it("adds assigned library skills beside private ones, private winning name collisions", () => {
+  it("adds switched-on library skills beside private ones, private winning name collisions", () => {
     skills.installSkill(bot, "private:test", [{ path: "SKILL.md", content: SKILL("shared-name", "Private copy.") }]);
     skills.setSkillEnabled(bot, "shared-name", true);
     library.installLibrarySkill({ name: "shared-name", instructions: SKILL("shared-name", "Library copy."), source: "lib", reviewState: "approved" });
     library.installLibrarySkill({ name: "library-only", instructions: SKILL("library-only"), source: "lib", reviewState: "approved" });
 
-    const resolved = skills.resolveBotSkills(bot, ["shared-name", "library-only"]);
-    expect(resolved.map((skill) => skill.name).sort()).toEqual(["library-only", "shared-name"]);
+    const resolved = skills.resolveBotSkills(bot, true);
+    expect(resolved.map((skill) => skill.name)).toEqual(expect.arrayContaining(["library-only", "shared-name"]));
     const shared = resolved.find((skill) => skill.name === "shared-name")!;
     expect(shared.source).toBe("private:test");
     const only = resolved.find((skill) => skill.name === "library-only")!;
@@ -218,45 +218,38 @@ describe("assignment resolution", () => {
     expect(only.editable).toBe(false);
   });
 
-  it("takes a shared skill off one bot and leaves the library copy and every other bot", () => {
+  it("leaves the library's own bytes alone when a bot pools the skill", () => {
     const name = `shared-${Math.random().toString(36).slice(2, 10)}`;
     const other = `lib-bot-${Math.random().toString(36).slice(2, 10)}`;
     const instructions = SKILL(name, "Shared steps.");
     expect("error" in library.installLibrarySkill({ name, instructions, source: "lib", reviewState: "approved" })).toBe(false);
-    library.setLibrarySkillEveryBot(name, true);
-    try {
-      expect(skills.resolveBotSkills(bot, []).map((skill) => skill.name)).toContain(name);
-      expect(skills.resolveBotSkills(other, []).map((skill) => skill.name)).toContain(name);
-      expect(library.unassignLibrarySkill(bot, name, ["kept", name])).toEqual({ unassigned: true, assignedSkills: ["kept"] });
-      expect(skills.resolveBotSkills(bot, ["kept"]).map((skill) => skill.name)).not.toContain(name);
-      expect(skills.resolveBotSkills(other, []).map((skill) => skill.name)).toContain(name);
-      expect(library.readLibrarySkillFile(name)).toBe(instructions);
-      const page = skills.listBotSkillsWithOrigin(bot, ["kept"]);
-      expect(page.skills.map((skill) => skill.name)).not.toContain(name);
-      expect(page.library.map((skill) => skill.name)).toContain(name);
-      expect(skills.resolveBotSkills(bot, [name]).map((skill) => skill.name)).toContain(name);
-    } finally {
-      expect(library.setLibrarySkillEveryBot(name, false)).toMatchObject({ everyBot: false });
-    }
+    for (const id of [bot, other]) expect(skills.resolveBotSkills(id, true).map((skill) => skill.name)).toContain(name);
+    expect(library.readLibrarySkillFile(name)).toBe(instructions);
+    // Switching it off at the library takes it from every bot at once.
+    expect("error" in library.setLibrarySkillReviewState(name, "disabled")).toBe(false);
+    for (const id of [bot, other]) expect(skills.resolveBotSkills(id, true).map((skill) => skill.name)).not.toContain(name);
+    expect("error" in library.setLibrarySkillReviewState(name, "approved")).toBe(false);
   });
 
-  it("without assignments, resolution is exactly listSkills (the flag-off contract)", () => {
+  it("with the library off, resolution is exactly listSkills", () => {
     skills.installSkill(bot, "private:test", [{ path: "SKILL.md", content: SKILL("solo") }]);
     library.installLibrarySkill({ name: "library-only", instructions: SKILL("library-only"), source: "lib", reviewState: "approved" });
-    expect(skills.resolveBotSkills(bot, undefined)).toEqual(skills.listSkills(bot));
-    expect(skills.resolveBotSkills(bot, [])).toEqual(skills.listSkills(bot));
+    expect(skills.resolveBotSkills(bot, false)).toEqual(skills.listSkills(bot));
   });
 
-  it("renders assigned library skills into the prompt index with the library path", () => {
+  it("renders a switched-on library skill into the prompt index, and nothing while the library is off", () => {
     skills.installSkill(bot, "private:test", [{ path: "SKILL.md", content: SKILL("own-skill") }]);
     skills.setSkillEnabled(bot, "own-skill", true);
     library.installLibrarySkill({ name: "library-skill", instructions: SKILL("library-skill"), source: "lib", reviewState: "approved" });
 
-    const without = skills.skillsSystemPrompt(bot);
-    expect(without).not.toContain("library-skill");
-    const withLibrary = skills.skillsSystemPrompt(bot, ["library-skill"]);
-    expect(withLibrary).toContain("library-skill");
-    expect(withLibrary).toContain(JSON.stringify(join(library.skillsLibraryRoot(), "skills", "library-skill", "SKILL.md")));
-    expect(withLibrary).toContain("own-skill");
+    expect(skills.resolveBotSkills(bot, false).map((skill) => skill.name)).not.toContain("library-skill");
+    const on = skills.listBotSkillsWithOrigin(bot);
+    expect(on.find((skill) => skill.name === "library-skill")?.origin).toBe("library");
+    // The index is a catalogue; the reviewed bytes are read with the skill tool, never pasted into the prompt.
+    const text = renderSkillsIndex(on.filter((skill) => skill.enabled).map((skill) => ({ name: skill.name, description: skill.description, source: skill.origin === "library" ? "library" as const : "own" as const })));
+    expect(text).toContain("- library-skill (the skills library):");
+    expect(text).not.toContain("Do the thing.");
+    expect(text).not.toContain(JSON.stringify(join(library.skillsLibraryRoot(), "skills", "library-skill", "SKILL.md")));
+    expect(text).toContain("own-skill");
   });
 });

@@ -8,7 +8,6 @@ import { z } from "zod";
 import { writeFileAtomic } from "./atomic.ts";
 import { DATA_DIR, type AppConfig } from "./config.ts";
 import { githubSkillOriginSchema, skillFolderDigest, skillFolderRecordSchema, writeSkillFolder } from "./skill-folder.ts";
-import { LEARN_SOURCE_PREFIX } from "./skill-learn.ts";
 import { entryExistsWithoutFollowing } from "./skill-storage.ts";
 import type { GitHubSkillOrigin } from "../shared/skill-import.ts";
 import { isSkillName, parseSkillMd, SKILL_FILE_MAX_BYTES } from "../shared/skill-md.ts";
@@ -152,8 +151,6 @@ export interface SkillLibraryEntry {
   sha256: string;
   importedAt: string;
   reviewState: LibraryReviewState;
-  /** Available to every existing and future bot, unless a private skill shadows it. */
-  everyBot?: boolean;
   license?: string;
   compatibility?: string;
   tags?: string[];
@@ -181,7 +178,6 @@ export interface LibrarySkillListing {
   name: string;
   description: string;
   enabled: boolean;
-  everyBot: boolean;
   editable: false;
   source: string;
   sha256: string;
@@ -202,7 +198,6 @@ const skillLibraryEntrySchema = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   importedAt: z.string(),
   reviewState: z.enum(["approved", "disabled"]),
-  everyBot: z.boolean().optional(),
   license: z.string().optional(),
   compatibility: z.string().optional(),
   tags: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,23}$/)).max(8).optional(),
@@ -292,7 +287,6 @@ function librarySkillListing(root: string, entry: SkillLibraryEntry): LibrarySki
     name: entry.name,
     description: entry.description,
     enabled: entry.reviewState === "approved" && intact,
-    everyBot: entry.everyBot === true,
     editable: false,
     source: entry.source,
     sha256: entry.sha256,
@@ -309,111 +303,15 @@ function librarySkillListing(root: string, entry: SkillLibraryEntry): LibrarySki
   };
 }
 
-const libraryOptOutSchema = z.array(z.string());
+/** A switched-on skill the person added: every bot reads it when a task needs it.
+ * Security: a skill a bot learned and shared reaches every bot too, since the library is the one shelf — but it is
+ * only read here at the same review gate as anything else. */
+export const librarySkillOnOffer = (skill: Pick<LibrarySkillListing, "enabled">): boolean => skill.enabled;
 
-function libraryOptOutPath(botId: string): string | null {
-  if (!/^[\w-]+$/.test(botId)) return null;
-  return join(DATA_DIR, "skill-state", botId, "library-opt-out.json");
-}
-
-const unreadableOptOutsWarned = new Set<string>();
-
-function noLibraryOptOuts(path: string, why: string): ReadonlySet<string> {
-  if (!unreadableOptOutsWarned.has(path)) {
-    unreadableOptOutsWarned.add(path);
-    console.warn(`Library opt-outs at ${path} can't be read (${why}); every every-bot skill stays on for that bot until one is switched off again.`);
-  }
-  return new Set();
-}
-
-/** Names this bot has taken off its own list. An explicit assignment still wins; the shared copy stays. A list that is
- * there but cannot be read counts as none, so the bot keeps working with every every-bot skill; the server logs it once. */
-export function librarySkillOptOuts(botId: string): ReadonlySet<string> {
-  const path = libraryOptOutPath(botId);
-  if (!path) return new Set();
-  let text: string;
-  try {
-    text = readFileSync(path, "utf8");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "ENOENT") return new Set();
-    return noLibraryOptOuts(path, code ?? "read failed");
-  }
-  try {
-    const parsed = libraryOptOutSchema.safeParse(JSON.parse(text));
-    if (parsed.success) return new Set(parsed.data.filter(isSkillName));
-  } catch {}
-  return noLibraryOptOuts(path, "not a list of skill names");
-}
-
-export function setLibrarySkillOptOut(botId: string, name: string, optedOut: boolean): void {
-  if (!isSkillName(name)) return;
-  const path = libraryOptOutPath(botId);
-  if (!path) return;
-  const names = new Set(librarySkillOptOuts(botId));
-  if (names.has(name) === optedOut) return;
-  if (optedOut) names.add(name);
-  else names.delete(name);
-  mkdirSync(join(DATA_DIR, "skill-state", botId), { recursive: true, mode: 0o700 });
-  writeFileAtomic(path, `${JSON.stringify([...names].sort(), null, 2)}\n`, { mode: 0o600 });
-}
-
-/** Library skills this bot has: an explicit assignment, or every bot unless this bot opted out. */
-export function librarySkillsForBot(botId: string, assigned: ReadonlySet<string>, owned: ReadonlySet<string>): LibrarySkillListing[] {
-  const optedOut = librarySkillOptOuts(botId);
-  return listLibrarySkills().filter((skill) => !owned.has(skill.name) && (assigned.has(skill.name) || (skill.everyBot && !optedOut.has(skill.name))));
-}
-
-/** Library skills this bot can still add: not owned, not assigned, and not already on for every bot. */
-export function librarySkillsToOffer(botId: string, assigned: ReadonlySet<string>, owned: ReadonlySet<string>): LibrarySkillListing[] {
-  const optedOut = librarySkillOptOuts(botId);
-  return listLibrarySkills().filter((entry) => !owned.has(entry.name) && !assigned.has(entry.name) && (!entry.everyBot || optedOut.has(entry.name)));
-}
-
-/** A switched-on skill the person added, not yet on for every bot: any bot reads it when a task needs it.
- * Security: a skill a bot learned and shared reaches only the bots it was shared with, so it is never on offer. */
-export const librarySkillOnOffer = (skill: Pick<LibrarySkillListing, "enabled" | "everyBot" | "source">): boolean =>
-  skill.enabled && !skill.everyBot && !skill.source.startsWith(LEARN_SOURCE_PREFIX);
-
-/** The skills on offer that this bot has neither listed, taken under the same name nor switched off. */
-export function librarySkillsOnOffer(botId: string, assigned: ReadonlySet<string>, owned: ReadonlySet<string>): LibrarySkillListing[] {
-  const optedOut = librarySkillOptOuts(botId);
-  return listLibrarySkills().filter((skill) => librarySkillOnOffer(skill) && !owned.has(skill.name) && !assigned.has(skill.name) && !optedOut.has(skill.name));
-}
-
-/** Drops one bot's assignment. A skill on for every bot is opted out here so the others keep it. */
-export function unassignLibrarySkill(
-  botId: string,
-  name: string,
-  assigned: readonly string[] | undefined,
-): { unassigned: true; assignedSkills?: string[] } | { absent: true } {
-  if (!isSkillName(name)) return { absent: true };
-  const listing = listLibrarySkills().find((skill) => skill.name === name);
-  if (!listing) return { absent: true };
-  const explicit = assigned?.includes(name) === true;
-  const viaEvery = listing.everyBot && !librarySkillOptOuts(botId).has(name);
-  if (!explicit && !viaEvery) return { absent: true };
-  setLibrarySkillOptOut(botId, name, true);
-  return explicit
-    ? { unassigned: true, assignedSkills: assigned!.filter((skill) => skill !== name) }
-    : { unassigned: true };
-}
-
-export function setLibrarySkillEveryBot(
-  name: string,
-  everyBot: boolean,
-  root: string = skillsLibraryRoot(),
-): LibrarySkillListing | { error: string } {
-  if (!isSkillName(name)) return { error: "invalid skill name" };
-  const indexRead = readSkillLibraryIndexState(root);
-  if ("error" in indexRead) return indexRead;
-  const entry = indexRead.index[name];
-  if (!entry) return { error: `no library skill named "${name}"` };
-  if (everyBot) entry.everyBot = true;
-  else delete entry.everyBot;
-  writeSkillLibraryIndex(root, indexRead.index);
-  skillLibraryEvents.emit("invalidate", { kind: "every-bot", name });
-  return librarySkillListing(root, entry);
+/** The library skills on offer to every bot: each one the person switched on, less those a private skill of the bot's
+ * shadows by name. */
+export function librarySkillsOnOffer(owned: ReadonlySet<string>): LibrarySkillListing[] {
+  return listLibrarySkills().filter((skill) => librarySkillOnOffer(skill) && !owned.has(skill.name));
 }
 
 export function listLibrarySkills(root: string = skillsLibraryRoot()): LibrarySkillListing[] {

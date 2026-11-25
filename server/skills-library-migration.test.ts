@@ -10,6 +10,7 @@ process.env.OMB_DATA_DIR = mkdtempSync(join(tmpdir(), "omb-skills-migration-"));
 
 const library = await import("./skill-library.ts");
 const skills = await import("./skills.ts");
+const { renderSkillsIndex } = await import("./skills-index.ts");
 const migration = await import("./skills-library-migration.ts");
 const { workspaceDir } = await import("./workspace.ts");
 
@@ -49,58 +50,50 @@ describe("skills library migration", () => {
     writeFileSync(join(directory, "scripts", "probe.js"), "console.log('fixture');");
     writeFileSync(join(directory, "references", "notes.md"), "Fixture reference.");
     skills.setSkillEnabled(botA, name, true);
-    const report = migration.migrateBotSkillsToLibrary(botA);
-    expect(report.outcomes).toEqual([expect.objectContaining({ outcome: "skipped", detail: expect.stringContaining("auxiliary") })]);
+    const outcomes = migration.migrateBotSkillsToLibrary(botA);
+    expect(outcomes).toEqual([expect.objectContaining({ outcome: "skipped", detail: expect.stringContaining("auxiliary") })]);
     expect(readFileSync(join(workspaceDir(botA), "skills", name, "scripts", "probe.js"), "utf8")).toContain("fixture");
     expect(skills.listSkills(botA).find((skill) => skill.name === name)?.enabled).toBe(true);
     expect(library.readSkillLibraryIndex()[name]).toBeUndefined();
   });
 
-  it("deduplicates identical per-bot copies by sha256 and assigns both bots", () => {
+  it("deduplicates identical per-bot copies by sha256, and every bot reads the one entry", () => {
     const content = SKILL("shared-review", "Identical bytes.");
     for (const bot of [botA, botB]) {
       skills.installSkill(bot, "private:test", [{ path: "SKILL.md", content }]);
       skills.setSkillEnabled(bot, "shared-review", true);
     }
-    const reportA = migration.migrateBotSkillsToLibrary(botA);
-    const reportB = migration.migrateBotSkillsToLibrary(botB);
-    expect(reportA.outcomes).toEqual([expect.objectContaining({ botId: botA, name: "shared-review", outcome: "migrated" })]);
-    expect(reportB.outcomes).toEqual([expect.objectContaining({ botId: botB, name: "shared-review", outcome: "deduplicated" })]);
+    expect(migration.migrateBotSkillsToLibrary(botA)).toEqual([expect.objectContaining({ botId: botA, name: "shared-review", outcome: "migrated" })]);
+    expect(migration.migrateBotSkillsToLibrary(botB)).toEqual([expect.objectContaining({ botId: botB, name: "shared-review", outcome: "deduplicated" })]);
 
     const index = library.readSkillLibraryIndex();
     expect(Object.keys(index)).toEqual(["shared-review"]);
-    expect(reportA.assignments[botA]).toEqual(["shared-review"]);
-    expect(reportB.assignments[botB]).toEqual(["shared-review"]);
-    expect(skills.resolveBotSkills(botA, reportA.assignments[botA]).map((skill) => skill.sha256)).toEqual([index["shared-review"]!.sha256]);
-    expect(skills.resolveBotSkills(botB, reportB.assignments[botB]).map((skill) => skill.sha256)).toEqual([index["shared-review"]!.sha256]);
+    for (const bot of [botA, botB]) {
+      expect(skills.resolveBotSkills(bot, true).map((skill) => skill.sha256)).toEqual([index["shared-review"]!.sha256]);
+      expect(skills.listSkills(bot)).toEqual([]);
+    }
   });
 
-  it("assigns by each bot's own copy.enabled, so identical bytes are order-independent", () => {
+  it("migrates by each bot's own copy state, so identical bytes are order-independent", () => {
     for (const order of [["enabled", "disabled"], ["disabled", "enabled"]] as const) {
       const name = `order-${order[0]}-${order[1]}`;
       const content = SKILL(name);
       const ids = { enabled: `${botA}-${order[0]}`, disabled: `${botB}-${order[0]}` };
-      const reports: Partial<Record<"enabled" | "disabled", ReturnType<typeof migration.migrateBotSkillsToLibrary>>> = {};
+      const outcomes: Partial<Record<"enabled" | "disabled", ReturnType<typeof migration.migrateBotSkillsToLibrary>>> = {};
       for (const state of order) {
         skills.installSkill(ids[state], "private:test", [{ path: "SKILL.md", content }]);
         skills.setSkillEnabled(ids[state], name, state === "enabled");
-        reports[state] = migration.migrateBotSkillsToLibrary(ids[state]);
+        outcomes[state] = migration.migrateBotSkillsToLibrary(ids[state]);
       }
-      const enabledReport = reports.enabled!;
-      const disabledReport = reports.disabled!;
-
-      expect(disabledReport.assignments[ids.disabled]).toBeUndefined();
 
       if (order[0] === "enabled") {
-        expect(enabledReport.outcomes).toEqual([expect.objectContaining({ outcome: "migrated" })]);
-        expect(disabledReport.outcomes).toEqual([expect.objectContaining({ outcome: "skipped" })]);
+        expect(outcomes.enabled).toEqual([expect.objectContaining({ outcome: "migrated" })]);
+        expect(outcomes.disabled).toEqual([expect.objectContaining({ outcome: "skipped" })]);
         expect(skills.listSkills(ids.disabled).map((skill) => [skill.name, skill.enabled])).toEqual([[name, false]]);
-        expect(enabledReport.assignments[ids.enabled]).toEqual([name]);
         expect(library.readSkillLibraryIndex()[name]!.reviewState).toBe("approved");
       } else {
-        expect(disabledReport.outcomes).toEqual([expect.objectContaining({ outcome: "migrated" })]);
-        expect(enabledReport.outcomes).toEqual([expect.objectContaining({ outcome: "skipped", detail: expect.stringContaining("disabled") })]);
-        expect(enabledReport.assignments[ids.enabled]).toBeUndefined();
+        expect(outcomes.disabled).toEqual([expect.objectContaining({ outcome: "migrated" })]);
+        expect(outcomes.enabled).toEqual([expect.objectContaining({ outcome: "skipped", detail: expect.stringContaining("disabled") })]);
         expect(library.readSkillLibraryIndex()[name]!.reviewState).toBe("disabled");
         expect(existsSync(join(workspaceDir(ids.enabled), "skills", name, "SKILL.md"))).toBe(true);
         expect(skills.listSkills(ids.enabled).map((skill) => [skill.name, skill.enabled])).toEqual([[name, true]]);
@@ -125,14 +118,12 @@ describe("skills library migration", () => {
     const content = SKILL("re-hash", "Same bytes twice.");
     skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content }]);
     skills.setSkillEnabled(botA, "re-hash", true);
-    const first = migration.migrateBotSkillsToLibrary(botA);
-    expect(first.outcomes).toEqual([expect.objectContaining({ botId: botA, name: "re-hash", outcome: "migrated" })]);
+    expect(migration.migrateBotSkillsToLibrary(botA)).toEqual([expect.objectContaining({ botId: botA, name: "re-hash", outcome: "migrated" })]);
     const sha = library.readSkillLibraryIndex()["re-hash"]!.sha256;
 
     skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content }]);
     skills.setSkillEnabled(botA, "re-hash", true);
-    const second = migration.migrateBotSkillsToLibrary(botA);
-    expect(second.outcomes).toEqual([expect.objectContaining({ botId: botA, name: "re-hash", outcome: "deduplicated" })]);
+    expect(migration.migrateBotSkillsToLibrary(botA)).toEqual([expect.objectContaining({ botId: botA, name: "re-hash", outcome: "deduplicated" })]);
 
     const archiveRoot = join(library.skillsLibraryRoot(), "archive", botA);
     expect(readFileSync(join(archiveRoot, "re-hash", "SKILL.md"), "utf8")).toBe(content);
@@ -145,12 +136,9 @@ describe("skills library migration", () => {
     skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("conflict", "First copy.") }]);
     skills.installSkill(botB, "private:test", [{ path: "SKILL.md", content: SKILL("conflict", "Second, different copy.") }]);
     migration.migrateBotSkillsToLibrary(botA);
-    const reportB = migration.migrateBotSkillsToLibrary(botB);
-
-    expect(reportB.outcomes).toEqual([expect.objectContaining({ botId: botB, outcome: "skipped" })]);
+    expect(migration.migrateBotSkillsToLibrary(botB)).toEqual([expect.objectContaining({ botId: botB, outcome: "skipped" })]);
     expect(existsSync(join(workspaceDir(botB), "skills", "conflict", "SKILL.md"))).toBe(true);
     expect(skills.listSkills(botB).map((skill) => skill.name)).toEqual(["conflict"]);
-    expect(reportB.assignments[botB]).toBeUndefined();
   });
 
   it("maps organization stamps onto library entries so org installs become a source", () => {
@@ -169,151 +157,54 @@ describe("skills library migration", () => {
     const content = SKILL("toggle-review", "Identical bytes.");
     skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content }]);
     skills.setSkillEnabled(botA, "toggle-review", true);
-    expect(migration.migrateBotSkillsToLibrary(botA).assignments[botA]).toEqual(["toggle-review"]);
+    expect(migration.migrateBotSkillsToLibrary(botA)).toEqual([expect.objectContaining({ outcome: "migrated" })]);
     skills.installSkill(botB, "private:test", [{ path: "SKILL.md", content }]);
-    const reportB = migration.migrateBotSkillsToLibrary(botB);
-    expect(reportB.outcomes).toEqual([expect.objectContaining({
+    expect(migration.migrateBotSkillsToLibrary(botB)).toEqual([expect.objectContaining({
       botId: botB,
       name: "toggle-review",
       outcome: "skipped",
       detail: expect.stringContaining("align them before migrating"),
     })]);
-    expect(reportB.assignments[botB]).toBeUndefined();
     expect(skills.listSkills(botB).map((skill) => skill.name)).toEqual(["toggle-review"]);
     expect(skills.listSkills(botB)[0]!.enabled).toBe(false);
     expect(existsSync(join(workspaceDir(botB), "skills", "toggle-review", "SKILL.md"))).toBe(true);
   });
 
-  it("records the assignment durably before dropping the manifest entry", () => {
-    try {
-      skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("durable-assign") }]);
-      skills.setSkillEnabled(botA, "durable-assign", true);
-      const report = migration.migrateBotSkillsToLibrary(botA);
-      expect(report.assignments[botA]).toEqual(["durable-assign"]);
-      expect(skills.listSkills(botA)).toEqual([]);
-      expect(migration.readPendingAssignments()[botA]).toEqual(["durable-assign"]);
-    } finally {
-      migration.writePendingAssignments({});
-    }
-  });
-
-  it("keeps the manifest when the assignment cannot be recorded", () => {
-    const pendingPath = migration.pendingAssignmentsPath();
-    rmSync(pendingPath, { force: true });
-    mkdirSync(pendingPath); // a directory where the file must go: the write fails
-    try {
-      skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("hold-manifest") }]);
-      skills.setSkillEnabled(botA, "hold-manifest", true);
-      const report = migration.migrateBotSkillsToLibrary(botA);
-      expect(report.outcomes.at(-1)).toEqual(expect.objectContaining({
-        botId: botA,
-        name: "hold-manifest",
-        outcome: "skipped",
-        detail: expect.stringContaining("could not record the assignment durably"),
-      }));
-      expect(report.assignments[botA]).toBeUndefined();
-      expect(skills.listSkills(botA).map((skill) => skill.name)).toEqual(["hold-manifest"]);
-      expect(skills.readSkillFile(botA, "hold-manifest")).toContain("# hold-manifest");
-      rmSync(pendingPath, { recursive: true });
-      const retried = migration.migrateBotSkillsToLibrary(botA);
-      expect(retried.assignments[botA]).toEqual(["hold-manifest"]);
-      expect(skills.listSkills(botA)).toEqual([]);
-      expect(migration.readPendingAssignments()[botA]).toEqual(["hold-manifest"]);
-    } finally {
-      rmSync(pendingPath, { recursive: true, force: true });
-      migration.writePendingAssignments({});
-    }
-  });
-
-  it("flag-off byte-identity: a populated library changes no unassigned bot surface", () => {
+  it("with the library off, a populated library changes no bot surface", () => {
     const content = SKILL("flag-off-skill");
     skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("own-skill") }]);
     skills.setSkillEnabled(botA, "own-skill", true);
 
     const listingBefore = skills.listSkills(botA);
-    const promptBefore = skills.skillsSystemPrompt(botA);
+    const promptBefore = renderSkillsIndex(listingBefore.filter((skill) => skill.enabled).map((skill) => ({ name: skill.name, description: skill.description, source: "own" as const })));
 
     library.installLibrarySkill({ name: "flag-off-skill", instructions: content, source: "lib", reviewState: "approved" });
     library.installLibrarySkill({ name: "own-skill", instructions: SKILL("own-skill", "Library impostor."), source: "lib", reviewState: "approved" });
 
     expect(skills.listSkills(botA)).toEqual(listingBefore);
-    expect(skills.skillsSystemPrompt(botA)).toBe(promptBefore);
-    expect(skills.resolveBotSkills(botA, undefined)).toEqual(listingBefore);
+    expect(renderSkillsIndex(listingBefore.filter((skill) => skill.enabled).map((skill) => ({ name: skill.name, description: skill.description, source: "own" as const })))).toBe(promptBefore);
+    expect(skills.resolveBotSkills(botA, false)).toEqual(listingBefore);
+    // On, every bot reads the library's skills, and the bot's own copy still wins the shared name.
+    const on = skills.resolveBotSkills(botA, true);
+    expect(on.map((skill) => skill.name)).toEqual(expect.arrayContaining(["own-skill", "flag-off-skill"]));
+    expect(on.filter((skill) => skill.name === "own-skill").map((skill) => skill.source)).toEqual(["private:test"]);
   });
 });
 
 describe("skills library boot sweep", () => {
-  it("does not assign a disabled private copy when shared approval changes later", () => {
-    const name = "disabled-not-assigned";
-    skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL(name) }]);
-    const patched: string[][] = [];
-    migration.runSkillsLibraryBootSweep({ bots: [{ id: botA }], patch: (_id, names) => patched.push(names) });
-    expect(patched).toEqual([]);
-    expect(library.setLibrarySkillReviewState(name, "approved")).not.toHaveProperty("error");
-    expect(skills.resolveBotSkills(botA, undefined)).toEqual([]);
-    expect(migration.readPendingAssignments()[botA]).toBeUndefined();
-  });
-
-  it("recovers a newly migrated assignment after the bot save fails and boot retries", () => {
-    const name = "restart-save-failure";
-    skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL(name) }]);
-    skills.setSkillEnabled(botA, name, true);
-    const bots = [{ id: botA, assignedSkills: undefined as string[] | undefined }];
-    expect(() => migration.runSkillsLibraryBootSweep({
-      bots,
-      patch: () => { throw new Error("fixture bot save failed"); },
-    })).toThrow("fixture bot save failed");
-    const recovered: string[][] = [];
-    migration.runSkillsLibraryBootSweep({ bots, patch: (_id, names) => recovered.push(names) });
-    expect(recovered).toEqual([[name]]);
-    expect(migration.readPendingAssignments()).toEqual({});
-  });
-
-  it("applies script-recorded pending assignments through the patch callback and clears the file", () => {
-    skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("pending-skill") }]);
-    skills.setSkillEnabled(botA, "pending-skill", true);
-    migration.writePendingAssignments({ [botA]: ["some-already-library-skill"] });
-    const bots = [{ id: botA, assignedSkills: undefined as string[] | undefined }];
-    const patched: Array<[string, string[]]> = [];
-    const report = migration.runSkillsLibraryBootSweep({
-      bots,
-      patch: (botId, assignedSkills) => {
-        patched.push([botId, assignedSkills]);
-        bots[0] = { id: botId, assignedSkills };
-      },
-    });
-    expect(patched).toEqual([[botA, ["pending-skill", "some-already-library-skill"]]]);
-    expect(report.assignments[botA]).toEqual(["pending-skill", "some-already-library-skill"]);
-    expect(migration.readPendingAssignments()).toEqual({});
-
-    const second = migration.runSkillsLibraryBootSweep({
-      bots,
-      patch: (botId, assignedSkills) => patched.push([botId, assignedSkills]),
-    });
-    expect(second.outcomes).toEqual([]);
-    expect(second.assignments).toEqual({});
-    expect(patched.length).toBe(1);
-  });
-
-  it("with migrate off it leaves a bot's own skills where they are, and still finishes pending assignments", () => {
+  it("migrates nothing when it only finishes shares", () => {
     skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("stays-private") }]);
     skills.setSkillEnabled(botA, "stays-private", true);
-    migration.writePendingAssignments({ [botA]: ["shared-before-a-crash"] });
-    const patched: Array<[string, string[]]> = [];
-    const report = migration.runSkillsLibraryBootSweep({
-      bots: [{ id: botA }], migrate: false,
-      patch: (botId, assignedSkills) => patched.push([botId, assignedSkills]),
-    });
-    expect(report.outcomes).toEqual([]);
+    expect(migration.runSkillsLibraryBootSweep({ bots: [{ id: botA }], migrate: false }).outcomes).toEqual([]);
     expect(skills.listSkills(botA).map((skill) => skill.name)).toEqual(["stays-private"]);
     expect(library.readSkillLibraryIndex()["stays-private"]).toBeUndefined();
-    expect(patched).toEqual([[botA, ["shared-before-a-crash"]]]);
-    expect(migration.readPendingAssignments()).toEqual({});
   });
 
-  it("without a patch callback it reports only and leaves pending assignments alone", () => {
-    migration.writePendingAssignments({ [botB]: ["held-skill"] });
-    migration.runSkillsLibraryBootSweep({ bots: [{ id: botB }] });
-    expect(migration.readPendingAssignments()).toEqual({ [botB]: ["held-skill"] });
+  it("moves every bot's own copies into the library on a migrating boot", () => {
+    skills.installSkill(botA, "private:test", [{ path: "SKILL.md", content: SKILL("boot-move") }]);
+    skills.setSkillEnabled(botA, "boot-move", true);
+    expect(migration.runSkillsLibraryBootSweep({ bots: [{ id: botA }] }).outcomes).toEqual([expect.objectContaining({ outcome: "migrated" })]);
+    expect(skills.listSkills(botA)).toEqual([]);
+    expect(library.readSkillLibraryIndex()["boot-move"]).toBeDefined();
   });
 });

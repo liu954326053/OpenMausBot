@@ -66,11 +66,9 @@ export const stepSchema = z.discriminatedUnion("kind", [
   /** Applied before the first turn: pins admission preconditions (for
    * example threads.maxConcurrentPerBot) the scenario's behavior needs. */
   z.object({ kind: z.literal("setConfig"), config: z.record(z.string(), z.unknown()) }),
-  /** Replaces a bot's library skill assignments wholesale (the Skills
-   * surface's PUT), so a scenario can prove an assignment change alters
-   * what the next turn sees. */
-  z.object({ kind: z.literal("setSkillAssignment"), bot: z.string(), skills: z.array(z.string()) }),
-  z.object({ kind: z.literal("setVmState"), state: z.record(z.string(), z.unknown()) }),
+  /** The library's one switch for a skill: on makes it available to every bot, so a scenario can prove the switch
+   * changes what the next turn sees. */
+  z.object({ kind: z.literal("setLibrarySkillEnabled"), name: z.string(), enabled: z.boolean() }),  z.object({ kind: z.literal("setVmState"), state: z.record(z.string(), z.unknown()) }),
   z.object({ kind: z.literal("consumeDump"), timeoutMs: z.number().optional() }),
   z.object({ kind: z.literal("captureComputer"), bot: z.string() }),
   z.object({ kind: z.literal("pollComputerGate"), bot: z.string(), saveAs: z.string() }),

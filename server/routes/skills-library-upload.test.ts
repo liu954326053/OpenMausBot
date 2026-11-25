@@ -7,7 +7,7 @@ import type { SkillsLibrarySkillWire } from "../../shared/wire.ts";
 import type { AppConfig } from "../config.ts";
 import { json, readBody } from "../harness/http.ts";
 import type { RequestAuth } from "../request-auth.ts";
-import { listLibrarySkills, readLibrarySkillFile, setLibrarySkillEveryBot, setLibrarySkillReviewState } from "../skill-library.ts";
+import { listLibrarySkills, readLibrarySkillFile, setLibrarySkillReviewState } from "../skill-library.ts";
 import type { Store } from "../store.ts";
 import { buildZip } from "../testing/zip-fixture.ts";
 import { createBotSkillsRoutes } from "./bot-skills.ts";
@@ -72,7 +72,7 @@ describe("uploading skill packages to the skills library", () => {
 
     expect(reply.status).toBe(201);
     expect(reply.body.installed?.map((skill) => [skill.name, skill.replaced, skill.files])).toEqual([["douyin-pick", false, 1], ["tomato-pick", false, 2]]);
-    expect(stored("tomato-pick")).toMatchObject({ enabled: false, everyBot: false, source: "upload:comics .zip" });
+    expect(stored("tomato-pick")).toMatchObject({ enabled: false, source: "upload:comics .zip" });
     expect(readLibrarySkillFile("tomato-pick")).toBe(skillMd("tomato-pick"));
   });
 
@@ -93,13 +93,12 @@ describe("uploading skill packages to the skills library", () => {
     expect(stored("folder-pick")).toMatchObject({ source: "upload:folder-pick", files: ["references/sites.md"] });
   });
 
-  it("leaves a skill of the same name alone until asked to replace it, then keeps who it is on for", async () => {
+  it("leaves a skill of the same name alone until asked to replace it, then makes the person read it again", async () => {
     const call = await serve();
     const first = [{ path: "SKILL.md", content: base64(skillMd("swap-pick")) }];
     const second = [{ path: "SKILL.md", content: base64(skillMd("swap-pick", "Pick by this week's chart.")) }];
     expect((await call("POST", "/api/skills-library/upload", { files: first })).status).toBe(201);
     setLibrarySkillReviewState("swap-pick", "approved");
-    setLibrarySkillEveryBot("swap-pick", true);
 
     const refused = await call("POST", "/api/skills-library/upload", { files: second });
     expect(refused.status).toBe(409);
@@ -110,7 +109,7 @@ describe("uploading skill packages to the skills library", () => {
     expect(replaced.status).toBe(201);
     expect(replaced.body.installed).toMatchObject([{ name: "swap-pick", replaced: true }]);
     expect(readLibrarySkillFile("swap-pick")).toBe(skillMd("swap-pick", "Pick by this week's chart."));
-    expect(stored("swap-pick")).toMatchObject({ enabled: false, everyBot: true, source: "upload:files" });
+    expect(stored("swap-pick")).toMatchObject({ enabled: false, source: "upload:files" });
   });
 
   it("refuses what holds no skill, what is not an archive, and a request with neither or both", async () => {
@@ -126,7 +125,7 @@ describe("uploading skill packages to the skills library", () => {
     expect(stored("both-pick")).toBeUndefined();
   });
 
-  it("says which skills any bot may pick up: switched on, and not already on for every bot", async () => {
+  it("says a skill any bot may pick up is one that is switched on", async () => {
     const call = await serve();
     expect((await call("POST", "/api/skills-library/upload", { files: [{ path: "SKILL.md", content: base64(skillMd("offer-pick")) }] })).status).toBe(201);
     const row = async () => (await call("GET", "/api/skills-library")).body.skills?.find((skill) => skill.name === "offer-pick");
@@ -134,8 +133,6 @@ describe("uploading skill packages to the skills library", () => {
     expect(await row()).not.toHaveProperty("onOffer");
     setLibrarySkillReviewState("offer-pick", "approved");
     expect(await row()).toMatchObject({ onOffer: true });
-    setLibrarySkillEveryBot("offer-pick", true);
-    expect(await row()).not.toHaveProperty("onOffer");
   });
 
   it("is not there when the library is switched off", async () => {

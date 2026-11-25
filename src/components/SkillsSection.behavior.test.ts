@@ -31,7 +31,7 @@ type Props = { children?: ReactNode; onClick?: () => void; disabled?: boolean; [
 function nodes(value: ReactNode): ReactElement<Props>[] {
   return Children.toArray(value).flatMap((child) => isValidElement<Props>(child) ? [child, ...nodes(child.props.children)] : []);
 }
-const skill = (name = "order-audit"): SkillsLibrarySkillWire => ({ name, description: "Audit orders", source: "local-import", enabled: false, everyBot: false, tags: [], version: null, importedAt: "2026-10-02T00:00:00Z", warnings: [], assignedBots: [] });
+const skill = (name = "order-audit"): SkillsLibrarySkillWire => ({ name, description: "Audit orders", source: "local-import", enabled: false, tags: [], version: null, importedAt: "2026-10-02T00:00:00Z", warnings: [] });
 const source = "---\nname: order-audit\ndescription: Audit orders\n---\n\nCheck every line item.";
 const response = (body: unknown, ok = true) => ({ ok, json: async () => body });
 function render(bot = false) {
@@ -43,13 +43,15 @@ const button = (tree: ReactElement<Props>[], text: string) => tree.find((node) =
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 beforeEach(() => {
-  fixture.values = [[skill()], false, "", "", null, null, "", "", false, "", "bot"];
+  // useState/useRef order in SkillsSection: skills, loading, error, query, activeTag, viewing, working, importText, importing,
+  // importMessage, the busy ref, removed.
+  fixture.values = [[skill()], false, "", "", null, null, "", "", false, "", { current: false }, null];
   fixture.modal.mockClear();
   fixture.request.mockReset();
   vi.stubGlobal("fetch", vi.fn(async (url: string, options?: RequestInit) => response(options?.method === "PATCH" ? {} : url.endsWith("order-audit") ? { text: source } : { skills: [skill()] })));
 });
 
-describe("Skills library review and assignment controls", () => {
+describe("Skills library review and enable controls", () => {
   it("shows verified full source and requires explicit approval before enabling", async () => {
     named(render(), "Enable order-audit").props.onClick!();
     await flush();
@@ -74,40 +76,11 @@ describe("Skills library review and assignment controls", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("makes a reviewed skill available to every bot from the library", async () => {
-    named(render(), "Every bot").props.onClick!();
-    await flush();
-    expect(fetch).toHaveBeenCalledWith("/api/skills-library/order-audit", expect.objectContaining({
-      method: "PATCH",
-      body: '{"everyBot":true}',
-    }));
-  });
-
-  it("blocks a simultaneous second assignment and reads current assignments before the next PUT", async () => {
-    const rows = [skill("alpha"), skill("beta")];
-    fixture.values[0] = rows;
-    let unblock!: (value: Response) => void;
-    const delayed = new Promise<Response>((resolve) => { unblock = resolve; });
-    const writes: string[][] = [];
-    vi.mocked(fetch).mockImplementation(async (_url, options) => {
-      if (options?.method === "PUT") {
-        const next = JSON.parse(options.body as string).skills as string[];
-        writes.push(next);
-        for (const row of rows) row.assignedBots = next.includes(row.name) ? [{ id: "bot", name: "Pepper" }] : [];
-      }
-      return response({ skills: rows }) as Response;
-    }).mockImplementationOnce(() => delayed);
-    const buttons = render().filter((node) => node.type === "button" && node.props.children === "Assign");
-    buttons[0]!.props.onClick!();
-    buttons[1]!.props.onClick!();
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(render().filter((node) => node.props.children === "Assign").every((node) => node.props.disabled)).toBe(true);
-    unblock(response({ skills: rows }) as Response);
-    await flush();
-    expect(writes).toEqual([["alpha"]]);
-    render().filter((node) => node.type === "button" && node.props.children === "Assign")[1]!.props.onClick!();
-    await flush();
-    expect(writes).toEqual([["alpha"], ["alpha", "beta"]]);
+  it("offers no way to assign a skill to one bot", () => {
+    const tree = render();
+    expect(tree.find((node) => node.props["aria-label"] === "Assign to bot")).toBeUndefined();
+    expect(tree.some((node) => node.props.children === "Every bot")).toBe(false);
+    expect(tree.some((node) => node.type === "button" && node.props.children === "Assign")).toBe(false);
   });
 
   it("puts adding a package first, and reloads the list once one came in", async () => {
@@ -151,16 +124,16 @@ describe("Skills library review and assignment controls", () => {
     await expect((toast.props.onUndo as () => Promise<void>)()).rejects.toThrow("Couldn't put that skill back. Add its package again.");
   });
 
-  it("tells a switched-on skill any bot may pick up from one no bot can use yet", () => {
+  it("tells a switched-on skill from one no bot can use yet", () => {
     fixture.values[0] = [{ ...skill("on-offer"), enabled: true, onOffer: true }, skill("waiting")];
-    const said = render().filter((node) => node.type === "span").map((node) => node.props.children);
-    expect(said).toContain("No bot is assigned. Any bot picks it up when a task needs it.");
-    expect(said).toContain("Not assigned to any bot.");
+    const said = render().map((node) => node.props.children);
+    expect(said).toContain("Every bot can use this skill when a task needs it.");
+    expect(said).toContain("Every bot can use this skill once you switch it on.");
   });
 
   it("requires the same source review before enabling a per-bot library skill", async () => {
-    // Hook call order: useManagedSkills owns 0-8 and the assignment guard ref (9); the section owns 10-13.
-    fixture.values = [[{ ...skill(), origin: "library" }], ["order-audit"], [], "", [], false, "", "", null, { current: false }, null, "", false, ""];
+    // Hook order in the bot panel: useManagedSkills owns 0-5, then viewing, source, importing, importMessage, the dialog ref.
+    fixture.values = [[{ ...skill(), origin: "library" }], [], false, "", "", null, null, "", false, ""];
     fixture.request.mockImplementation(async (_url, options) => options?.method ? {} : { text: source });
     named(render(true), "Enable order-audit").props.onClick!();
     await flush();
@@ -175,7 +148,7 @@ describe("Skills library review and assignment controls", () => {
 
   it("shows a skill from this computer with this bot's switch, and no way to delete the one copy every bot shares", async () => {
     const imported = { name: "pdf", description: "Works with PDFs", enabled: true, source: "~/.claude/skills/pdf", warnings: [], origin: "imported" };
-    fixture.values = [[imported], [], [], "", [], false, "", "", null, { current: false }, null, "", false, ""];
+    fixture.values = [[imported], [], false, "", "", null, null, "", false, ""];
     fixture.request.mockImplementation(async (_url, options) => options?.method ? {} : { text: source });
     const tree = render(true);
     expect(tree.find((node) => node.props["aria-label"] === "Remove pdf")).toBeUndefined();

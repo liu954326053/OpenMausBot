@@ -927,27 +927,20 @@ export type SteerQueueReason = "capacity" | "group-turn";
 export type BotQueuedMessages = Record<string, Array<{ queueId: string; text: string; reason?: SteerQueueReason; /** The reason in plain words, shown as it is. */ why?: string;
   /** Team Cloud, where several people write: whose line waits; only they remove it, and it runs after as their own turn. */ sender?: ResolvedSender }>>;
 
-/** Skills library browse surface: one row per library entry, with the bots currently assigned to it. Version is null
- * for locally imported skills. `onOffer`: bots it is not assigned to still read it when a task needs it. */
+/** Skills library browse surface: one row per library entry. Version is null for locally imported skills. `onOffer`:
+ * the skill is switched on, so every bot reads it when a task needs it. */
 export interface SkillsLibrarySkillWire {
   name: string;
   description: string;
   source: string;
   enabled: boolean;
-  everyBot: boolean;
   tags: string[];
   version: string | null;
   importedAt: string;
   license?: string;
   compatibility?: string;
   warnings: string[];
-  assignedBots: Array<{ id: string; name: string }>;
   onOffer?: boolean;
-}
-
-/** PUT body for a bot's assignment list: the full list, applied idempotently. */
-export interface BotAssignedSkillsWire {
-  skills: string[];
 }
 
 export type ServerFrame =

@@ -104,10 +104,9 @@ describe("making a project from a team", () => {
     expect(app.exports).toEqual(["Sales desk"]);
   });
 
-  it("gives each copy its source's current model, look and persona, and no library skill or MCP server", async () => {
+  it("gives each copy its source's current model, look and persona, and no MCP server", async () => {
     const app = await installation();
     app.store.applyModelDefault(app.source("scout").id, { instanceId: "codex", model: "gpt-test", effort: "high" });
-    app.store.patchBot(app.source("scout").id, { assignedSkills: ["beat-sheet"] });
     app.store.patchBot(app.source("writer").id, { mascotFaceColor: "black", avatarZoom: 2, avatarFocusX: 0.25, avatarFocusY: 0.75 });
     app.store.patchBotProfile(app.source("writer").id, { soul: "You write every outreach email.\nKeep it short." });
     const { project } = made(await app.projects.create(sales("Stand-in bride")));
@@ -116,7 +115,7 @@ describe("making a project from a team", () => {
     expect(bots.get("scout")!.modelSelection).toEqual({ instanceId: "codex", model: "gpt-test", effort: "high" });
     expect(bots.get("lead")!.modelSelection).toEqual(app.source("lead").modelSelection);
     for (const bot of bots.values()) {
-      expect(bot.assignedSkills).toBeUndefined();
+      expect(bot).not.toHaveProperty("assignedSkills");
       expect(bot.mcpServers).toBeUndefined();
     }
     expect(app.source("scout").mcpServers).toEqual(["crm"]);
@@ -157,7 +156,7 @@ describe("making a project from a team", () => {
     expect(JSON.parse(copy(project.folder, "project.json"))).toEqual(app.registry.projects()[0]);
     const team = JSON.parse(copy(project.folder, "team/team.json"));
     expect(team).toMatchObject({ department: "Stand-in bride", lead: "lead" });
-    expect(team.bots[0]).toMatchObject({ name: "Morgan", librarySkills: [] });
+    expect(team.bots[0]).toMatchObject({ name: "Morgan" });
     expect(readdirSync(join(project.folder, ".magic-team", "team", "personas")).sort()).toEqual(["lead.md", "scout.md", "writer.md"]);
     expect(copy(project.folder, "team/personas/lead.md")).toContain(lead.soul!.trim());
     expect(copy(project.folder, "team/context.md")).toContain("We sell seats.");

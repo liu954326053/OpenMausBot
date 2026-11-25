@@ -1,9 +1,9 @@
-// Per-bot skill copies move into the shared library; originals are archived write-once, and a manifest entry is dropped only after its archive and assignment are durable.
+// Per-bot skill copies move into the shared library, which every bot reads. A copy that moved on disk since its review
+// stays where it is: the manifest is the only record that can still be verified.
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-import { writeFileAtomic } from "./atomic.ts";
 import {
   installLibrarySkill,
   libraryArchiveDirectory,
@@ -22,7 +22,6 @@ export interface SkillMigrationOutcome {
 export interface SkillsMigrationReport {
   ranAt: string;
   outcomes: SkillMigrationOutcome[];
-  assignments: Record<string, string[]>;
 }
 
 function sha256Hex(text: string): string {
@@ -50,9 +49,8 @@ export function archiveSkillDirectory(source: string, archive: string, expectSha
   }
 }
 
-export function migrateBotSkillsToLibrary(botId: string, root: string = skillsLibraryRoot()): SkillsMigrationReport {
+export function migrateBotSkillsToLibrary(botId: string, root: string = skillsLibraryRoot()): SkillMigrationOutcome[] {
   const outcomes: SkillMigrationOutcome[] = [];
-  const assigned: string[] = [];
   for (const copy of listMigratableSkills(botId)) {
     if (!copy.intact || !copy.directory) {
       outcomes.push({ botId, name: copy.name, outcome: "skipped", detail: "stored SKILL.md is missing or changed after review" });
@@ -83,7 +81,8 @@ export function migrateBotSkillsToLibrary(botId: string, root: string = skillsLi
       outcomes.push({ botId, name: copy.name, outcome: "skipped", detail: `the library already has a different "${copy.name}" — rename one of them` });
       continue;
     }
-    // The entry's review state is shared: deduplicating a copy whose on/off differs would flip that bot's switch.
+    // The entry's review state is the library's one switch, so deduplicating a copy whose on/off differs would flip it
+    // for every bot.
     if (existing && (existing.reviewState === "approved") !== copy.enabled) {
       outcomes.push({
         botId,
@@ -113,17 +112,6 @@ export function migrateBotSkillsToLibrary(botId: string, root: string = skillsLi
     } else {
       outcomes.push({ botId, name: copy.name, outcome: "deduplicated", detail: "identical sha256 already in the library" });
     }
-    // The manifest entry is the only re-readable record: the assignment must be durable (pending file) before it goes.
-    try {
-      const pendingAssignments = readPendingAssignments(root);
-      if (copy.enabled) writePendingAssignments({
-        ...pendingAssignments,
-        [botId]: [...new Set([...(pendingAssignments[botId] ?? []), ...assigned, copy.name])].sort(),
-      }, root);
-    } catch (error) {
-      outcomes.push({ botId, name: copy.name, outcome: "skipped", detail: `could not record the assignment durably: ${error instanceof Error ? error.message : String(error)}` });
-      continue;
-    }
     try {
       archiveSkillDirectory(copy.directory, libraryArchiveDirectory(root, botId, copy.name), copy.sha256);
     } catch (error) {
@@ -133,62 +121,9 @@ export function migrateBotSkillsToLibrary(botId: string, root: string = skillsLi
     const removed = removeManifestEntry(botId, copy.name, copy.sha256);
     if ("error" in removed) {
       outcomes.push({ botId, name: copy.name, outcome: "skipped", detail: removed.error });
-      continue;
     }
-    // A disabled copy assigns nothing: nobody gains a skill they never turned on.
-    if (copy.enabled) assigned.push(copy.name);
   }
-  return { ranAt: new Date().toISOString(), outcomes, assignments: assigned.length ? { [botId]: assigned } : {} };
-}
-
-export function pendingAssignmentsPath(root: string = skillsLibraryRoot()): string {
-  return join(root, "pending-assignments.json");
-}
-
-export function readPendingAssignments(root: string = skillsLibraryRoot()): Record<string, string[]> {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(pendingAssignmentsPath(root), "utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const result: Record<string, string[]> = {};
-    for (const [botId, names] of Object.entries(parsed as Record<string, unknown>)) {
-      if (Array.isArray(names) && names.every((name) => typeof name === "string")) result[botId] = [...names];
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-export function writePendingAssignments(assignments: Record<string, string[]>, root: string = skillsLibraryRoot()): void {
-  mkdirSync(root, { recursive: true, mode: 0o700 });
-  writeFileAtomic(pendingAssignmentsPath(root), `${JSON.stringify(assignments, null, 2)}\n`, { mode: 0o600 });
-}
-
-/** `migrate: false` leaves each bot's own skills where they are and only finishes assignments a share left pending. */
-export function runSkillsLibraryBootSweep(options: {
-  bots: readonly { id: string; assignedSkills?: string[] }[];
-  patch?: (botId: string, assignedSkills: string[]) => void;
-  root?: string;
-  migrate?: boolean;
-}): SkillsMigrationReport {
-  const root = options.root ?? skillsLibraryRoot();
-  const outcomes: SkillMigrationOutcome[] = [];
-  const assignments: Record<string, string[]> = {};
-  const pending = options.patch ? readPendingAssignments(root) : {};
-  for (const bot of options.bots) {
-    const report = options.migrate === false ? { outcomes: [], assignments: {} as Record<string, string[]> } : migrateBotSkillsToLibrary(bot.id, root);
-    outcomes.push(...report.outcomes);
-    const current = bot.assignedSkills ?? [];
-    const merged = [...new Set([...(pending[bot.id] ?? []), ...(report.assignments[bot.id] ?? []), ...current])].sort();
-    const changed = merged.length !== current.length || merged.some((name, index) => name !== current[index]);
-    if (!changed) continue;
-    if (options.patch) options.patch(bot.id, merged);
-    assignments[bot.id] = merged;
-  }
-  if (options.patch && (Object.keys(pending).length || Object.keys(readPendingAssignments(root)).length)) {
-    writePendingAssignments({}, root);
-  }
-  return { ranAt: new Date().toISOString(), outcomes, assignments };
+  return outcomes;
 }
 
 export function botIdsWithSkillState(dataDir: string): string[] {
@@ -200,4 +135,19 @@ export function botIdsWithSkillState(dataDir: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** Boot sweep: finishes moving private copies a share left behind. `migrate: false` keeps each bot's own skills where
+ * they are and only revisits copies already moved. */
+export function runSkillsLibraryBootSweep(options: {
+  bots: readonly { id: string }[];
+  root?: string;
+  migrate?: boolean;
+}): SkillsMigrationReport {
+  const root = options.root ?? skillsLibraryRoot();
+  const outcomes: SkillMigrationOutcome[] = [];
+  if (options.migrate !== false) {
+    for (const bot of options.bots) outcomes.push(...migrateBotSkillsToLibrary(bot.id, root));
+  }
+  return { ranAt: new Date().toISOString(), outcomes };
 }
