@@ -22,7 +22,7 @@ import { isSkillName } from "../shared/skill-md.ts";
 import { writeFileAtomic } from "./atomic.ts";
 import { DATA_DIR } from "./config.ts";
 import { directoryEntryState, entryExistsWithoutFollowing } from "./skill-storage.ts";
-import { INDEX_MAX_BYTES, INDEX_MAX_SKILLS, type SkillListing } from "./skills.ts";
+import type { SkillListing } from "./skills.ts";
 
 export const IMPORTED_SKILLS_DIR = join(DATA_DIR, "imported-skills");
 /** Beside each bot's own skill state, outside every folder a bot works in. */
@@ -455,28 +455,6 @@ export function codexSkillRoots(home: string, codexHome: string | undefined): st
 }
 
 export interface SkillIndexBudget { skills: number; bytes: number }
-
-const INDEX_BUDGET: SkillIndexBudget = { skills: INDEX_MAX_SKILLS, bytes: INDEX_MAX_BYTES };
-
-/** One source's part of a turn's skills index, with a budget of its own so one source never pushes another out. `more`
- * says how to find the `unlisted` ones and those left over the budget. */
-export function skillIndexBlock(
-  copy: { intro: string; guidance: string; more(count: number): string },
-  skills: readonly ImportedSkillView[],
-  unlisted = 0,
-  budget: SkillIndexBudget = INDEX_BUDGET,
-): string {
-  if (!skills.length && !unlisted) return "";
-  const block = (lines: string[], omitted: number) =>
-    `\n\n${copy.intro}\n` + (lines.length ? `${lines.join("\n")}\n${copy.guidance}` : "") + (omitted ? `${lines.length ? "\n" : ""}${copy.more(omitted)}` : "");
-  const lines: string[] = [];
-  for (const skill of skills.slice(0, budget.skills)) {
-    const line = `- ${skill.name}: ${skill.description} Read ${JSON.stringify(skill.file)}.`;
-    if (Buffer.byteLength(block([...lines, line], skills.length - lines.length - 1 + unlisted), "utf8") > budget.bytes) break;
-    lines.push(line);
-  }
-  return block(lines, skills.length - lines.length + unlisted);
-}
 
 /** After the bot's own skills. `unlisted` counts the ones on for the bot that are left out of its list: it reads them
  * with the skill tool. */

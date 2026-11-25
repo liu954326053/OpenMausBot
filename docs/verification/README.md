@@ -127,6 +127,10 @@ creating, switching between and recovering named local environments by hand on
 a packaged desktop install; the control surface cannot drive it, so it is not
 in the map above.
 
+The [run_command recipe](run-command.md) turns on the shell tool API engines get
+and drives it through the server's own routes and a loopback provider, because
+the control surface cannot switch a feature flag or answer an approval card.
+
 The [talk shortcut recipe](talk-shortcut.md) checks hold-to-talk from any app, the
 reply box and the Quick asks chat by hand on a packaged side-by-side build; the
 control surface cannot drive a global shortcut or the microphone, so it is not

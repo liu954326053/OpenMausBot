@@ -21,6 +21,7 @@ import { TEAM_PROJECT_TOOL_DEFINITIONS } from "./agents-team-project-tools.ts";
 import { PROJECT_CANVAS_TOOL_DEFINITIONS, PROJECT_LEAD_TOOL_NAMES } from "./agents-project-canvas-tools.ts";
 import { PROJECT_TIMELINE_TOOL_DEFINITIONS } from "./agents-project-timeline-tools.ts";
 import { PERSON_TOOL_DEFINITIONS } from "./agents-person-tools.ts";
+import { RUN_COMMAND_TOOL, RUN_COMMAND_TOOL_DEFINITION } from "./run-command-tool.ts";
 import { RESEARCH_TOOL_DEFINITIONS, RESEARCH_TOOL_NAMES, X_TOOL_NAMES } from "./agents-research-tools.ts";
 import { SHARE_TOOL_DEFINITIONS } from "./agents-share-tool.ts";
 import type { CatalogProfile } from "./agents-catalog-profile.ts";
@@ -314,6 +315,7 @@ const TOOL_DEFINITIONS = [
       required: ["command"],
     },
   },
+  RUN_COMMAND_TOOL_DEFINITION,
   {
     name: "attach_file",
     description:
@@ -875,6 +877,7 @@ function catalogTools(profile: CatalogProfile) {
     (profile.computerSelection === true || tool.name !== "select_computer") &&
     (profile.room !== true || !ROOM_REFUSED_TOOL_NAMES.has(tool.name)) &&
     (profile.imageGeneration === true || !IMAGE_TOOL_NAMES.has(tool.name)) && (profile.appHosting === true || !HOSTING_TOOL_NAMES.has(tool.name)) &&
+    (profile.runCommand === true || tool.name !== RUN_COMMAND_TOOL) &&
     (profile.meetings === true || (!MEETING_TOOL_NAMES.has(tool.name) && tool.name !== "reset_cloud_computer")));
   const AUTHORING_TOOLS = profile.skillAuthoring
     ? BOT_SCOPED_TOOLS

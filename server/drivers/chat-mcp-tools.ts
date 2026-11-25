@@ -16,6 +16,7 @@ import { killCliTree, spawnCli } from "../procs.ts";
 import { AGENTS_TOOL_ALIASES } from "../../shared/agents-tool-names.ts";
 import { bridgedCallTarget, unbridgedServer } from "./agents-bridge.ts";
 import { chatImage, type ChatImagePart } from "./chat-images.ts";
+import { RUN_COMMAND_TOOL } from "./run-command-tool.ts";
 import { CALL_TOOL, DESCRIBE_TOOL, SEARCH_TOOL, ToolDirectory, directoryCallTarget, isDirectoryTool, type CatalogTool, type DirectoryResult } from "../mcp-directory.ts";
 import { AppObserver, modelVisible, withUiExtension } from "../mcp-app-observer.ts";
 import { appMountFor, mcpStdioServer } from "../mcp-gate-config.ts";
@@ -839,6 +840,13 @@ export async function mountChatTools(integrations: SendTurnInput["integrations"]
   };
   const viewOf = (tool: RegisteredTool, args: Record<string, unknown>, title: string): ChatToolCallView => {
     const runs = target(tool, args);
+    // Security: a command the model wrote runs on this computer, so it gets a card as any configured server's tool does,
+    // called directly or through the tool bridge; "Always allow this session" keeps that exact command line allowed,
+    // never the tool.
+    if (tool.agents && (tool.name === RUN_COMMAND_TOOL || bridgedCallTarget(tool.name, args) === RUN_COMMAND_TOOL)) {
+      const input = tool.name === RUN_COMMAND_TOOL ? args : object(args.arguments) ? args.arguments : {};
+      return { title: tool.name === RUN_COMMAND_TOOL ? title : chatToolName(tool.server, RUN_COMMAND_TOOL), input, ask: true, grant: JSON.stringify([RUN_COMMAND_TOOL, input.command]) };
+    }
     if (runs === undefined || tool.agents) return { title, input: args, ask: false };
     const grant = !tool.hostComputer ? JSON.stringify([tool.server, tool.launch, runs]) : undefined;
     if (!tool.searched || tool.name !== CALL_TOOL) return { title, input: args, ask: true, ...(grant ? { grant } : {}) };

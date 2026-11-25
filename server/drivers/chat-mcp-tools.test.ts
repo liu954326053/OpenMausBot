@@ -879,6 +879,19 @@ describe("Chat MCP approvals by server", () => {
     expect(session.view("agents_write", { value: "x" })).toMatchObject({ ask: true, grant: grantFor("agents", "write") });
     expect(session.view("computer_write", { value: "x" })).toMatchObject({ ask: true, grant: grantFor("computer", "write") });
   });
+
+  it("asks before the agents server's run_command, called directly or through use_tool, and allows only that command line again", async () => {
+    const agents = fixture(`if (message.method === "tools/list") { reply(message, {tools:[{name:"run_command",inputSchema:schema},{name:"use_tool",inputSchema:schema},{name:"skill",inputSchema:schema}]}); continue; }`);
+    const session = await mountChatTools({ agents: agents.server }, agents.controller.signal, true);
+    sessions.push(session);
+    const grant = JSON.stringify(["run_command", "ls -la"]);
+    expect(session.view("agents_run_command", { command: "ls -la" })).toEqual({ title: "agents_run_command", input: { command: "ls -la" }, ask: true, grant });
+    expect(session.view("agents_use_tool", { name: "run_command", arguments: { command: "ls -la" } }))
+      .toEqual({ title: "agents_run_command", input: { command: "ls -la" }, ask: true, grant });
+    expect(session.view("agents_run_command", { command: "rm -rf build" }).grant).not.toBe(grant);
+    expect(session.view("agents_skill", { name: "x" })).toMatchObject({ ask: false });
+    expect(session.view("agents_use_tool", { name: "skill", arguments: { name: "x" } })).toMatchObject({ ask: false });
+  });
 });
 
 describe("Chat MCP tool directory", () => {

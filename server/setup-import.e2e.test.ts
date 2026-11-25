@@ -106,15 +106,16 @@ describe("bringing in another AI tool's setup through the desktop app's own serv
         expect.objectContaining({ name: "review-pr", enabled: true, source: "~/.codex/skills/review-pr", origin: "imported" }),
       ]);
       const told = await turn(bot, "Write the release notes");
-      expect(told.system).toContain("Skills from this computer:");
-      expect(told.system).toContain(`- release-notes: Writes release notes from merged changes. Read ${JSON.stringify(join(copyOf("release-notes"), "SKILL.md"))}.`);
+      expect(told.system).toContain("\nSkills:\n");
+      expect(told.system).toContain("- release-notes (this computer): Writes release notes from merged changes.");
+      expect(told.system).not.toContain(join(copyOf("release-notes"), "SKILL.md"));
       expect(told.linked(".claude", "release-notes")).toBe(copyOf("release-notes"));
       expect(told.linked(".agents", "review-pr")).toBe(copyOf("review-pr"));
       expect(told.argv).not.toContain("--add-dir");
     }
     // The prompt preview in Bot Settings says the same.
     const preview = JSON.parse((await api("GET", `/api/bots/${later.id}/system-prompt`)).text) as { sections: Array<{ id: string; text: string }> };
-    expect(preview.sections.find((section) => section.id === "skills")?.text).toContain("- review-pr: Reviews a pull request.");
+    expect(preview.sections.find((section) => section.id === "skills")?.text).toContain("- review-pr (this computer): Reviews a pull request.");
     // `/name` runs one too, for a bot that never had it in its own Skills.
     expect((await turn(later, "/review-pr the open change")).message).toContain(
       // `message` is the prompt as JSON, so the sentence appears JSON-escaped (on Windows the path's \ twice over).
@@ -141,7 +142,7 @@ describe("bringing in another AI tool's setup through the desktop app's own serv
     expect(told.system).not.toContain("release-notes");
     expect(told.linked(".claude", "release-notes")).toBeNull();
     // Codex's skill is not in ~/.claude/skills, so Claude still gets that one from this computer.
-    expect(told.system).toContain("- review-pr: Reviews a pull request.");
+    expect(told.system).toContain("- review-pr (this computer): Reviews a pull request.");
     expect(told.linked(".claude", "review-pr")).toBe(copyOf("review-pr"));
   });
 
@@ -177,8 +178,8 @@ describe("bringing in another AI tool's setup through the desktop app's own serv
     const dumped = () => JSON.parse(readFileSync(fixture.fixtureDumpPath, "utf8")) as { prompt?: unknown; systemPrompt?: string };
     await expect.poll(() => JSON.stringify(dumped().prompt ?? "").includes("Room marker 7c1"), { timeout: 20_000 }).toBe(true);
     const system = dumped().systemPrompt ?? "";
-    expect(system).toContain("Skills from this computer:");
-    expect(system).toContain("- review-pr: Reviews a pull request.");
+    expect(system).toContain("\nSkills:\n");
+    expect(system).toContain("- review-pr (this computer): Reviews a pull request.");
     // "Also use my Claude Code skills" is still on from above: Claude has release-notes from its own folder.
     expect(system).not.toContain("release-notes");
   });

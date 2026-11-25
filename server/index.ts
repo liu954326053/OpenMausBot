@@ -336,6 +336,8 @@ import { engineCommandCpuMs, engineProcessExited, engineProcessGone, ENGINE_EXIT
 import { TurnResources, type TurnOwner } from "./turn-resources.ts";
 import { createPhoneHold } from "./phone-screen/hold.ts"; import { createPhoneGate } from "./routes/phone-gate.ts";
 import { endHoldUnlessOn, usbPhoneOffered, usbPhoneTakeoverEnabled } from "./phone-screen/flag.ts"; import { dataPrompts } from "./data-prompt.ts";
+import { runCommand, RunCommandRefusal, runCommandEnabled } from "./run-command.ts";
+import { RUN_COMMAND_CWD_MAX_CHARS, RUN_COMMAND_MAX_CHARS } from "./drivers/run-command-tool.ts";
 import { createPhoneScreenRoutes } from "./routes/phone-screen.ts";
 import {
   ensureWorkspace,
@@ -1403,6 +1405,9 @@ await registry.load(providerConfigs(), decorateHostedProvider);
 const bundledSkills = loadBundledSkills();
 const availableSkills = () => mergeSkills(bundledSkills, loadUserSkills(join(DATA_DIR, "skills")));
 const HAS_USB_PORT = !CLOUD_HOME && !HOSTED_WORKSPACE, usbPhoneTakeoverOn = () => HAS_USB_PORT && usbPhoneTakeoverEnabled(cfg); // A Cloud home or a hosted workspace has no USB port.
+const RUN_COMMAND_HERE = !CLOUD_HOME && !HOSTED_WORKSPACE, runCommandOn = () => RUN_COMMAND_HERE && runCommandEnabled(cfg);
+/** Only an engine with no shell of its own gets run_command: the chat runtime's card is what asks the person about it. */
+const runCommandMounted = (driverKind: string) => runCommandOn() && !supportsWorkspaceFiles(driverKind);
 
 type UtilityParentPort = {
   on(event: "message", listener: (event: { data?: object }) => void): void;
@@ -1601,6 +1606,8 @@ type InternalCapability = {
   attachedFiles?: number;
   /** attach_file may also deliver files saved outside the conversation's folders. Never on a Cloud home or a hosted workspace. */
   deliversSavedFiles?: boolean;
+  /** The turn's tools list run_command: its route runs nothing for a capability without this. */
+  runCommand?: boolean;
   turnStartedAt?: number;
   roomPosts?: number;
   delegatedThisTurn?: Set<string>;
@@ -1811,15 +1818,15 @@ function agentsIntegration(
   skillAuthoring: boolean,
   generation: string,
   roomHandoffId?: string,
-  hostFiles = false, automated = false,
+  hostFiles = false, automated = false, driverKind = "",
 ) {
   const bot = store.bot(botId), speaking = botForThread(botId, threadId) ?? bot;
   // Only advertises the tools; the routes behind them refuse regardless.
   const host = { skillAuthoring: skillAuthoringEnabled(cfg), sharedComputers: botLending(), cloudHome: Boolean(CLOUD_HOME), team: Boolean(CLOUD_TEAM),
-    voiceNotes: tts.voiceReady(cfg, speaking?.voice) && speaking?.voiceNotes !== false, x: Boolean(researchCredential(cfg.treg?.key)), research: researchAvailability.available(), imageGeneration: imageToolReady(cfg), meetings: boat.boatConfigured(cfg), appHosting: hostingCredential() !== null, localVm: localVmAvailability.available() };
+    voiceNotes: tts.voiceReady(cfg, speaking?.voice) && speaking?.voiceNotes !== false, x: Boolean(researchCredential(cfg.treg?.key)), research: researchAvailability.available(), imageGeneration: imageToolReady(cfg), meetings: boat.boatConfigured(cfg), appHosting: hostingCredential() !== null, localVm: localVmAvailability.available(), runCommand: runCommandMounted(driverKind) };
   return { ...agentsProxyLaunch(), env: agentsServerEnv({ threadId, bot: bot ?? { id: botId }, room: Boolean(store.groupByThread(threadId)), projectRoom: inOwnProjectRoom(bot, store.groupByThread(threadId)), teamComputer: Boolean(bot && inheritedTeamComputer(bot)), botDriven: automated || botDrivenConversation(store.taskByThread(botId, threadId)), host },
     { generation, depth, skillAuthoring, roomHandoffId, ...(hostFiles && !CLOUD_HOME && !HOSTED_WORKSPACE ? { deliversSavedFiles: true } : {}) },
-    (turn) => mintInternalCapability({ botId, threadId, kind: "agents", createdBots: 0, openedThreads: 0, ...turn }), `http://127.0.0.1:${PORT}`) };
+    (turn) => mintInternalCapability({ botId, threadId, kind: "agents", createdBots: 0, openedThreads: 0, ...turn, ...(host.runCommand ? { runCommand: true } : {}) }), `http://127.0.0.1:${PORT}`) };
 }
 
 /** The project folder a bot's work in this conversation goes in: its own conversations and its own project's room;
@@ -2966,7 +2973,7 @@ function previewSystemPrompt(bot: BotRecord) {
     { id: "team-memory", label: "Team memory", text: teamMemory.systemPrompt(bot.section) + (agentsMounted ? TEAM_MEMORY_PROMPT : "") },
     teamAvailabilityPart(agentsMounted && coordination ? peers : []),
     { id: "memory-rules", label: "How memory works", text: memoryRulesPrompt(bot.id, { managedWrites: agentsMounted, fileTools: Boolean(privateWorkspace), enabled: bot.memoryEnabled !== false }) }, { id: "memory", label: "Memory", text: memoryNotesPrompt(bot.id, { managedWrites: agentsMounted, fileTools: Boolean(privateWorkspace), enabled: bot.memoryEnabled !== false }) },
-    { id: "skills", label: "Skills index", text: privateWorkspace ? skillsHost.skillsIndex(bot, undefined, instance) : "" },
+    { id: "skills", label: "Skills index", text: privateWorkspace || agentsMounted ? skillsHost.skillsIndex(bot, undefined, instance ?? undefined) : "" },
   ], agentsMounted ? { env: agentsToolBridgeEnv(cfg, bot, instance && turnEngine(instance, providerConfigs(), registry.lastSnapshot(instance.instanceId), bot.cwd ?? undefined)) } : undefined, { replyStyle: bot.replyStyle, rules: cfg.everyBotRules });
   const totalBytes = built.sections.reduce((n, s) => n + s.bytes, 0);
   return {
@@ -8342,7 +8349,7 @@ async function beginTurn(
       // One reachability rule: a bot is never told about a peer that coordinate_bots would refuse.
       const sectionPeers = personalReach.peers(store.bots, bot, threadId);
       if (agentsMounted) {
-        integrations.agents = agentsIntegration(bot.id, threadId, commsDepth, skillAuthoring, dispatchClaimId, opts?.coordination?.id, worksInWorkspace, opts?.automationSource !== undefined);
+        integrations.agents = agentsIntegration(bot.id, threadId, commsDepth, skillAuthoring, dispatchClaimId, opts?.coordination?.id, worksInWorkspace, opts?.automationSource !== undefined, instance.driverKind);
       }
       if (instance.adapter.capabilities.hooks === true && hooksEnabled()) {
         integrations.hooks = hooksIntegration(bot.id, threadId, dispatchClaimId);
@@ -8483,7 +8490,7 @@ async function beginTurn(
         { id: "recent", label: "Recent work", text: recentWorkPrompt(recentWork(recentWorkSources(bot), bot, { userName: CLOUD_TEAM ? teamHost.personName(teamConversationPerson(threadId)) ?? "the team" : cfg.profile?.name?.trim() || "User", currentThreadId: threadId, ...recentWorkFilter(threadId) })) },
         { id: "memory-rules", label: "How memory works", text: memoryRulesPrompt(teamHost.layer(bot.id, threadId), memoryOpts) }, { id: "memory", label: "Memory", text: memoryNotesPrompt(teamHost.layer(bot.id, threadId), memoryOpts) + teamHost.sharedNotesPrompt(bot.id, threadId) },
         // liveBot predates awaited setup work; an assignment PUT in that window must still reach this prompt.
-        { id: "skills", label: "Skills index", text: privateWorkspace ? skillsHost.skillsIndex(store.bot(bot.id) ?? bot, threadId, instance, cwd ?? null) : "" },
+        { id: "skills", label: "Skills index", text: privateWorkspace || integrations.agents ? skillsHost.skillsIndex(store.bot(bot.id) ?? bot, threadId, instance, cwd ?? null) : "" },
         { id: "skill-instructions", label: "Skill instructions", text: skillInstructions },
         { id: "playbooks", label: "Playbooks", text: packagePlaybooks },
         { id: "webhook", label: "Webhook provenance", text: opts?.automationSource === "webhook" ? WEBHOOK_PROMPT : opts?.automationSource === "api" ? (botApiThread(threadId) ? BOT_API_PROMPT : BOT_API_OWNER_PROMPT) : "" },
@@ -9812,7 +9819,7 @@ async function runClaimedGroupMemberTurn(
     !cardContinuation &&
     instance.adapter.capabilities.agentsMcp === true;
   if (instance.adapter.capabilities.agentsMcp === true) {
-    integrations.agents = agentsIntegration(bot.id, threadId, hop, skillAuthoring, internalGeneration, orchestration?.roomHandoffId, supportsWorkspaceFiles(instance.driverKind));
+    integrations.agents = agentsIntegration(bot.id, threadId, hop, skillAuthoring, internalGeneration, orchestration?.roomHandoffId, supportsWorkspaceFiles(instance.driverKind), false, instance.driverKind);
   }
   if (instance.adapter.capabilities.hooks === true && hooksEnabled()) {
     integrations.hooks = hooksIntegration(bot.id, threadId, internalGeneration);
@@ -10247,7 +10254,7 @@ async function runClaimedGroupMemberTurn(
     { id: "section-context", label: "Section context", text: sectionContextSystemPrompt(bot.section) },
     { id: "team-memory", label: "Team memory", text: teamMemory.systemPrompt(bot.section) + (integrations.agents ? TEAM_MEMORY_PROMPT : "") },
     { id: "memory-rules", label: "How memory works", text: memoryRulesPrompt(teamHost.layer(bot.id, threadId), roomMemoryOpts) }, { id: "memory", label: "Memory", text: roomMemory ? `\n${roomMemory.trim()}` : "" },
-    { id: "skills", label: "Skills index", text: workspace ? skillsHost.skillsIndex(bot, threadId, instance, cwd ?? null) : "" },
+    { id: "skills", label: "Skills index", text: workspace || integrations.agents ? skillsHost.skillsIndex(bot, threadId, instance, cwd ?? null) : "" },
     { id: "skill-instructions", label: "Skill instructions", text: renderSkillInstructions(selectedSkills, { includeRoot: Boolean(workspace) }) },
     { id: "playbooks", label: "Playbooks", text: installedPlaybookInstructions(text, bot.playbooks) },
   ], integrations.agents, { rules: cfg.everyBotRules });
@@ -11848,6 +11855,7 @@ function configStatus() {
       parallelRoomJobs: parallelRoomJobsEnabled(cfg),
       savedSteps: savedStepsEnabled(cfg), savedStepsHere: savedSteps.here(),
       usbPhoneTakeover: HAS_USB_PORT ? usbPhoneTakeoverEnabled(cfg) : undefined,
+      runCommand: RUN_COMMAND_HERE ? runCommandEnabled(cfg) : undefined,
     },
     onboarding: {
       completedAt: cfg.onboarding?.completedAt ?? "",
@@ -13314,6 +13322,37 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           return json(res, 200, !CLOUD_HOME && failedOnHostPath(body.command, result) ? { ...result, note: `That path is on this computer, and vm_exec runs only inside this bot's Private desktop. ${thisComputerSwitchFor(internalCapability, internalSender, "vm")}` } : result);
         } catch (error) {
           const status = typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 500;
+          return json(res, status, { error: error instanceof Error ? error.message : "could not run the command" });
+        }
+      }
+      if (method === "POST" && path === "/api/internal/run-command") {
+        const threadId = internalCapability.threadId;
+        if (!connectorThread(internalSender.id, threadId)) {
+          return json(res, 403, { error: "source conversation does not belong to sender" });
+        }
+        if (!runCommandOn() || internalCapability.runCommand !== true) {
+          return json(res, 403, { error: "Running commands is switched off on this server, or this turn does not have the run_command tool." });
+        }
+        const body = await readInternalBody();
+        if (typeof body.command !== "string" || !body.command.trim() || body.command.length > RUN_COMMAND_MAX_CHARS) {
+          return json(res, 400, { error: `Pass the command to run as text of at most ${RUN_COMMAND_MAX_CHARS} characters.` });
+        }
+        if (body.cwd !== undefined && (typeof body.cwd !== "string" || body.cwd.length > RUN_COMMAND_CWD_MAX_CHARS)) {
+          return json(res, 400, { error: "cwd must be a folder inside your own folder, relative to it." });
+        }
+        const gone = new AbortController();
+        res.once("close", () => { if (!res.writableFinished) gone.abort(); });
+        try {
+          requireActiveInternalCapability();
+          const outcome = await runCommand({
+            bot: { id: internalSender.id, name: internalSender.name }, threadId, command: body.command,
+            ...(typeof body.cwd === "string" ? { cwd: body.cwd } : {}),
+            ...(typeof body.timeout_seconds === "number" ? { timeoutSeconds: body.timeout_seconds } : {}),
+            signal: gone.signal,
+          });
+          return json(res, 200, outcome);
+        } catch (error) {
+          const status = error instanceof RunCommandRefusal ? error.status : typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 500;
           return json(res, status, { error: error instanceof Error ? error.message : "could not run the command" });
         }
       }
