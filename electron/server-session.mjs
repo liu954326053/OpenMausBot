@@ -43,14 +43,16 @@ export function targetsPostHog(url) {
  * `ownerToken()` is the desktop capability, or null while there is none to send. Chromium adds the header below
  * JavaScript, on http: and ws: alike, so a shell using curl cannot impersonate the person at the desktop.
  */
-export function installServerSessions({ app, defaultSession, serverPort, ownerToken }) {
+export function installServerSessions({ app, defaultSession, serverPort, devUiPort = null, ownerToken }) {
   defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const token = ownerToken();
     let owns = false;
     try {
       const target = new URL(details.url);
+      const port = Number(target.port || 80);
+      // In development the page is Vite's, and its /api requests are proxied to the server that this app runs.
       owns = token !== null && (target.protocol === "http:" || target.protocol === "ws:") &&
-        target.hostname === "127.0.0.1" && Number(target.port || 80) === serverPort();
+        target.hostname === "127.0.0.1" && (port === serverPort() || (devUiPort !== null && port === devUiPort));
     } catch {}
     callback({ requestHeaders: owns ? { ...details.requestHeaders, [DESKTOP_MUTATION_HEADER]: token } : details.requestHeaders });
   });

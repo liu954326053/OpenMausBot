@@ -58,6 +58,7 @@ export async function pollServerIdentity({
   isListening = () => false,
   listeningGraceMs = 0,
   listened,
+  requireStatic = true,
   now = Date.now,
   sleep = defaultSleep,
   fetchImpl = globalThis.fetch,
@@ -93,7 +94,7 @@ export async function pollServerIdentity({
       expectedPid !== undefined &&
       body?.app === "openmausbot" &&
       body.pid === expectedPid &&
-      body.static;
+      (!requireStatic || Boolean(body.static));
     if (!identified) return { outcome: "foreign-owner" };
     if (now() >= deadline()) return { outcome: "timeout", waitedMs: now() - startedAt };
     return { outcome: "ready", latencyMs: now() - startedAt };

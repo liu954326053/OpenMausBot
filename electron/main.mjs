@@ -135,6 +135,8 @@ const { MIN_BOUNDS, normalizeUnreadCount, resolveWindowState } = require("./wind
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // vite binds IPv4; a bare "localhost" can resolve to ::1.
 const DEV_URL = process.env.ELECTRON_START_URL ?? "http://127.0.0.1:5199";
+/** `OMB_DESKTOP_DEV_SERVER=1`: this development build runs its own server child, as the packaged app does. */
+const DEV_SERVER_MODE = !app.isPackaged && process.env.OMB_DESKTOP_DEV_SERVER !== "0";
 let SERVER_PORT = 8799;
 const APP_ICON = path.join(__dirname, "resources/app-icon.png");
 let desktopViewerWindow = null;
@@ -267,6 +269,7 @@ app.on("second-instance", (_event, commandLine) => {
 
 let serverProc = null;
 let serverReady = !app.isPackaged;
+let devServerStarted = false;
 let secureCredentials = {};
 let secureCredentialState = null;
 let desktopDataDirLease = null;
@@ -1105,15 +1108,30 @@ function receivePhoneSecretSave(proc, rawMessage) {
   return true;
 }
 
+/** Whether a MagicBot server already answers on this port, as `pnpm dev:server` leaves one. */
+async function localServerAnswers(port) {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(900) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmentDir(environmentsState, desktopDataDir())) {
   if (desktopShutdownStarted) return { proc: null, abort: true };
-  const { entry, compileCacheDir } = serverChildLaunch({
-    resourcesPath: process.resourcesPath,
-    userData: app.getPath("userData"),
-  });
+  // In development the server is TypeScript and run from this checkout; Electron's utility process strips the types, and
+  // being this process's child is what lets it receive the local-computer grant.
+  const devServer = !app.isPackaged;
+  const { entry, compileCacheDir } = devServer
+    ? { entry: path.join(app.getAppPath(), "server", "dev-server.ts"), compileCacheDir: null }
+    : serverChildLaunch({
+        resourcesPath: process.resourcesPath,
+        userData: app.getPath("userData"),
+      });
   const childEnv = managedComposioChildEnvironment(composioBrokerUrl(), secureCredentials, {
     // The parent owns the data-dir lease; a child only validates it, so fallback-port children never replace it.
-    ...process.env, ...systemProxy.latest(), ...desktopDataDirLease.utilityServerLeaseEnvironment(),
+    ...process.env, ...systemProxy.latest(), ...desktopDataDirLease?.utilityServerLeaseEnvironment(),
     OMB_DATA_DIR: dataDir, OMB_DEFAULT_LANGUAGE: "zh",
     // Fail-closed until this process sends the private connection; never a descriptor inherited from the shell.
     OMB_DESKTOP_PARENT: "1",
@@ -1133,9 +1151,16 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
   delete childEnv.OMB_BROWSER_CONNECTION;
   delete childEnv.OMB_SERVER_COMPILE_CACHE;
   if (compileCacheDir) childEnv.OMB_SERVER_COMPILE_CACHE = compileCacheDir;
+  if (devServer) {
+    // The checkout's own paths and the Vite page, as `pnpm dev:server` would have them.
+    delete childEnv.OMB_STATIC_DIR;
+    delete childEnv.OMB_SKILLS_DIR;
+    delete childEnv.OMB_RESOURCES_PATH;
+  }
   slog(`fork ${entry} port=${port}`); launchRecord.mark("serverForked");
   const proc = utilityProcess.fork(entry, [], {
     env: childEnv,
+    ...(devServer ? { execArgv: ["--experimental-strip-types"] } : {}),
     stdio: ["ignore", "pipe", "pipe"],
   });
   let resolveServerExit;
@@ -1181,6 +1206,7 @@ async function startServerOn(port, dataDir = runningDataDir ?? startupEnvironmen
     isExited: () => exited || desktopShutdownStarted,
     isListening: listening.heard, listened: listening.announced,
     listeningGraceMs: SERVER_LISTENING_GRACE_MS,
+    requireStatic: app.isPackaged,
   });
   if (identity.outcome === "ready" && serverSupervisor.isCurrent(proc)) return { proc };
   slog(bootFailureMessage(port, identity));
@@ -3005,7 +3031,8 @@ app.whenReady().then(async () => { launchRecord.mark("ready");
     }
   }
   installServerSessions({ app, defaultSession: session.defaultSession, serverPort: () => SERVER_PORT,
-    ownerToken: () => (app.isPackaged && serverReady ? desktopMutationToken : null) });
+    devUiPort: DEV_SERVER_MODE ? Number(new URL(DEV_URL).port || 80) : null,
+    ownerToken: () => (serverReady && (app.isPackaged || devServerStarted) ? desktopMutationToken : null) });
   if (app.isPackaged) app.setAsDefaultProtocolClient("magicbot");
   if (process.platform === "darwin") app.dock.setIcon(APP_ICON);
   secureCredentials = await bootHeadStart.take("credentials"); launchRecord.mark("keysRead");
@@ -3115,6 +3142,14 @@ app.whenReady().then(async () => { launchRecord.mark("ready");
     } catch (error) {
       serverReady = false;
       slog(`desktop companion relay failed: ${error?.message ?? error}`);
+    }
+  } else if (DEV_SERVER_MODE) {
+    // A dev server someone started already (`pnpm dev:server`) is used as it is; otherwise this app runs the server,
+    // which is what gives it the local-computer grant.
+    const external = await localServerAnswers(SERVER_PORT);
+    if (!external) {
+      const started = await startServerOn(SERVER_PORT);
+      if (started.proc && serverSupervisor.ready(started.proc)) { serverReady = true; devServerStarted = true; }
     }
   } else if (app.isPackaged) {
     const booted = await startServerPackaged();
