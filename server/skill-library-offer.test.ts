@@ -13,43 +13,41 @@ const skills = await import("./skills.ts");
 const offer = await import("./skill-library-offer.ts");
 const { FIT_MAX_SKILLS } = await import("./imported-skills.ts");
 const { createSkillsLibraryHost } = await import("./host/skills-library.ts");
+const { renderSkillsIndex } = await import("./skills-index.ts");
 
 const SKILL = (name: string, description = "Picks comics that suit a short drama.") =>
   `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\nDo the thing.\n`;
 const unique = (stem: string) => `${stem}-${Math.random().toString(36).slice(2, 10)}`;
 const add = (name: string, extra: { source?: string; reviewState?: "approved" | "disabled"; description?: string } = {}) =>
   library.installLibrarySkill({ name, instructions: SKILL(name, extra.description), source: extra.source ?? "upload:pack.zip", reviewState: extra.reviewState ?? "approved" });
-const offered = (botId: string, assigned: string[] = [], owned: string[] = []) =>
-  library.librarySkillsOnOffer(botId, new Set(assigned), new Set(owned)).map((skill) => skill.name);
+const offered = (owned: string[] = []) =>
+  library.librarySkillsOnOffer(new Set(owned)).map((skill) => skill.name);
 
 let bot: string;
 beforeEach(() => {
   bot = unique("offer-bot");
 });
 
-describe("library skills on offer to every bot", () => {
-  it("offers a skill the person added and switched on to a bot it was never assigned to", () => {
+describe("library skills every bot may read", () => {
+  it("offers a skill the person switched on, whatever bot asks", () => {
     const name = unique("on");
     add(name);
-    expect(offered(bot)).toContain(name);
+    expect(offered()).toContain(name);
   });
 
-  it("holds back a skill that is off, one a bot learned and shared, and one this bot already has another way", () => {
-    const off = unique("off"), learned = unique("learned"), assigned = unique("assigned"), every = unique("every"), own = unique("own"), dropped = unique("dropped");
+  it("holds back a skill that is off, and one this bot owns another way", () => {
+    const off = unique("off"), own = unique("own");
     add(off, { reviewState: "disabled" });
-    add(learned, { source: "learn:how we cut trailers" });
-    for (const name of [assigned, every, own, dropped]) add(name);
-    library.setLibrarySkillEveryBot(every, true);
-    library.setLibrarySkillOptOut(bot, dropped, true);
-    const names = offered(bot, [assigned], [own]);
-    for (const name of [off, learned, assigned, every, own, dropped]) expect(names, name).not.toContain(name);
-    library.setLibrarySkillEveryBot(every, false);
+    add(own);
+    const names = offered([own]);
+    expect(names).not.toContain(off);
+    expect(names).not.toContain(own);
   });
 
   it("names each offered skill's SKILL.md in the library", () => {
     const name = unique("view");
     add(name);
-    const view = offer.offeredSkillViews(bot, [], new Set()).find((skill) => skill.name === name)!;
+    const view = offer.offeredSkillViews(new Set()).find((skill) => skill.name === name)!;
     expect(view.file).toBe(library.librarySkillFilePath(name));
     expect(view.description).toBe("Picks comics that suit a short drama.");
   });
@@ -68,45 +66,51 @@ describe("which offered skills a bot's prompt lists", () => {
     expect(listed.map((skill) => skill.name)).toEqual(["skill-20"]);
   });
 
-  it("writes them into the prompt with where to read each, and says how to find the rest", () => {
-    const text = offer.libraryOfferPrompt([{ name: "fanqie-manju", description: "按番茄平台的规则筛选漫剧。", folder: "/lib/fanqie-manju", file: "/lib/fanqie-manju/SKILL.md" }], 3);
-    expect(text).toContain("Skills from the skills library:");
-    expect(text).toContain('- fanqie-manju: 按番茄平台的规则筛选漫剧。 Read "/lib/fanqie-manju/SKILL.md".');
-    expect(text).toContain("3 more skills in the skills library are not listed here");
-    expect(text).toContain("skills_list");
-    expect(offer.libraryOfferPrompt([], 0)).toBe("");
+  it("writes a short library list into the prompt by name, without the file path", () => {
+    const text = renderSkillsIndex([{ name: "fanqie-manju", description: "按番茄平台的规则筛选漫剧。", source: "library" }]);
+    expect(text).toContain("Skills:");
+    expect(text).toContain("- fanqie-manju (the skills library): 按番茄平台的规则筛选漫剧。");
+    expect(text).toContain("skill tool");
+    expect(text).not.toContain("/lib/fanqie-manju/SKILL.md");
+    expect(renderSkillsIndex([])).toBe("");
+  });
+
+  it("counts what the budget left out and what the bot's own list left out", () => {
+    const entries = Array.from({ length: 3 }, (_, i) => ({ name: `s-${i}`, description: "Does a thing.", source: "own" as const }));
+    expect(renderSkillsIndex(entries, { budget: { skills: 2, bytes: 100_000 }, unlisted: 4 })).toContain("5 more skills are not listed here");
+    expect(renderSkillsIndex([], { unlisted: 1 })).toContain("1 more skill is not listed here");
   });
 });
 
-describe("a bot's turn with skills on offer", () => {
+describe("a bot's turn with library skills", () => {
   const hostFor = (record: BotRecord, cfg: AppConfig = {} as AppConfig) => createSkillsLibraryHost({
     store: { bot: () => record, messagesFor: () => [], taskByThread: () => undefined } as unknown as Store,
     cfg,
     appendSkillRequestCard: () => ({ requestId: "", summary: "" }),
   });
 
-  it("lists an offered skill in the turn's index, runs it from /name, and gives skills_list its path", () => {
+  it("lists a library skill in the turn's index, reads it in full through the tool, runs it from /name", () => {
     const name = unique("turn");
     add(name);
     const record = { id: bot, threadId: "main", name: "Picker", modelSelection: { instanceId: "none" } } as unknown as BotRecord;
     const host = hostFor(record);
-    expect(host.skillsIndex(record, "main")).toContain(`- ${name}: Picks comics that suit a short drama. Read ${JSON.stringify(library.librarySkillFilePath(name))}.`);
+    expect(host.skillsIndex(record, "main")).toContain(`- ${name} (the skills library): Picks comics that suit a short drama.`);
+    expect(host.readSkill(record, name)).toBe(SKILL(name));
     expect(host.expandSkillCommand(record, "main", `/${name}`, undefined, [], true)).toContain(`ran your ${name} skill`);
     const row = host.harnessSkills(record).find((skill) => skill.name === name);
-    expect(row).toMatchObject({ enabled: true, editable: false, listed: true, file: library.librarySkillFilePath(name) });
+    expect(row).toMatchObject({ enabled: true, editable: false, file: library.librarySkillFilePath(name) });
   });
 
-  it("lists every offered skill to the main bot, however many there are, and only the ones that fit to any other bot", () => {
+  it("lists every library skill to the main bot, however many there are, and only the ones that fit to any other bot", () => {
     const names = Array.from({ length: FIT_MAX_SKILLS + 5 }, (_, i) => unique(`many-${i}`));
     for (const name of names) add(name, { description: `Topic ${name}.` });
     const main = { id: bot, threadId: "main", name: "MagicBot", defaultBot: {}, modelSelection: { instanceId: "none" } } as unknown as BotRecord;
     const index = hostFor(main).skillsIndex(main, "main");
-    for (const name of names) expect(index, name).toContain(`- ${name}:`);
-    expect(index).not.toContain("not listed here");
+    for (const name of names) expect(index, name).toContain(`- ${name} (`);
     const picker = { ...main, name: "Picker", defaultBot: undefined } as BotRecord;
     const capped = hostFor(picker).skillsIndex(picker, "main");
-    expect(names.filter((name) => capped.includes(`- ${name}:`)).length).toBeLessThanOrEqual(FIT_MAX_SKILLS);
-    expect(capped).toContain("not listed here");
+    expect(names.filter((name) => capped.includes(`- ${name} (`)).length).toBeLessThanOrEqual(FIT_MAX_SKILLS);
+    expect(capped).toContain("more skills are not listed here");
   });
 
   it("offers nothing while the library is off, and never a skill the bot owns under the same name", () => {
@@ -116,10 +120,20 @@ describe("a bot's turn with skills on offer", () => {
     const off = hostFor(record, { features: { skillsLibrary: false } } as AppConfig);
     expect(off.skillsIndex(record, "main")).not.toContain(name);
     expect(off.harnessSkills(record).some((skill) => skill.name === name)).toBe(false);
+    expect(off.readSkill(record, name)).toBeNull();
     skills.installSkill(bot, "private:test", [{ path: "SKILL.md", content: SKILL(name, "The bot's own copy.") }]);
     skills.setSkillEnabled(bot, name, true);
     const on = hostFor(record);
-    expect(on.skillsIndex(record, "main")).toContain("The bot's own copy.");
-    expect(on.skillsIndex(record, "main")).not.toContain(JSON.stringify(library.librarySkillFilePath(name)));
+    expect(on.skillsIndex(record, "main")).toContain("- " + name + " (your own): The bot's own copy.");
+    expect(on.readSkill(record, name)).toContain("The bot's own copy.");
+  });
+
+  it("answers an unknown name with the list a bot can read", () => {
+    const name = unique("known");
+    add(name);
+    const record = { id: bot, threadId: "main", name: "Picker", modelSelection: { instanceId: "none" } } as unknown as BotRecord;
+    const host = hostFor(record);
+    expect(host.readSkill(record, "no-such-skill")).toBeNull();
+    expect(host.skillCatalogue(record).map((skill) => skill.name)).toContain(name);
   });
 });

@@ -11,7 +11,6 @@ import { Switch } from "../SettingsPrimitives";
 import { inputCls } from "./field";
 import { OrgSkillsCard } from "./OrgSkillsCard";
 import { WriteCommandCard } from "./WriteCommandCard";
-import { Select } from "../Select";
 import { DepositSkillButton } from "./DepositSkillButton";
 
 export interface ManagedSkill {
@@ -35,11 +34,6 @@ const inFolder = (skill: ManagedSkill): boolean => skill.origin === "native" || 
  * so one click always turns it fully off. */
 export const skillSwitchOn = (skill: ManagedSkill): boolean => skill.enabled;
 
-interface LibraryPoolSkill {
-  name: string;
-  description: string;
-}
-
 interface StagedSkillSummary {
   id: string;
   name: string;
@@ -49,30 +43,21 @@ interface StagedSkillSummary {
 export function useManagedSkills(bot: Bot) {
   const { request: api } = useBotEditor();
   const [skills, setSkills] = useState<ManagedSkill[]>([]);
-  const [assignedSkills, setAssignedSkills] = useState<string[]>([]);
-  const [libraryPool, setLibraryPool] = useState<LibraryPoolSkill[]>([]);
-  const [addFromLibrary, setAddFromLibrary] = useState("");
   const [staged, setStaged] = useState<StagedSkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
   const [reviewing, setReviewing] = useState<{ skill: ManagedSkill; text: string } | null>(null);
-  const assignmentBusy = useRef(false);
 
   const refresh = async (cancelled?: () => boolean) => {
     try {
       const result = (await api(`/api/bots/${bot.id}/skills`)) as {
         skills?: ManagedSkill[];
         staged?: StagedSkillSummary[];
-        library?: LibraryPoolSkill[];
-        assignedSkills?: string[];
       };
       if (cancelled?.()) return;
       setSkills(result.skills ?? []);
       setStaged(result.staged ?? []);
-      setLibraryPool(result.library ?? []);
-      setAssignedSkills(result.assignedSkills ?? []);
-      setAddFromLibrary("");
       setError("");
     } catch (cause) {
       if (!cancelled?.()) setError(cause instanceof Error ? cause.message : t("skills.error.loadLearned"));
@@ -90,33 +75,6 @@ export function useManagedSkills(bot: Bot) {
       cancelled = true;
     };
   }, [bot.id]);
-
-  const putAssignments = async (name: string, remove = false) => {
-    const listing = (await api(`/api/bots/${bot.id}/skills`)) as { assignedSkills?: string[] };
-    const current = listing.assignedSkills ?? assignedSkills;
-    const next = remove ? current.filter((skill) => skill !== name) : [...new Set([...current, name])];
-    await api(`/api/bots/${bot.id}/skills-library`, {
-      method: "PUT",
-      body: JSON.stringify({ skills: next }),
-    });
-    await refresh();
-  };
-
-  const addToBot = async () => {
-    const name = addFromLibrary.trim();
-    if (!name || assignmentBusy.current) return;
-    assignmentBusy.current = true;
-    setWorking(name);
-    setError("");
-    try {
-      await putAssignments(name);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("skills.error.assign"));
-    } finally {
-      assignmentBusy.current = false;
-      setWorking("");
-    }
-  };
 
   const toggle = async (skill: ManagedSkill) => {
     setWorking(skill.name);
@@ -180,7 +138,6 @@ export function useManagedSkills(bot: Bot) {
 
   return {
     skills, staged, loading, working, setWorking, error, setError, reviewing, setReviewing, refresh, toggle, enableReviewed,
-    libraryPool, addFromLibrary, setAddFromLibrary, assignmentBusy, putAssignments, addToBot,
   };
 }
 
@@ -293,7 +250,6 @@ export function SkillsSection({ bot }: { bot: Bot }) {
   const libraryOn = skillsLibraryEnabled(state.config);
   const {
     skills, staged, loading, working, setWorking, error, setError, reviewing, setReviewing, refresh, toggle, enableReviewed,
-    libraryPool, addFromLibrary, setAddFromLibrary, assignmentBusy, addToBot,
   } = useManagedSkills(bot);
   const [viewing, setViewing] = useState<{ name: string; text: string } | null>(null);
   const [source, setSource] = useState("");
@@ -340,9 +296,7 @@ export function SkillsSection({ bot }: { bot: Bot }) {
 
   const remove = async (skill: ManagedSkill) => {
     if (skill.origin === "library") {
-      if (assignmentBusy.current) return;
       if (!window.confirm(t("skills.unassignConfirm", { name: skill.name }))) return;
-      assignmentBusy.current = true;
       setWorking(skill.name);
       setError("");
       try {
@@ -351,7 +305,6 @@ export function SkillsSection({ bot }: { bot: Bot }) {
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : t("skills.error.unassign"));
       } finally {
-        assignmentBusy.current = false;
         setWorking("");
       }
       return;
@@ -413,36 +366,10 @@ export function SkillsSection({ bot }: { bot: Bot }) {
           {featureEnabled ? t("skills.learned.hintOn") : t("skills.learned.hintOff")}
         </div>
 
-        {libraryOn ? (
-          <div className="mt-3 flex flex-col gap-1.5">
-            {libraryPool.length > 0 ? (
-              <div className="flex items-center gap-2">
-                <Select size="lg" className="flex-1"
-                  aria-label={t("skills.library.addLabel")}
-                  value={addFromLibrary}
-                  disabled={Boolean(working)}
-                  onChange={(e) => setAddFromLibrary(e.target.value)}
-                >
-                  <option value="">{t("skills.library.addPlaceholder")}</option>
-                  {libraryPool.map((skill) => (
-                    <option key={skill.name} value={skill.name}>{skill.name}</option>
-                  ))}
-                </Select>
-                <button
-                  type="button"
-                  disabled={!addFromLibrary || Boolean(working)}
-                  onClick={() => void addToBot()}
-                  className="shrink-0 rounded-lg bg-control px-3 py-2 text-[13px] text-ink hover:bg-raised-hover disabled:opacity-50"
-                >
-                  {t("common.add")}
-                </button>
-              </div>
-            ) : (
-              <div className="text-[12px] text-ink-secondary">{t("skills.library.allAssigned")}</div>
-            )}
-            <div className="text-[12px] text-ink-secondary">{t("skills.library.manageHint")}</div>
-          </div>
-        ) : (
+        {libraryOn && (
+          <div className="mt-3 text-[12px] text-ink-secondary">{t("skills.library.subtitle")}</div>
+        )}
+        {!libraryOn && (
           <>
             <form
               className="mt-3 flex items-center gap-2"

@@ -25,7 +25,7 @@ function bot(id: string, role: string, patch: Partial<BotRecord> = {}): BotRecor
 
 const lead = () => bot("b-lead", "producer", {
   name: "Producer", title: "Runs the show", description: "Plans every episode.", soul: "You keep the schedule.\nNever skip review.",
-  chiefOfStaff: true, modelSelection: { instanceId: "claude", model: "opus", effort: "high" }, assignedSkills: ["beat-sheet", "casting"], mcpServers: ["drive"],
+  chiefOfStaff: true, modelSelection: { instanceId: "claude", model: "opus", effort: "high" }, mcpServers: ["drive"],
 });
 const writer = () => bot("b-writer", "writer", { name: "编剧", title: "写剧本", soul: "你负责写每一集的剧本。" });
 
@@ -73,8 +73,8 @@ describe("what a project's copies say", () => {
       lead: "producer",
       bots: [
         { role: "producer", name: "Producer", title: "Runs the show", description: "Plans every episode.",
-          model: { instanceId: "claude", model: "opus", effort: "high" }, librarySkills: ["beat-sheet", "casting"], mcpServers: ["drive"] },
-        { role: "writer", name: "编剧", title: "写剧本", description: "", model: { instanceId: "claude", model: "opus" }, librarySkills: [] },
+          model: { instanceId: "claude", model: "opus", effort: "high" }, mcpServers: ["drive"] },
+        { role: "writer", name: "编剧", title: "写剧本", description: "", model: { instanceId: "claude", model: "opus" } },
       ],
     });
   });

@@ -19,19 +19,25 @@ vi.mock("node:fs", async (importOriginal) => {
 
 import { DATA_DIR } from "./config.ts";
 import {
-  applySkillWriteWithReceipt, installSkill, listSkills, readSkillFile, readSkillReferences, removeSkill, setSkillEnabled, skillsSystemPrompt, stageSkillWrite,
+  applySkillWriteWithReceipt, installSkill, listSkills, readSkillFile, readSkillReferences, removeSkill, setSkillEnabled, stageSkillWrite,
   syncSkillLinks,
 } from "./skills.ts";
+import { renderSkillsIndex } from "./skills-index.ts";
 import { ensureWorkspace, privateBotFolder, setTeamProjectLookup, setTeamProjectMemberships, workspaceDir } from "./workspace.ts";
 
 const PROJECT = "project-1";
 const NATIVE = [".claude/skills", ".agents/skills", ".grok/skills"];
 const SKILL = (name: string, description = "Lays out the beats of an episode.") => `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n\nDo the thing.\n`;
 
+/** A turn's skills index for one bot: the app's own links re-pointed, then every switched-on skill by name. */
+const promptFor = (botId: string): string => {
+  syncSkillLinks(botId);
+  return renderSkillsIndex(listSkills(botId).filter((skill) => skill.enabled).map((skill) => ({ name: skill.name, description: skill.description, source: "own" as const })));
+};
+
 let project: string;
 let own: string;
-let writer: string;
-let plain: string;
+let writer: string;let plain: string;
 let joined: boolean;
 
 const links = (root: string, name: string) => NATIVE.filter((dir) => lstatSync(join(root, dir, name), { throwIfNoEntry: false })?.isSymbolicLink());
@@ -81,7 +87,7 @@ describe("a project bot's own skills, in a project folder on another volume", ()
     expect(setSkillEnabled(writer, "beat-sheet", true)).toMatchObject({ enabled: true });
     expect(links(own, "beat-sheet")).toEqual(NATIVE);
     expect(realpathSync(join(own, ".claude", "skills", "beat-sheet"))).toBe(join(own, "skills", "beat-sheet"));
-    expect(skillsSystemPrompt(writer)).toContain(`Read ${JSON.stringify(join(own, "skills", "beat-sheet", "SKILL.md"))}.`);
+    expect(promptFor(writer)).toContain("- beat-sheet (your own):");
 
     expect(setSkillEnabled(writer, "beat-sheet", false)).toMatchObject({ enabled: false });
     expect(links(own, "beat-sheet"), "a link no rename can take away is unlinked where it is").toEqual([]);
@@ -105,7 +111,8 @@ describe("a project bot's own skills, in a project folder on another volume", ()
     expect(readdirSync(join(own, "skills", ".revisions", revisions[0]!)).sort()).toEqual(["SKILL.md", "references"]);
     expect(readdirSync(join(DATA_DIR, "skill-state", writer, "reviewed-revisions")), "the copy the review prepared is gone").toEqual([]);
     expect(realpathSync(join(own, ".claude", "skills", "file-expense"))).toBe(join(own, "skills", ".revisions", revisions[0]!));
-    expect(skillsSystemPrompt(writer)).toContain(JSON.stringify(join(own, "skills", ".revisions", revisions[0]!, "SKILL.md")));
+    expect(promptFor(writer)).toContain("- file-expense (your own):");
+    expect(promptFor(writer)).not.toContain(join(own, "skills", ".revisions", revisions[0]!, "SKILL.md"));
   });
 
   it("come along, still switched on, when a bot that already had skills joins a project", () => {
@@ -125,7 +132,7 @@ describe("a project bot's own skills, in a project folder on another volume", ()
     expect([links(own, "beat-sheet"), links(own, "file-expense"), links(own, "cold-open")]).toEqual([NATIVE, NATIVE, []]);
     expect(realpathSync(join(own, ".agents", "skills", "beat-sheet"))).toBe(join(own, "skills", "beat-sheet"));
     expect(readSkillFile(writer, "file-expense")).toBe(SKILL("file-expense", "Files an expense, with a receipt."));
-    expect(skillsSystemPrompt(writer)).toContain(`Read ${JSON.stringify(join(own, "skills", "beat-sheet", "SKILL.md"))}.`);
+    expect(promptFor(writer)).toContain("- beat-sheet (your own):");
     expect(readdirSync(privateBotFolder(writer)), "nothing of them stays in the data folder").toEqual([]);
   });
 });
@@ -146,7 +153,7 @@ describe("a project bot's own skills while its project folder is away", () => {
       expect(setSkillEnabled(writer, "beat-sheet", true)).toEqual({ error: away() });
       expect(removeSkill(writer, "beat-sheet")).toEqual({ error: away() });
       expect(listSkills(writer).map((skill) => [skill.name, skill.enabled, skill.warnings])).toEqual([["beat-sheet", false, [away()]], ["file-expense", false, [away()]]]);
-      expect(skillsSystemPrompt(writer)).toBe("");
+      expect(promptFor(writer)).toBe("");
       syncSkillLinks(writer);
       expect(managed(writer).sort()).toEqual(["beat-sheet", "file-expense"]);
       expect(existsSync(project), "the project folder is never made again").toBe(false);

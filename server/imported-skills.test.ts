@@ -7,9 +7,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { DATA_DIR, type AppConfig } from "./config.ts";
 import { createSkillsLibraryHost } from "./host/skills-library.ts";
 import {
-  FIT_MAX_SKILLS, IMPORTED_CHANGED_WARNING, IMPORTED_SKILLS_DIR, importedSkillListings, importedSkillsFor, importedSkillsPrompt,
+  FIT_MAX_SKILLS, IMPORTED_CHANGED_WARNING, IMPORTED_SKILLS_DIR, importedSkillListings, importedSkillsFor,
   listedImportedSkills, nativeSkillFolders, readImportedSkillFile, setImportedSkillEnabled, storeImportedSkills, syncImportedSkillLinks, type ImportedSkillInput,
 } from "./imported-skills.ts";
+import { renderSkillsIndex } from "./skills-index.ts";
 import { skillCommandTurnText } from "../shared/skill-command.ts";
 import { ensureTaskWorkspaceWithSkills } from "./skill-task-links.ts";
 import { installSkill, setSkillEnabled } from "./skills.ts";
@@ -59,9 +60,9 @@ describe("skills brought in from this computer", () => {
     for (const bot of [newBot(), newBot()]) {
       const skills = importedSkillsFor(bot, new Set());
       expect(names(skills)).toEqual(["pdf", "review"]);
-      const prompt = importedSkillsPrompt(skills);
-      expect(prompt).toContain("Skills from this computer:");
-      expect(prompt).toContain(`- pdf: Works with pdf. Read ${JSON.stringify(join(IMPORTED_SKILLS_DIR, "pdf", "SKILL.md"))}.`);
+      // The index names them and their purpose; the full text is read with the skill tool.
+      expect(renderSkillsIndex(skills.map((skill) => ({ name: skill.name, description: skill.description, source: "computer" as const }))))
+        .toContain("- pdf (this computer): Works with pdf.");
       const files = new Map(skills.map((skill) => [skill.name, skill.file]));
       expect(skillCommandTurnText("/review the diff", files, "", true)).toContain(`Read ${JSON.stringify(join(IMPORTED_SKILLS_DIR, "review", "SKILL.md"))}`);
       expect(skillCommandTurnText("/other thing", files)).toBe("/other thing");
@@ -181,10 +182,11 @@ describe("skills brought in from this computer", () => {
     });
     const record = { id: bot } as BotRecord;
     const index = host.skillsIndex(record, undefined, { instanceId: "claude", driverKind: "claudeAgent" });
-    expect(index).toContain("Imported skills:\n- zeta-own: Works with zeta-own.");
-    expect(index.indexOf("zeta-own")).toBeLessThan(index.indexOf("Skills from this computer:"));
-    expect(index).toMatch(/\d+ more skills from this computer are not listed here/);
-    expect(Buffer.byteLength(index.slice(index.indexOf("Skills from this computer:")), "utf8")).toBeLessThanOrEqual(4_000);
+    expect(index).toContain("- zeta-own (your own): Works with zeta-own.");
+    expect(index.indexOf("zeta-own")).toBeLessThan(index.indexOf("(this computer)") === -1 ? index.length : index.indexOf("(this computer)"));
+    expect(index.split("\n- ").length - 1).toBeLessThanOrEqual(60);
+    expect(index).toMatch(/\d+ more skills are not listed here|Call the skill tool/);
+    expect(host.skillCatalogue(record).length).toBe(1 + many.length);
     // The same set: listed in Bot Settings, readable, and run by /name.
     expect(host.listBotSkills(record).map((skill) => skill.name)).toEqual(["zeta-own", ...many.map((one) => one.name)]);
     expect(host.readBotSkillFile(record, "skill-03")).toBe(skillMd("skill-03"));
@@ -216,19 +218,19 @@ describe("skills brought in from this computer", () => {
       appendSkillRequestCard: () => ({ requestId: "", summary: "" }),
     });
     const index = host.skillsIndex(sales, undefined);
-    for (const name of ["sales-pipeline", "lead-qualify", "invoice-reminders"]) expect(index).toContain(`- ${name}: `);
+    for (const name of ["sales-pipeline", "lead-qualify", "invoice-reminders"]) expect(index).toContain(`- ${name} (this computer): `);
     expect(index).not.toContain("- deploy-preview:");
     expect(index).not.toContain("- tool-00:");
-    expect(index).toContain("41 more skills from this computer are not listed here. When a task might need one, call skills_list");
-    expect(names(host.turnImports(sales, "thread-fit"))).toEqual(["invoice-reminders", "lead-qualify", "sales-pipeline"]);
+    expect(names(host.turnImports(sales))).toEqual(["invoice-reminders", "lead-qualify", "sales-pipeline"]);
     // Still this bot's: run by /name, and found by a search with the path to read.
     expect(host.expandSkillCommand(sales, "thread-fit", "/deploy-preview now", undefined, [], true)).toContain(JSON.stringify(join(IMPORTED_SKILLS_DIR, "deploy-preview", "SKILL.md")));
     const listings = host.listBotSkills(sales) as Array<{ name: string; enabled: boolean; listed?: boolean; file?: string }>;
     expect(listings.slice(0, 3).map((skill) => [skill.name, skill.listed])).toEqual([["invoice-reminders", true], ["lead-qualify", true], ["sales-pipeline", true]]);
     expect(listings.find((skill) => skill.name === "deploy-preview")).toMatchObject({ enabled: true, listed: false, file: join(IMPORTED_SKILLS_DIR, "deploy-preview", "SKILL.md") });
-    // Nothing in common: nothing listed, every one of them still on for it.
-    expect(host.skillsIndex(quiet, undefined)).toContain("44 more skills from this computer are not listed here.");
-    expect(host.turnImports(quiet, "thread-fit")).toEqual([]);
+    // Nothing in common: nothing named, and one line saying how many are there.
+    expect(host.skillsIndex(quiet, undefined)).toContain("44 more skills are not listed here");
+    expect(host.skillCatalogue(quiet).length).toBe(44);
+    expect(host.turnImports(quiet)).toEqual([]);
     expect(importedSkillsFor(quiet.id, new Set())).toHaveLength(44);
     // A short list is every skill, whatever the bot is for.
     const few = importedSkillsFor(quiet.id, new Set()).slice(0, FIT_MAX_SKILLS);

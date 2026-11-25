@@ -37,7 +37,7 @@ export function configEntries(deps: Pick<RegistryDeps, "cfg" | "saveConfig" | "b
     current: () => { const set = (cfg().features as Record<string, unknown> | undefined)?.[field]; return onUnlessFalse ? set !== false : set === true; },
     patch: (on: boolean) => ({ features: { [field]: on } }), says: (on: boolean) => (on ? yes : no),
   });
-  const libraryList = async () => ((await deps.read("skills", "/api/skills-library"))?.skills ?? []) as Array<{ name: string; enabled: boolean; everyBot: boolean }>;
+  const libraryList = async () => ((await deps.read("skills", "/api/skills-library"))?.skills ?? []) as Array<{ name: string; enabled: boolean }>;
   /** The bots a Starter Cloud's limit counts that are awake now, as POST /api/starter/awake takes them. */
   const awakeNow = () => { const paused = deps.paused(); return deps.bots().filter((bot) => botsTowardLimit([bot]) === 1 && !bot.chiefOfStaff && !paused.includes(bot.id)).map((bot) => bot.id); };
   const botName = (id: string) => deps.bots().find((bot) => bot.id === id)?.name;
@@ -189,23 +189,16 @@ export function configEntries(deps: Pick<RegistryDeps, "cfg" | "saveConfig" | "b
       write: (awake: string[]) => deps.call("starterAwake", "POST", "/api/starter/awake", { awake }),
     }),
     writable({
-      id: "skills.library", label: "Skills library", help: "Turn a library skill on or off, or give it to every bot. Library skills are listed in Settings.", where: "skills",
-      synonyms: ["skills", "skill library", "library", "every bot skill"],
-      value: z.object({ name: z.string().regex(/^[a-z0-9-]{1,64}$/), enabled: z.boolean().optional(), everyBot: z.boolean().optional() }).strict().refine((value) => (value.enabled === undefined) !== (value.everyBot === undefined), "send enabled or everyBot, one of them"),
-      allowed: '{"name","enabled":true|false} or {"name","everyBot":true|false}', read: () => "",
-      current: async ({ name, enabled }: { name: string; enabled?: boolean }) => {
+      id: "skills.library", label: "Skills library", help: "Turn a library skill on or off. Every switched-on library skill is available to every bot.", where: "skills",
+      synonyms: ["skills", "skill library", "library"],
+      value: z.object({ name: z.string().regex(/^[a-z0-9-]{1,64}$/), enabled: z.boolean() }).strict(),
+      allowed: '{"name","enabled":true|false}', read: () => "",
+      current: async ({ name }: { name: string }) => {
         const skill = (await libraryList()).find((one) => one.name === name);
-        return skill ? (enabled !== undefined ? { name, enabled: skill.enabled } : { name, everyBot: skill.everyBot }) : undefined;
+        return skill ? { name, enabled: skill.enabled } : undefined;
       },
-      describe: ({ name, enabled, everyBot }: { name: string; enabled?: boolean; everyBot?: boolean }) => ({ change: enabled !== undefined ? `${enabled ? "Turn on" : "Turn off"} the library skill ${name}` : `${everyBot ? "Give" : "Stop giving"} the library skill ${name} to every bot` }),
-      write: ({ name, ...change }: { name: string; enabled?: boolean; everyBot?: boolean }) => deps.call("skills", "PATCH", `/api/skills-library/${name}`, change),
-    }),
-    writable({
-      id: "bots.skills", label: "A bot's library skills", help: "Which library skills one bot uses. Send the full list.", where: "bot-settings", synonyms: ["skills", "assign skills", "bot skills"],
-      value: z.object({ botId: z.string().regex(/^[\w-]{1,120}$/), skills: z.array(z.string().min(1).max(64)).max(200) }).strict(), allowed: '{"botId","skills":[names]}', read: () => "",
-      current: ({ botId }: { botId: string }) => { const bot = deps.bots().find((one) => one.id === botId); return bot ? { botId, skills: bot.assignedSkills ?? [] } : undefined; },
-      describe: ({ botId, skills }: { botId: string; skills: string[] }) => { const name = botName(botId); return name ? { change: skills.length ? `Give ${name} the library skills ${skills.join(", ")}` : `Take every library skill from ${name}` } : { refusal: `No bot has the id ${botId}. Use list_bots for the ids.` }; },
-      write: ({ botId, skills }: { botId: string; skills: string[] }) => deps.call("skills", "PUT", `/api/bots/${encodeURIComponent(botId)}/skills-library`, { skills }),
+      describe: ({ name, enabled }: { name: string; enabled: boolean }) => ({ change: `${enabled ? "Turn on" : "Turn off"} the library skill ${name}` }),
+      write: ({ name, enabled }: { name: string; enabled: boolean }) => deps.call("skills", "PATCH", `/api/skills-library/${name}`, { enabled }),
     }),
   ];
 }

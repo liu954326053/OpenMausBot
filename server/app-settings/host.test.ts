@@ -558,13 +558,13 @@ describe("every other setting applies at once with Undo, Full access or not", ()
     expect(fx.saved).toEqual([{ browserEngine: { egress: { proxy: "socks5://proxy.example:1080" } } }, { browserEngine: { egress: { proxy: "" } } }]);
   });
 
-  it("a bot's library skills are set from the full list, and Undo gives back the earlier list", async () => {
+  it("a library skill is turned on or off from its name, and Undo gives back the earlier switch", async () => {
     const fx = fixture();
-    await fx.set("bots.skills", JSON.stringify({ botId: "clive", skills: [] }));
+    await fx.set("skills.library", JSON.stringify({ name: "notes", enabled: true }));
     expect(await fx.undo()).toEqual({ claimed: true, state: "undone" });
     expect(fx.routeCalls).toEqual([
-      { route: "skills", method: "PUT", path: "/api/bots/clive/skills-library", body: { skills: [] } },
-      { route: "skills", method: "PUT", path: "/api/bots/clive/skills-library", body: { skills: ["notes"] } },
+      { route: "skills", method: "PATCH", path: "/api/skills-library/notes", body: { enabled: true } },
+      { route: "skills", method: "PATCH", path: "/api/skills-library/notes", body: { enabled: false } },
     ]);
   });
 });

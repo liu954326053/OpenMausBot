@@ -88,15 +88,14 @@ describe("bot wire privacy against the real server", () => {
   });
   afterEach(async () => { await stop(); });
 
-  it("never serializes assignedSkills, flag off or on, even when the record carries assignments", async () => {
+  it("never serializes a bot's old assignment field, and clears it from disk at boot", async () => {
     await start(false);
     const created = await api("POST", "/api/bots", { name: "Wire Privacy Bot" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const botId = created.body.bot.id as string;
     await stop();
 
-    // Seed the server-private field the way a flag-off-on-flag-on cycle or
-    // an applied pending-assignments sweep leaves it behind on disk.
+    // Seed the retired field the way an upgrade from the per-bot assignment era leaves it behind on disk.
     const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[];
     bots.find((bot) => bot.id === botId)!.assignedSkills = ["some-library-skill"];
     writeFileSync(join(data, "bots.json"), JSON.stringify(bots, null, 2));
@@ -110,15 +109,14 @@ describe("bot wire privacy against the real server", () => {
       await stop();
     }
 
-    // The field was live on the record in the server that produced those
-    // payloads — the assertion above was not checking an empty bot.
+    // The retired field is dropped at boot: every switched-on library skill is global now.
     const stored = (JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[]).find((bot) => bot.id === botId)!;
-    expect(stored.assignedSkills).toEqual(["some-library-skill"]);
+    expect(stored).not.toHaveProperty("assignedSkills");
   });
 
-  it("serves an assigned library-only skill on the single-skill GET route only while the library is on", async () => {
+  it("serves a library-only skill on the single-skill GET route only while the library is on", async () => {
     // The library store is plain files under DATA_DIR/skills-library, so the spawned server sees the entry on its next boot.
-    const instructions = "---\nname: route-library-skill\ndescription: Serves through the assigned-skill route.\n---\n\n# route-library-skill\n\nReads through the library.\n";
+    const instructions = "---\nname: route-library-skill\ndescription: Serves through the single-skill route.\n---\n\n# route-library-skill\n\nReads through the library.\n";
     const installed = installLibrarySkill({
       name: "route-library-skill",
       instructions,
@@ -132,12 +130,7 @@ describe("bot wire privacy against the real server", () => {
     const created = await api("POST", "/api/bots", { name: "Library Route Bot" });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const botId = created.body.bot.id as string;
-    await stop();
-    const bots = JSON.parse(readFileSync(join(data, "bots.json"), "utf8")) as any[];
-    bots.find((bot) => bot.id === botId)!.assignedSkills = ["route-library-skill"];
-    writeFileSync(join(data, "bots.json"), JSON.stringify(bots, null, 2));
 
-    await start(false);
     expect(await api("GET", `/api/bots/${botId}/skills/route-library-skill`)).toMatchObject({ status: 404 });
     await stop();
 

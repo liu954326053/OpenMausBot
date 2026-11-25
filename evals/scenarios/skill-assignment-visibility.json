@@ -1,7 +1,7 @@
 {
   "id": "skill-assignment-visibility",
-  "title": "Assigning a library skill changes what the next turn sees",
-  "behavior": "With features.skillsLibrary on, a turn before assignment lists the library skill only among the skills on offer to every bot; after the Skills surface's assignment PUT, the next turn's system prompt carries it as the bot's own skill and no longer as an offer.",
+  "title": "The library's switch changes what the next turn sees",
+  "behavior": "With features.skillsLibrary on, a turn while the library skill is switched off does not list it; after the Skills surface's switch, the next turn's system prompt carries it as a library skill, for any bot, with no assignment.",
   "issue": 1803,
   "world": "coordination",
   "gates": [],
@@ -23,16 +23,16 @@
   ],
   "steps": [
     { "kind": "setConfig", "config": { "features": { "skillsLibrary": true } } },
+    { "kind": "setLibrarySkillEnabled", "name": "order-audit", "enabled": false },
     { "kind": "send", "bot": "shop", "text": "Handle order 1001." },
     { "kind": "waitForTurns", "bot": "shop", "count": 1, "timeoutMs": 20000 },
-    { "kind": "setSkillAssignment", "bot": "shop", "skills": ["order-audit"] },
+    { "kind": "setLibrarySkillEnabled", "name": "order-audit", "enabled": true },
     { "kind": "send", "bot": "shop", "text": "Handle order 1002." },
     { "kind": "waitForTurns", "bot": "shop", "count": 2, "timeoutMs": 20000 }
   ],
   "assertions": [
-    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 0, "includes": "Skills from the skills library:\n- order-audit:" },
-    { "kind": "systemPromptOmits", "bot": "shop", "turn": 0, "omits": "Imported skills:" },
-    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 1, "includes": "Imported skills:\n- order-audit:" },
-    { "kind": "systemPromptOmits", "bot": "shop", "turn": 1, "omits": "Skills from the skills library:" }
+    { "kind": "systemPromptOmits", "bot": "shop", "turn": 0, "omits": "order-audit" },
+    { "kind": "systemPromptIncludes", "bot": "shop", "turn": 1, "includes": "Skills:\n- order-audit (the skills library):" },
+    { "kind": "systemPromptOmits", "bot": "shop", "turn": 1, "omits": "Check each line item" }
   ]
 }

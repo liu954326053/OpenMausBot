@@ -1,7 +1,7 @@
 {
   "default": {
-    "bytes": 58800,
-    "sha256": "f2808e4a1adb0997d2261938fb759422768ab3cffda8aadf4081cbccb6d31d9c",
+    "bytes": 59524,
+    "sha256": "2835eecccc239217f9930be81e7ab62dcc9db7d647ef8efcd34ba080fbb3c3df",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -53,13 +53,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "voice": {
-    "bytes": 59581,
-    "sha256": "5c07277c1a809c58dc17b3a9d7962666f3c8331ec14a05bd3df0a15dd1d458f8",
+    "bytes": 60305,
+    "sha256": "b5c527deb6ef1851de57f88788f60e1cf3c776aa1a7a7d805469f8c8cb4607ad",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -112,13 +113,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "shared": {
-    "bytes": 61065,
-    "sha256": "1be670dd48523a7c7ea830322134f0d7052c336e3b4f8e92877f736cafe4050b",
+    "bytes": 61789,
+    "sha256": "16216b5b02c935c60c6090a14bdfadcb7f3eab9d7a8b86bad43e50ca35836cf7",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -172,13 +174,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "shared+voice": {
-    "bytes": 61846,
-    "sha256": "3359577c36f4e0c53cadf7efe48de81646dc8b10eea3cace42ebb4c748281ef5",
+    "bytes": 62570,
+    "sha256": "5e118139da8cb5471633b554bce4b52c00ec764a9b36be01240945ae9d4253c8",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -233,13 +236,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "skills": {
-    "bytes": 61121,
-    "sha256": "eb059c0b272e2e168421a87ac63923e5b3031522a3bf40208d49ba83b837a971",
+    "bytes": 61845,
+    "sha256": "a47aab606d1e796627c4d3c273f61749ada4e0e8c04571bf42618ab6001bc076",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -291,6 +295,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -298,8 +303,8 @@
     ]
   },
   "skills+voice": {
-    "bytes": 61902,
-    "sha256": "8deca4b4fc7fc6ee5bb236460bc08515120402851ab3dd839e576a2ce569503e",
+    "bytes": 62626,
+    "sha256": "73824e6747345dd6db784ca178895e900c1e8c22a5e6af2d516be02032c63c43",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -352,6 +357,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -359,8 +365,8 @@
     ]
   },
   "skills+shared": {
-    "bytes": 63386,
-    "sha256": "094ee2f0fcc3f00b6fa22c99dd5a6c141fc9969b297db0feaa186d3005602914",
+    "bytes": 64110,
+    "sha256": "19ad7e793dc9367097d0d8cb371607669ca4ed31fb8f55d15fc655d5aaeb2127",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -414,6 +420,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -421,8 +428,8 @@
     ]
   },
   "skills+shared+voice": {
-    "bytes": 64167,
-    "sha256": "e502266a9229cc4253d55250a03e562653558d6886c3ccc74f24d644fb62dedf",
+    "bytes": 64891,
+    "sha256": "cb102899e8394b23d0e5a4866e72babe8e6592f367f506d29a4b046cd5ca6b30",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -477,6 +484,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -484,8 +492,8 @@
     ]
   },
   "non-chief": {
-    "bytes": 50252,
-    "sha256": "94f6eb2b3f7ef86063a68c40212da3aeed2d57df63705e10f2724d9ff0dcb63b",
+    "bytes": 50976,
+    "sha256": "784cbd25de4c4649fce4febb0728df215af23f1d9330926a850c1b2d427a69eb",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -530,13 +538,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "voice+non-chief": {
-    "bytes": 51033,
-    "sha256": "dbe5b5ef798b7d1fc70288f31e3ca6e024a00a2f5495ed8addb8e1c517ed0f2e",
+    "bytes": 51757,
+    "sha256": "ecff40d2891750df4be60d02adff8437ae189c3d43a7f56f88013903d4a56d61",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -582,13 +591,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "shared+non-chief": {
-    "bytes": 52517,
-    "sha256": "439252fa8618908c6fc43f1cb343ffeb639184f2941ee3518792ff0552743429",
+    "bytes": 53241,
+    "sha256": "c4603700e63f8bdade2285d2c23987529ef86e86078ebc9b076508153e98dac4",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -635,13 +645,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "shared+voice+non-chief": {
-    "bytes": 53298,
-    "sha256": "8046dce78a107d7b82f8e4fb1f113bda57caa49fc213cfa5d7e0ca59810ecdae",
+    "bytes": 54022,
+    "sha256": "c31c22df0d3ed3885c7f693e4f3a4279668298503cf3d535e2f4e166ad2aa27a",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -689,13 +700,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "skills+non-chief": {
-    "bytes": 52573,
-    "sha256": "a6d1051e13d744df961e8cf98613bdb26b784b79a3cdd0a2140696db44ec7ce4",
+    "bytes": 53297,
+    "sha256": "439ce499c12178c316dbdb2b4e9c400c7b42c9f219327a8d679bb941cb9f5454",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -740,6 +752,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -747,8 +760,8 @@
     ]
   },
   "skills+voice+non-chief": {
-    "bytes": 53354,
-    "sha256": "1ccad4289b61ddbd707cc53515d50c298a33395bf56f7ccabc9c38baad90c3ea",
+    "bytes": 54078,
+    "sha256": "fda89b2aed7f7ee6a568aa030b0acdc46a958e9e7930b49486532e9fda80d70b",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -794,6 +807,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -801,8 +815,8 @@
     ]
   },
   "skills+shared+non-chief": {
-    "bytes": 54838,
-    "sha256": "a27fb4e3c253aaabd2b4bcb811328aedf11512c8a0eca6a3d88195033d4ef8fb",
+    "bytes": 55562,
+    "sha256": "af57549e36807fbdbf04ddfce3f84e58221bdfa701dceb7abeb8c540e035e948",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -849,6 +863,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -856,8 +871,8 @@
     ]
   },
   "skills+shared+voice+non-chief": {
-    "bytes": 55619,
-    "sha256": "481fbe99f17b312e5a8e966adc25fea7a61d62204c1e0a3dd91fb78e73cde604",
+    "bytes": 56343,
+    "sha256": "177ef2d98ae01a321f0421812ca29622436798fda1d36398d1edf6f30ba0adc0",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -905,6 +920,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -912,8 +928,8 @@
     ]
   },
   "skills+shared+voice+cloud-home": {
-    "bytes": 63933,
-    "sha256": "3949392f24976acdf5a6a55db9bf325176e0da4812029abc13d32676afdae457",
+    "bytes": 64657,
+    "sha256": "19d4c212cec5b6c2b6728664330775795a74c15c17e5934240c4f09e3e916456",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -968,6 +984,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -975,8 +992,8 @@
     ]
   },
   "skills+shared+voice+non-chief+cloud-home": {
-    "bytes": 55385,
-    "sha256": "6d007c954daf7f38cad00e0ad70b2181e49fb096a2c5b221e403336b60dc237c",
+    "bytes": 56109,
+    "sha256": "2ee2116bc597608da8483eb64cab9d2c7a65acca1d23a0809cf9e8c184151ddd",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -1024,6 +1041,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -1031,8 +1049,8 @@
     ]
   },
   "skills+shared+voice+x": {
-    "bytes": 68006,
-    "sha256": "fed42622da7ff2d92a593fbb3f7d2b181c67ff2d35a1616814c07e89e6f0fb5d",
+    "bytes": 68730,
+    "sha256": "3caa827c901d49062d844d9e270337c6229d5139a900e29fa0ebf3b33967e2d2",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -1091,6 +1109,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -1098,8 +1117,8 @@
     ]
   },
   "skills+shared+voice+x+team": {
-    "bytes": 68006,
-    "sha256": "fed42622da7ff2d92a593fbb3f7d2b181c67ff2d35a1616814c07e89e6f0fb5d",
+    "bytes": 68730,
+    "sha256": "3caa827c901d49062d844d9e270337c6229d5139a900e29fa0ebf3b33967e2d2",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -1158,6 +1177,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -1165,8 +1185,8 @@
     ]
   },
   "skills+shared+voice+x+team+images": {
-    "bytes": 69953,
-    "sha256": "3adce5bbc43100dc5ac239d635008f01768a9c808f706b7c47a3b7549f43c6e4",
+    "bytes": 70677,
+    "sha256": "d5ee140657ed4147c9427d77b678f566705a560d5c330458c1dc3315a2bb9a4c",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -1227,6 +1247,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -1234,8 +1255,8 @@
     ]
   },
   "default+legacy-switches": {
-    "bytes": 58800,
-    "sha256": "f2808e4a1adb0997d2261938fb759422768ab3cffda8aadf4081cbccb6d31d9c",
+    "bytes": 59524,
+    "sha256": "2835eecccc239217f9930be81e7ab62dcc9db7d647ef8efcd34ba080fbb3c3df",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1287,13 +1308,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "default+mausbot": {
-    "bytes": 58175,
-    "sha256": "4dee24d0b98405d16996c1befbdf20b38339b70aa99e31c778ab18037a6b05d1",
+    "bytes": 58899,
+    "sha256": "7c3bcaea60752bc73ef6cfbb938a342db3d9645d032f8c70b35ac47d1f840a3f",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1344,6 +1366,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings",
       "list_unread_notifications",
@@ -1351,8 +1374,8 @@
     ]
   },
   "skills+shared+voice+mausbot": {
-    "bytes": 63542,
-    "sha256": "b96b3f19ff91817966009fdc2db6e328838907d889361b7b5e9e4ddcf4e34012",
+    "bytes": 64266,
+    "sha256": "cd82bc464a7e40ab0445c5b4c6f2b40fa277193b853853960e8b4517bf6b7e8e",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -1406,6 +1429,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -1415,8 +1439,8 @@
     ]
   },
   "default+no-computer-pick": {
-    "bytes": 57594,
-    "sha256": "84f190ff5560585df29d1ebec99859089f8fb69710519a42e1e9d2bfaa59d09b",
+    "bytes": 58318,
+    "sha256": "73833012c387f19bd6317637fdf85523c2f6dd8236525fc96759309f2ac1524c",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1467,13 +1491,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "default+room": {
-    "bytes": 54154,
-    "sha256": "3c723cde226aed481f32f5821180dc2d204836e1f28c329ee5156004e4162746",
+    "bytes": 54878,
+    "sha256": "4faee0dc88aedeb5bdc0211c383695be434b19735c4a9b12b1d68b0d094933c6",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1518,13 +1543,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "non-chief+room": {
-    "bytes": 45606,
-    "sha256": "78722a2b8b87dd7cfc35255409b2ad168ee9a3eadebeb846585c22f180cd265a",
+    "bytes": 46330,
+    "sha256": "046f32762afb772e8202e60fe54ac49ff24216c994c0187bc06189913dbe736a",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1562,13 +1588,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "default+images": {
-    "bytes": 60747,
-    "sha256": "6fc2f9318a8ff21553f3bf2b6217ab143d4afef2e1716e401aa46ec45d57de95",
+    "bytes": 61471,
+    "sha256": "d7bf12cbb0b764e78e7b804c4d0bc827fa38bf8dfe3a9af529dbba3c4f6a955e",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1622,13 +1649,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "skills+shared+voice+x+team+images+hosting": {
-    "bytes": 71816,
-    "sha256": "f48cb7fe2066c449e354ec8fec6d802a17b7eb01d94852fd6f7cab452009f160",
+    "bytes": 72540,
+    "sha256": "553f70a71e493ac47f1e63ffbe77c0c2b8656c17863f24a25440ff0214684a5b",
     "tools": [
       "tool_result_read",
       "list_shared_computers",
@@ -1691,6 +1719,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "skills_list",
       "skill_manage",
       "mcp_server",
@@ -1698,8 +1727,8 @@
     ]
   },
   "default+hosting": {
-    "bytes": 60663,
-    "sha256": "e816c0161f3a5503596ee7cb40123ce6598b3635369cf66efcbb07207ffed79a",
+    "bytes": 61387,
+    "sha256": "d02e130e04e3cc45abd25795ab2d2992b24781449d95154b6e67dffd77008b29",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1753,13 +1782,14 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]
   },
   "default+tools-off": {
-    "bytes": 54482,
-    "sha256": "f66a4bd09ea102a5a7cdeb94ec3e557721515e2cf7fa3d4b5b2fc3354ef8da81",
+    "bytes": 55206,
+    "sha256": "603352351bcc56930df2bae7d519ae99661e4d96bcae413a112fad03c0c01817",
     "tools": [
       "tool_result_read",
       "list_room_targets",
@@ -1807,6 +1837,7 @@
       "propose_profile",
       "propose_model",
       "propose_team_memory",
+      "skill",
       "mcp_server",
       "app_settings"
     ]

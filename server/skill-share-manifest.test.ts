@@ -18,23 +18,18 @@ const { learnSource } = await import("./skill-learn.ts");
 const SKILL = "---\nname: rough-cut\ndescription: Cuts a rough edit.\n---\n\n# rough-cut\n";
 
 describe("sharing when the private manifest changed meanwhile", () => {
-  it("completes the share and assigns the team", () => {
+  it("completes the share into the library, which every bot reads", () => {
     const root = mkdtempSync(join(tmpdir(), "omb-skill-share-manifest-lib-"));
-    const author = { id: "author-m", name: "Cutter", section: "Editing", assignedSkills: [] as string[] };
-    const mate = { id: "mate-m", name: "Colorist", section: "Editing", assignedSkills: [] as string[] };
-    const bots = [author, mate];
+    const author = { id: "author-m", name: "Cutter", section: "Editing" };
     const staged = skills.stageSkillWrite(author.id, { action: "create", files: [{ path: "SKILL.md", content: SKILL }], source: learnSource("conversation") });
     if ("error" in staged) throw new Error(staged.error);
     const applied = skills.applyStagedSkillWrite(author.id, staged.id, { expectedSha256: staged.sha256 });
     if ("error" in applied) throw new Error(applied.error);
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const result = share.shareLearnedSkill({
-      author, bots, name: "rough-cut", root,
-      patchAssigned: (botId, assigned) => { bots.find((bot) => bot.id === botId)!.assignedSkills = assigned; },
-    });
+    const result = share.shareLearnedSkill({ author, name: "rough-cut", root });
     expect(result).toMatchObject({ library: "installed" });
-    expect(mate.assignedSkills).toEqual(["rough-cut"]);
     expect(library.readLibrarySkillFile("rough-cut", root)).toBe(SKILL);
+    expect(share.librarySkillNames(root)).toEqual(["rough-cut"]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("changed since it was read"));
     warn.mockRestore();
   });

@@ -5,7 +5,6 @@ import { vi } from "vitest";
 
 import type { PackageImportDeps, PackageImportResult } from "../package-import.ts";
 import type { CommunityPublisher } from "../share-publish.ts";
-import type { SkillListing } from "../skills.ts";
 import type { BotRecord } from "../store.ts";
 import type { TeamMemoryLine } from "./copies.ts";
 import type { TeamProjectsDeps } from "./service.ts";
@@ -13,9 +12,6 @@ import type { TeamProjectsDeps } from "./service.ts";
 const FIXTURE = join(import.meta.dirname, "..", "..", "shared", "package-fixtures", "full-team.v2.json");
 
 export type TeamProjectsTestApp = Awaited<ReturnType<typeof teamProjectsInstallation>>;
-
-/** What the skills library holds in these tests: a skill a bot is given from it never travels with a copy. */
-const LIBRARY_SKILL = "---\nname: beat-sheet\ndescription: Plans an episode's beats.\n---\nList the beats.\n";
 
 /**
  * A whole installation in a throwaway home: the real bot store, routines, package importer and share export under the
@@ -61,12 +57,9 @@ export async function teamProjectsInstallation() {
     defaultSelection: () => ({ instanceId: "claude", model: "default-model" }),
   };
 
-  const libraryListing = (name: string): SkillListing => ({
-    name, description: "Plans an episode's beats.", enabled: true, editable: false, source: "library", sha256: "", importedAt: "", warnings: [], skippedFiles: [],
-  });
   const exporting = skillExport({
-    listBotSkills: (bot) => [...skills.listSkills(bot.id), ...(bot.assignedSkills ?? []).map(libraryListing)],
-    readBotSkillFile: (bot, name) => skills.readSkillFile(bot.id, name) ?? (bot.assignedSkills?.includes(name) ? LIBRARY_SKILL : null),
+    listBotSkills: (bot) => skills.listSkills(bot.id),
+    readBotSkillFile: (bot, name) => skills.readSkillFile(bot.id, name),
   });
   const share = createShareHost({
     dataDir: DATA_DIR,

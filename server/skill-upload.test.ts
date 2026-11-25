@@ -62,11 +62,10 @@ describe("putting uploaded skills in the library", () => {
     expect(library.listLibrarySkills(root)[0]).toMatchObject({ enabled: true });
   });
 
-  it("asks before replacing a skill whose files differ; replacing keeps who it is for and switches it off to be read again", () => {
+  it("asks before replacing a skill whose files differ; replacing switches it off to be read again", () => {
     const root = freshRoot();
     upload([file("pick/SKILL.md", SKILL("pick")), file("pick/notes.md", "# Notes\n")], root);
     library.setLibrarySkillReviewState("pick", "approved", root);
-    library.setLibrarySkillEveryBot("pick", true, root);
     const newer = [file("pick/SKILL.md", SKILL("pick")), file("pick/notes.md", "# Newer notes\n")];
 
     expect(upload(newer, root)).toEqual({ installed: [], unchanged: [], conflicts: ["pick"], errors: [] });
@@ -74,7 +73,7 @@ describe("putting uploaded skills in the library", () => {
 
     const replaced = upload(newer, root, { replace: ["pick"] });
     expect(replaced.installed).toMatchObject([{ name: "pick", replaced: true }]);
-    expect(library.listLibrarySkills(root)).toMatchObject([{ name: "pick", enabled: false, everyBot: true }]);
+    expect(library.listLibrarySkills(root)).toMatchObject([{ name: "pick", enabled: false }]);
     expect(readFileSync(join(library.librarySkillDirectory(root, "pick"), "notes.md"), "utf8")).toBe("# Newer notes\n");
     expect(readdirSync(join(root, "archive", "removed")).some((name) => name.startsWith("pick."))).toBe(true);
   });

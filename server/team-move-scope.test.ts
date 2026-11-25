@@ -25,10 +25,10 @@ function kinds(): MoveKindsDeps {
 }
 
 describe("a move of one bot into a team", () => {
-  it("compares only that bot, its skills and its own routines and the library skills it uses: nothing of the person's", () => {
+  it("compares only that bot and its own routines: nothing of the person's", () => {
     for (const name of ["trip-plan", "unused-one"]) expect(installLibrarySkill({ name, instructions: `---\nname: ${name}\ndescription: ${name}.\n---\n\n${name}.\n`, source: "test" })).not.toHaveProperty("error");
     const deps = kinds();
-    const scout = bot("scout", { assignedSkills: ["trip-plan"], soul: "Plans trips.", chiefOfStaff: true });
+    const scout = bot("scout", { soul: "Plans trips.", chiefOfStaff: true });
     const sources: CloudSendSources = {
       appVersion: "0.1.121", bots: () => [scout, bot("pip", { soul: "Pip." })], greetingOnly: () => true,
       skills: (owner) => (owner.id === "scout" ? [{ name: "packing", sha256: "b".repeat(64), enabled: true }] : []), picture: () => null,
@@ -37,7 +37,7 @@ describe("a move of one bot into a team", () => {
       move: { items: (bots, only) => moveItems(deps, bots, only), botParts: () => ({ chief: "c", library: "l", projects: "p" }) },
     };
     const items = cloudSendSummary(sources, { move: true, bot: "scout" }).items;
-    expect(items.map((item) => item.key)).toEqual(["bot:scout", "skill:scout:packing", "routine:r-scout", "library-skill:trip-plan"]);
+    expect(items.map((item) => item.key)).toEqual(["bot:scout", "skill:scout:packing", "routine:r-scout"]);
     expect(Object.keys(items[0]!.parts), "never someone's Chief of Staff in the team").not.toContain("chief");
     expect(Object.keys(items[0]!.parts)).toEqual(expect.arrayContaining(["library", "projects", "soul"]));
     const whole = cloudSendSummary(sources, { move: true }).items.map((item) => item.key);

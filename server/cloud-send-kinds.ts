@@ -144,9 +144,8 @@ export function moveBotParts(bot: BotRecord, hash: (value: unknown) => string): 
 
 /** This server's automations and skill extras, as a move compares them: automations only of the bots it carries, and a
  * definition apart from its switch, its address and its counts. `only`: a move of that one bot into a team carries its
- * own routines and the library skills it uses; its calls, webhooks and app events, and the person's imported skills,
- * stay. */
-export function moveItems(deps: MoveKindsDeps, bots: ReadonlySet<string>, only?: Pick<BotRecord, "id" | "assignedSkills">): CloudSendItem[] {
+ * own routines; its calls, webhooks and app events stay. */
+export function moveItems(deps: MoveKindsDeps, bots: ReadonlySet<string>, only?: Pick<BotRecord, "id">): CloudSendItem[] {
   const items: CloudSendItem[] = [];
   const add = (kind: MoveKind, id: string, label: string, parts: Record<string, string>, bot?: string) =>
     items.push({ key: itemKey.moved(kind, id), kind, label: label.slice(0, 200), id, ...(bot ? { bot } : {}), parts });
@@ -156,11 +155,7 @@ export function moveItems(deps: MoveKindsDeps, bots: ReadonlySet<string>, only?:
     add("routine", routine.id, routine.name, { def: definitionHash(routine, ROUTINE_FIELDS, deps.dataDir),
       runs: hashOf(finishedRuns(routines!, routine.id).map((run) => run.id).sort()) }, routine.botId);
   }
-  if (only) {
-    const uses = new Set(only.assignedSkills ?? []);
-    for (const { entry } of librarySkills()) if (uses.has(entry.name)) add("library-skill", entry.name, entry.name, { text: entry.sha256.slice(0, 24) || EMPTY, state: entry.reviewState });
-    return items;
-  }
+  if (only) return items;
   for (const call of deps.calls()?.list() ?? []) {
     if (call.botIds.every((id) => bots.has(id))) add("call", call.id, call.name, { def: definitionHash(call, CALL_FIELDS, deps.dataDir) }, call.botIds[0]);
   }
@@ -250,6 +245,7 @@ const botFieldsSchema = z.object({
   projects: z.array(z.object({ id: z.string().regex(/^[\w-]{1,128}$/u), name: z.string().min(1).max(80), emoji: z.string().max(16).optional() }).passthrough()).max(200).nullable().optional(),
   playbooks: z.array(playbookSchema).max(50).nullable().optional(),
   installedPackage: z.record(z.string(), z.unknown()).nullable().optional(),
+  /** Retired: a move from a server of the per-bot assignment era still sends this list. It is accepted and dropped. */
   assignedSkills: z.array(z.string().max(64)).max(200).nullable().optional(),
   defaultBot: z.object({ person: z.string().max(320).optional() }).strict().nullable().optional(),
   sidebarHidden: z.boolean().nullable().optional(),
@@ -286,10 +282,6 @@ function applyBotFields(deps: MoveKindsDeps, id: string, raw: unknown, source: A
   }
   set("playbooks", (fields.playbooks ?? undefined) as InstalledPlaybook[] | undefined);
   set("installedPackage", (fields.installedPackage ?? undefined) as InstalledPackageMetadata | undefined);
-  if (Object.hasOwn(fields, "assignedSkills")) {
-    const library = readSkillLibraryIndex();
-    patch.assignedSkills = fields.assignedSkills ? fields.assignedSkills.filter((name) => library[name]) : undefined;
-  }
   if (Object.hasOwn(fields, "chiefOfStaff") && fields.chiefOfStaff !== true) patch.chiefOfStaff = fields.chiefOfStaff ?? undefined;
   if (fields.chiefOfStaff === true) delete patch.hidden;
   deps.store.patchBot(id, patch);

@@ -25,15 +25,14 @@ describe("removing a skill from the library", () => {
     expect(readFileSync(join(root, "archive", "removed", removed.undo, "scripts", "run.py"), "utf8")).toBe("print('run')\n");
   });
 
-  it("puts it back as it was: on, for every bot, with its files", () => {
+  it("puts it back as it was: on, with its files", () => {
     const root = freshRoot();
     library.installLibrarySkill({ name: "pick", instructions: SKILL("pick"), source: "upload:a.zip", reviewState: "approved", root,
       files: [{ path: "notes.md", content: "# Notes\n" }] });
-    library.setLibrarySkillEveryBot("pick", true, root);
     const removed = library.removeLibrarySkill("pick", root);
     if (!("undo" in removed)) throw new Error("not removed");
     const restored = library.restoreLibrarySkill(removed.undo, root);
-    expect(restored).toMatchObject({ name: "pick", enabled: true, everyBot: true, files: ["notes.md"], warnings: [] });
+    expect(restored).toMatchObject({ name: "pick", enabled: true, files: ["notes.md"], warnings: [] });
     expect(library.readLibrarySkillFile("pick", root)).toBe(SKILL("pick"));
     expect(library.restoreLibrarySkill(removed.undo, root)).toEqual({ error: "nothing to undo" });
   });

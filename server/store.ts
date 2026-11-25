@@ -165,10 +165,10 @@ export interface BotRecord extends Omit<WireBot, "avatarUrl" | "tasks"> {
   lastProfileRequestId?: string;
   lastTeamSetupReceipt?: { requestId: string; result: TeamSetupResult };
   packageBase?: Partial<Record<AgentPart, PartPair>>;
-  assignedSkills?: string[]; teamProject?: TeamProjectMembership;
+  teamProject?: TeamProjectMembership;
 }
 
-export type BotWirePrivateKeys = "resumeCursors" | "home" | "mainThreadChoice" | "tasks" | "avatarUrl" | "approvalGrant" | "lastProfileRequestId" | "lastTeamSetupReceipt" | "packageBase" | "assignedSkills" | "teamProject";
+export type BotWirePrivateKeys = "resumeCursors" | "home" | "mainThreadChoice" | "tasks" | "avatarUrl" | "approvalGrant" | "lastProfileRequestId" | "lastTeamSetupReceipt" | "packageBase" | "teamProject";
 export type BotWireProjection = Pick<BotRecord, Exclude<keyof BotRecord, BotWirePrivateKeys>>;
 export type BotWireProjectionIsExact = AssertExact<Omit<WireBot, "avatarUrl" | "tasks">, BotWireProjection> & AssertSameKeys<Omit<WireBot, "avatarUrl" | "tasks">, BotWireProjection>;
 export const botWireProjectionIsExact: BotWireProjectionIsExact = true;
@@ -416,9 +416,9 @@ export class Store {
       delete b.managedSections;
       botsMigrated = true;
     }
-    for (const b of this.bots as Array<BotRecord & { peers?: unknown; approvePeerComms?: unknown }>) {
-      if (!("peers" in b) && !("approvePeerComms" in b)) continue;
-      delete b.peers;
+    for (const b of this.bots as Array<BotRecord & { peers?: unknown; approvePeerComms?: unknown; assignedSkills?: unknown }>) {
+      if (!("peers" in b) && !("approvePeerComms" in b) && !("assignedSkills" in b)) continue;
+      delete b.peers; delete b.assignedSkills;
       delete b.approvePeerComms;
       botsMigrated = true;
     }

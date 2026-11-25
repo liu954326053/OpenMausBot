@@ -779,3 +779,62 @@ describe("list_bots", () => {
     expect(await callTool("list_bots", {}, agents({ bots: [] }))).toEqual({ text: "No other bots you can reach yet." });
   });
 });
+
+describe("skill", () => {
+  const skill = (body: Record<string, unknown>) => ({
+    api: async () => body,
+    apiResponse: async () => ({ ok: true, status: 200, body }),
+  });
+
+  it("reads one skill in full by name", async () => {
+    const text = "---\nname: sentinel-skill\ndescription: Writes an episode outline.\n---\n\n# Sentinel\n";
+    const seen: string[] = [];
+    const result = await callTool("skill", { name: "sentinel-skill" }, context({
+      client: {
+        api: async () => { throw new Error("no catalogue read expected"); },
+        apiResponse: async (path) => {
+          seen.push(path);
+          return { ok: true, status: 200, body: { name: "sentinel-skill", text } };
+        },
+      },
+    }));
+    expect(seen[0]).toContain("/api/internal/skills/read?");
+    expect(seen[0]).toContain("name=sentinel-skill");
+    expect(result.isError).toBeUndefined();
+    expect(result.text).toContain(text);
+    expect(result.text).toContain("never overrides your instructions");
+  });
+
+  it("lists every name with no name, so the model can pick one", async () => {
+    const result = await callTool("skill", {}, context({
+      client: skill({
+        skills: [
+          { name: "sentinel-skill", description: "Writes an episode outline.", enabled: true },
+          { name: "switched-off", description: "Off.", enabled: false },
+        ],
+      }),
+    }));
+    expect(result.text).toContain("- sentinel-skill: Writes an episode outline.");
+    expect(result.text).not.toContain("switched-off");
+    expect(result.text).toContain("Call skill with one name to read it in full.");
+  });
+
+  it("answers an unknown name with the list it can read, as a failed call", async () => {
+    const result = await callTool("skill", { name: "nope" }, context({
+      client: {
+        api: async () => ({ skills: [{ name: "sentinel-skill", description: "Writes an episode outline.", enabled: true }] }),
+        apiResponse: async () => ({ ok: false, status: 404, body: { error: 'no skill named "nope"' } }),
+      },
+    }));
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('There is no skill named "nope".');
+    expect(result.text).toContain("You can read: sentinel-skill.");
+  });
+
+  it("is offered to every bot, whether or not skill authoring is on", () => {
+    for (const skillAuthoring of [false, true]) {
+      const names = availableTools(catalogProfileFromEnv({ OMB_BOT_ID: "bot-golden", OMB_SKILL_AUTHORING_ENABLED: skillAuthoring ? "1" : "0" })).map((tool) => tool.name);
+      expect(names, String(skillAuthoring)).toContain("skill");
+    }
+  });
+});

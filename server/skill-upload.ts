@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import type { SkillUploadResult, SkippedSkillFile } from "../shared/skill-import.ts";
 import { prepareSkillFolder, skillFilesDigest, skillImportSummary } from "./skill-folder.ts";
 import {
-  installLibrarySkill, readSkillLibraryIndex, removeLibrarySkill, restoreLibrarySkill, setLibrarySkillEveryBot, skillsLibraryRoot,
+  installLibrarySkill, readSkillLibraryIndex, removeLibrarySkill, restoreLibrarySkill, skillsLibraryRoot,
   type SkillLibraryEntry,
 } from "./skill-library.ts";
 
@@ -94,7 +94,6 @@ export function installUploadedSkills(
       result.errors.push(`${name}: ${installed.error}`);
       continue;
     }
-    if (existing?.everyBot) setLibrarySkillEveryBot(name, true, root);
     result.installed.push({ ...skillImportSummary(name, [{ path: SKILL_FILE }, ...prepared.files], skipped), replaced: Boolean(existing) });
   }
   return result;
