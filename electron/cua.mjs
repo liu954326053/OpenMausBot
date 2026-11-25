@@ -175,12 +175,24 @@ export function resolveDriverBinary() {
     const bundled = path.join(process.resourcesPath, "cua-driver" + (process.platform === "win32" ? ".exe" : ""));
     if (fs.existsSync(bundled)) return bundled;
   }
+  if (process.platform === "darwin" && !app.isPackaged) {
+    // `pnpm build:cua` stages the official driver per architecture for development; without it, dev has no driver.
+    const staged = stagedDriverBinary();
+    if (staged) return staged;
+  }
   if (process.platform === "darwin" && fs.existsSync(INSTALLED_DRIVER)) return INSTALLED_DRIVER;
   if (process.platform === "win32") {
     const staged = path.join(app.getAppPath(), "dist-native", "cua-win32-x64", "cua-driver.exe");
     return fs.existsSync(staged) ? staged : resolveWindowsDriver();
   }
   return null;
+}
+
+/** The driver `pnpm build:cua` staged for this machine, or null when it was never built. */
+export function stagedDriverBinary(appPath = app.getAppPath(), arch = process.arch, platform = process.platform) {
+  if (platform !== "darwin") return null;
+  const candidate = path.join(appPath, "dist-native", arch, "cua-driver");
+  return fs.existsSync(candidate) ? candidate : null;
 }
 
 export function resolveEmbeddedDriverBinary(binary) {
@@ -273,6 +285,7 @@ async function startEmbedded(binary, signal) {
   // CUA's embedding contract needs grants before the daemon starts, asked from Electron main so macOS attributes them here.
   if (process.platform === "darwin") {
     const permissionStatus = sdk.requestMacOSPermissions();
+    console.error(`[cua] macOS permissions: accessibility=${Boolean(permissionStatus.accessibility)} screenRecording=${Boolean(permissionStatus.screenRecording)}`);
     if (!sdk.hasRequiredMacOSPermissions(permissionStatus)) {
       const missing = [
         !permissionStatus.accessibility && "Accessibility",
@@ -334,7 +347,9 @@ export async function startCua({ attempt = 0 } = {}) {
   }
 
   const wantEmbedded =
-    process.platform === "win32" || app.isPackaged || process.env.OPENMAUSBOT_CUA_EMBEDDED === "1";
+    process.platform === "win32" || app.isPackaged || process.env.OPENMAUSBOT_CUA_EMBEDDED === "1" ||
+    // A staged development driver runs in this process too, so macOS grants are attributed to the app that asks.
+    (process.platform === "darwin" && !app.isPackaged && binary === stagedDriverBinary());
   let nextConnection;
 
   if (wantEmbedded) {
