@@ -101,6 +101,7 @@ export function buildSystemPrompt(
     { id: "tool-bridge", label: "Tool search", text: agentsToolBridged(agents) ? AGENTS_TOOL_BRIDGE_PROMPT : "" },
     { id: "reply-style", label: "Reply style", text: replyStylePrompt(opts?.replyStyle) },
     ...parts,
+    { id: "python-trust", label: "Python trust store", text: PYTHON_TRUST_PROMPT },
     { id: "reply-habits", label: "How to reply", text: REPLY_HABITS_PROMPT },
   ];
   const sections = ordered
@@ -322,6 +323,10 @@ export const TEAM_MEMORY_PROMPT =
   " When you learn who someone is, where something lives, what was decided, or what a term or nickname means, propose it with propose_team_memory. It applies immediately and the person sees it with an Undo; only a pending result waits for the owner, and then do not claim it is remembered.";
 export const PROFILE_PROMPT =
   " If asked to change who you are (name, title, description, standing instructions in SOUL.md) or to set yourself up, use propose_profile. Chiefs create bots and set up teams with their own tools, never by clicking through this app; other bots ask a reachable Chief through the peer tools, and if none is reachable, explain the team-access blocker instead of clicking around it or claiming bots cannot be created programmatically." + APPLIED_RESULT_PROMPT;
+
+/** A python.org macOS build starts with an empty trust store; MagicBot repairs it or sets SSL_CERT_FILE (python-trust.ts). */
+export const PYTHON_TRUST_PROMPT =
+  " If Python fails with CERTIFICATE_VERIFY_FAILED, check SSL_CERT_FILE; never disable verification (verify=False).";
 
 export function mentionPrompt(tagged: ReadonlyArray<{ id: string; name: string }>): string {
   if (!tagged.length) return "";

@@ -32,6 +32,7 @@ import {
   everyBotRulesPrompt,
   heavyPrompt,
   HEAVY_PROMPT_BYTES,
+  PYTHON_TRUST_PROMPT,
   type ComputerPromptKind,
   type PromptSection,
 } from "./system-prompt.ts";
@@ -123,7 +124,7 @@ describe("buildSystemPrompt", () => {
     expect(built.text).toContain("likes tea");
     expect(built.text).toContain("@Fig");
 
-    expect(built.stable).toBe(`You are Kiwi. Search past sessions.${REPLY_HABITS_PROMPT}`);
+    expect(built.stable).toBe(`You are Kiwi. Search past sessions.${PYTHON_TRUST_PROMPT}${REPLY_HABITS_PROMPT}`);
     // A German person once read "Now the edits." between a bot's German lines: every line they see is in their language.
     expect(REPLY_HABITS_PROMPT).toContain("Write every line they see in their language, notes between steps and messages you pass on included");
     expect(built.volatile).toContain("likes tea");
@@ -141,7 +142,7 @@ describe("buildSystemPrompt", () => {
       { id: "memory-rules", label: "How memory works", text: " Memory rules." },
       { id: "memory", label: "Memory", text: " Your memory: likes tea." },
     ]);
-    expect(built.stable).toBe(`You are Kiwi. Choosing a computer: rules. Memory rules.${REPLY_HABITS_PROMPT}`);
+    expect(built.stable).toBe(`You are Kiwi. Choosing a computer: rules. Memory rules.${PYTHON_TRUST_PROMPT}${REPLY_HABITS_PROMPT}`);
     expect(built.volatile).toBe(" This turn you may choose. Your memory: likes tea.");
   });
 
@@ -157,7 +158,7 @@ describe("buildSystemPrompt", () => {
     expect(built.volatile).toContain(ROUTINE_EXECUTION_PROMPT);
     // a routine run that reports elsewhere reads the bot's own cached prefix
     expect(built.volatile).toContain(AUTOMATION_REPLY_PROMPT);
-    expect(built.stable).toBe(`You are Kiwi. Set yourself up.${WEBHOOK_PROMPT}${REPLY_HABITS_PROMPT}`);
+    expect(built.stable).toBe(`You are Kiwi. Set yourself up.${WEBHOOK_PROMPT}${PYTHON_TRUST_PROMPT}${REPLY_HABITS_PROMPT}`);
   });
 
   it("keeps the phone part stable and where the person is volatile, so a turn from the phone keeps the cached prefix", () => {
@@ -165,7 +166,7 @@ describe("buildSystemPrompt", () => {
       { id: "device", label: "Phone", text: " The phone." },
       { id: "device-place", label: "Where the person is", text: place },
     ]);
-    expect(at(" On the phone.").stable).toBe(`You are Kiwi. The phone.${REPLY_HABITS_PROMPT}`);
+    expect(at(" On the phone.").stable).toBe(`You are Kiwi. The phone.${PYTHON_TRUST_PROMPT}${REPLY_HABITS_PROMPT}`);
     expect(at(" At the computer.").stable).toBe(at(" On the phone.").stable);
     expect(at(" On the phone.").volatile).toBe(" On the phone.");
   });
@@ -178,9 +179,10 @@ describe("buildSystemPrompt", () => {
 
   it("is the persona and how every bot replies when there is no soul and no parts", () => {
     const built = buildSystemPrompt("You are Kiwi.", "", []);
-    expect(built.text).toBe(`You are Kiwi.${REPLY_HABITS_PROMPT}`);
+    expect(built.text).toBe(`You are Kiwi.${PYTHON_TRUST_PROMPT}${REPLY_HABITS_PROMPT}`);
     expect(built.sections).toEqual([
       { id: "persona", label: "Identity", text: "You are Kiwi.", bytes: 13 },
+      { id: "python-trust", label: "Python trust store", text: PYTHON_TRUST_PROMPT, bytes: Buffer.byteLength(PYTHON_TRUST_PROMPT, "utf8") },
       { id: "reply-habits", label: "How to reply", text: REPLY_HABITS_PROMPT, bytes: Buffer.byteLength(REPLY_HABITS_PROMPT, "utf8") },
     ]);
   });
@@ -192,19 +194,19 @@ describe("buildSystemPrompt", () => {
       { id: "memory", label: "Memory", text: " Your memory file is X." },
     ];
     const built = buildSystemPrompt("You are Kiwi.", "", parts);
-    expect(built.text).toBe(`You are Kiwi. You can act on the computer. Your memory file is X.${REPLY_HABITS_PROMPT}`);
-    expect(built.sections.map((s) => s.id)).toEqual(["persona", "computer", "memory", "reply-habits"]);
+    expect(built.text).toBe(`You are Kiwi. You can act on the computer. Your memory file is X.${PYTHON_TRUST_PROMPT}${REPLY_HABITS_PROMPT}`);
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "computer", "memory", "python-trust", "reply-habits"]);
   });
 
   it("puts the soul block directly after the persona and measures it in bytes", () => {
     const built = buildSystemPrompt("You are Kiwi.", "Be brief. é", [
       { id: "memory", label: "Memory", text: " Your memory file is X." },
     ]);
-    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "memory", "reply-habits"]);
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "memory", "python-trust", "reply-habits"]);
     const soul = built.sections[1]!;
     expect(soul.text).toBe(soulSystemPrompt("Be brief. é"));
     expect(soul.bytes).toBe(Buffer.byteLength(soul.text, "utf8"));
-    expect(built.text).toBe("You are Kiwi." + soul.text + " Your memory file is X." + REPLY_HABITS_PROMPT);
+    expect(built.text).toBe("You are Kiwi." + soul.text + " Your memory file is X." + PYTHON_TRUST_PROMPT + REPLY_HABITS_PROMPT);
   });
 });
 
@@ -546,7 +548,7 @@ describe("reply style", () => {
       { id: "memory", label: "Memory", text: " memory" },
       { id: "x", label: "X", text: " tail" },
     ], undefined, { replyStyle: "conversational" });
-    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "reply-style", "memory", "x", "reply-habits"]);
+    expect(built.sections.map((s) => s.id)).toEqual(["persona", "soul", "reply-style", "memory", "x", "python-trust", "reply-habits"]);
     expect(built.stable).toContain(CONVERSATIONAL_STYLE_PROMPT);
     expect(built.volatile).not.toContain("Reply style");
     expect(CONVERSATIONAL_STYLE_PROMPT).toMatch(/short/i);
