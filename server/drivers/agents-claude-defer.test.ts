@@ -25,7 +25,7 @@ const DEFER = { [DEFER_TOOLS_ENV]: "1" };
 const UP_FRONT_BASELINE: Record<string, { whole: number; deferred: number }> = {
   default: { whole: 3855, deferred: 1252 },
   specialist: { whole: 1495, deferred: 1080 },
-  fullest: { whole: 3855, deferred: 1589 },
+  fullest: { whole: 3855, deferred: 1632 },
 };
 
 const listed = (env: Record<string, string>) => agentsToolList(env).listed as Array<{ name: string; description: string; inputSchema: unknown; _meta?: Record<string, unknown> }>;
