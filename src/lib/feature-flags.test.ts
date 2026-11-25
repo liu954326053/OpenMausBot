@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { builtInBrowserEnabled, parseSkillReviewSteps, publishedAppsEnabled, roomMemoryCaptureEnabled, savedStepsEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines, usbPhoneTakeoverEnabled } from "./feature-flags";
+import { builtInBrowserEnabled, parseSkillReviewSteps, publishedAppsEnabled, roomMemoryCaptureEnabled, runCommandEnabled, savedStepsEnabled, shareLearnedSkillsMode, sharedComputersEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillReviewEnabled, skillReviewSteps, skillReviewUnavailableEngines, usbPhoneTakeoverEnabled } from "./feature-flags";
 
 describe("experimental feature flags", () => {
   it("keeps skill authoring on by default, before and after the config arrives", () => {
@@ -80,6 +80,13 @@ describe("experimental feature flags", () => {
     expect(usbPhoneTakeoverEnabled({ features: {} })).toBe(false);
     expect(usbPhoneTakeoverEnabled({ features: { usbPhoneTakeover: false } })).toBe(false);
     expect(usbPhoneTakeoverEnabled({ features: { usbPhoneTakeover: true } })).toBe(true);
+  });
+
+  it("keeps run_command for API bots off until switched on", () => {
+    expect(runCommandEnabled(null)).toBe(false);
+    expect(runCommandEnabled({ features: {} })).toBe(false);
+    expect(runCommandEnabled({ features: { runCommand: false } })).toBe(false);
+    expect(runCommandEnabled({ features: { runCommand: true } })).toBe(true);
   });
 
   it("keeps Published apps out of the sidebar until a home that publishes sets it", () => {

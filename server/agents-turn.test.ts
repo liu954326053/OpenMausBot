@@ -54,6 +54,13 @@ describe("one conversation's agents tools", () => {
     }
   }
 
+  it("lists run_command only for a host that mounts it, the same on every kind of turn", async () => {
+    const names = async (conversation: AgentsConversation) => (await everyTurn(conversation)).map(({ env, wire }) =>
+      [env.OMB_RUN_COMMAND, (JSON.parse(wire) as { tools: Array<{ name: string }> }).tools.some((tool) => tool.name === "run_command")]);
+    for (const listed of await names(CHAT)) expect(listed).toEqual(["0", false]);
+    for (const listed of await names({ ...CHAT, host: { ...HOST, runCommand: true } })) expect(listed).toEqual(["1", true]);
+  });
+
   it("never lists select_computer in a conversation only bots or automation drive, where every pick would be refused", async () => {
     const names = async (conversation: AgentsConversation) =>
       (JSON.parse((await everyTurn(conversation))[0]!.wire) as { tools: Array<{ name: string }> }).tools.map((tool) => tool.name);

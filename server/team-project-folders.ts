@@ -83,6 +83,12 @@ export function teamProjectBotFolder(botId: string): string | null {
   return placeOf(membershipOf(botId))?.own ?? null;
 }
 
+/** The project folder itself, for a project bot whose folder can be used now; null for any other bot. */
+export function teamProjectFolder(botId: string): string | null {
+  const place = placeOf(membershipOf(botId));
+  return place?.own && !place.archived && teamProjectFolderReady(place.folder) ? place.folder : null;
+}
+
 /** A project bot's files cannot be read now, so not finding them says nothing about them. */
 export function teamProjectFilesAway(botId: string): boolean {
   const place = placeOf(membershipOf(botId));

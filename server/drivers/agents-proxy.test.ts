@@ -2155,7 +2155,9 @@ describe("agents-proxy MCP surface", () => {
       const listed = await callTool("skills_list", {});
       expect(listed.result.content[0].text).toContain("invoice-reminders (enabled, imported, not in your prompt: search to read it)");
       const found = (await callTool("skills_list", { query: "chase unpaid invoices and expenses" })).result.content[0].text as string;
-      expect(found).toContain(`- invoice-reminders: Chases unpaid invoices. Read ${JSON.stringify(invoiceFile)}.`);
+      expect(found).toContain("- invoice-reminders: Chases unpaid invoices.");
+      expect(found).not.toContain(invoiceFile);
+      expect(found).toContain("call skill with its name to read it in full");
       expect(found).toContain("- learned-expense: PRIVATE LEARNED INSTRUCTIONS");
       expect(found).not.toContain("UNREVIEWED");
       expect(found).not.toContain("file-expense");

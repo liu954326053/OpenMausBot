@@ -46,6 +46,9 @@ export interface CatalogProfile {
   appHosting?: boolean;
   /** The tool groups this bot's person turned off: none of their tools is mounted. */
   toolsOff?: readonly ToolGroup[];
+  /** This server runs shell commands for a bot (features.runCommand, and not a Cloud home or hosted workspace):
+   * run_command is mounted. Absent means off. */
+  runCommand?: boolean;
 }
 
 /** Everything is off unless the harness says "1". */
@@ -72,5 +75,6 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     meetings: env.OMB_MEETINGS === "1",
     appHosting: env.OMB_APP_HOSTING === "1",
     toolsOff: toolsOffFromEnv(env.OMB_TOOLS_OFF),
+    runCommand: env.OMB_RUN_COMMAND === "1",
   };
 }

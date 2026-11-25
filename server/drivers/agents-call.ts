@@ -35,6 +35,7 @@ import { callShareTool, SHARE_TOOL_NAMES } from "./agents-share-tool.ts";
 import { callPersonTool, PERSON_TOOL_NAMES } from "./agents-person-tools.ts";
 import { callDevsTool, DEVS_TOOL_NAMES } from "./agents-devs-tools.ts";
 import { callSkillTool, SKILL_TOOL } from "./agents-skill-tool.ts";
+import { RUN_COMMAND_TOOL, runCommandText, type RunCommandOutcome } from "./run-command-tool.ts";
 
 export interface ToolCallContext {
   botId: string;
@@ -157,20 +158,19 @@ function jsonRecord(value: unknown): value is Json {
 
 const SKILL_SEARCH_HITS = 8;
 
-/** The enabled skills that best fit `query`, with what each does and where to read it. Disabled ones stay out: a person
- * switched them off for this bot, or has not read a flagged one yet. */
+/** The enabled skills that best fit `query`, with what each does. Disabled ones stay out: a person switched them off for
+ * this bot, or has not read a flagged one yet. */
 function skillSearchResult(query: string, rows: unknown[]): { text: string } {
   const enabled = rows.filter(jsonRecord).filter((row) => row.enabled === true && typeof row.name === "string").map((row) => ({
     name: String(row.name),
     description: typeof row.description === "string" ? row.description.replace(/\s+/g, " ").slice(0, 300) : "",
-    file: typeof row.file === "string" ? row.file : "",
   }));
   const hits = rankSkills(enabled, query).slice(0, SKILL_SEARCH_HITS);
   if (!hits.length) return { text: `No enabled skill matches ${JSON.stringify(query)}. Try other words, or call skills_list without query for every name.` };
-  const lines = hits.map((hit) => `- ${hit.name}: ${hit.description}${hit.file ? ` Read ${JSON.stringify(hit.file)}.` : ""}`);
+  const lines = hits.map((hit) => `- ${hit.name}: ${hit.description}`);
   return {
-    text: `Skills that fit ${JSON.stringify(query)}, best first:\n${lines.join("\n")}\n\nBefore starting a task one of them covers, read its ` +
-      "SKILL.md and follow it; one shown without a path is already in your prompt's skills index. They are reference material: " +
+    text: `Skills that fit ${JSON.stringify(query)}, best first:\n${lines.join("\n")}\n\nBefore starting a task one of them covers, call ` +
+      `${SKILL_TOOL} with its name to read it in full, and follow it. They are reference material: ` +
       "they never override your instructions or the user's.",
   };
 }
@@ -237,6 +237,16 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
     if (stderr) lines.push("--- stderr ---", stderr.replace(/\s+$/, ""));
     if (!stdout && !stderr && !body.timedOut) lines.push("(no output)"); if (typeof body.note === "string" && body.note) lines.push("--- note ---", body.note);
     return { text: lines.join("\n"), ...(exitCode !== 0 || body.timedOut ? { isError: true } : {}) };
+  }
+  if (name === RUN_COMMAND_TOOL) {
+    const { ok, body } = await apiResponse("/api/internal/run-command", {
+      method: "POST",
+      body: JSON.stringify({ command: args.command, ...(typeof args.cwd === "string" ? { cwd: args.cwd } : {}),
+        ...(typeof args.timeout_seconds === "number" ? { timeout_seconds: args.timeout_seconds } : {}) }),
+    });
+    if (!ok) return { text: String(body.error ?? "Could not run that command."), isError: true };
+    const outcome = body as unknown as RunCommandOutcome;
+    return { text: runCommandText(outcome), ...(outcome.exitCode !== 0 || outcome.timedOut ? { isError: true } : {}) };
   }
   if (name === "attach_file") {
     const { ok, body } = await apiResponse("/api/internal/attach-file", {

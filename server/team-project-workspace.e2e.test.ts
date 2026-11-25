@@ -180,7 +180,10 @@ it.skipIf(process.platform === "win32")("keeps a project bot's memory in its pro
     expect((await api("POST", `/api/bots/${bot.id}/messages`, { text: "Welcome back." })).status).toBe(202);
     expect(await settled()).toMatchObject({ status: "settled" });
     expect(memory()).toContain("The pilot is set in Lisbon");
-    expect(fixture.told().systemPrompt).toContain(`Read ${JSON.stringify(join(own, "skills", "beat-sheet", "SKILL.md"))}`);
+    const index = fixture.told().systemPrompt;
+    expect(index).toContain("- beat-sheet (your own): Lays out the beats of an episode.");
+    expect(index).toContain("Read one in full with the skill tool");
+    expect(index).not.toContain(join(own, "skills", "beat-sheet", "SKILL.md"));
     expect((await api("POST", "/api/share/export", { botId: bot.id })).status).toBe(201);
     expect(readFileSync(join(own, "templates", "writer", "skills", "beat-sheet", "SKILL.md"), "utf8"), "a template of it is written in its own folder").toContain("List the beats in order.");
     expect(tree(inData), "and not in the data folder").toEqual([]);

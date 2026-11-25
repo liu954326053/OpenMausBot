@@ -14,7 +14,7 @@ import { ensureTeamProjectBotFolder, retireTeamProjectBotFolder, teamProjectBotF
 import { DATA_DIR } from "./config.ts";
 
 export {
-  setTeamProjectLookup, setTeamProjectMemberships, teamProjectBotFolder, teamProjectFilesAway, teamProjectFolderProblem, teamProjectFolderReady, teamProjectStop,
+  setTeamProjectLookup, setTeamProjectMemberships, teamProjectBotFolder, teamProjectFilesAway, teamProjectFolder, teamProjectFolderProblem, teamProjectFolderReady, teamProjectStop,
   type TeamProjectStop,
 } from "./team-project-folders.ts";
 

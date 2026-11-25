@@ -249,6 +249,12 @@ describe("configuration boundaries", () => {
     expect(parseConfigPatch(stored)).toEqual({ language: "en", features: { browser: true } });
   });
 
+  it("keeps features.runCommand as a boolean, and refuses anything else for it", () => {
+    expect(parseStoredConfig({ features: { runCommand: true } })).toEqual({ features: { runCommand: true } });
+    expect(parseConfigPatch({ features: { runCommand: false } })).toEqual({ features: { runCommand: false } });
+    expect(() => parseConfigPatch({ features: { runCommand: "yes" } })).toThrow();
+  });
+
   it("rejects malformed stored instances and API patches", () => {
     expect(() => parseStoredConfig({ instances: { claude: { driver: 42 } } })).toThrow("instances.claude.driver");
     expect(() => parseStoredConfig({ browserProfiles: [{ id: "../evil", name: "Unsafe" }] })).toThrow(
