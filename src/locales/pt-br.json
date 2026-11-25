@@ -1271,6 +1271,7 @@
   "approval.held.outbound": "Esta ação envia algo em seu nome, por isso precisa da sua aprovação antes.",
   "approval.held.undeliveredFull": "“Acesso total” não conseguiu enviar esta aprovação.",
   "approval.held.undelivered": "“Aprovar por mim” não conseguiu responder a este pedido.",
+  "approval.held.outsideProject": "Esta ação grava fora da pasta do projeto, por isso precisa da sua aprovação antes.",
   "settings.title": "Configurações",
   "settings.search": "Buscar",
   "settings.searchAria": "Buscar nas configurações",

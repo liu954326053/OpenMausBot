@@ -131,6 +131,10 @@ export interface SendTurnInput {
   recalled?: string;
   /** Reasserted every turn so a resumed native session cannot keep a stale, more permissive mode. */
   approvalMode?: ApprovalMode;
+  /** A project bot's project folder, for work in its project. A driver whose Full access would let the engine act
+   * without asking anyone (Claude Code's bypassPermissions) keeps asking the server instead, which allows every request
+   * but a write outside this folder. */
+  projectFolder?: string;
   /** The conversation's level right now, which the person may change while the turn runs. A driver that gates its own
    * tool calls reads it before each one; a native engine keeps `approvalMode` until its next turn. */
   approvalModeNow?: () => ApprovalMode;

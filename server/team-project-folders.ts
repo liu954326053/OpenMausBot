@@ -83,6 +83,12 @@ export function teamProjectBotFolder(botId: string): string | null {
   return placeOf(membershipOf(botId))?.own ?? null;
 }
 
+/** The project folder a bot belongs to, where its work goes; null for a bot in no project, or in one that cannot be
+ * placed. */
+export function teamProjectFolderOf(botId: string): string | null {
+  return placeOf(membershipOf(botId))?.folder ?? null;
+}
+
 /** A project bot's files cannot be read now, so not finding them says nothing about them. */
 export function teamProjectFilesAway(botId: string): boolean {
   const place = placeOf(membershipOf(botId));

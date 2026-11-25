@@ -1271,6 +1271,7 @@
   "approval.held.outbound": "这会以你的名义发送内容，因此会先询问你。",
   "approval.held.undeliveredFull": "完全访问未能送达这次批准。",
   "approval.held.undelivered": "代我批准无法回应这一条。",
+  "approval.held.outsideProject": "这会写到项目文件夹之外，因此会先询问你。",
   "settings.title": "设置",
   "settings.search": "搜索",
   "settings.searchAria": "搜索设置",

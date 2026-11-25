@@ -10,6 +10,7 @@ import {
   autoVerdict,
   deliverFullAccessApproval,
   delegatedApprovalMode,
+  keptInProject,
 } from "./auto-approve.ts";
 
 describe("Full access delivery", () => {
@@ -131,6 +132,19 @@ describe("autoVerdict", () => {
     expect(autoVerdict("ask", "AskUserQuestion", { ownFilesRead: true })).toEqual({ approve: null, source: "no-grant" });
     expect(autoVerdict("full", "Read", { ownFilesRead: true }).source).toBe("full-access");
     expect(autoVerdict("ask", "Bash", { ownFilesRead: false })).toEqual({ approve: null, source: "no-grant" });
+  });
+
+  it("turns any automatic allow of a write that leaves the project into a card that says why", () => {
+    const outside = (verdict: ReturnType<typeof autoVerdict>) => keptInProject(verdict, true);
+    expect(outside(autoVerdict("full", "Write"))).toEqual({ approve: null, source: "project-scope" });
+    expect(outside(autoVerdict("ask", "Bash", { commandAllowed: true }))).toEqual({ approve: null, source: "project-scope" });
+    expect(outside(autoVerdict("ask", "Bash", { toolAllowed: true }))).toEqual({ approve: null, source: "project-scope" });
+    expect(outside(autoVerdict("ask", "Write"))).toEqual({ approve: null, source: "project-scope" });
+    expect(outside(autoVerdict("auto", "Write"))).toEqual({ approve: null, source: "project-scope" });
+    expect(outside(autoVerdict("ask", "Bash", { requiresExplicitApproval: true }))).toEqual({ approve: null, source: "explicit-approval-block" });
+    expect(approvalHeldNote({ source: "project-scope", permission: true })).toBe("approval.held.outsideProject");
+    expect(approvalHeldReason({ source: "project-scope", permission: true })).toBe("This writes outside the project folder, so it asks you first.");
+    expect(keptInProject(autoVerdict("full", "Write"), false)).toEqual({ approve: "approved Write (full access)", source: "full-access" });
   });
 });
 

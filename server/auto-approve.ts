@@ -82,6 +82,7 @@ export type AutoVerdictSource =
   | "explicit-approval-block"
   | "outbound-guard"
   | "safety-floor"
+  | "project-scope"
   | "no-grant";
 
 export interface AutoVerdict {
@@ -140,9 +141,18 @@ export const HELD_NOTE = {
     "This loosens the AI's own safety limits, so only Full access can approve it automatically.",
   "approval.held.undeliveredFull": "Full access couldn't deliver this approval.",
   "approval.held.undelivered": "Approve for me couldn't answer this one.",
+  "approval.held.outsideProject": "This writes outside the project folder, so it asks you first.",
 } as const;
 
 export type HeldNoteKey = keyof typeof HELD_NOTE;
+
+/** A project bot's write that leaves its project, or whose place cannot be read, is never allowed with nobody asked,
+ * whatever the level: the verdict becomes a card, and a card it already was says why. */
+export function keptInProject(verdict: AutoVerdict, leaves: boolean): AutoVerdict {
+  if (!leaves) return verdict;
+  if (verdict.approve || verdict.source === "no-grant" || verdict.source === "native-approval") return { approve: null, source: "project-scope" };
+  return verdict;
+}
 
 export function approvalHeldNote(context: {
   source?: AutoVerdictSource;
@@ -152,6 +162,7 @@ export function approvalHeldNote(context: {
   if (context.source === "outbound-guard") return "approval.held.outbound";
   if (context.source === "explicit-approval-block") return "approval.held.sandbox";
   if (context.source === "native-approval") return "approval.held.native";
+  if (context.source === "project-scope") return "approval.held.outsideProject";
   return undefined;
 }
 

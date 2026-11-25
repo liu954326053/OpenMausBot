@@ -5,6 +5,7 @@
 import { AGENTS_PROXY_ENV } from "./agents-bridge-switch.ts";
 import { roleToolEnv } from "./chief-level.ts";
 import { productionStagesOf } from "./production/plans.ts";
+import { doesProjectWork } from "./project-write-scope.ts";
 import { proposesTeamProjects } from "./team-project-proposal-access.ts";
 import { TOOLS_OFF_ENV } from "../shared/tool-groups.ts";
 
@@ -39,7 +40,7 @@ const flag = (on: boolean) => (on ? "1" : "0");
 
 export function agentsServerEnv(conversation: AgentsConversation, turn: AgentsTurn, bearer: (turn: AgentsTurn) => string, harnessUrl: string): Record<string, string> {
   const { bot, host } = conversation;
-  const projectWork = Boolean(bot.teamProject) && (!conversation.room || conversation.projectRoom === true);
+  const projectWork = doesProjectWork(Boolean(bot.teamProject), conversation.room, conversation.projectRoom === true);
   return {
     ...AGENTS_PROXY_ENV,
     OMB_HARNESS_URL: harnessUrl,

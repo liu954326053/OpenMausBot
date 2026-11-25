@@ -58,7 +58,7 @@ import {
 import { appendNative } from "./native.ts";
 import type { KeepWarmContract } from "./claude-keepwarm.ts"; import { claudeForks } from "./claude-warm-summary.ts";
 import { BACKGROUND_CALL_TIMEOUT_MS, backgroundCallArgs, spawnBackgroundCall } from "./claude-background.ts"; import { withEndpointFolder } from "./claude-endpoint-folder.ts";
-import { permissionLaunchCwd, shellRequest } from "./permission-command.ts"; import { readToolPaths } from "../own-file-reads.ts";
+import { permissionLaunchCwd, shellRequest } from "./permission-command.ts"; import { readToolPaths } from "../own-file-reads.ts"; import { writeToolPaths } from "../project-write-scope.ts";
 import { SPAWNED_PROXIES } from "../proxy-paths.ts"; import { OWN_APPS_SERVER } from "../../shared/own-apps.ts";
 import { extractMcpImages } from "../mcp-tool-images.ts"; import { claudeToolDraft } from "./tool-progress.ts"; import { redactSecretsInText } from "../../shared/redact.ts";
 import {
@@ -997,7 +997,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
       }
       const permissionMode = turn.approvalMode === undefined
         ? config.permissionMode
-        : turn.approvalMode === "full" ? "bypassPermissions"
+        : turn.approvalMode === "full" ? (turn.projectFolder ? "default" : "bypassPermissions")
           : turn.approvalMode === "auto" ? "auto"
             : turn.approvalMode === "edits" ? "acceptEdits" : "default";
       const controlsHost = turn.integrations?.localComputer?.scope === "local-computer";
@@ -1285,6 +1285,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeConfig> = {
                 summary: askSummary(ask),
                 // The Bash command, for exact-command grants and for the safety floor.
                 ...shellRequest(ask.kind === "permission" && ask.tool === "Bash" ? ask.input.command : undefined, commandCwd), ...(ask.kind === "permission" && readToolPaths(ask.tool, ask.input) ? { reads: readToolPaths(ask.tool, ask.input) } : {}),
+                ...(ask.kind === "permission" && writeToolPaths(ask.tool, ask.input) ? { writes: writeToolPaths(ask.tool, ask.input) } : {}),
                 requiresExplicitApproval: ask.kind === "permission" && ask.tool === "Bash" && ask.input.dangerouslyDisableSandbox === true || undefined,
                 nativeReview,
                 allowSession: ask.kind === "permission" && !(controlsHost && typeof ask.tool === "string" && ask.tool.startsWith("mcp__computer")) ? true : undefined,

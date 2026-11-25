@@ -189,14 +189,21 @@ const TEAM_PROJECT_OWN_FOLDER_RULE =
   ` Inside ${TEAM_PROJECT_FOLDER}, change only that folder. Everything else there is your teammates' memory or copies the app keeps:` +
   " never edit, move, rename, delete or tidy it, and leave it out of any search-and-replace, formatting or clean-up you run across the project.";
 
-export function workspaceLocationsPrompt(botId: string, cwd: string | undefined, botCwd?: string, opts: { attachFile?: boolean } = {}): string {
+const PROJECT_WORK_RULE =
+  " projectFolder is this project's folder, and all your work goes there: save every file you make (drafts, scripts, pictures, exports, what a skill produces) inside it." +
+  " Use paths relative to currentWorkingFolder when it is inside projectFolder; otherwise give the full path inside projectFolder." +
+  " A path in a skill's instructions or examples (such as /home/oai/share, /mnt/data or output/) means the same place inside projectFolder, never that path on this computer." +
+  " Writing anywhere outside projectFolder asks the person first, even when they asked for that place, so ask only when they did. Report each file you save by its path inside projectFolder.";
+
+export function workspaceLocationsPrompt(botId: string, cwd: string | undefined, botCwd?: string, opts: { attachFile?: boolean; projectFolder?: string } = {}): string {
   return "\n\nFile locations for this bot (absolute paths): " + JSON.stringify({
     currentWorkingFolder: cwd ?? "Provider default; inspect the working directory before using relative paths",
+    ...(opts.projectFolder ? { projectFolder: opts.projectFolder } : {}),
     sharedBotFolder: workspaceDir(botId),
     otherThreadFiles: join(TASK_WORKSPACES_DIR, botId),
     ...(botCwd ? { configuredProjectFolder: botCwd } : {}),
   }) + ". Different conversations can have different working folders. For an existing file, use the exact path from the conversation; if missing here, check this bot's listed folders before saying it is gone or recreating it." +
-    " Follow an explicitly requested destination. Otherwise put new task output in the current working folder and report its absolute path so another thread or room can use it." +
+    (opts.projectFolder ? PROJECT_WORK_RULE : " Follow an explicitly requested destination. Otherwise put new task output in the current working folder and report its absolute path so another thread or room can use it.") +
     " Do not move old files, edit another active thread's work, or read another bot's private folders without authorization. These paths do not grant additional access." +
     (teamProjectBotFolder(botId) ? TEAM_PROJECT_OWN_FOLDER_RULE : "") +
     " Chat links and inline images open only files in currentWorkingFolder and sharedBotFolder." +

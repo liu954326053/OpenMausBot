@@ -1233,6 +1233,7 @@
   "approval.held.outbound": "這會代表你傳送內容，因此會先詢問你。",
   "approval.held.undeliveredFull": "「完整存取權」無法送出這項核准。",
   "approval.held.undelivered": "「替我核准」無法回應這一項。",
+  "approval.held.outsideProject": "這會寫到專案資料夾之外，因此會先詢問你。",
   "settings.title": "設定",
   "settings.search": "搜尋",
   "settings.searchAria": "搜尋設定",

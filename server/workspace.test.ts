@@ -74,6 +74,20 @@ describe("workspace", () => {
     expect(workspaceLocationsPrompt(BOT, thread)).not.toContain("attach_file");
   });
 
+  it("tells a bot at work in its project that all its work goes in the project folder, by relative paths", () => {
+    const thread = ensureTaskWorkspace(BOT, "thread-first");
+    const prompt = workspaceLocationsPrompt(BOT, "/projects/harbour", undefined, { projectFolder: "/projects/harbour" });
+    expect(prompt).toContain(`"projectFolder":${JSON.stringify("/projects/harbour")}`);
+    expect(prompt).toContain("all your work goes there");
+    expect(prompt).toContain("Use paths relative to currentWorkingFolder when it is inside projectFolder");
+    expect(prompt).toContain("A path in a skill's instructions or examples (such as /home/oai/share, /mnt/data or output/) means the same place inside projectFolder");
+    expect(prompt).toContain("Writing anywhere outside projectFolder asks the person first");
+    expect(prompt).not.toContain("Follow an explicitly requested destination");
+    const plain = workspaceLocationsPrompt(BOT, thread);
+    expect(plain).not.toContain("projectFolder");
+    expect(plain).toContain("Follow an explicitly requested destination");
+  });
+
   it("tells every bot that a picture it shows inline must be in the conversation's folders", () => {
     const thread = ensureTaskWorkspace(BOT, "thread-first");
     for (const prompt of [workspaceLocationsPrompt(BOT, thread), workspaceLocationsPrompt(BOT, thread, undefined, { attachFile: true })]) {
