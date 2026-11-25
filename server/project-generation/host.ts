@@ -132,7 +132,7 @@ export function createProjectGeneration(deps: ProjectGenerationDeps): ProjectGen
     return endpointOf(kind, own, as).listModels(AbortSignal.timeout(LIST_CALL_MS));
   }
 
-  function usable(kind: GenerationKind, own: ProjectGenerationSettings[GenerationKind]): void {
+  function usable(own: ProjectGenerationSettings[GenerationKind]): void {
     if (own.plugin) {
       if (!deps.plugins) throw refused("server_unusable", "pluginGone", { plugin: own.plugin });
       return;
@@ -154,7 +154,7 @@ export function createProjectGeneration(deps: ProjectGenerationDeps): ProjectGen
         const next = merged[kind];
         if ((!next.server && !next.plugin) || JSON.stringify(next) === JSON.stringify(current[kind])) continue;
         try {
-          usable(kind, next);
+          usable(next);
           if (!next.defaults.model) continue;
           const listed = await modelsOf(kind, next, {});
           const problems = settingProblems(kind, next.defaults, listed);
@@ -184,7 +184,7 @@ export function createProjectGeneration(deps: ProjectGenerationDeps): ProjectGen
       const server = preview?.server ?? own.server;
       if (!server) return { refused: noServer(kind).failure };
       try {
-        usable(kind, { ...own, plugin: null, server });
+        usable({ ...own, plugin: null, server });
         const listed = await modelsOf(kind, { ...own, plugin: null, server, tools: preview?.tool ? { ...own.tools, listModels: preview.tool } : own.tools }, {});
         return { models: listed.filter((model) => model.kind === kind) };
       } catch (error) {
@@ -206,7 +206,7 @@ export function createProjectGeneration(deps: ProjectGenerationDeps): ProjectGen
         named = endpoint.label;
         const settings = resolveSettings(kind, own.defaults, input.overrides);
         if (!settings.model) throw refused("no_model", kind === "image" ? "noImageModel" : "noVideoModel");
-        usable(kind, own);
+        usable(own);
         const unfinished = jobs.unfinished(projectId);
         if (unfinished >= UNFINISHED_PER_PROJECT) throw refused("too_many", "tooMany", { count: unfinished });
         readReferences(folder, input.references);

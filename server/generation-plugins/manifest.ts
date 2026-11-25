@@ -50,7 +50,9 @@ const PLACEHOLDER = /\{\{\s*([A-Za-z0-9_.]+)\s*\}\}/g;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() !== "" && value.length <= 200 ? value : undefined);
-const problem = (message: string): never => { throw new ManifestProblem(message); };
+function problem(message: string): never {
+  throw new ManifestProblem(message);
+}
 
 function strings(value: unknown, label: string): string[] | undefined {
   if (value === undefined || value === null) return undefined;
@@ -167,10 +169,10 @@ function request(value: unknown, label: string, fieldKeys: ReadonlySet<string>):
   if (files !== undefined) {
     if (typeof files === "string" && /^[A-Za-z0-9_$[\]*.-]{1,300}$/.test(files)) answer.files = { path: files };
     else if (isRecord(files) && typeof files.items === "string" && /^[A-Za-z0-9_$[\]*.-]{1,300}$/.test(files.items)) {
-      const nested = (key: "url" | "data" | "name" | "mimeType") => (typeof files[key] === "string" && /^[A-Za-z0-9_$[\]*.-]{0,300}$/.test(files[key] as string) ? (files[key] as string) : undefined);
-      const mapped = { items: files.items, ...Object.fromEntries(Object.entries({ url: nested("url"), data: nested("data"), name: nested("name"), mimeType: nested("mimeType") }).filter(([, item]) => item)) };
-      if (!mapped.url && !mapped.data) problem(`${label}.answer.files needs url or data inside each item`);
-      answer.files = mapped as PluginFiles;
+      const nested = (key: "url" | "data" | "name" | "mimeType"): string | undefined => (typeof files[key] === "string" && /^[A-Za-z0-9_$[\]*.-]{0,300}$/.test(files[key] as string) ? (files[key] as string) : undefined);
+      const items = files.items, urlPath = nested("url"), dataPath = nested("data"), namePath = nested("name"), mimePath = nested("mimeType");
+      if (!urlPath && !dataPath) problem(`${label}.answer.files needs url or data inside each item`);
+      answer.files = { items, ...(urlPath ? { url: urlPath } : {}), ...(dataPath ? { data: dataPath } : {}), ...(namePath ? { name: namePath } : {}), ...(mimePath ? { mimeType: mimePath } : {}) };
     } else problem(`${label}.answer.files must be a path, or an object with items and url or data`);
   }
   if (label.endsWith("generate") && !answer.taskId && !answer.files) problem(`${label}.answer needs taskId or files`);

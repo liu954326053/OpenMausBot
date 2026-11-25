@@ -6,7 +6,7 @@ import type {
 } from "../../shared/project-generation.ts";
 import { failure, GenerationRefused, refused } from "./failure.ts";
 import { LONGEST_CALL_MS, type GenerationMcp } from "./mcp-access.ts";
-import type { GenerationEndpoint } from "./endpoint.ts";
+import type { GenerationEndpoint, TaskState } from "./endpoint.ts";
 import { readReferences, removeResults, resultBaseName, resultBytes, saveResult, type ResultSource } from "./project-files.ts";
 import type { GenerationStore } from "./store.ts";
 

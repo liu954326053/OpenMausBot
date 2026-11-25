@@ -21,7 +21,9 @@ interface StoredManifest {
   problem?: string;
 }
 
-const refused = (message: string): never => { throw new PluginRefused(message); };
+function refused(message: string): never {
+  throw new PluginRefused(message);
+}
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const KEY = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
 
@@ -281,7 +283,8 @@ export class GenerationPlugins {
   private secrets(): Record<string, unknown> { this.secretsCache ??= this.read("secrets.json"); return this.secretsCache; }
 
   private stateSave(id: string, enabled: boolean): void {
-    const state = { ...this.state(), [id]: { ...(isRecord(this.state()[id]) ? this.state()[id] : {}), enabled } };
+    const previous = this.state()[id];
+    const state = { ...this.state(), [id]: { ...(isRecord(previous) ? previous : {}), enabled } };
     this.write("state.json", state);
     this.stateCache = state;
   }

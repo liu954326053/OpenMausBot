@@ -150,7 +150,7 @@ export function pluginEndpoint(plugins: GenerationPlugins, id: string, fetchImpl
     async status(taskId: string, signal: AbortSignal): Promise<TaskState> {
       const current = usable();
       const declared = current.requests.status;
-      if (!declared) return refused("bad_answer", "badAnswer", { server: label(), tool: "status", detail: "it has no request for a task's status" });
+      if (!declared) throw refused("bad_answer", "badAnswer", { server: label(), tool: "status", detail: "it has no request for a task's status" });
       const answer = await call(declared, buildVariables(id, plugins, "image", {}, { prompt: "", references: { images: [], audio: [] } }, taskId), signal);
       const status = normalizeStatus(readText(answer, declared.answer.status), current.statusMap);
       if (!status) throw refused("bad_answer", "badAnswer", { server: label(), tool: "status", detail: "it gave no status MagicBot knows" });

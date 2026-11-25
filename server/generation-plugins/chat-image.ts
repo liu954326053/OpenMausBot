@@ -28,7 +28,7 @@ const pick = (plugins: GenerationPlugins) => plugins.list().find((plugin) =>
 const wait = (ms: number, signal: AbortSignal | undefined) => new Promise<void>((resolve, reject) => {
   if (signal?.aborted) { reject(signal.reason); return; }
   const timer = setTimeout(() => { signal?.removeEventListener("abort", stop); resolve(); }, ms);
-  const stop = () => { clearTimeout(timer); reject(signal.reason); };
+  const stop = () => { clearTimeout(timer); reject(signal?.reason); };
   signal?.addEventListener("abort", stop, { once: true });
 });
 

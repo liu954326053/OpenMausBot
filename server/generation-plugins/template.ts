@@ -39,7 +39,7 @@ function steps(path: string): Step[] {
 const descend = (value: unknown, step: Step): unknown[] => {
   if ("all" in step) return Array.isArray(value) ? value : [];
   if ("index" in step) return Array.isArray(value) && value[step.index] !== undefined ? [value[step.index]] : [];
-  return value && typeof value === "object" && !Array.isArray(value) ? [value[step.key]] : [];
+  return value && typeof value === "object" && !Array.isArray(value) ? [(value as Record<string, unknown>)[step.key]] : [];
 };
 
 /** What `path` names in `data`; an array when the path has `[]`, undefined when nothing is there. */
