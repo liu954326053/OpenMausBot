@@ -137,20 +137,25 @@ export async function startModelRecorder(options: { upstream: string; log: strin
       }
       res.writeHead(answer.status, { "content-type": answer.headers.get("content-type") ?? "application/json" });
       let text = "";
+      let broke = "";
       if (answer.body) {
         const reader = answer.body.getReader();
         const decoder = new TextDecoder();
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          res.write(value);
-          text += decoder.decode(value, { stream: true });
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            res.write(value);
+            text += decoder.decode(value, { stream: true });
+          }
+        } catch (error) {
+          broke = error instanceof Error ? `${error.name}: ${error.message}${(error as { cause?: { code?: string } }).cause?.code ? ` (${(error as { cause?: { code?: string } }).cause!.code})` : ""}` : String(error);
         }
       }
-      res.end();
+      if (broke) res.destroy(); else res.end();
       let request: unknown = body;
       try { request = body ? JSON.parse(body) : null; } catch { /* kept as text */ }
-      appendFileSync(options.log, `${JSON.stringify({ at: new Date(started).toISOString(), ms: Date.now() - started, path, status: answer.status, request, response: text.slice(0, 200_000) })}\n`);
+      appendFileSync(options.log, `${JSON.stringify({ at: new Date(started).toISOString(), ms: Date.now() - started, path, status: answer.status, ...(broke ? { broke } : {}), request, response: text.slice(0, 200_000) })}\n`);
     })().catch(() => { if (!res.headersSent) res.writeHead(500).end(); else res.end(); });
   });
   const origin = await listen(server);
