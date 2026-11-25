@@ -103,8 +103,10 @@ const PASSED_ON_MAX_CHARS = 6_000;
 const failure = (error: unknown) => (error instanceof Error ? error.message : "unknown");
 
 /** How a task's message is known: by its id once its conversation has it, by its place in the queue until then. */
-const sentWith = (receipt: DirectSendReceipt): Pick<ProductionTask, "queueId" | "requestId" | "at"> =>
-  "queued" in receipt ? { queueId: receipt.queueId } : { requestId: receipt.message.id, at: receipt.message.at };
+/** A queued room line has no message yet; `at` is when production handed it over, so a turn that ends before the
+ * line is posted can still settle the task. The post later overwrites `at` with the message's. */
+const sentWith = (receipt: DirectSendReceipt, now: number): Pick<ProductionTask, "queueId" | "requestId" | "at"> =>
+  "queued" in receipt ? { queueId: receipt.queueId, at: now } : { requestId: receipt.message.id, at: receipt.message.at };
 
 const sameTask = (task: ProductionTask, job: ProductionJob, episode?: number) => task.job === job && task.episode === episode;
 
@@ -382,10 +384,15 @@ export class Productions {
     if (!task.outcome) return "working";
     if (task.outcome === "failed" || (job === "script" && production.noEpisodes)) return "failed";
     if (job === "script") return "done";
-    const pictures = (profiles ?? this.profiles(projectId)).filter((profile) => profile.role === job).flatMap((profile) => profile.pictures);
+    // Character/scene stay working until every profile has a picture node that finished (or one was refused): a turn that
+    // only wrote the text cards used to flip the job to done with nothing left to generate.
+    const ofJob = (profiles ?? this.profiles(projectId)).filter((profile) => profile.role === job);
+    const pictures = ofJob.flatMap((profile) => profile.pictures);
     const refused = this.refusedPictures.get(projectId);
     if (pictures.some((picture) => picture.state === "empty" && refused?.has(picture.nodeId))) return "failed";
-    return pictures.some((picture) => picture.state === "loading" || picture.state === "empty") ? "working" : "done";
+    if (!ofJob.length || ofJob.some((profile) => profile.pictures.length === 0)
+      || pictures.some((picture) => picture.state === "loading" || picture.state === "empty")) return "working";
+    return "done";
   }
 
   /** Every whole-drama job that has a bot is done, the pictures of its characters and scenes included. */
@@ -689,7 +696,7 @@ export class Productions {
       const receipt = room?.memberIds.includes(botId)
         ? await this.deps.deliverToRoom({ room, to: [{ botId, text: quietMentions(text) }], leadBotId: project.leadBotId })
         : await this.deliverAlone(project, botId, text);
-      Object.assign(task, { threadId: receipt.threadId }, sentWith(receipt));
+      Object.assign(task, { threadId: receipt.threadId }, sentWith(receipt, this.deps.now()));
     } catch (error) {
       this.deps.log(`[production] ${project.id}: the ${job} task did not reach ${botId} (${failure(error)})`);
       Object.assign(task, { outcome: "failed", endedAt: this.deps.now() });

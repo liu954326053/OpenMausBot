@@ -25,7 +25,7 @@ export interface Terminal {
 
 const RUN_COMMAND = {
   name: "run_command",
-  description: "Run one shell command (/bin/sh -c) in the project's folder on this computer and answer with what it printed and its exit code. python3 is Python 3.12. Commands stop after timeout_seconds (default 900).",
+  description: "Run one shell command (/bin/sh -c) in the project's folder on this computer and answer with what it printed and its exit code. python3 is Python 3.12. Commands stop after timeout_seconds (default 900). Commands may only name paths in the project folder, the run's own temporary folders, or a skill folder the harness gave you; the person's home and Spotlight are off limits.",
   inputSchema: {
     type: "object",
     properties: {
@@ -37,6 +37,9 @@ const RUN_COMMAND = {
     additionalProperties: false,
   },
 };
+
+/** A fixture command may not reach the person's own files, or sweep the whole disk for them. */
+const PERSONAL_PATH = /(^|[\s"'=(:])~\/|(^|[\s"'=(:])\/Users\/|\.magicbot\b|Application Support\/MagicBot|(^|[\s"'=(:])mdfind\b|(^|\s)find\s+\/(\s|$)/;
 
 const readBody = (req: IncomingMessage) => new Promise<string>((done) => {
   let body = "";
@@ -88,6 +91,15 @@ export async function startTerminal(options: { token: string; root: string; fold
         const args = frame.params.arguments ?? {};
         const command = typeof args.command === "string" ? args.command : "";
         if (!command.trim()) return reply({ content: [{ type: "text", text: "command is empty" }], isError: true });
+        if (PERSONAL_PATH.test(command)) {
+          const refused: TerminalCall = {
+            at: new Date().toISOString(), command: scrub(command), cwd: options.folder() || options.root, pid: null, exitCode: null, ms: 0,
+            output: "This fixture's terminal may not name the person's own files (~, /Users, .magicbot, Application Support/MagicBot), use Spotlight, or search the whole disk. Name a path inside the project folder or a skill folder the harness gave you.",
+          };
+          calls.push(refused);
+          appendFileSync(options.log, `${JSON.stringify(refused)}\n`);
+          return reply({ content: [{ type: "text", text: refused.output }], isError: true });
+        }
         const cwd = resolve(typeof args.cwd === "string" && args.cwd ? args.cwd : options.folder() || options.root);
         const inside = relative(options.root, cwd);
         if (inside.startsWith("..") || isAbsolute(inside)) {
