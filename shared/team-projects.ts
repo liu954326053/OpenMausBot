@@ -31,7 +31,7 @@ export function isTeamProjectName(name: string): boolean {
 /** One entry of `<data dir>/projects.json`. */
 export interface TeamProjectRecord {
   id: string;
-  /** Also the name of its folder and, when it is made, of its department. */
+  /** What people see. At creation it also names its folder and its department; a rename changes the department and leaves the folder, and what is in it, where they are. */
   name: string;
   /** Absolute path of the project folder. */
   folder: string;
@@ -239,6 +239,18 @@ export interface TeamProjectsApi {
    * for a project that is not archived. Null: no project has that id.
    */
   restore(id: string): TeamProjectWire | null;
+  /**
+   * Renames a project: its name, its department and the rooms in it. The folder keeps the name it was made with, so
+   * nothing inside it moves. Throws a `UserError` when the name is not one a department may take, or is taken.
+   * Null: no project has that id.
+   */
+  rename(id: string, name: unknown): TeamProjectWire | null;
+  /**
+   * Deletes a project: its bots (as a person deleting them would; their folder inside the project is moved aside, not
+   * erased), its rooms and its department. The project folder and everything else in it stay. Throws a `UserError`
+   * naming the bots that could not be deleted, when one is busy. Null: no project has that id.
+   */
+  remove(id: string): Promise<{ removed: true } | null>;
   /**
    * The project's bot that does `job` for episode `number`: the one it has, else a new copy of the bot `templateBotId`
    * of the project is a copy of. Answers its id; throws when the copy cannot be made.

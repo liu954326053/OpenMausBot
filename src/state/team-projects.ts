@@ -7,7 +7,8 @@ import type { CreateTeamProjectInput, TeamChangesInput, TeamChangesResult, TeamP
 import { listenLiveFrames } from "../lib/live-events";
 import { teamProjectSide, type TeamProjectSide } from "../lib/team-projects";
 import {
-  archiveTeamProject, createTeamProject, decideTeamChanges, listTeamProjects, restoreTeamProject, saveTeamProjectsRoot, type CreateTeamProjectOutcome,
+  archiveTeamProject, createTeamProject, decideTeamChanges, deleteTeamProject, listTeamProjects, renameTeamProject, restoreTeamProject, saveTeamProjectsRoot,
+  type CreateTeamProjectOutcome,
 } from "../lib/team-projects-api";
 
 let list: TeamProjectsListWire | null = null;
@@ -113,6 +114,13 @@ async function changed(request: Promise<TeamProjectWire>): Promise<TeamProjectWi
 
 export const archiveProject = (id: string): Promise<TeamProjectWire> => changed(archiveTeamProject(id));
 export const restoreProject = (id: string): Promise<TeamProjectWire> => changed(restoreTeamProject(id));
+export const renameProject = (id: string, name: string): Promise<TeamProjectWire> => changed(renameTeamProject(id, name));
+
+export async function deleteProject(id: string): Promise<void> {
+  await deleteTeamProject(id);
+  change((current) => ({ ...current, projects: current.projects.filter((project) => project.id !== id) }));
+  void refreshTeamProjects();
+}
 
 export async function decideProjectTeamChanges(id: string, input: TeamChangesInput): Promise<TeamChangesResult> {
   const result = decideTeamChanges(id, input);

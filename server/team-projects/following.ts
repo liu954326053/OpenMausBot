@@ -164,9 +164,12 @@ export class Following {
     if (project) saveBotsOnceAfter(() => this.followProject(project));
   }
 
-  /** Gives each project the context of its team now. */
+  /** Gives each project the context of its team now. A department that is gone stays gone: a project's rename moves it
+   * in one step, and writing a context under the old name would register that department again. */
   contexts(): void {
+    const departments = new Set(this.deps.store.sections.map(sectionKey));
     for (const project of this.projects()) {
+      if (!departments.has(sectionKey(project.section))) continue;
       const teamSection = this.teamSection(project);
       if (!teamSection) continue;
       const text = this.deps.context(teamSection);

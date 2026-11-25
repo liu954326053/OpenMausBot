@@ -1,8 +1,9 @@
-import { Archive, FolderX, Plus, UsersRound } from "lucide-react";
+import { Archive, FolderX, Pencil, Plus, Trash2, UsersRound } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { TeamProjectWire } from "../../../shared/team-projects";
+import { TEAM_PROJECT_NAME_MAX, isTeamProjectName } from "../../../shared/team-projects";
 import { cn } from "@/lib/cn";
 import { hiddenFromSidebar, myDefaultBot, useViewerEmail } from "@/lib/default-bot";
 import { activeLocale, t } from "@/lib/i18n";
@@ -14,10 +15,11 @@ import { useShowThreads } from "@/lib/thread-preferences";
 import { openProject, projectDisclosure, projectRoomOf } from "@/state/project-open";
 import type { Bot, Group } from "@/state/store";
 import { useStoreDispatch, useStoreSelector } from "@/state/store-select";
-import { archiveProject, restoreProject, useTeamProjectsLoader } from "@/state/team-projects";
+import { archiveProject, deleteProject, renameProject, restoreProject, useTeamProjectsLoader } from "@/state/team-projects";
 import { openBot } from "@/state/thread-navigation";
 import { UndoToast } from "../bot-access/ShareBotButton";
 import { navigateThreadMenu } from "../BotProjects";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { MENU_ITEM, MENU_SHEET } from "../menu-recipe";
 import { useHeldMenuMotion } from "../MenuMotion";
 import { SidebarRailSeparator } from "../SidebarSimpleRail";
@@ -73,6 +75,8 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   const menuReturn = useRef<HTMLElement | null>(null);
   const [archived, setArchived] = useState<{ project: TeamProjectWire; left: { from: string; to: string } | null } | null>(null);
   const [reviewing, setReviewing] = useState<TeamProjectWire | null>(null);
+  const [renaming, setRenaming] = useState<TeamProjectWire | null>(null);
+  const [removing, setRemoving] = useState<{ project: TeamProjectWire; pending: boolean } | null>(null);
   const forget = useCallback(() => setArchived(null), []);
   const labelId = useId();
   const openRoom = useCallback((room: Group) => dispatch({ type: "select", id: room.id }), [dispatch]);
@@ -98,7 +102,7 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
   };
   const openMenu = remote ? undefined : (project: TeamProjectWire) => (x: number, y: number, returnTo: HTMLElement) => {
     menuReturn.current = returnTo;
-    setMenu({ project, x: Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 10)), y: Math.max(8, Math.min(y, window.innerHeight - 60)) });
+    setMenu({ project, x: Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 10)), y: Math.max(8, Math.min(y, window.innerHeight - 190)) });
   };
 
   const holds = (project: TeamProjectWire, id: string) =>
@@ -130,6 +134,36 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
     closeMenu();
     setReviewing(project);
   };
+  const rename = (project: TeamProjectWire) => {
+    closeMenu();
+    setRenaming(project);
+  };
+  const askRemove = (project: TeamProjectWire) => {
+    closeMenu();
+    setRemoving({ project, pending: false });
+  };
+  /** The bot to open when the project on screen goes away, as archiving does; undefined when the open chat is elsewhere. */
+  const homeOutside = (project: TeamProjectWire) => {
+    const open = latest.current.selectedId;
+    const outside = all.bots.filter((bot) => !bot.hidden && !hiddenFromSidebar(bot, viewer) && !side.of(bot));
+    const home = inProject(project, open) ? myDefaultBot(outside, viewer) ?? outside.find((bot) => bot.defaultBot) ?? outside[0] : undefined;
+    return { open, home };
+  };
+  const remove = async () => {
+    if (!removing || removing.pending) return;
+    const project = removing.project;
+    const { home } = homeOutside(project);
+    setRemoving({ project, pending: true });
+    try {
+      await deleteProject(project.id);
+    } catch (error) {
+      setRemoving(null);
+      onError(error instanceof Error && error.message ? error.message : t("teamProjects.deleteFailed", { name: project.name }));
+      return;
+    }
+    setRemoving(null);
+    if (home) openBot(dispatch, home, showThreads);
+  };
   const changesOf = (project: TeamProjectWire) => (remote ? undefined : project.teamChanges);
   const undo = async ({ project, left }: NonNullable<typeof archived>) => {
     await restoreProject(project.id);
@@ -154,10 +188,20 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
                 <UsersRound size={16} aria-hidden="true" />{t("teamProjects.changes.review")}
               </button>
             )}
-            <button type="button" role="menuitem" autoFocus={!menuMotion.value.project.teamChanges} data-team-project-archive=""
+            <button type="button" role="menuitem" autoFocus={!menuMotion.value.project.teamChanges} data-team-project-rename=""
+              className={cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary")}
+              onClick={() => rename(menuMotion.value!.project)}>
+              <Pencil size={16} aria-hidden="true" />{t("teamProjects.rename")}
+            </button>
+            <button type="button" role="menuitem" data-team-project-archive=""
               className={cn(MENU_ITEM, "hover:bg-menu-hover [&>svg]:text-ink-secondary")}
               onClick={() => void archive(menuMotion.value!.project)}>
               <Archive size={16} aria-hidden="true" />{t("teamProjects.archive")}
+            </button>
+            <button type="button" role="menuitem" data-team-project-delete=""
+              className={cn(MENU_ITEM, "text-danger hover:bg-danger/10 [&>svg]:text-danger")}
+              onClick={() => askRemove(menuMotion.value!.project)}>
+              <Trash2 size={16} aria-hidden="true" />{t("teamProjects.delete")}
             </button>
           </div>
         </div>,
@@ -166,6 +210,12 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
       {archived && <UndoToast key={archived.project.id} clearOfComposer text={t("teamProjects.archived", { name: archived.project.name })}
         failedText={t("teamProjects.undoFailed", { place: dataSettingsPlace() })} onUndo={() => undo(archived)} onDone={forget} />}
       {reviewing?.teamChanges && <TeamChangesDialog project={reviewing} changes={reviewing.teamChanges} onClose={() => setReviewing(null)} />}
+      {renaming && <RenameProjectDialog project={renaming} onClose={() => setRenaming(null)} />}
+      {removing && (
+        <ConfirmDialog open title={t("teamProjects.deleteTitle", { name: removing.project.name })} body={t("teamProjects.deleteBody")}
+          confirmLabel={t("teamProjects.deleteConfirm")} icon={<Trash2 size={18} />} pending={removing.pending}
+          onCancel={() => { if (!removing.pending) setRemoving(null); }} onConfirm={() => void remove()} />
+      )}
     </>
   );
 
@@ -229,6 +279,63 @@ export function SidebarTeamProjects({ side, all, query, mode, onNew, onError }: 
       )}
       {floating}
     </div>
+  );
+}
+
+interface RenameProjectDialogProps {
+  project: TeamProjectWire;
+  onClose: () => void;
+}
+
+/** Only the name: the folder, the files in it and what the bots work on stay where they are. */
+function RenameProjectDialog({ project, onClose }: RenameProjectDialogProps) {
+  const [name, setName] = useState(project.name);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const valid = isTeamProjectName(name) && name !== project.name;
+  const save = () => {
+    if (!valid || pending) return;
+    setPending(true);
+    setError("");
+    void renameProject(project.id, name)
+      .then(() => onClose())
+      .catch((cause: unknown) => {
+        setError(cause instanceof Error && cause.message ? cause.message : t("teamProjects.renameFailed"));
+        setPending(false);
+      });
+  };
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-6"
+      onMouseDown={(event) => { if (event.target === event.currentTarget && !pending) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-labelledby="rename-project-title" data-look="dialog"
+        className="w-full max-w-[420px] rounded-2xl border border-hairline/50 bg-panel p-5 shadow-2xl">
+        <h2 id="rename-project-title" className="text-[15px] font-semibold text-ink">{t("teamProjects.renameTitle")}</h2>
+        <label className="mt-3 flex flex-col gap-1 text-[12px] leading-4 text-ink-secondary">
+          {t("teamProjects.name")}
+          <input
+            autoFocus
+            value={name}
+            maxLength={TEAM_PROJECT_NAME_MAX}
+            spellCheck={false}
+            disabled={pending}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") { event.preventDefault(); save(); }
+              if (event.key === "Escape" && !pending) { event.preventDefault(); onClose(); }
+            }}
+            aria-invalid={!isTeamProjectName(name) || undefined}
+            className="h-9 w-full rounded-lg border border-hairline/60 bg-panel px-3 font-sans text-[14px] text-ink outline-none focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-wait disabled:opacity-60"
+          />
+        </label>
+        <p className="mt-1 text-[12px] leading-4 text-ink-secondary">{t("teamProjects.renameHint")}</p>
+        {error && <p role="alert" className="mt-2 text-[12px] leading-4 text-danger">{error}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={pending} className="rounded-xl px-4 py-2 text-[13px] text-ink-secondary hover:bg-raised hover:text-ink">{t("common.cancel")}</button>
+          <button type="button" onClick={save} disabled={!valid || pending} className="rounded-xl bg-accent px-4 py-2 text-[13px] font-medium text-white hover:brightness-110 disabled:opacity-50">{t("common.save")}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

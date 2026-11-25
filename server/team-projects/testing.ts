@@ -106,6 +106,7 @@ export async function teamProjectsInstallation() {
     ownSkillNames: (botId) => skills.listSkills(botId).map((skill) => skill.name),
     teamKey: sections.ensureSectionMemoryKey,
     teamOfKey: sections.sectionOfMemoryKey,
+    renameSection: (section, name) => store.renameSection(section, name),
     context: (section) => sections.readSectionContext(section)?.text ?? "",
     setContext: (section, text) => void sections.writeSectionContext(section, text),
     memory: (section) => memory.get(section) ?? [],

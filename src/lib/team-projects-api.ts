@@ -39,6 +39,15 @@ const change = async (id: string, verb: "archive" | "restore"): Promise<TeamProj
 export const archiveTeamProject = (id: string): Promise<TeamProjectWire> => change(id, "archive");
 export const restoreTeamProject = (id: string): Promise<TeamProjectWire> => change(id, "restore");
 
+/** Renames a project: its name, its department and the rooms in it. The folder and the files in it stay. */
+export const renameTeamProject = async (id: string, name: string): Promise<TeamProjectWire> =>
+  (await api<{ project: TeamProjectWire }>(`${ROUTE}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ name }) })).project;
+
+/** Deletes a project's bots, rooms and department. The project folder and its other files stay. */
+export const deleteTeamProject = async (id: string): Promise<void> => {
+  await api(`${ROUTE}/${encodeURIComponent(id)}`, { method: "DELETE" });
+};
+
 export const decideTeamChanges = (id: string, input: TeamChangesInput): Promise<TeamChangesResult> =>
   api<TeamChangesResult>(`${ROUTE}/${encodeURIComponent(id)}/team-changes`, { method: "POST", body: JSON.stringify(input) });
 

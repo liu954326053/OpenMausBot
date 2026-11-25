@@ -226,6 +226,63 @@ describe("archiving a project and restoring it", () => {
   });
 });
 
+describe("renaming a project and deleting it", () => {
+  it("renames the project, its department and its room, and leaves the folder where it was", async () => {
+    const { app, project } = await withProject();
+    const bots = project.botIds.map((id) => app.store.bot(id)!);
+    const room = app.store.groups.find((group) => group.section === project.section);
+
+    const renamed = app.projects.rename(project.id, "Runaway bride")!;
+    expect(renamed).toMatchObject({ id: project.id, name: "Runaway bride", section: "Runaway bride", folder: project.folder, folderState: "ready" });
+    expect(app.registry.find(project.id)).toMatchObject({ name: "Runaway bride", section: "Runaway bride", folder: project.folder });
+    expect(app.projects.lookup(project.id)).toEqual({ folder: project.folder });
+    expect(app.store.sections).toContain("Runaway bride");
+    expect(app.store.sections).not.toContain("Stand-in bride");
+    for (const bot of bots) expect(app.store.bot(bot.id)!.section).toBe("Runaway bride");
+    if (room) expect(app.store.groups.find((group) => group.id === room.id)!.section).toBe("Runaway bride");
+    expect(existsSync(project.folder)).toBe(true);
+    expect(JSON.parse(readFileSync(app.registryFile, "utf8")).projects[0]).toMatchObject({ name: "Runaway bride" });
+  });
+
+  it("refuses a name another project or department has, and one that cannot be a folder's name", async () => {
+    const { app, project } = await withProject();
+    expect(() => app.projects.rename(project.id, "bad/name")).toThrow(/folder's name/);
+    expect(() => app.projects.rename(project.id, "Sales desk")).toThrow(/already called/);
+    expect(app.registry.find(project.id)).toMatchObject({ name: "Stand-in bride", section: "Stand-in bride" });
+    expect(app.store.sections).toContain("Stand-in bride");
+    expect(app.projects.rename("no-such-project", "Anything")).toBeNull();
+  });
+
+  it("deletes the project's bots, room and department, and keeps the folder and the work in it", async () => {
+    const { app, project } = await withProject();
+    const room = app.store.groups.find((group) => group.section === project.section);
+    writeFileSync(join(project.folder, "source.txt"), "chapter one");
+
+    expect(await app.projects.remove(project.id)).toEqual({ removed: true });
+    expect(app.registry.find(project.id)).toBeUndefined();
+    expect(app.projects.listWire().projects).toEqual([]);
+    expect(app.store.bots.filter((bot) => bot.teamProject)).toHaveLength(0);
+    expect(app.store.sections).not.toContain("Stand-in bride");
+    if (room) expect(app.store.groups.some((group) => group.id === room.id)).toBe(false);
+    expect(existsSync(project.folder)).toBe(true);
+    expect(readFileSync(join(project.folder, "source.txt"), "utf8")).toBe("chapter one");
+    expect(await app.projects.remove(project.id)).toBeNull();
+  });
+
+  it("keeps the project, and names the bot, when one of its bots cannot be deleted now", async () => {
+    const { app, project } = await withProject();
+    const busy = app.store.bot(project.botIds[0]!)!;
+    app.onDelete = (botId) => (botId === busy.id ? "stop this bot's work first" : null);
+
+    await expect(app.projects.remove(project.id)).rejects.toThrow(new RegExp(`${busy.name}: stop this bot's work first`));
+    expect(app.registry.find(project.id)).toMatchObject({ name: "Stand-in bride" });
+    expect(app.projects.listWire().projects).toHaveLength(1);
+    app.onDelete = undefined;
+    expect(await app.projects.remove(project.id)).toEqual({ removed: true });
+    expect(app.registry.find(project.id)).toBeUndefined();
+  });
+});
+
 describe("keeping a project's copies up to date", () => {
   const aged = (project: TeamProjectWire, paths: string[]) => {
     const old = new Date(1_600_000_000_000);

@@ -30,6 +30,8 @@ export interface TeamProjectsHostDeps {
   exportDocument(target: ShareTarget, routines: readonly Routine[], carries: (bot: BotRecord, skill: string) => boolean): ExportedTeam;
   /** The names of the skills a bot learned itself. */
   ownSkillNames(botId: string): readonly string[];
+  /** Renames a department as the sidebar's own rename does; its bots and rooms follow. Returns why it could not. */
+  renameSection(section: string, name: string): string | undefined;
   /** The app's language, for the first lines of a new bot's memory. */
   language(): string | undefined;
   /** Reaches the open apps of the owner and admins. */
@@ -84,6 +86,7 @@ export function createTeamProjectsHost(deps: TeamProjectsHostDeps): TeamProjects
     ownSkillNames: deps.ownSkillNames,
     teamKey: ensureSectionMemoryKey,
     teamOfKey: sectionOfMemoryKey,
+    renameSection: deps.renameSection,
     context: (section) => readSectionContext(section)?.text ?? "",
     setContext: (section, text) => { writeSectionContext(section, text); },
     memory: (section) => deps.teamMemory.list(section),

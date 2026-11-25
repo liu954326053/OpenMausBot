@@ -4,6 +4,7 @@ import type {
   CreateTeamProjectInput, CreateTeamProjectResult, ProjectTeamWire, TeamChangesInput, TeamChangesResult, TeamProjectLookup, TeamProjectRecord,
   TeamProjectWire, TeamProjectsApi, TeamProjectsListWire,
 } from "../../shared/team-projects.ts";
+import { TEAM_PROJECT_NAME_MAX, isTeamProjectName } from "../../shared/team-projects.ts";
 import type { EpisodeJob } from "../../shared/production.ts";
 import type { TeamSetupFields } from "../../shared/team-setup.ts";
 import type { PackageImportDeps } from "../package-import.ts";
@@ -39,6 +40,8 @@ export interface TeamProjectsDeps {
   ownSkillNames(botId: string): readonly string[];
   /** The memory key of a department, made fast so a rename keeps it. */
   teamKey(section: string): string;
+  /** Renames a department as the sidebar's own rename does, its bots and rooms following. Returns why it could not. */
+  renameSection(section: string, name: string): string | undefined;
   /** The department that holds a memory key now; null when none does. */
   teamOfKey(key: string): string | null;
   context(section: string): string;
@@ -320,6 +323,62 @@ export class TeamProjects implements TeamProjectsApi {
       throw error;
     }
     return this.afterChange(id);
+  }
+
+  /** What people see of a project's name, and what its department and rooms are called: the folder keeps the name it was made with. */
+  rename(id: string, rawName: unknown): TeamProjectWire | null {
+    const project = this.stored(id);
+    if (!project) return null;
+    const name = typeof rawName === "string" ? rawName.normalize("NFC").trim() : "";
+    if (!isTeamProjectName(name)) {
+      throw Object.assign(userErrorThrown("serverError.teamProject.badName", { max: TEAM_PROJECT_NAME_MAX }), { status: 422 });
+    }
+    if (name === project.name) return this.wire(project);
+    const own = sectionKey(project.section), wanted = sectionKey(name);
+    const taken = this.deps.registry.projects().some((other) => other.id !== id && (sectionKey(other.name) === wanted || sectionKey(other.section) === wanted)) ||
+      [...this.deps.store.sections, ...this.deps.store.bots.map((bot) => bot.section), ...this.deps.store.groups.map((group) => group.section)]
+        .some((section) => sectionKey(section) !== own && sectionKey(section) === wanted);
+    if (taken) throw Object.assign(userErrorThrown("serverError.teamProject.nameTaken", { name }), { status: 409 });
+    const hasDepartment = this.deps.store.sections.some((section) => sectionKey(section) === own);
+    const refused = hasDepartment ? this.deps.renameSection(project.section, name) : undefined;
+    if (refused) throw Object.assign(userErrorThrown("serverError.teamProject.renameRefused", { reason: refused }), { status: 409 });
+    try {
+      this.deps.registry.replace({ ...project, name, section: name });
+    } catch (error) {
+      if (hasDepartment) {
+        try { this.deps.renameSection(name, project.section); } catch (failure) { this.log(`${project.name} kept the new department name after its record could not be saved: ${detailOf(failure)}`); }
+      }
+      throw error;
+    }
+    return this.afterChange(id);
+  }
+
+  /**
+   * Deletes the project the way a person deleting its bots would: each bot's folder in the project is moved aside under
+   * `.magic-team/bots/.deleted`, not erased, then the project's rooms and its department go, and its record last. The
+   * project folder and the rest of the work in it stay. Throws, naming them, when a bot could not be deleted now.
+   */
+  async remove(id: string): Promise<{ removed: true } | null> {
+    const project = this.stored(id);
+    if (!project) return null;
+    const failed: string[] = [];
+    for (const bot of this.botsOf(id)) {
+      const refused = await this.deps.deleteBot(bot.id).catch(detailOf);
+      if (refused) failed.push(`${bot.name}: ${refused}`);
+    }
+    if (failed.length) {
+      throw Object.assign(userErrorThrown("serverError.teamProject.deleteRefused", { detail: failed.join("; ") }), { status: 409 });
+    }
+    const own = sectionKey(project.section);
+    for (const group of this.deps.store.groups.filter((candidate) => sectionKey(candidate.section) === own)) {
+      try { this.deps.store.deleteGroup(group.id); } catch (error) { this.log(`the room ${group.name} of ${project.name} stayed: ${detailOf(error)}`); }
+    }
+    if (this.deps.store.sections.some((section) => sectionKey(section) === own)) {
+      const refused = this.deps.store.changeEmptySection(project.section, null);
+      if (refused) this.log(`the department of ${project.name} stayed: ${refused}`);
+    }
+    this.deps.registry.remove(id);
+    return { removed: true };
   }
 
   private afterChange(id: string): TeamProjectWire | null {

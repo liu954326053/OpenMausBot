@@ -276,6 +276,8 @@ export const USER_ERROR = {
   "serverError.teamProject.contextFollows": "{department} takes its shared instructions from {team}. Change them in {team} instead.",
   "serverError.mainBot.noDepartment": "{bot} belongs to no department, so it can't be moved into one.",
   "serverError.teamProject.teamChangesInvalid": "Choose which of the team's changes to make, then try again.",
+  "serverError.teamProject.renameRefused": "The project's department could not be renamed: {reason}",
+  "serverError.teamProject.deleteRefused": "The project was kept because some of its bots could not be deleted: {detail}",
   ...PROJECT_GENERATION_ERRORS,
   ...PROJECT_DRAFT_ERRORS,
   ...PRODUCTION_ERRORS,

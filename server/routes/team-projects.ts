@@ -16,6 +16,8 @@ export interface TeamProjectRouteHost {
   create(input: CreateTeamProjectInput): Promise<CreateTeamProjectResult>;
   archive(id: string): TeamProjectWire | null;
   restore(id: string): TeamProjectWire | null;
+  rename(id: string, name: unknown): TeamProjectWire | null;
+  remove(id: string): Promise<{ removed: true } | null>;
   decideTeamChanges(id: string, input: TeamChangesInput): Promise<TeamChangesResult | null>;
   setRoot(path: unknown): { root: string } | UserError;
   moveRefusalFor(botId: string, to: string | null | undefined): UserError | null;
@@ -116,6 +118,16 @@ export function createTeamProjectRoutes(projects: TeamProjectRouteHost): RouteHa
     if (action) {
       const project = action[2] === "archive" ? projects.archive(action[1]!) : projects.restore(action[1]!);
       return project ? json(res, 200, { project }) : json(res, 404, userError("serverError.teamProject.notFound"));
+    }
+    const one = path.match(/^\/api\/team-projects\/([\w-]+)$/);
+    if (one && method === "PATCH") {
+      const body = record(await readBody(req));
+      const project = projects.rename(one[1]!, body.name);
+      return project ? json(res, 200, { project }) : json(res, 404, userError("serverError.teamProject.notFound"));
+    }
+    if (one && method === "DELETE") {
+      const removed = await projects.remove(one[1]!);
+      return removed ? json(res, 200, removed) : json(res, 404, userError("serverError.teamProject.notFound"));
     }
     const decided = method === "POST" ? path.match(/^\/api\/team-projects\/([\w-]+)\/team-changes$/) : null;
     if (decided) {
