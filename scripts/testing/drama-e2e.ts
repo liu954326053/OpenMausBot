@@ -8,9 +8,15 @@
 //
 // Without those three it prints what is missing and exits 0. Flags: `--run-dir DIR` reuses a run's checkpoints,
 // `--from STEP` resumes there, `--pool live` reads the API instead of the committed snapshot (needs
-// OMB_E2E_IP_SCOUT_KEY), `--keep` keeps the fixture's data folder, `--stop-on-failure` stops the server a failed run
+// OMB_E2E_IP_SCOUT_KEY), `--book ID` makes that 番茄 book the one chosen (its row is read from the API when the pool
+// lacks it), `--keep` keeps the fixture's data folder, `--stop-on-failure` stops the server a failed run
 // would otherwise leave up for `--from`, `--no-lock` skips the shared UI-fixture lock. A failed run leaves its server
 // running on purpose: fix the cause and resume from the step it named.
+//
+// The lead downloads the source text itself: OMB_E2E_DRAMA_SKILLS names the drama-scope `skills` folder, whose drama-ip
+// goes into the skills library for the lead, and the project gets a `terminal` MCP server whose commands see only
+// IP_SCOUT_KEY (from OMB_E2E_IP_SCOUT_KEY or IP_SCOUT_KEY) and OMB_E2E_PYTHON's folder on PATH. Every model request
+// and every command land in the run's `evidence` folder; neither keeps a header or a key.
 //
 // S3, S4 and S5 continue from here without new harness code:
 //   S3 — after `script` passes, the production dispatches `character` and `scene` in parallel; wait for both jobs to be
@@ -23,9 +29,10 @@
 //        fake server (`generate_video`, 6 KB sample MP4). Assert one `metadata.role === "take"` node per shot with
 //        `selected: true`. Nothing here needs a real video provider.
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer } from "node:net";
 
@@ -33,12 +40,16 @@ import { removeTempDir, waitForExit } from "../../server/testing/cleanup.ts";
 import { startFakeGenerationMcp } from "../../server/testing/fake-generation-mcp-server.ts";
 import { verificationServerArgs, verificationServerEnvironment } from "../control-omb.ts";
 import { bookFacts, pickXianxia, shortlistText, type PoolBook, type PoolSnapshot } from "./drama-ip-pool.ts";
+import { startModelRecorder, startTerminal, type ModelRecorder, type Terminal } from "./drama-e2e-tools.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const UI_LOCK = "/tmp/omb-ui-fixture.lock";
 const DEFAULT_PORT = 8820;
 const TEAM = "修仙短剧组";
 const PROJECT = "E2E 修仙短剧";
+const SOURCE_FOLDER = "原文";
+const TURN_SECONDS = 600;
+const turnMs = () => Number(arg("timeout") || TURN_SECONDS) * 1000;
 
 /** Everything a step reads and passes on; a resumed run fills it from the checkpoints it already has. */
 interface Run {
@@ -58,6 +69,8 @@ interface Run {
   generationUrl: string;
   candidates: PoolBook[];
   chosen?: PoolBook;
+  skillDir: string;
+  sourceFile: string;
 }
 
 class StepFailure extends Error {
@@ -192,11 +205,25 @@ function readdir(dir: string): string[] {
   try { return readdirSync(dir); } catch { return []; }
 }
 
+const scoutKey = () => process.env.OMB_E2E_IP_SCOUT_KEY?.trim() || process.env.IP_SCOUT_KEY?.trim() || "";
+const scoutBase = () => (process.env.OMB_E2E_IP_SCOUT_BASE?.trim() || "https://hot-video-pro.hongmaocy.com/api").replace(/\/$/, "");
+
+/** One book's pool row from `/open/ip/detail`, for a `--book` the snapshot does not hold. */
+async function bookDetail(id: string): Promise<PoolBook> {
+  const key = scoutKey();
+  if (!key) throw new StepFailure("pool", `池子快照里没有书 ${id}，又没有 IP_SCOUT_KEY 去接口查`, "设置 OMB_E2E_IP_SCOUT_KEY 或 IP_SCOUT_KEY");
+  const response = await fetch(`${scoutBase()}/open/ip/detail?fanqie_book_id=${encodeURIComponent(id)}`, { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
+  const answer = await response.json().catch(() => null) as { code?: unknown; data?: { feature?: PoolBook & { fanqieTags?: string }; desc?: string; categoryName?: string } } | null;
+  const feature = answer?.data?.feature;
+  if (!response.ok || String(answer?.code) !== "1000" || !answer?.data || !feature?.bookName) throw new StepFailure("pool", `接口查不到书 ${id}`, `HTTP ${response.status} ${JSON.stringify(answer).slice(0, 200)}`);
+  return { ...feature, fanqieBookId: id, categoryName: answer.data.categoryName ?? feature.categoryName, tags: feature.fanqieTags ?? feature.tags, desc: answer.data.desc };
+}
+
 /** The pool the run picks from: a snapshot file (OMB_E2E_IP_POOL, else the committed one) or the live API. */
 async function loadPool(online: boolean): Promise<{ pool: PoolSnapshot; from: string }> {
   if (online) {
-    const key = process.env.OMB_E2E_IP_SCOUT_KEY?.trim() ?? "";
-    const base = (process.env.OMB_E2E_IP_SCOUT_BASE?.trim() || "https://hot-video-pro.hongmaocy.com/api").replace(/\/$/, "");
+    const key = scoutKey();
+    const base = scoutBase();
     if (!key) throw new StepFailure("pool", "需要联网取番茄 IP 池，但没有 OMB_E2E_IP_SCOUT_KEY", "改用 --pool fixture 读仓库里的快照");
     const response = await fetch(`${base}/open/ip/recall`, {
       method: "POST",
@@ -220,8 +247,17 @@ function writeCheckpoint(run: Run, index: number, name: string, outcome: { statu
   writeFileSync(file, `${JSON.stringify({ step: name, index, ...outcome }, null, 2)}\n`);
 }
 
+/** What every step may reach: the fixture's API, the text model, and the loopback helpers this run started. */
+interface StepContext {
+  api: ReturnType<typeof makeApi>;
+  provider?: Provider;
+  recorder: ModelRecorder;
+  terminal: Terminal;
+  terminalToken: string;
+}
+
 /** `scripts/testing/drama-e2e.ts` steps, in the order a run takes them. */
-type Step = { name: string; run: (run: Run, ctx: { api: ReturnType<typeof makeApi>; provider?: Provider }) => Promise<Record<string, unknown>> };
+type Step = { name: string; run: (run: Run, ctx: StepContext) => Promise<Record<string, unknown>> };
 
 const steps: Step[] = [
   {
@@ -240,8 +276,17 @@ const steps: Step[] = [
       const { pool, from } = await loadPool(online);
       const candidates = pickXianxia(pool.books, 5);
       if (!candidates.length) throw new StepFailure("pool", "池子里没有一本修仙题材的书", `${from}，共 ${pool.books.length} 本`);
+      const wanted = arg("book");
+      let pinned: PoolBook | undefined;
+      if (wanted) {
+        pinned = pool.books.find((book) => book.fanqieBookId === wanted) ?? await bookDetail(wanted);
+        candidates.splice(0, candidates.length, pinned, ...candidates.filter((book) => book.fanqieBookId !== wanted).slice(0, 4));
+      }
       run.candidates = candidates;
-      return { from, books: pool.books.length, candidates: candidates.map((book) => ({ id: book.fanqieBookId, name: book.bookName, category: book.categoryName, facts: bookFacts(book) })), shortlist: shortlistText(candidates) };
+      return {
+        from, books: pool.books.length, pinned: pinned ? { id: pinned.fanqieBookId, name: pinned.bookName } : null,
+        candidates: candidates.map((book) => ({ id: book.fanqieBookId, name: book.bookName, category: book.categoryName, facts: bookFacts(book) })), shortlist: shortlistText(candidates),
+      };
     },
   },
   {
@@ -279,7 +324,7 @@ const steps: Step[] = [
       const api = ctx.api;
       const provider = ctx.provider!;
       const saved = await api("PATCH", "/api/config", {
-        openaiCompat: { key: provider.key, url: provider.baseUrl, model: provider.model },
+        openaiCompat: { key: provider.key, url: ctx.recorder.url, model: provider.model },
         language: "zh",
       });
       if (saved.status !== 200) throw new StepFailure("config", "写不进文本模型设置", `PATCH /api/config 回答 ${saved.status} ${JSON.stringify(saved.body).slice(0, 300)}`);
@@ -324,6 +369,7 @@ const steps: Step[] = [
       if (added.status >= 300) throw new StepFailure("project", "登记不了假生成服务", `POST /api/mcp/servers 回答 ${added.status} ${JSON.stringify(added.body).slice(0, 300)}`);
       const enabled = await api("PATCH", "/api/mcp/servers/gen", { enabled: true });
       if (enabled.status >= 300) throw new StepFailure("project", "开启不了假生成服务", `PATCH /api/mcp/servers/gen 回答 ${enabled.status}`);
+      await addTerminal(api, ctx, "project");
       const settings = await api("PUT", `/api/team-projects/${run.projectId}/generation/settings`, {
         image: { server: "gen", defaults: { model: "pixel-1", aspect: "9:16", quality: "standard", count: 1 } },
         video: { server: "gen", defaults: { model: "motion-1", resolution: "720p", aspect: "9:16", seconds: 5 } },
@@ -341,6 +387,9 @@ const steps: Step[] = [
       for (const botId of made.body.project.botIds as string[]) {
         const model = await api("PATCH", `/api/bots/${botId}/model`, { instanceId: provider.instanceId, model: provider.model });
         if (model.status !== 200) throw new StepFailure("project", `项目成员 ${botId} 的模型设不上`, `PATCH /api/bots/${botId}/model 回答 ${model.status}`);
+        // Nobody watches this run to click an approval card, so a tool call that asks would stall the turn.
+        const trusted = await api("PATCH", `/api/bots/${botId}`, { approvalMode: "full" });
+        if (trusted.status !== 200) throw new StepFailure("project", `项目成员 ${botId} 设不成全权`, `PATCH /api/bots/${botId} 回答 ${trusted.status} ${JSON.stringify(trusted.body).slice(0, 300)}`);
       }
       const chief = await api("PATCH", `/api/bots/${run.leadId}`, { chiefOfStaff: true });
       if (chief.status !== 200) throw new StepFailure("project", "指定不了项目负责人", `PATCH /api/bots/${run.leadId} 回答 ${chief.status}`);
@@ -357,6 +406,32 @@ const steps: Step[] = [
     },
   },
   {
+    name: "skill",
+    run: async (run, ctx) => {
+      const api = ctx.api;
+      const skills = process.env.OMB_E2E_DRAMA_SKILLS?.trim() ?? "";
+      const source = join(skills, "drama-ip");
+      if (!skills || !existsSync(join(source, "SKILL.md"))) throw new StepFailure("skill", "找不到 drama-ip 技能", `OMB_E2E_DRAMA_SKILLS=${skills || "（没设）"}，要指向 drama-scope 的 skills 文件夹`);
+      const files = filesUnder(source).map((path) => ({ path: `drama-ip/${relative(source, path)}`, content: readFileSync(path).toString("base64") }));
+      const uploaded = await api("POST", "/api/skills-library/upload", { files, label: "drama-ip" });
+      if (uploaded.status >= 300) throw new StepFailure("skill", "技能库收不下 drama-ip", `POST /api/skills-library/upload 回答 ${uploaded.status} ${JSON.stringify(uploaded.body).slice(0, 400)}`);
+      const on = await api("PATCH", "/api/skills-library/drama-ip", { enabled: true });
+      if (on.status !== 200) throw new StepFailure("skill", "打不开 drama-ip", `PATCH /api/skills-library/drama-ip 回答 ${on.status} ${JSON.stringify(on.body).slice(0, 300)}`);
+      const assigned = await api("PUT", `/api/bots/${run.leadId}/skills-library`, { skills: ["drama-ip"] });
+      if (assigned.status >= 300) throw new StepFailure("skill", "drama-ip 分不到负责人", `PUT /api/bots/${run.leadId}/skills-library 回答 ${assigned.status} ${JSON.stringify(assigned.body).slice(0, 300)}`);
+      const listed = await api("GET", `/api/bots/${run.leadId}/skills`);
+      const mine = (listed.body.skills as any[] | undefined)?.find((skill) => skill.name === "drama-ip");
+      if (!mine) throw new StepFailure("skill", "负责人的技能里没有 drama-ip", JSON.stringify(listed.body).slice(0, 400));
+      const entry = filesUnder(join(run.dataDir, "skills-library")).find((path) => path.endsWith(join("drama-ip", "scripts", "ip_api.py")) || (path.endsWith(join("scripts", "ip_api.py")) && path.includes("drama-ip")));
+      if (!entry) throw new StepFailure("skill", "技能库里没有 drama-ip 的 scripts/ip_api.py", `上传了 ${files.length} 个文件：${JSON.stringify(uploaded.body).slice(0, 400)}`);
+      run.skillDir = dirname(dirname(entry));
+      return {
+        uploadedFiles: files.length, upload: uploaded.body, skill: mine, skillDir: run.skillDir,
+        installedFiles: filesUnder(run.skillDir).map((path) => relative(run.skillDir, path)).sort(),
+      };
+    },
+  },
+  {
     name: "ask",
     run: async (run, ctx) => {
       const api = ctx.api;
@@ -369,47 +444,120 @@ const steps: Step[] = [
       ].join("\n");
       const sent = await api("POST", `/api/bots/${run.leadId}/messages`, { text, threadId: run.threadIds[run.leadId], sendId: crypto.randomUUID() });
       if (sent.status >= 300) throw new StepFailure("ask", "消息发不到负责人", `POST /api/bots/${run.leadId}/messages 回答 ${sent.status} ${JSON.stringify(sent.body).slice(0, 300)}`);
-      const reply = await settleAndReply(run, api, run.leadId, Number(arg("timeout") || 240) * 1000);
+      const reply = await settleAndReply(run, api, run.leadId, turnMs());
       const named = run.candidates.find((book) => reply.includes(book.bookName));
       if (named) run.chosen = named;
-      return { question: text, reply: reply.slice(0, 2_000), namedBook: named?.bookName ?? null, threadId: run.threadIds[run.leadId] };
+      const index = modelRequests(run).map(skillIndexLine).find(Boolean) ?? null;
+      const engine = ctx.provider?.instanceId ?? "";
+      return {
+        question: text, reply: reply.slice(0, 2_000), namedBook: named?.bookName ?? null, threadId: run.threadIds[run.leadId],
+        skillIndex: index ?? `没有：${engine} 是 chat-completions 引擎，服务端不给它工作区，也就不在系统提示里列技能（server/workspace.ts 的 supportsWorkspaceFiles）`,
+      };
     },
   },
   {
     name: "choose",
     run: async (run, ctx) => {
       const api = ctx.api;
-      const chosen = run.chosen ?? run.candidates[0]!;
+      const wanted = arg("book");
+      const chosen = (wanted ? run.candidates.find((book) => book.fanqieBookId === wanted) : undefined) ?? run.chosen ?? run.candidates[0]!;
       run.chosen = chosen;
       const sent = await api("POST", `/api/bots/${run.leadId}/messages`, {
-        text: `就做《${chosen.bookName}》（番茄书号 ${chosen.fanqieBookId}，${chosen.categoryName}，${bookFacts(chosen)}）。请按这个选定的书写需求单，然后开始制作。`,
+        text: `就做《${chosen.bookName}》（番茄书号 ${chosen.fanqieBookId}，${chosen.categoryName}，${bookFacts(chosen)}）。授权已经确认。下一步你要用 drama-ip 把原文下载进项目目录，然后才写需求单：这一轮先说说你打算怎么改编，不要调用 production_plan。`,
         threadId: run.threadIds[run.leadId], sendId: crypto.randomUUID(),
       });
       if (sent.status >= 300) throw new StepFailure("choose", "选定书目发不到负责人", `POST /api/bots/${run.leadId}/messages 回答 ${sent.status}`);
-      const reply = await settleAndReply(run, api, run.leadId, Number(arg("timeout") || 240) * 1000);
+      const reply = await settleAndReply(run, api, run.leadId, turnMs());
       return { chosen: { id: chosen.fanqieBookId, name: chosen.bookName, category: chosen.categoryName }, sent: chosen.bookName, reply: reply.slice(0, 2_000) };
+    },
+  },
+  {
+    name: "download",
+    run: async (run, ctx) => {
+      const api = ctx.api;
+      const bookId = run.chosen!.fanqieBookId;
+      const script = join(run.skillDir, "scripts", "ip_api.py");
+      const target = join(run.folder, SOURCE_FOLDER);
+      const already = readdir(target).filter((name) => name.endsWith(".txt"));
+      if (already.length) throw new StepFailure("download", "原文目录在下载前就有 txt，证明不了是负责人下的", `${target}：${already.join("、")}`);
+      const sentAt = Date.now();
+      const callsBefore = ctx.terminal.calls.length;
+      const requestsBefore = modelRequests(run).length;
+      const text = [
+        "授权已确认，现在下载原文。原文目录是当前项目目录下的「原文」文件夹，不要放到别处。",
+        `当前项目目录：${run.folder}`,
+        `请用 terminal 的 run_command 工具执行下面这条命令（cwd 用当前项目目录），这是你的 drama-ip 技能的下载入口：`,
+        `python3 "${script}" novel ${bookId} ${SOURCE_FOLDER} --wait 900`,
+        "命令要几分钟，等它跑完。完成后告诉我文件路径、字节数和章节数。这一轮不要调用 production_plan。",
+      ].join("\n");
+      const sent = await api("POST", `/api/bots/${run.leadId}/messages`, { text, threadId: run.threadIds[run.leadId], sendId: crypto.randomUUID() });
+      if (sent.status >= 300) throw new StepFailure("download", "下载指令发不到负责人", `POST /api/bots/${run.leadId}/messages 回答 ${sent.status}`);
+      const reply = await settleAndReply(run, api, run.leadId, turnMs() + 900_000);
+      const calls = ctx.terminal.calls.slice(callsBefore);
+      const toolCalls = modelRequests(run).slice(requestsBefore).flatMap(toolCallsIn)
+        .filter((call) => /run_command/.test(call.name));
+      const download = calls.find((call) => /ip_api\.py/.test(call.command) && /\bnovel\b/.test(call.command));
+      if (!download) {
+        throw new StepFailure("download", "负责人没有执行 drama-ip 的下载命令", `它跑过的命令：${calls.map((call) => call.command).join(" | ") || "没有"}；请求里的 run_command 调用：${JSON.stringify(toolCalls).slice(0, 600)}；回话：${reply.slice(0, 400)}`);
+      }
+      if (download.exitCode !== 0) throw new StepFailure("download", "下载命令失败", `exit ${download.exitCode}：${download.output.slice(-800)}`);
+      const files = readdir(target).filter((name) => name.endsWith(".txt"));
+      if (files.length !== 1) throw new StepFailure("download", "原文目录里不是正好一个 txt", `${target}：${files.join("、") || "空"}`);
+      const file = join(target, files[0]!);
+      const stat = statSync(file);
+      const body = readFileSync(file, "utf8");
+      const chapters = body.match(/^第.{1,8}章/gm)?.length ?? 0;
+      const problems = [
+        ...(stat.size > 3_000_000 ? [] : [`只有 ${stat.size} 字节`]),
+        ...(body.includes(`book_id=${bookId}`) ? [] : [`没有 book_id=${bookId}`]),
+        ...(body.includes("（全剧终）") ? [] : ["找不到（全剧终）"]),
+        ...(stat.birthtimeMs >= sentAt ? [] : ["文件比下载指令还早"]),
+      ];
+      const printed = /\{[\s\S]*"taskId"[\s\S]*\}/.exec(download.output)?.[0];
+      const result = printed ? JSON.parse(printed) as { taskId?: string; path?: string; bytes?: number; chapters?: number } : null;
+      if (!result?.taskId) problems.push("ip_api.py 没有打印 taskId");
+      if (result?.path && join(run.folder, result.path) !== file && result.path !== file) problems.push(`ip_api.py 说它写到 ${result.path}`);
+      if (problems.length) throw new StepFailure("download", "下载下来的原文不对", problems.join("；"));
+      const backup = process.env.OMB_E2E_SOURCE_BACKUP?.trim();
+      const backupStat = backup && existsSync(backup) ? statSync(backup) : null;
+      if (backupStat && backupStat.ino === stat.ino && backupStat.dev === stat.dev) throw new StepFailure("download", "原文就是备份那个文件", `${file} 与 ${backup} 是同一个 inode`);
+      const status = result?.taskId ? await novelStatus(result.taskId) : null;
+      run.sourceFile = file;
+      return {
+        sent: text,
+        reply: reply.slice(0, 2_000),
+        toolCalls,
+        command: { line: download.command, cwd: download.cwd, pid: download.pid, exitCode: download.exitCode, ms: download.ms, output: download.output.slice(-1_500) },
+        file: {
+          path: file, relative: relative(run.folder, file), bytes: stat.size, chapters, inode: stat.ino, birthtime: stat.birthtime.toISOString(),
+          bookIdLine: `book_id=${bookId}`, ending: body.trimEnd().slice(-120),
+        },
+        provenance: {
+          printedByIpApi: result,
+          novelStatus: status,
+          backup: backupStat ? { path: backup, inode: backupStat.ino, bytes: backupStat.size, sameBytes: backupStat.size === stat.size && readFileSync(backup!).equals(readFileSync(file)) } : null,
+          instructionSentAt: new Date(sentAt).toISOString(),
+        },
+      };
     },
   },
   {
     name: "plan",
     run: async (run, ctx) => {
       const api = ctx.api;
-      // The lead will not plan from a title alone: tell it where the source text is, as a person who dropped the file would.
-      const source = process.env.OMB_E2E_SOURCE_DIR?.trim();
-      if (source && run.threadIds[run.leadId]) {
-        const dropped = await api("POST", `/api/bots/${run.leadId}/messages`, {
-          text: `原著正文已经放进项目文件夹了：\`${join(run.folder, "原文")}\`（463 章、约 107 万字，已修好章号）。请按这份正文调用 production_plan 写需求单并开始制作。`,
+      if (run.sourceFile && run.threadIds[run.leadId]) {
+        const told = await api("POST", `/api/bots/${run.leadId}/messages`, {
+          text: `原文已经在项目目录里了：${run.sourceFile}。请按这份正文调用 production_plan 写需求单并开始制作，分集剧本交给编剧时告诉他原文的路径。`,
           threadId: run.threadIds[run.leadId], sendId: crypto.randomUUID(),
         });
-        if (dropped.status >= 300) throw new StepFailure("plan", "告诉不了负责人原文在哪", `POST /api/bots/${run.leadId}/messages 回答 ${dropped.status}`);
-        await settleAndReply(run, api, run.leadId, Number(arg("timeout") || 240) * 1000);
+        if (told.status >= 300) throw new StepFailure("plan", "告诉不了负责人原文在哪", `POST /api/bots/${run.leadId}/messages 回答 ${told.status}`);
       }
       const production = await until("负责人调用 production_plan（画布上出现需求单）", async () => {
         const canvas = await api("GET", `/api/team-projects/${run.projectId}/canvas`);
         if (canvas.status !== 200) return false;
         const seen = canvas.body.production;
         return seen?.plan ? seen : false;
-      }, Number(arg("timeout") || 300) * 1000);
+      }, turnMs());
       const canvas = await api("GET", `/api/team-projects/${run.projectId}/canvas`);
       const brief = (canvas.body.nodes as any[]).find((node) => node.metadata?.role === "brief");
       if (!brief) throw new StepFailure("plan", "画布上没有需求单", "负责人只写了计划，没有把需求单放上画布");
@@ -430,16 +578,18 @@ const steps: Step[] = [
         const task = (production.tasks as any[]).findLast((one) => one.job === "script");
         if (!task || task.status === "working") return false;
         return { task, production };
-      }, Number(arg("timeout") || 600) * 1000, 2_000);
+      }, Number(arg("script-timeout") || 3_600) * 1000, 2_000);
+      const work = await taskWork(run, api, done.task);
       if (done.task.status !== "done") {
-        throw new StepFailure("script", "编剧没有完成分集", `script 任务状态 ${done.task.status}；${await lastFailure(run, api, done.task.botId)}`);
+        throw new StepFailure("script", "编剧没有完成分集", `script 任务状态 ${done.task.status}；${await lastFailure(run, api, done.task.botId)}；${work.summary}`);
       }
       const canvas = await api("GET", `/api/team-projects/${run.projectId}/canvas`);
       const episodes = (canvas.body.nodes as any[]).filter((node) => node.metadata?.role === "episode");
-      if (!episodes.length) throw new StepFailure("script", "编剧结束了，但画布上没有分集", "production.tasks 里 script 是 done，但画布没有 metadata.role 为 episode 的节点");
+      if (!episodes.length) throw new StepFailure("script", "编剧结束了，但画布上没有分集", `production.tasks 里 script 是 done，但画布没有 metadata.role 为 episode 的节点；${work.summary}`);
       return {
         episodes: episodes.map((node) => ({ id: node.id, episode: node.metadata?.episode, title: node.title, chars: String(node.metadata?.content ?? "").length })),
         jobs: canvas.body.production?.jobs ?? [],
+        task: { botId: done.task.botId, brief: work.brief.slice(0, 2_000), tools: work.tools, evidence: work.file },
       };
     },
   },
@@ -488,6 +638,95 @@ async function lastFailure(run: Run, api: ReturnType<typeof makeApi>, botId: str
   return last ? `最后一次失败：${last.text ?? last.tool?.name ?? "未知"}`.slice(0, 400) : "没有看到失败记录";
 }
 
+/** Every file under `dir`, skipping Python's caches and Finder's notes. */
+function filesUnder(dir: string): string[] {
+  let entries: import("node:fs").Dirent[];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return []; }
+  return entries.flatMap((entry) => {
+    if (entry.name === "__pycache__" || entry.name === ".DS_Store") return [];
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? filesUnder(path) : entry.isFile() ? [path] : [];
+  });
+}
+
+interface RecordedRequest { at: string; path: string; status: number; request: any; response: string }
+
+/** What the recorder in front of the text model wrote, oldest first. */
+function modelRequests(run: Run): RecordedRequest[] {
+  const file = join(run.evidenceDir, "model-requests.jsonl");
+  if (!existsSync(file)) return [];
+  return readFileSync(file, "utf8").split("\n").filter(Boolean).flatMap((line) => {
+    try { return [JSON.parse(line) as RecordedRequest]; } catch { return []; }
+  });
+}
+
+/** The tool calls one recorded reply asked for, streamed or not. */
+function toolCallsIn(recorded: RecordedRequest): Array<{ at: string; name: string; arguments: string }> {
+  const calls = new Map<number, { name: string; arguments: string }>();
+  const take = (index: number, call: { function?: { name?: string; arguments?: string } }) => {
+    const one = calls.get(index) ?? { name: "", arguments: "" };
+    one.name += call.function?.name ?? "";
+    one.arguments += call.function?.arguments ?? "";
+    calls.set(index, one);
+  };
+  for (const line of recorded.response.split("\n")) {
+    const data = line.startsWith("data:") ? line.slice(5).trim() : line.trim().startsWith("{") ? line.trim() : "";
+    if (!data || data === "[DONE]") continue;
+    let frame: any;
+    try { frame = JSON.parse(data); } catch { continue; }
+    for (const choice of frame.choices ?? []) {
+      for (const [at, call] of ((choice.delta ?? choice.message)?.tool_calls ?? []).entries()) take(call.index ?? at, call);
+    }
+  }
+  return [...calls.values()].filter((call) => call.name).map((call) => ({ at: recorded.at, ...call }));
+}
+
+/** The drama-ip line of a request's system prompt, if it carries one. */
+function skillIndexLine(recorded: RecordedRequest): string | null {
+  const system = (recorded.request?.messages as any[] | undefined)?.filter((message) => message.role === "system" || message.role === "developer")
+    .map((message) => typeof message.content === "string" ? message.content : JSON.stringify(message.content)).join("\n") ?? "";
+  const line = system.split("\n").find((one) => one.includes("drama-ip"));
+  return line ? line.trim().slice(0, 600) : null;
+}
+
+/** The download task as hot-video tells it, read with the harness's own key. */
+async function novelStatus(taskId: string): Promise<unknown> {
+  const key = scoutKey();
+  if (!key) return "没有 IP_SCOUT_KEY，没查";
+  const response = await fetch(`${scoutBase()}/open/ip/novel/status?task_id=${encodeURIComponent(taskId)}`, { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(30_000) }).catch((error: unknown) => error as Error);
+  if (response instanceof Error) return `查不到：${response.message}`;
+  const answer = await response.json().catch(() => null) as { data?: unknown } | null;
+  return answer?.data ?? `HTTP ${response.status}`;
+}
+
+/** What a production task's bot was asked and which tools it called, kept whole in the evidence folder. The canvas
+ * leaves out a task's thread, so it is read from the production's own file. */
+async function taskWork(run: Run, api: ReturnType<typeof makeApi>, task: { id: string; botId: string; job: string }): Promise<{ brief: string; tools: Array<{ name: string; ok: unknown; detail: string }>; summary: string; file: string }> {
+  let threadId = "";
+  try {
+    const stored = JSON.parse(readFileSync(join(run.dataDir, "productions", `${run.projectId}.json`), "utf8"));
+    threadId = (stored.production?.tasks as any[] | undefined)?.find((one) => one.id === task.id)?.threadId ?? "";
+  } catch { /* no production file: the summary says so */ }
+  const messages = threadId ? ((await api("GET", `/api/threads/${threadId}/messages?limit=500`)).body.messages as any[] | undefined) ?? [] : [];
+  const brief = messages.filter((one) => one.role === "user" && one.text).map((one) => String(one.text)).join("\n---\n");
+  const tools = messages.filter((one) => one.kind === "activity" && one.tool?.name)
+    .map((one) => ({ name: String(one.tool.name), ok: one.tool.ok, detail: String(one.tool.detail ?? one.text ?? "").slice(0, 300) }));
+  const file = join(run.evidenceDir, `${task.job}-task.json`);
+  writeFileSync(file, `${JSON.stringify({ task, brief, tools, messages }, null, 2)}\n`);
+  const counts = Object.entries(tools.reduce<Record<string, number>>((all, tool) => ({ ...all, [tool.name]: (all[tool.name] ?? 0) + 1 }), {}))
+    .map(([name, count]) => `${name}×${count}`).join("、");
+  return { brief, tools, file, summary: `它拿到的任务：${brief.slice(0, 600) || "（空）"}；它的工具调用：${counts || "没有"}；全文 ${file}` };
+}
+
+/** The project's terminal, added the way a person adds an MCP server under Apps. */
+async function addTerminal(api: ReturnType<typeof makeApi>, ctx: StepContext, step: string): Promise<void> {
+  await api("DELETE", "/api/mcp/servers/terminal");
+  const added = await api("POST", "/api/mcp/servers", { name: "terminal", type: "http", url: ctx.terminal.url, headers: { Authorization: `Bearer ${ctx.terminalToken}` } });
+  if (added.status >= 300) throw new StepFailure(step, "登记不了项目终端", `POST /api/mcp/servers 回答 ${added.status} ${JSON.stringify(added.body).slice(0, 300)}`);
+  const enabled = await api("PATCH", "/api/mcp/servers/terminal", { enabled: true });
+  if (enabled.status >= 300) throw new StepFailure(step, "开启不了项目终端", `PATCH /api/mcp/servers/terminal 回答 ${enabled.status}`);
+}
+
 function runPython(script: string, args: string[]): Promise<string> {
   if (!existsSync(script)) return Promise.resolve(`不存在：${script}`);
   return new Promise((resolve) => {
@@ -524,6 +763,7 @@ function restore(run: Run, done: Map<string, any>): void {
     run.projectId = project.projectId;
     run.folder = project.folder;
     run.generationUrl = project.generation?.url ?? run.generationUrl;
+    if (project.leadBotId) run.leadId = project.leadBotId;
   }
   const pool = at("pool");
   if (pool?.candidates) {
@@ -531,6 +771,8 @@ function restore(run: Run, done: Map<string, any>): void {
   }
   const chosen = at("choose")?.chosen;
   if (chosen?.id) run.chosen = { fanqieBookId: chosen.id, bookName: chosen.name, categoryName: chosen.category };
+  run.skillDir = at("skill")?.skillDir ?? "";
+  run.sourceFile = at("download")?.file?.path ?? "";
 }
 
 async function main(): Promise<number> {
@@ -546,6 +788,7 @@ async function main(): Promise<number> {
   const run: Run = {
     runDir, checkpointDir: join(runDir, "checkpoints"), evidenceDir: join(runDir, "evidence"),
     url: "", dataDir: "", logPath: "", pid: 0, root: "", projectId: "", folder: "", leadId: "", threadIds: {}, bots: [], generationUrl: "", candidates: [],
+    skillDir: "", sourceFile: "",
   };
   const done = readCheckpoints(run);
   const resumed = done.size > 0;
@@ -574,11 +817,35 @@ async function main(): Promise<number> {
 
   const fake = await startFakeGenerationMcp({ key: "e2e-fake-generation", taskMs: 300 });
   run.generationUrl = fake.url;
-  // A resumed run gets a new fake server: point the project's settings at it, or S3's videos would reach the old one.
+  mkdirSync(run.evidenceDir, { recursive: true });
+  const recorder = await startModelRecorder({ upstream: provider.baseUrl, log: join(run.evidenceDir, "model-requests.jsonl") });
+  const python = process.env.OMB_E2E_PYTHON?.trim() || "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3";
+  const terminalToken = randomUUID();
+  const terminal = await startTerminal({
+    token: terminalToken,
+    root: join(runDir, "projects"),
+    folder: () => run.folder,
+    env: {
+      PATH: `${dirname(python)}:/usr/bin:/bin`,
+      HOME: join(runDir, "projects"),
+      LANG: "en_US.UTF-8",
+      PYTHONDONTWRITEBYTECODE: "1",
+      IP_SCOUT_KEY: scoutKey(),
+      ...(process.env.OMB_E2E_IP_SCOUT_BASE ? { IP_SCOUT_BASE: process.env.OMB_E2E_IP_SCOUT_BASE } : {}),
+    },
+    log: join(run.evidenceDir, "terminal.jsonl"),
+    secrets: [scoutKey(), provider.key],
+  });
+  const ctx: StepContext = { api, provider, recorder, terminal, terminalToken };
+  // A resumed run gets new loopback helpers: point the server at them, or its calls would reach the old ones.
   if (run.projectId) {
+    const listed = await api("GET", "/api/bots?messages=0");
+    run.threadIds = Object.fromEntries(((listed.body.bots as any[] | undefined) ?? []).map((bot) => [bot.id, bot.threadId]));
     await api("DELETE", "/api/mcp/servers/gen");
     await api("POST", "/api/mcp/servers", { name: "gen", type: "http", url: fake.url, headers: { Authorization: "Bearer e2e-fake-generation" } });
     await api("PATCH", "/api/mcp/servers/gen", { enabled: true });
+    await api("PATCH", "/api/config", { openaiCompat: { key: provider.key, url: recorder.url, model: provider.model } });
+    await addTerminal(api, ctx, "resume");
   }
 
   const from = arg("from");
@@ -586,6 +853,8 @@ async function main(): Promise<number> {
   if (from && fromIndex < 0) {
     process.stderr.write(`${JSON.stringify({ ok: false, error: `没有名为 ${from} 的步骤`, steps: steps.map((step) => step.name) }, null, 2)}\n`);
     await fake.close();
+    await recorder.close();
+    await terminal.close();
     release?.();
     return 1;
   }
@@ -604,7 +873,7 @@ async function main(): Promise<number> {
     const started = Date.now();
     process.stdout.write(`▶ ${step.name}\n`);
     try {
-      const artifacts = await step.run(run, { api, provider });
+      const artifacts = await step.run(run, ctx);
       const ms = Date.now() - started;
       writeCheckpoint(run, index, step.name, { status: "ok", startedAt, ms, artifacts });
       report.push({ step: step.name, status: "ok", ms, artifacts });
@@ -622,7 +891,9 @@ async function main(): Promise<number> {
   }
 
   await fake.close();
-  const keepServer = Boolean(failure) && Boolean(server) && !flags.has("--stop-on-failure");
+  await recorder.close();
+  await terminal.close();
+  const keepServer = Boolean(failure) && Boolean(server || run.pid) && !flags.has("--stop-on-failure");
   if (server && !keepServer) await waitForExit(server, { signal: "SIGTERM", graceMs: 10_000 });
   // A resumed run has no child handle: the server it reused is stopped by its own pid, once it answers as ours.
   if (!server && !keepServer && run.pid) await stopKeptServer(run);
