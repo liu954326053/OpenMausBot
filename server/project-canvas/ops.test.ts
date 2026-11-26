@@ -137,6 +137,21 @@ describe("a node's error", () => {
   });
 });
 
+describe("a scene's camera positions", () => {
+  const hall = (cameras: number) => [{ type: "add_node", id: "hall", nodeType: "text", title: "Hall", metadata: { content: "A hall.", card: { cameras } } }];
+
+  it("are kept on its card as a whole number from 1 to 99", () => {
+    const { document } = applyCanvasOps(canvas(), parseCanvasOps(hall(3)), context());
+    expect(find(document, "hall")?.metadata?.card).toEqual({ cameras: 3 });
+  });
+
+  it("are refused as a fraction, as zero and past 99", () => {
+    for (const cameras of [0, 1.5, 100]) {
+      expect(refused(() => parseCanvasOps(hall(cameras)))).toMatchObject({ code: "invalid_op" });
+    }
+  });
+});
+
 describe("changing a node", () => {
   it("patches the frame and merges the metadata, a null taking a key away", () => {
     const result = applyCanvasOps(canvas(), [

@@ -145,6 +145,7 @@ const cardFacts = z.object({
   tags: z.array(cardText).max(CANVAS_CARD_TAGS_MAX).optional(),
   rows: z.array(z.tuple([cardText, cardText])).max(CANVAS_CARD_ROWS_MAX).optional(),
   palette: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/, "a colour is #rrggbb")).max(CANVAS_CARD_PALETTE_MAX).optional(),
+  cameras: z.number().int().min(1).max(99).optional(),
 }).strict();
 const shotDesign = z.object({ size: cardText.optional(), move: cardText.optional(), audio: z.string().trim().min(1).max(CANVAS_PROMPT_MAX_CHARS).optional() }).strict();
 

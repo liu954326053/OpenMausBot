@@ -97,6 +97,8 @@ export interface CanvasCardFacts {
   rows?: Array<[string, string]>;
   /** `#rrggbb` colours. */
   palette?: string[];
+  /** A scene's camera positions, 1 to 99. */
+  cameras?: number;
 }
 
 /** How a shot is filmed, as its storyboard bot wrote it. What it shows is its `prompt`, how long it runs its
