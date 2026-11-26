@@ -3,6 +3,7 @@
 // server. vite.config.ts is inherited on purpose (react, tailwind, the @ alias)
 // so the page renders exactly what the app renders; only the host, the port
 // and the /api target are pinned here.
+import { randomInt } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -69,7 +70,9 @@ export async function mountPreview(
     root: REPO_ROOT, cacheDir: join(cacheRoot, "node_modules", ".vite"),
     ...(logLevel ? { logLevel } : {}),
     // A worktree's node_modules may be a link to another checkout's: its files (the fonts) are served from there.
-    server: { host: "127.0.0.1", port: port ?? 0, fs: { allow: [REPO_ROOT, realpathSync(join(REPO_ROOT, "node_modules"))] }, proxy: {
+    // Vite reads port 0 as its default 5173, where a dev server of the person's own may already listen: the page would
+    // answer with that other site. A high random port keeps the preview its own; Vite still steps past one in use.
+    server: { host: "127.0.0.1", port: port ?? randomInt(20_000, 60_000), fs: { allow: [REPO_ROOT, realpathSync(join(REPO_ROOT, "node_modules"))] }, proxy: {
       "/api": { target: fixture.info.url, ...(proxyHeaders ? { headers: proxyHeaders } : {}) },
       "/.well-known/openmausbot/environment": { target: fixture.info.url, ...(proxyHeaders ? { headers: proxyHeaders } : {}) },
     } },
