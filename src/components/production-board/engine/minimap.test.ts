@@ -8,6 +8,12 @@ describe("the minimap", () => {
     expect(minimapFrame({ x: -60, y: -60, w: 2000, h: 1000 }, 208)).toEqual({ world: { x: -60, y: -60, w: 2000, h: 1000 }, scale: 0.104, width: 208, height: 104 });
   });
 
+  it("is empty on an empty board, and every point of it is the world's origin", () => {
+    const frame = minimapFrame({ x: -60, y: -60, w: 0, h: 0 }, 208);
+    expect(frame).toEqual({ world: { x: -60, y: -60, w: 0, h: 0 }, scale: 0, width: 208, height: 0 });
+    expect(minimapPoint(frame, 104, 52)).toEqual({ x: -60, y: -60 });
+  });
+
   it("turns a point of it into a point of the world", () => {
     const frame = minimapFrame({ x: -60, y: -60, w: 2000, h: 1000 }, 208);
     const at = minimapPoint(frame, 104, 52);

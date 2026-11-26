@@ -28,6 +28,20 @@ describe("an episode's script as a script page", () => {
     expect(scriptPage("")).toEqual([]);
   });
 
+  it("reads the script's own labels and a time as action, not as someone speaking", () => {
+    const text = "人物：阿满、青梧\n时间：夜\n地点：码头\n10:30 the harbour\nCast: Mei, Wu\nlocation: the pier\n旁白：那一夜，灯没有亮。";
+    expect(scriptPage(text)).toEqual([
+      { k: "act", t: "人物：阿满、青梧" },
+      { k: "act", t: "时间：夜" },
+      { k: "act", t: "地点：码头" },
+      { k: "act", t: "10:30 the harbour" },
+      { k: "act", t: "Cast: Mei, Wu" },
+      { k: "act", t: "location: the pier" },
+      { k: "who", t: "旁白" },
+      { k: "dlg", t: "那一夜，灯没有亮。" },
+    ]);
+  });
+
   it("does not end on a name whose line the limit cuts off", () => {
     expect(scriptPage("A shop.\nThe lamp.\nMEI: Ten years.", 3)).toEqual([
       { k: "act", t: "A shop." },

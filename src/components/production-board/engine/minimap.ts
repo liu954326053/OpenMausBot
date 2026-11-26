@@ -9,11 +9,12 @@ export interface MinimapFrame {
 }
 
 export function minimapFrame(world: Rect, cssWidth: number): MinimapFrame {
-  const scale = cssWidth / world.w;
+  const scale = world.w > 0 ? cssWidth / world.w : 0;
   return { world, scale, width: cssWidth, height: Math.round(world.h * scale) };
 }
 
 export function minimapPoint(frame: MinimapFrame, px: number, py: number): { x: number; y: number } {
+  if (frame.scale === 0) return { x: frame.world.x, y: frame.world.y };
   return { x: frame.world.x + px / frame.scale, y: frame.world.y + py / frame.scale };
 }
 
