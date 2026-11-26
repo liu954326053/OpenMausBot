@@ -1,5 +1,5 @@
 import { Bot, Clapperboard, Drama, Megaphone, Mountain, PenLine, Scissors, type LucideIcon } from "lucide-react";
-import type { ProductionJob } from "../../../../shared/production";
+import { PRODUCTION_JOBS, type ProductionJob } from "../../../../shared/production";
 import { botNodeId, type CanvasBotState, type CanvasFileRef, type CanvasSnapshot } from "../../../../shared/project-canvas";
 import { BotAvatar } from "@/components/Avatar";
 import { formatTime } from "@/lib/clock-time";
@@ -41,7 +41,8 @@ export const JOB_ICON: Readonly<Record<JobKey, LucideIcon>> = {
 
 export const jobKey = (card: Pick<BoardBotCard, "lead" | "job">): JobKey => (card.lead ? "lead" : card.job ?? "other");
 
-const stageKey = (bot: CanvasBotState): JobKey => (bot.lead ? "lead" : bot.stages[0] ?? "other");
+const botJobKey = (bot: CanvasBotState, snapshot: CanvasSnapshot): JobKey =>
+  jobKey({ lead: bot.lead || bot.botId === snapshot.project.leadBotId, job: PRODUCTION_JOBS.find((job) => bot.stages.includes(job)) });
 
 export function Ic({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
   return <Icon className={cn("ic", className)} aria-hidden="true" />;
@@ -64,9 +65,10 @@ export function Pal({ colors, label }: { colors: readonly string[]; label: strin
 }
 
 export function Meter({ percent, label }: { percent: number; label: string }) {
+  const filled = Math.min(100, Math.max(0, percent));
   return (
-    <div className="meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-      <i style={{ width: `${percent}%` }} />
+    <div className="meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(filled)}>
+      <i style={{ width: `${filled}%` }} />
     </div>
   );
 }
@@ -82,7 +84,7 @@ export function BotButton({ botId, ctx, suffix, label }: { botId: string; ctx: N
   if (!bot) return null;
   return (
     <button type="button" className="tk-who" aria-label={label} onClick={() => ctx.actions.focusCard(botNodeId(botId))}>
-      <BotFace botId={botId} ctx={ctx} size={14} fallback={stageKey(bot)} />
+      <BotFace botId={botId} ctx={ctx} size={14} fallback={botJobKey(bot, ctx.snapshot)} />
       {suffix ? `${bot.name} · ${suffix}` : bot.name}
     </button>
   );

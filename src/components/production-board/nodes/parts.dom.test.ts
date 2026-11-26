@@ -104,6 +104,16 @@ describe("the mockup's small parts", () => {
     expect((meter.querySelector(":scope > i") as HTMLElement).style.width).toBe("60%");
   });
 
+  it("keeps a meter within its bounds, and tells a reader a whole percent", () => {
+    const measured = (percent: number) => {
+      const meter = draw(createElement(Meter, { percent, label: "Progress" })).querySelector(".meter")!;
+      return [meter.getAttribute("aria-valuenow"), (meter.querySelector(":scope > i") as HTMLElement).style.width];
+    };
+    expect(measured(140)).toEqual(["100", "100%"]);
+    expect(measured(-5)).toEqual(["0", "0%"]);
+    expect(measured(33.4)[0]).toBe("33");
+  });
+
   it("writes a length as minutes and seconds", () => {
     expect(clock(6000)).toBe("00:06");
     expect(clock(75_400)).toBe("01:15");
@@ -133,6 +143,17 @@ describe("a bot named on a card", () => {
     const button = root.querySelector("button.tk-who")!;
     expect(textOf(button)).toBe(`${snapshot.bots[boarderOf(1)]!.name} · EP01`);
     expect(button.getAttribute("aria-label")).toBe("Storyboard bot of EP01");
+  });
+
+  it("shows the icon of the job the board gives the bot when the board has no look for it", () => {
+    const { ctx, snapshot } = boardFixture();
+    const writer = snapshot.bots[BOARD_BOTS.writer]!;
+    const iconOf = (changed: Partial<typeof snapshot>) =>
+      draw(createElement(BotButton, { botId: BOARD_BOTS.writer, ctx: { ...ctx, looks: {}, snapshot: { ...snapshot, ...changed } } })).querySelector("button.tk-who svg.ic")!;
+    const listed = { bots: { ...snapshot.bots, [BOARD_BOTS.writer]: { ...writer, stages: ["other", "post", "script"] as typeof writer.stages } } };
+    expect(iconOf(listed).classList.contains("lucide-pen-line")).toBe(true);
+    const led = { project: { ...snapshot.project, leadBotId: BOARD_BOTS.writer } };
+    expect(iconOf(led).classList.contains("lucide-megaphone")).toBe(true);
   });
 
   it("is not drawn for a bot the project does not have", () => {
