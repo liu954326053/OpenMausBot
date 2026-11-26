@@ -1,4 +1,4 @@
-import { CANVAS_MAX_NODES, type CanvasDocument, type CanvasNodeCreator, type CanvasNodeRole } from "../../shared/project-canvas.ts";
+import { CANVAS_MAX_NODES, type CanvasDocument, type CanvasNode, type CanvasNodeCreator, type CanvasNodeRole } from "../../shared/project-canvas.ts";
 import type { CanvasChangeSet, CanvasFrame } from "./ops.ts";
 import { settleGroups } from "./pipeline-groups.ts";
 import { settleLinks, wantedLinks, type BotEpisodes } from "./pipeline-links.ts";
@@ -48,13 +48,32 @@ function changesOf(before: CanvasDocument, after: CanvasDocument): PipelineChang
   return [...roles, ...selections];
 }
 
+const VERSIONED: ReadonlySet<CanvasNodeRole> = new Set(["brief", "plan", "episode", "character", "scene"]);
+
+const sameWords = (a: CanvasNode, b: CanvasNode) =>
+  a.metadata?.content === b.metadata?.content && JSON.stringify(a.metadata?.card ?? null) === JSON.stringify(b.metadata?.card ?? null);
+
+function countVersions(before: CanvasDocument, after: CanvasDocument): string[] {
+  const was = new Map(before.nodes.map((node) => [node.id, node]));
+  const counted: string[] = [];
+  for (const node of after.nodes) {
+    const role = node.metadata?.role;
+    if (node.type !== "text" || !role || !VERSIONED.has(role)) continue;
+    const old = was.get(node.id);
+    if (old ? sameWords(old, node) : node.metadata?.version !== undefined) continue;
+    node.metadata = { ...node.metadata, version: old ? (old.metadata?.version ?? 1) + 1 : 1 };
+    counted.push(node.id);
+  }
+  return counted;
+}
+
 /**
  * What the server does after every change to a canvas, in place on `after`: a shot an episode's storyboard bot added
  * belongs to that episode; a shot a storyboard bot or the person added gets its creation node; a shot a bot deleted
  * takes its creation node with it; takes left behind by a shot's new prompt become stale; one take per shot keeps the
- * selected mark; characters and scenes get their groups and their pictures join them; and the pipeline's links go
- * from the ones wanted before to the ones wanted now. Returns what it changed beyond the change itself, and what the
- * change did to the pipeline's nodes.
+ * selected mark; characters and scenes get their groups and their pictures join them; a brief, a plan, an episode, a
+ * character and a scene count their versions; and the pipeline's links go from the ones wanted before to the ones
+ * wanted now. Returns what it changed beyond the change itself, and what the change did to the pipeline's nodes.
  */
 export function settlePipeline(input: SettleInput): { changed: CanvasChangeSet; events: PipelineChange[] } {
   const { before, after, stages, actor } = input;
@@ -96,7 +115,7 @@ export function settlePipeline(input: SettleInput): { changed: CanvasChangeSet; 
     }
   }
 
-  for (const id of [...markOutdatedTakes(before, after), ...keepOneSelected(before, after), ...settleGroups(before, after, context)]) nodes.add(id);
+  for (const id of [...markOutdatedTakes(before, after), ...keepOneSelected(before, after), ...settleGroups(before, after, context), ...countVersions(before, after)]) nodes.add(id);
 
   const wantedBefore = input.upgrade ? [] : wantedLinks(before, input.beforeStages, botEpisodes);
   for (const id of settleLinks(after, wantedBefore, wantedLinks(after, stages, botEpisodes), input.newId)) connections.add(id);

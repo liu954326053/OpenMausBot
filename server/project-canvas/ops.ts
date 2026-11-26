@@ -171,6 +171,7 @@ const METADATA_FIELDS = {
   shotId: short(200),
   selected: z.boolean(),
   stale: z.boolean(),
+  version: z.number().int().min(1),
 } satisfies { [Key in keyof CanvasNodeMetadata]-?: z.ZodType };
 
 type MetadataKey = keyof typeof METADATA_FIELDS;
@@ -232,8 +233,8 @@ const VIDEO_SETTINGS = new Set(["model", "resolution", "aspect", "seconds"]);
 const SETTINGS_OF: Partial<Record<CanvasNodeType, ReadonlySet<string>>> = { image: IMAGE_SETTINGS, video: VIDEO_SETTINGS, shot: VIDEO_SETTINGS };
 const BOT_ADDS: ReadonlySet<CanvasNodeType> = new Set(["text", "shot"]);
 /** What a node is in the pipeline: the server's to set. */
-const PIPELINE_KEYS = ["role", "episode", "shotId", "selected", "stale"] as const satisfies readonly MetadataKey[];
-const PIPELINE_IS_THE_SERVERS = "role, episode, shotId, selected and stale are set by the server";
+const PIPELINE_KEYS = ["role", "episode", "shotId", "selected", "stale", "version"] as const satisfies readonly MetadataKey[];
+const PIPELINE_IS_THE_SERVERS = "role, episode, shotId, selected, stale and version are set by the server";
 /** The role a bot gives a text node it adds, by the job it has: the job, and what the role says the node holds. */
 const ROLE_OF_JOB = {
   episode: { job: "script", holds: "an episode's script, with metadata.episode its number" },
@@ -386,7 +387,7 @@ export function applyCanvasOps(source: CanvasDocument, ops: readonly CanvasOp[],
       if (actor.kind === "bot" && op.groupId) throw new CanvasOpRefusal("not_allowed", "grouping is the person's", index);
       if (op.id && (exists(op.id) || isBotNode(op.id))) throw new CanvasOpRefusal("invalid_op", `node ${op.id} is already there`, index, op.id);
       if (document.nodes.length >= CANVAS_MAX_NODES) throw new CanvasOpRefusal("limit", `a canvas holds at most ${CANVAS_MAX_NODES} nodes`, index);
-      const { role: _role, episode: _episode, shotId: _shotId, selected: _selected, stale: _stale, ...own } = op.metadata ?? {};
+      const { role: _role, episode: _episode, shotId: _shotId, selected: _selected, stale: _stale, version: _version, ...own } = op.metadata ?? {};
       checkMetadata(op.nodeType, own, index);
       const added: CanvasNodeMetadata = { ...own, ...addedRole(op, index) };
       if (op.groupId) {

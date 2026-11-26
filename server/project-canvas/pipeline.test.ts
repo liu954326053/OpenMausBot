@@ -253,3 +253,55 @@ describe("what the pipeline tells of a change", () => {
     expect(changed).toEqual({ nodes: [], connections: [] });
   });
 });
+
+describe("a document's version", () => {
+  const episode = (content: string, version?: number) => node("ep-1", "text", [0, 0], { role: "episode", episode: 1, content, ...(version === undefined ? {} : { version }) }, by("writer"));
+
+  it("starts at 1 on a text node that has a role when it joins the canvas", () => {
+    const { find, changed } = settle(canvas(), (document) => {
+      document.nodes.push(episode("Scene 1"));
+    });
+    expect(find("ep-1")?.metadata?.version).toBe(1);
+    expect(changed.nodes).toContain("ep-1");
+  });
+
+  it("goes up by one when its text or its card changes, counting a node stored without one as 1", () => {
+    const text = settle(canvas([episode("Scene 1", 2)]), (document) => {
+      document.nodes[0]!.metadata = { ...document.nodes[0]!.metadata, content: "Scene 1, rewritten" };
+    });
+    expect(text.find("ep-1")?.metadata?.version).toBe(3);
+    const card = settle(canvas([episode("Scene 1")]), (document) => {
+      document.nodes[0]!.metadata = { ...document.nodes[0]!.metadata, card: { subtitle: "A logline" } };
+    });
+    expect(card.find("ep-1")?.metadata?.version).toBe(2);
+  });
+
+  it("stays as it is when neither changed, and is not given to a node without a role", () => {
+    const moved = settle(canvas([episode("Scene 1", 2), node("note", "text", [0, 400], { content: "A note" })]), (document) => {
+      document.nodes[0]!.position = { x: 40, y: 0 };
+      document.nodes[1]!.metadata = { content: "Another note" };
+    });
+    expect(moved.find("ep-1")?.metadata?.version).toBe(2);
+    expect(moved.find("note")?.metadata?.version).toBeUndefined();
+    expect(moved.changed.nodes).not.toContain("ep-1");
+  });
+
+  it("is counted for a brief, a plan, a character and a scene too, and for no script, shot or take", () => {
+    const { find } = settle(canvas(), (document) => {
+      document.nodes.push(
+        node("brief", "text", [0, 0], { role: "brief", card: { rows: [["Episodes", "12"]] } }), node("plan", "text", [0, 300], { role: "plan" }),
+        node("mei", "text", [0, 600], { role: "character", content: "The bride" }), node("hall", "text", [0, 900], { role: "scene", content: "A hall" }),
+        node("draft", "text", [0, 1200], { role: "script", content: "Act one" }), node("shot-1", "shot", [0, 1500], { prompt: "Veil" }, by("writer")),
+        node("take-1", "video", [0, 1800], { role: "take", shotId: "shot-1", file: file("a.mp4") }),
+      );
+    });
+    expect(["brief", "plan", "mei", "hall", "draft", "shot-1", "take-1"].map((id) => find(id)?.metadata?.version)).toEqual([1, 1, 1, 1, undefined, undefined, undefined]);
+  });
+
+  it("is the one a deleted node had when the node comes back with it", () => {
+    const back = settle(canvas(), (document) => {
+      document.nodes.push(episode("Scene 1", 3));
+    }, { actor: PERSON });
+    expect(back.find("ep-1")?.metadata?.version).toBe(3);
+  });
+});

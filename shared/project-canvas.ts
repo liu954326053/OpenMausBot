@@ -153,6 +153,9 @@ export interface CanvasNodeMetadata {
   selected?: boolean;
   /** Something it was made from changed after it was made. Cleared when it is made again. */
   stale?: boolean;
+  /** On a `brief`, `plan`, `episode`, `character` or `scene`: 1 when it joined the canvas, one more each time its text
+   * or its card changed. Set by the server. A node stored without one counts as 1. */
+  version?: number;
 }
 
 /**

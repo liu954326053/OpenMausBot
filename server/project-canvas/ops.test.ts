@@ -308,10 +308,20 @@ describe("what a node is in the pipeline", () => {
   });
 
   it("is never changed by an operation on the node, the person's included", () => {
-    for (const metadata of [{ role: "script" as const }, { role: null }, { shotId: "shot-1" }, { selected: true }, { stale: null }]) {
+    for (const metadata of [{ role: "script" as const }, { role: null }, { shotId: "shot-1" }, { selected: true }, { stale: null }, { version: 9 }]) {
       expect(refused(() => applyCanvasOps(canvas(), [{ type: "update_node", id: "brief", metadata }], context())).code).toBe("not_allowed");
       expect(refused(() => applyCanvasOps(canvas(), [{ type: "update_node", id: "shot-1", metadata }], withStages("character"))).code).toBe("not_allowed");
     }
+  });
+
+  it("has no version an operation gives it: a node is added without the one named, and a deleted one comes back with its own", () => {
+    const added = applyCanvasOps(canvas(), parseCanvasOps([{ type: "add_node", id: "note", nodeType: "text", metadata: { content: "Swap", version: 9 } }]), context());
+    expect(find(added.document, "note")?.metadata).toEqual({ content: "Swap" });
+    const byBot = applyCanvasOps(canvas(), parseCanvasOps([{ type: "add_node", nodeType: "text", title: "Mei", metadata: { content: "The bride", role: "character", version: 9 } }]), withStages("character"));
+    expect(find(byBot.document, "new-1")?.metadata).toEqual({ content: "The bride", role: "character" });
+    const removed = (id: string) => (id === "ep-1" ? { type: "text" as const, createdBy: WRITER, pipeline: { role: "episode" as const, episode: 1, version: 3 } } : undefined);
+    const back = applyCanvasOps(canvas(), parseCanvasOps([{ type: "add_node", id: "ep-1", nodeType: "text", metadata: { content: "Scene 1", version: 9 } }]), { ...context(), removed });
+    expect(find(back.document, "ep-1")?.metadata).toEqual({ content: "Scene 1", role: "episode", episode: 1, version: 3 });
   });
 });
 

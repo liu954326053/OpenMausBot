@@ -254,6 +254,18 @@ describe("what the pipeline keeps with a canvas", () => {
     } });
     expect(kept).toEqual({ revision: 3, id: "take-1", type: "video", createdBy: { kind: "person" }, pipeline: { role: "take", shotId: "shot-1", selected: true } });
   });
+
+  it("keeps the version a deleted episode had, and gives it back when the person adds the episode back after a restart", () => {
+    const documents = store();
+    change(documents, [{ type: "add_node", id: "ep-1", nodeType: "text" }]);
+    serverChange(documents, (document) => {
+      document.nodes[0]!.metadata = { role: "episode", episode: 1, content: "Scene 1", version: 3 };
+      return { nodes: ["ep-1"] };
+    });
+    change(documents, [{ type: "delete_node", id: "ep-1" }]);
+    change(store(), [{ type: "add_node", id: "ep-1", nodeType: "text", metadata: { content: "Scene 1" } }]);
+    expect(store().read("p1").nodes[0]?.metadata).toEqual({ content: "Scene 1", role: "episode", episode: 1, version: 3 });
+  });
 });
 
 describe("a canvas file that cannot be read", () => {

@@ -18,7 +18,7 @@ export interface RemovedNode {
   id: string;
   type: CanvasNodeType;
   createdBy: CanvasNodeCreator;
-  pipeline?: { role: CanvasNodeRole; episode?: number; shotId?: string; selected?: true };
+  pipeline?: { role: CanvasNodeRole; episode?: number; shotId?: string; selected?: true; version?: number };
 }
 
 /** Each bot's stages when the pipeline's links of a canvas were last made. */
@@ -43,7 +43,7 @@ const nodeSchema = z.object({
 const role = z.enum(["brief", "plan", "episode", "script", "character", "scene", "creation", "take", "final"]);
 const removedSchema = z.object({
   revision: z.number().int().min(1), id: z.string().min(1), type: nodeType, createdBy: creator,
-  pipeline: z.object({ role, episode: z.number().int().min(1).optional(), shotId: z.string().optional(), selected: z.literal(true).optional() }).optional(),
+  pipeline: z.object({ role, episode: z.number().int().min(1).optional(), shotId: z.string().optional(), selected: z.literal(true).optional(), version: z.number().int().min(1).optional() }).optional(),
 });
 const connectionSchema = z.object({ id: z.string().min(1), fromNodeId: z.string().min(1), toNodeId: z.string().min(1), kind: z.literal("content"), pipeline: z.literal(true).optional() });
 const stagesSchema = z.record(z.string(), z.array(z.enum(["lead", "script", "character", "scene", "storyboard", "post", "other"])));
@@ -76,8 +76,8 @@ const empty = (projectId: string): Stored => ({
 });
 
 function pipelineOf(node: CanvasNode): Pick<RemovedNode, "pipeline"> {
-  const { role, episode, shotId, selected } = node.metadata ?? {};
-  return role ? { pipeline: { role, ...(episode === undefined ? {} : { episode }), ...(shotId ? { shotId } : {}), ...(selected ? { selected: true } : {}) } } : {};
+  const { role, episode, shotId, selected, version } = node.metadata ?? {};
+  return role ? { pipeline: { role, ...(episode === undefined ? {} : { episode }), ...(shotId ? { shotId } : {}), ...(selected ? { selected: true } : {}), ...(version === undefined ? {} : { version }) } } : {};
 }
 
 function removedSince(before: readonly RemovedNode[], current: CanvasDocument, next: CanvasDocument, revision: number): RemovedNode[] {
