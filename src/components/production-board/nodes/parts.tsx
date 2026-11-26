@@ -90,6 +90,16 @@ export function BotButton({ botId, ctx, suffix, label }: { botId: string; ctx: N
   );
 }
 
+export function ScriptHoles() {
+  return (
+    <div className="sc-holes" aria-hidden="true">
+      <i />
+      <i />
+      <i />
+    </div>
+  );
+}
+
 export function clock(ms: number): string {
   const seconds = Math.max(0, Math.round(ms / 1000));
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;

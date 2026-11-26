@@ -20,3 +20,10 @@
 .mj-board .bc-note.is-bad { color: var(--danger); }
 .mj-board .pk-filter { display: block; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; border-radius: 8px; outline: 0; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 13px var(--sans); }
 .mj-board .pk-filter:focus { border-color: var(--text-2); }
+.mj-board .k-bot[data-state='failed'] { border-top-color: var(--danger); }
+.mj-board [data-state='failed'] .led { background: var(--danger); }
+.mj-board .tk li[data-s='failed'] .tk-ic { background: var(--danger); border-color: var(--danger); color: var(--on-fill); }
+.mj-board .bot-foot .btn-ink { border-color: var(--line-2); color: var(--text); }
+.mj-board .bot-foot .btn-ink:hover { background: var(--text); border-color: var(--text); color: var(--bg); }
+.mj-board .k-epmore .pp-head, .mj-board .k-epmore .epm { cursor: pointer; }
+.mj-board .gt[data-ready='false'] { border-color: var(--line-2); color: var(--text-3); }
