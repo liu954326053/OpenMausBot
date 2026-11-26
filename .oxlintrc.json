@@ -11,6 +11,7 @@
     ".pi/**",
     ".roo/**",
     ".windsurf/**",
+    "backups/**",
     "dist/**",
     "dist-electron/**",
     "dist-native/**",
