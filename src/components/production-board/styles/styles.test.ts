@@ -14,6 +14,10 @@ describe("the mockup's styles in the app", () => {
     }
   });
 
+  it("leave Tailwind's grid class alone on app components inside the board", () => {
+    for (const name of COPIED) expect(read(name), name).not.toMatch(/(^|[,{}])\s*\.grid\s*[,{]/m);
+  });
+
   it("name every animation mj-, so none meets one of the app's", () => {
     const names = [...all().matchAll(/@keyframes\s+([\w-]+)/g)].map((match) => match[1]);
     expect(names.length).toBeGreaterThanOrEqual(15);

@@ -53,7 +53,7 @@
   .viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; outline: none; background: var(--bg); }
   .viewport.is-panning { cursor: grabbing; }
   .viewport:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; border-radius: 0; }
-  .grid {
+  .viewport > .grid {
     position: absolute; inset: 0; pointer-events: none;
     background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 16%, transparent) 1px, transparent 1.5px);
     background-size: var(--gs, 28px) var(--gs, 28px); background-position: var(--gx, 0) var(--gy, 0);
