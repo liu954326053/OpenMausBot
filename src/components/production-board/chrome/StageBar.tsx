@@ -22,6 +22,8 @@ export function StageBar({ stages, current, insetEnd, onStage }: {
             <button
               type="button"
               className="schip"
+              data-board-stage={stage}
+              data-stage-state={stages[stage]}
               data-state={stageState(stages[stage])}
               aria-current={current === stage ? "true" : "false"}
               aria-label={`${name} · ${t(`productionBoard.stageState.${stages[stage]}`)}`}

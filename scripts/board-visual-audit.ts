@@ -476,34 +476,32 @@ async function pressReal(page: HeadlessPage, key: string): Promise<void> {
 
 const STAGE_OF_KIND: Record<string, string> = {
   bot: "1", brief: "1", plan: "1",
-  episode: "2", episodeStack: "2",
+  episode: "2", stack: "2",
   character: "3", scene: "3",
   shot: "4", result: "4",
-  final: "5", generic: "5",
+  final: "5", other: "5",
 };
 
 const CARD_LAYOUT = (kind: string) => `(async () => {
   const live = window.projectCanvasBackend && typeof window.projectCanvasBackend.current === "function" ? window.projectCanvasBackend.current() : null;
-  const [boardModule, layoutModule, sizesModule, sampleModule] = await Promise.all([
+  const [boardModule, layoutModule, sampleModule] = await Promise.all([
     import("/src/lib/production-board/board.ts"),
-    import("/src/lib/production-board/layout.ts"),
-    import("/src/components/production-board/cards/sizes.ts"),
+    import("/src/components/production-board/engine/layout.ts"),
     import("/src/testing/production-board-sample.ts"),
   ]);
   const params = new URLSearchParams(location.search);
   const snapshot = sampleModule.productionBoardSample({ episodes: Number(params.get("episodes") ?? 60) });
   if (!live || live.projectId !== snapshot.projectId) return { ok: false, fallback: true, reason: "这不是样例看板" };
   const board = boardModule.buildBoard(snapshot, { opened: new Set() });
-  const sizeOf = (card) => sizesModule.BOARD_CARD_SIZES[card.kind === "stack" ? "episodeStack" : card.kind === "other" ? "generic" : card.kind];
-  const layout = layoutModule.layoutBoard(board, sizeOf);
-  const card = board.cards.find((one) => one.kind === ${JSON.stringify(kind === "episodeStack" ? "stack" : kind === "generic" ? "other" : kind)});
+  const layout = layoutModule.layoutBoard(board, (card) => layoutModule.ESTIMATED_HEIGHT[card.kind]);
+  const card = board.cards.find((one) => one.kind === ${JSON.stringify(kind)});
   if (!card) return { ok: false, reason: "样例里没有这种卡片" };
   const rect = layout.rects.get(card.id);
   if (!rect) return { ok: false, reason: "布局里没有这张卡" };
   const world = document.querySelector("[data-board-world]");
   const transform = world && getComputedStyle(world).transform;
   const matrix = transform && transform !== "none" ? new DOMMatrixReadOnly(transform) : new DOMMatrixReadOnly();
-  return { ok: true, id: card.id, rect, view: { x: matrix.e, y: matrix.f, k: matrix.a || 1 } };
+  return { ok: true, id: card.id, rect: { x: rect.x, y: rect.y, width: rect.w, height: rect.h }, view: { x: matrix.e, y: matrix.f, k: matrix.a || 1 } };
 })()`;
 
 /** Zoom around the centre and pan by the board's own 80 px steps until the first card of `kind` is centred. The
@@ -516,7 +514,7 @@ async function focusCard(page: HeadlessPage, kind: string, viewport: Options["vi
   await delay(80);
   const targetK = Math.min(1, (viewport.width - 80) / Math.max(1, info.rect.width), (viewport.height - 160) / Math.max(1, info.rect.height));
   const ratio = targetK / Math.max(0.001, info.view.k);
-  const steps = ratio > 1 ? Math.floor(Math.log(ratio) / Math.log(1.2)) : -Math.ceil(Math.log(1 / ratio) / Math.log(1.2));
+  const steps = ratio > 1 ? Math.floor(Math.log(ratio) / Math.log(1.25)) : -Math.ceil(Math.log(1 / ratio) / Math.log(0.8));
   const send = async (count: number, key: string) => {
     for (let at = 0; at < count; at += 1) await pressReal(page, key);
   };
@@ -714,7 +712,7 @@ async function run(argv: string[]): Promise<void> {
         pair: `side-by-side/${id}.png`,
         mockupSize: `${options.viewport.width}×${options.viewport.height}`,
         appSize: `${options.viewport.width}×${options.viewport.height}`,
-        note: `全局缩放：效果图 ${percent(mockupScale)} · 实现 ${percent(appScale)}${appScale <= 0.32 ? "（实现缩放 32% 以下只画标签，这一张是标签视图）" : ""}`,
+        note: `全局缩放：效果图 ${percent(mockupScale)} · 实现 ${percent(appScale)}`,
       };
     };
     const boards = [

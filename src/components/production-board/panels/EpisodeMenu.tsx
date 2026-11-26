@@ -27,6 +27,7 @@ export function EpisodeMenu({ episodes, at, onChoose, onClose }: {
             type="button"
             className="pk"
             role="menuitemcheckbox"
+            data-board-stack-episode={one.episode}
             aria-checked={one.unfolded}
             title={episodeStatus(one.status)?.label}
             onClick={() => onChoose(one.episode)}

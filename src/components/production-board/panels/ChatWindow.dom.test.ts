@@ -48,7 +48,7 @@ describe("a bot's chat on the board", () => {
     expect(sendTask).toHaveBeenLastCalledWith(snapshot.project.id, expect.objectContaining({ botId: boarderOf(1), text: "Tighten shot 2", references: expect.any(Array) }));
     expect(sendTask.mock.lastCall![1].references).toHaveLength(tiles);
     await act(async () => { click(box.querySelector(".quick .qbtn")); await Promise.resolve(); });
-    expect(sendTask).toHaveBeenLastCalledWith(snapshot.project.id, expect.objectContaining({ text: "How far is this episode?" }));
+    expect(sendTask).toHaveBeenLastCalledWith(snapshot.project.id, expect.objectContaining({ text: "How far along is this episode?" }));
   });
 
   it("takes a reference out of the tray and adds one from the picker", async () => {

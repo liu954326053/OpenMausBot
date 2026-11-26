@@ -364,15 +364,16 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
       await clickButton("Generate again", card("result:ep1-s1"));
       await expect.poll(async () => (await takesOf("ep1-s1")).length, { timeout: 30_000, message: "a second take of 1-1" }).toBe(2);
       await expect.poll(async () => (await takesOf("ep1-s1")).find((one) => one.metadata?.selected)?.id, { timeout: 15_000 }).not.toBe(firstTake!.id);
-      await waitFor(`document.querySelectorAll(${JSON.stringify(`${card("result:ep1-s1")} [data-result-take]`)}).length === 2`, "both takes on the result card");
-      await clickSelector(`${card("result:ep1-s1")} [data-result-take][title="Take 1"]`);
+      await waitFor(`document.querySelectorAll(${JSON.stringify(`${card("result:ep1-s1")} .rs-takes .take`)}).length === 2`, "both takes on the result card");
+      await clickSelector(`${card("result:ep1-s1")} .rs-takes .take[title="Take 1"]`);
       await clickButton("Use this take", card("result:ep1-s1"));
       await expect.poll(async () => (await takesOf("ep1-s1")).find((one) => one.metadata?.selected)?.id, { timeout: 15_000, message: "the first take used again" }).toBe(firstTake!.id);
       await shot("10-the-first-take-used-again.png");
 
       await zoomOutToFar();
-      expect(await evaluate<number>("document.querySelectorAll('[data-board-far]').length")).toBe((await drawn()).length);
-      expect(await evaluate<number>("document.querySelectorAll('article[data-board-card], [data-board-edge-label]').length")).toBe(0);
+      expect(await evaluate<boolean>("Boolean(document.querySelector('[data-board-far]'))")).toBe(true);
+      expect(await evaluate<number>("document.querySelectorAll('.node').length")).toBe((await drawn()).length);
+      expect(await evaluate<number>("document.querySelectorAll('[data-board-edge-label]').length")).toBe(0);
       evidence.farZoom = await zoom();
       await shot("11-far-out-labels-only.png");
       evidence.boardConsole = (await browser("console")).messages;
@@ -598,20 +599,18 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
       type StagesAtSmallest = { form: string | null; barInside: boolean; overflowX: string; stages: StageControl[] };
       const stagesAtSmallest = () => evaluate<StagesAtSmallest>(`(() => {
         const board = document.querySelector(${JSON.stringify(`${view} [data-production-board]`)})?.getBoundingClientRect();
-        const bar = document.querySelector(${JSON.stringify(`${view} [data-board-stage-form]`)});
-        const surface = bar?.querySelector("[data-stage-surface]");
-        const form = bar?.dataset.boardStageForm ?? null;
+        const bar = document.querySelector(${JSON.stringify(`${view} .stagebar`)});
         const room = { left: board.left, top: board.top, right: board.right, bottom: board.bottom };
         const inside = (r) => r.left >= room.left - 1 && r.top >= room.top - 1 && r.right <= room.right + 1 && r.bottom <= room.bottom + 1;
-        const buttons = [...bar.querySelectorAll('[data-stage-list="' + form + '"] [data-board-stage]')];
+        const buttons = [...(bar?.querySelectorAll("[data-board-stage]") ?? [])];
         return {
-          form,
+          form: "full",
           barInside: inside(bar.getBoundingClientRect()),
-          overflowX: surface ? getComputedStyle(surface).overflowX : "",
+          overflowX: bar ? getComputedStyle(bar).overflowX : "",
           stages: buttons.map((button) => {
             const r = button.getBoundingClientRect();
             const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-            return { stage: button.dataset.boardStage, named: Boolean(button.querySelector("[data-stage-name]")), reachable: Boolean(hit && (hit === button || button.contains(hit))), inside: inside(r) };
+            return { stage: button.dataset.boardStage, named: button.textContent.trim().length > 1, reachable: Boolean(hit && (hit === button || button.contains(hit))), inside: inside(r) };
           }),
         };
       })()`);
@@ -626,12 +625,11 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
           await settle();
           const clickStage = async (stageName: string) => {
             await settle();
-            const form = (await stagesAtSmallest()).form;
-            await clickSelector(`${view} [data-board-stage-form] [data-stage-list="${form}"] [data-board-stage="${stageName}"]`);
+            await clickSelector(`${view} .stagebar [data-board-stage="${stageName}"]`);
             await settle();
           };
           const before = await stagesAtSmallest();
-          expect(["full", "compact"]).toContain(before.form);
+          expect(before.form).toBe("full");
           expect(before.barInside).toBe(true);
           expect(before.overflowX).toBe("hidden");
           expect(before.stages.map((one) => one.stage)).toEqual(stagesInOrder);

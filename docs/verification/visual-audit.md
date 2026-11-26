@@ -19,7 +19,7 @@ pnpm vis:audit --app-url http://127.0.0.1:8790/__production-board.html
   `--mockup-port`。
 - **实现**从 8790 起找一个空闲端口，起一个 Vite 预览，页面是仓库自己的
   [`project-canvas-preview.tsx`](../../scripts/testing/project-canvas-preview.tsx)：真实看板组件加
-  `productionBoardSample` 的样例剧，和 `board-cards-shots.ts`、`scripts/testing/project-canvas-ui.e2e.test.ts` 用的是同一套。
+  `productionBoardSample` 的样例剧，和 `scripts/testing/project-canvas-preview.tsx`、`scripts/testing/project-canvas-ui.e2e.test.ts` 用的是同一套。
   同时用 `control-omb launch` 背后的 `launchVerificationServer` 起一个隔离夹具：临时数据目录和 HOME、假引擎、
   自选端口，`/api` 代理到它，不读也不写 `~/.magicbot` 或 `~/Library/Application Support/MagicBot`。
   要审计已经打开在隔离夹具里的真实项目看板，用 `--app-url`，工具就不再自己起预览和夹具。

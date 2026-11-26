@@ -6,7 +6,7 @@
       "name": "阶段条",
       "section": "chrome",
       "mockup": ".stagebar",
-      "app": "[data-stage-surface]"
+      "app": ".stagebar"
     },
     {
       "id": "toolbar",
@@ -20,8 +20,8 @@
       "name": "小地图",
       "section": "chrome",
       "mockup": ".minimap",
-      "app": "[data-board-minimap]",
-      "appReveal": "[data-board-chrome-button=\"minimap\"][aria-pressed=\"false\"]"
+      "app": ".minimap",
+      "appReveal": ".toolbar button[aria-pressed=\"false\"]:last-of-type"
     },
     {
       "id": "k-bot",
@@ -65,8 +65,8 @@
       "section": "cards",
       "mockup": ".k-epmore",
       "mockupNode": "epmore",
-      "app": "[data-board-card=\"episodeStack\"]",
-      "appCardKind": "episodeStack"
+      "app": "[data-board-card=\"stack\"]",
+      "appCardKind": "stack"
     },
     {
       "id": "k-shot",
@@ -119,7 +119,7 @@
       "section": "panels",
       "mockup": ".bchat",
       "mockupOpen": { "chat": "lead" },
-      "app": "[data-board-chat] > div",
+      "app": "[data-board-chat]",
       "appCardKind": "bot",
       "appClick": "[data-board-card=\"bot\"]"
     },

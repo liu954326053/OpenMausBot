@@ -103,8 +103,8 @@ describe("the toolbar", () => {
 
   it("names the reference lines in full, the scope in the part a narrow board hides", () => {
     const keep = renderToolbar().querySelector(".tbtn.keep .tkeep");
-    expect(textOf(keep?.querySelector(".tlong"))).toBe("Character and scene");
-    expect(keep?.textContent).toBe("Character and scene Reference lines");
+    expect(textOf(keep?.querySelector(".tlong"))).toBe("for characters and scenes");
+    expect(keep?.textContent).toBe("Reference lines for characters and scenes");
   });
 
   it("puts the scope after the short name in a language that says it after", () => {

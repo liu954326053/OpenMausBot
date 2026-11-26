@@ -99,6 +99,8 @@ function EdgeLines({ edge, path, refIndex, on, hovered, entering }: DrawnEdge & 
     <g
       className={cn("edge", `t-${edge.kind}`, `s-${edge.state}`, on && "is-on", hovered && "is-hov", entering && "pre")}
       data-board-edge={edge.id}
+      data-edge-state={edge.state}
+      data-edge-kind={edge.kind}
       style={ref ? ({ "--i": refIndex ?? 0 } as CSSProperties) : undefined}
     >
       <path className="ln" d={path.d} />
@@ -139,6 +141,8 @@ export const World = memo(function World({ cards, edges, selectedId, related, li
         {edges.map(({ edge, path }) => (edge.label ? (
           <div
             key={edge.id}
+            data-board-edge-label={edge.id}
+            data-edge-state={edge.state}
             className={cn("elabel", `t-${edge.kind}`, `s-${edge.state}`, lit.has(edge.id) && "is-on", edgeEntering(edge) && "pre")}
             style={{ left: path.label.x, top: path.label.y }}
           >

@@ -17,7 +17,7 @@ describe("a character's card", () => {
     const root = draw(card, fixture);
     expect(root.querySelector(".ch .ch-art img")?.getAttribute("src")).toMatch(/^\/files\//);
     expect(textOf(root.querySelector(".ch-body h3"))).toBe(card.name);
-    expect(textOf(root.querySelector(".ch-top .mono"))).toBe("Look v1");
+    expect(textOf(root.querySelector(".ch-top .mono"))).toBe("Look 1");
     expect(root.querySelectorAll(".ch-foot .pal i").length).toBe(card.facts.palette?.length ?? 0);
   });
 });

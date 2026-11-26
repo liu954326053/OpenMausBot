@@ -580,7 +580,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
 
   return (
     <section ref={rootRef} className="mj-board" aria-label={t("productionBoard.label")}>
-      <main ref={stageRef} className={cn("stage", shown.far && "lod-far", selected && "has-sel", showRefs && "show-refs")}>
+      <main ref={stageRef} data-board-far={shown.far ? "" : undefined} className={cn("stage", shown.far && "lod-far", selected && "has-sel", showRefs && "show-refs")}>
         <div
           ref={viewportRef}
           className={cn("viewport", input.panning && "is-panning")}

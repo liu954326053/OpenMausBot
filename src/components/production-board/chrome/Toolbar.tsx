@@ -33,7 +33,7 @@ export function Toolbar({ camera, showRefs, minimap, onZoom, onZoomReset, onFit,
       <button type="button" className="tbtn" aria-label={t("productionBoard.toolbar.zoomOut")} onClick={() => onZoom(0.8)}>
         <Minus className="ic" aria-hidden="true" />
       </button>
-      <button type="button" className="tzoom" aria-label={t("productionBoard.toolbar.zoomReset", { percent })} onClick={onZoomReset}>
+      <button type="button" className="tzoom" data-board-zoom="" aria-label={t("productionBoard.toolbar.zoomReset", { percent })} onClick={onZoomReset}>
         {t("productionBoard.toolbar.zoom", { percent })}
       </button>
       <button type="button" className="tbtn" aria-label={t("productionBoard.toolbar.zoomIn")} onClick={() => onZoom(1.25)}>
@@ -48,7 +48,7 @@ export function Toolbar({ camera, showRefs, minimap, onZoom, onZoomReset, onFit,
         <Waypoints className="ic" aria-hidden="true" />
         <ReferencesLabel />
       </button>
-      <button type="button" className="tbtn" aria-pressed={minimap} aria-label={t("productionBoard.toolbar.minimap")} onClick={onMinimap}>
+      <button type="button" className="tbtn" aria-pressed={minimap} aria-label={t("productionBoard.toolbar.minimap")} onClick={onMinimap} data-board-chrome-button="minimap">
         <MapIcon className="ic" aria-hidden="true" />
       </button>
     </div>

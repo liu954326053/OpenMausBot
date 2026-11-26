@@ -244,6 +244,12 @@ Motion explains a change. It never decorates.
   `motion-reduce:animate-none`, or gate it in CSS on
   `prefers-reduced-motion` and `[data-reduced-motion="true"]`.
 
+**The production board is its mockup.** The board of a project
+(`src/components/production-board/`) is drawn from
+`docs/无限画布效果图/index-v5/`: its radii, type sizes, shadows and motion, loops
+included, are the mockup's, and its colours are the skin's. Reduced motion still
+stops all of it.
+
 ## 11. Words
 
 The words are part of the design. Write the way a calm, competent colleague

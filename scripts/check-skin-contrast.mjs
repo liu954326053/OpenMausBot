@@ -165,18 +165,15 @@ const PAIRS = [
   // The usage card's and model menu's "At its limit", and the usage bars in the model button.
   ["--color-warning", "--color-menu", 4.5],
   ["--color-warning", "--color-composer", 3],
-  // The production board's paper and monitor are their own fixed surfaces in every skin, so their ink is measured here
-  // rather than per skin.
-  ["--color-board-ink", "--color-board-paper", 4.5],
-  ["--color-board-ink-2", "--color-board-paper", 4.5],
-  ["--color-board-ink-3", "--color-board-paper", 4.5],
-  ["--color-board-teal-ink", "--color-board-paper", 4.5],
-  ["--color-board-amber-ink", "--color-board-paper", 4.5],
-  ["--color-board-ink", "--color-board-amber", 4.5],
-  ["--color-board-paper", "--color-board-ink", 4.5],
-  ["--color-board-paper", "--color-board-monitor", 4.5],
-  ["--color-board-teal", "--color-board-monitor", 4.5],
-  ["--color-board-amber", "--color-board-monitor", 4.5],
+  // The production board draws on the skin: ink on its sheets of paper, and the page's colour on its amber and green fills.
+  ["--color-ink", "--color-menu", 4.5],
+  ["--color-ink-secondary", "--color-menu", 4.5],
+  ["--color-ink-tertiary", "--color-menu", 4.5],
+  ["--color-warning", "--color-menu", 4.5],
+  ["--color-success", "--color-menu", 4.5],
+  ["--color-app", "--color-warning", 4.5],
+  ["--color-success-ink", "--color-success", 4.5],
+  ["--color-app", "--color-ink", 4.5],
   // borders and dots are UI components, not text — AA asks 3:1 of them
   ["--color-hairline", "--color-app", 1.5],
   ["--color-accent", "--color-app", 3],

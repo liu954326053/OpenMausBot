@@ -15,7 +15,8 @@ or JianYing's own folder.
    folds it back.
 3. Each line is drawn in the state of the work it carries, done, at work or waiting, with its label. Reference lines
    show only while the toolbar's button asks for them.
-4. Zoomed out to 32% or less, each card is a label and the lines have none.
+4. Zoomed far out, every card is still drawn as itself, scaled down, and the bots wear a pin; the lines keep their
+   labels only while the view is not the whole board.
 5. A card the person drags, by its name or its buttons too, goes where it was let go and is still there after a reload.
    A press that hardly moves is a click, a press on a player, a field or a link keeps its own job, and a drag anywhere
    else pans. The arrow keys pan; + and - zoom.
@@ -85,7 +86,7 @@ episodes. It writes its screenshots, `evidence.json` and `sixty-episodes.json` i
 is a project made before productions, `?skin=` and `?lang=` choose the skin and the language, and `?bot=<id>` opens
 the board on that bot. The suite serves it at `/__production-board.html`, and `window.boardOpenedMs` is how long the
 board took from being mounted to its first painted cards. The cards on their own, every kind in both skins, come from
-`scripts/testing/board-cards-shots.ts`, which holds the same lock.
+`scripts/testing/project-canvas-preview.tsx` itself, in the `?card=` form, which holds the same lock.
 
 Verified on 2026-11-24: the UI suite passed in both skins, and at the smallest window the bars overlapped nothing and
 stayed inside the board.

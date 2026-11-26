@@ -124,10 +124,10 @@ describe("the shipped map", () => {
     ])).toThrow(/appReveal/);
   });
 
-  it("finds the minimap by the marker the board wraps it in, with a switch to unfold it", () => {
+  it("finds the minimap by its class, with the toolbar's switch to unfold it", () => {
     const minimap = MAP.elements.find((element) => element.id === "minimap")!;
-    expect(minimap.app).toBe("[data-board-minimap]");
-    expect(minimap.appReveal).toBe('[data-board-chrome-button="minimap"][aria-pressed="false"]');
+    expect(minimap.app).toBe(".minimap");
+    expect(minimap.appReveal).toBe('.toolbar button[aria-pressed="false"]:last-of-type');
   });
 });
 

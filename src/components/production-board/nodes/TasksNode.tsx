@@ -17,7 +17,7 @@ const PARALLEL: ReadonlySet<ProductionJob> = new Set(["script", "character", "sc
 export function TasksNode({ card, ctx }: { card: BoardPlanCard; ctx: NodeContext }) {
   const done = card.tasks.filter((task) => task.status === "done").length;
   const lead = Object.values(ctx.snapshot.bots).find((bot) => bot.lead || bot.botId === ctx.snapshot.project.leadBotId);
-  const split = lead ? [t("boardCards.brief.by", { name: lead.name }), ...(card.plannedAt === undefined ? [] : [timeOfDay(card.plannedAt)])].join(" · ") : "";
+  const split = lead ? [t("boardCards.plan.by", { name: lead.name }), ...(card.plannedAt === undefined ? [] : [timeOfDay(card.plannedAt)])].join(" · ") : "";
   return (
     <>
       <header className="pp-head">
