@@ -85,8 +85,8 @@ episodes. It writes its screenshots, `evidence.json` and `sixty-episodes.json` i
 `?episodes=` sets how long the drama is (60 unless given), `?empty=1` shows it before the lead's plan, `?sample=basic`
 is a project made before productions, `?skin=` and `?lang=` choose the skin and the language, and `?bot=<id>` opens
 the board on that bot. The suite serves it at `/__production-board.html`, and `window.boardOpenedMs` is how long the
-board took from being mounted to its first painted cards. The cards on their own, every kind in both skins, come from
-`scripts/testing/project-canvas-preview.tsx` itself, in the `?card=` form, which holds the same lock.
+board took from being mounted to its first painted cards. Every kind of card is checked on that same page, moved to
+the middle one after another.
 
 Verified on 2026-11-24: the UI suite passed in both skins, and at the smallest window the bars overlapped nothing and
 stayed inside the board.
