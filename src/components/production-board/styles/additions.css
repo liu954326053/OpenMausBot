@@ -7,3 +7,16 @@
 :root[data-reduced-motion="true"] .mj-board *::before,
 :root[data-reduced-motion="true"] .mj-board *::after { animation: none !important; transition: none !important; }
 .mj-board .schip[data-state='failed'] .fno { background: var(--danger); color: var(--on-fill); }
+.mj-board .bc-wait { align-self: stretch; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line-2); background: var(--card); font-size: 13px; }
+.mj-board .bc-actions .bc-pill + .bc-pill { margin-left: 6px; }
+.mj-board .rt.is-locked .rt-x { display: none; }
+.mj-board .bc-wait[role='status'] { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.mj-board .bc-wait > p { font-size: 12px; color: var(--text-2); }
+.mj-board .bc-ava { overflow: hidden; }
+.mj-board .bc-actions { flex-wrap: wrap; }
+.mj-board .bc-send { margin-left: auto; }
+.mj-board .msg.me > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.mj-board .bc-note { font-size: 12px; line-height: 16px; color: var(--text-3); }
+.mj-board .bc-note.is-bad { color: var(--danger); }
+.mj-board .pk-filter { display: block; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; border-radius: 8px; outline: 0; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 13px var(--sans); }
+.mj-board .pk-filter:focus { border-color: var(--text-2); }

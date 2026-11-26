@@ -23,7 +23,7 @@ export function ChatWaiting({ bot, waiting, onOpenChat }: { bot: Pick<CanvasBotS
   );
   if (approval) {
     return (
-      <div className="rounded-lg border border-warning/50">
+      <div className="bc-wait">
         <PendingApprovalPanel
           pending={approval}
           count={1}
@@ -38,9 +38,9 @@ export function ChatWaiting({ bot, waiting, onOpenChat }: { bot: Pick<CanvasBotS
   }
   const detail = approvalDetailText(card);
   return (
-    <div role="status" className="flex flex-col items-start gap-2 rounded-lg border border-warning/50 p-3">
-      <div className="text-[13px] font-medium leading-[18px] text-ink">{isQuestionCard(card) ? t("question.card.named", { name: bot.name }) : card.title}</div>
-      {detail ? <div className="text-[12px] leading-4 text-ink-secondary">{detail}</div> : null}
+    <div className="bc-wait" role="status">
+      <b>{isQuestionCard(card) ? t("question.card.named", { name: bot.name }) : card.title}</b>
+      {detail ? <p>{detail}</p> : null}
       {answerInChat}
     </div>
   );
