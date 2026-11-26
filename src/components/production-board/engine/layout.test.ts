@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Board, BoardCard } from "@/lib/production-board/types";
+import { intersects } from "./camera";
 import { bbox, cardWidth, layoutBoard, stageAt } from "./layout";
 
 const HEIGHT: Record<string, number> = { bot: 300, brief: 340, plan: 300, episode: 280, stack: 250, character: 210, scene: 264, shot: 270, result: 218, final: 600, other: 220 };
@@ -44,6 +45,28 @@ describe("the board's layout", () => {
     expect([xy("ep1"), xy("ep2"), xy("stack")]).toEqual([[1640, -433], [1640, -125], [1640, 183]]);
     expect(xy("faces")).toEqual([1640, -903]);
     expect(xy("sets")).toEqual([1640, 511]);
+  });
+
+  it("keeps the character bot and the scene bot clear of the episodes while there are no characters or scenes", () => {
+    const { rects } = layoutBoard(board(CARDS.filter((one) => one.kind !== "character" && one.kind !== "scene")), heightOf);
+    const episodes = rects.get("ep1")!;
+    const stack = rects.get("stack")!;
+    const faces = rects.get("faces")!;
+    expect(faces.y + faces.h).toBe(episodes.y - 28);
+    expect(rects.get("sets")!.y).toBe(stack.y + stack.h + 28);
+  });
+
+  it("keeps the script, character and scene bots apart on a board of bots alone", () => {
+    const { rects } = layoutBoard(board([CARDS[0]!, ...["writer", "faces", "sets"].map((id) => CARDS.find((one) => one.id === id)!)]), heightOf);
+    const [writer, faces, sets] = ["writer", "faces", "sets"].map((id) => rects.get(id)!);
+    expect([intersects(faces!, sets!), intersects(faces!, writer!), intersects(sets!, writer!)]).toEqual([false, false, false]);
+  });
+
+  it("stacks several bots of one job as a group, clear of the episodes", () => {
+    const cards = [...CARDS.filter((one) => one.kind !== "character" && one.kind !== "scene"), bot("faces2", "character", { stage: "library" })];
+    const { rects } = layoutBoard(board(cards), heightOf);
+    expect(rects.get("faces2")!.y + rects.get("faces2")!.h).toBe(rects.get("ep1")!.y - 28);
+    expect(rects.get("faces")!.y + rects.get("faces")!.h).toBe(rects.get("faces2")!.y - 28);
   });
 
   it("stacks the storyboard bots between the characters above and the scenes below", () => {

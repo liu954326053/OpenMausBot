@@ -180,10 +180,14 @@ function placeColumns(p: Placement): { boarders: BoardCard[] } {
   const snH = p.stackHeight(scenes, G);
   p.stack(characters, XB, -band - chH, G);
   p.stack(scenes, XB, band, G);
-  const characterBot = p.takeFirst(doing("character"));
-  if (characterBot) p.mid(characterBot, XA, -band - chH / 2);
-  const sceneBot = p.takeFirst(doing("scene"));
-  if (sceneBot) p.mid(sceneBot, XA, band + snH / 2);
+  const characterBots = p.take(doing("character"));
+  const characterBotsH = p.stackHeight(characterBots, G);
+  const characterCentre = Math.min(-band - chH / 2, -(epH / 2 + G + characterBotsH / 2));
+  p.stack(characterBots, XA, characterCentre - characterBotsH / 2, G);
+  const sceneBots = p.take(doing("scene"));
+  const sceneBotsH = p.stackHeight(sceneBots, G);
+  const sceneCentre = Math.max(band + snH / 2, epH / 2 + G + sceneBotsH / 2);
+  p.stack(sceneBots, XA, sceneCentre - sceneBotsH / 2, G);
   return { boarders };
 }
 
