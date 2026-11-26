@@ -54,7 +54,7 @@ export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChan
       {open ? (
         <aside data-board-side-panel="" aria-label={t("boardPanels.panel.label")} className="side">
           <div className="pane-head">
-            <div role="tablist" aria-label={t("boardPanels.panel.label")} className="flex min-w-0 flex-1 items-center" onKeyDown={onTabKey}>
+            <div role="tablist" aria-label={t("boardPanels.panel.label")} className="pane-tabs" onKeyDown={onTabKey}>
               {TABS.map((each) => (
                 <button
                   key={each}

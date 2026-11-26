@@ -66,3 +66,7 @@
 .mj-board [data-board-room] { position: absolute; top: 0; right: 0; height: 0; pointer-events: none; }
 .mj-board [data-board-overlay] { position: absolute; inset: 0; z-index: 25; pointer-events: none; overflow: hidden; }
 .mj-board [data-board-overlay] :is(.bchat, .dm) { pointer-events: auto; }
+
+.mj-board .side .pane-tabs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.mj-board .side .pane-tabs::-webkit-scrollbar { display: none; }
+.mj-board .side .pane-tabs .schip { flex: none; }
