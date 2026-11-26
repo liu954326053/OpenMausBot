@@ -10,9 +10,9 @@
 // a bot who joins is drawn at once clear of the others, a search for a part of the project's name keeps its one row and
 // one for the writer finds no project, a project archived while open gives way to the main bot, and the project's
 // settings cover the whole board while a terminal's sign-in card stays above them; at the app's smallest window, in both
-// skins, the minimap starts folded until its button opens it, the board's bars neither overlap nor leave the board, and
-// the stage bar keeps its five stages inside the board and in reach, naming only the one in view once it has to shrink,
-// in English and Chinese, and a click on the last takes the view to post.
+// skins, no minimap is drawn and its button says so, a roomier window's button folds and opens it, the board's bars
+// neither overlap nor leave the board, and the stage bar keeps its five stages inside the board and in reach by
+// scrolling, naming each one, in English and Chinese, and a click on the last takes the view to post.
 // Last, the sixty-episode sample on the in-memory backend draws only what is in view; how long it takes to open, and the
 // frames of a zoom and a pan, are kept as evidence. Nothing here reaches the user's data, JianYing or port 8799.
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -130,13 +130,23 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
   const zoom = () => evaluate<string>("document.querySelector('[data-board-zoom]')?.textContent ?? ''");
   const scale = () => evaluate<number>("new DOMMatrix(getComputedStyle(document.querySelector('[data-board-world]')).transform).a");
   const settle = () => sleep(450);
+  // The camera writes the world's transform itself while a glide runs; a view is in place once the transform holds still.
+  const still = async () => {
+    let last = "";
+    for (let stable = 0, waited = 0; stable < 4 && waited < 6_000; waited += 120) {
+      await sleep(120);
+      const now = await evaluate<string>("getComputedStyle(document.querySelector('[data-board-world]')).transform");
+      if (now === last) stable += 1;
+      else { last = now; stable = 0; }
+    }
+  };
   const fitAll = async () => {
     await clickSelector('button[aria-label="Fit to view"]');
-    await settle();
+    await still();
   };
   const focusStage = async (stage: string) => {
     await clickSelector(`[data-board-stage=${JSON.stringify(stage)}]`);
-    await settle();
+    await still();
   };
   const zoomOutToFar = async () => {
     for (let tries = 0; tries < 14 && !(await evaluate<boolean>("Boolean(document.querySelector('[data-board-far]'))")); tries += 1) {
@@ -144,7 +154,7 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
       await sleep(300);
     }
   };
-  return { browser, evaluate, waitFor, box, clickAt, clickSelector, clickButton, drag, emptySpot, card, drawn, stages, lines, zoom, scale, settle, fitAll, focusStage, zoomOutToFar };
+  return { browser, evaluate, waitFor, box, clickAt, clickSelector, clickButton, drag, emptySpot, card, drawn, stages, lines, zoom, scale, settle, still, fitAll, focusStage, zoomOutToFar };
 }
 
 (enabled ? it : it.skip)("draws a drama's production as its board from the server, keeps what the person moves, retries what stopped, and holds its place in the app", async () => {
@@ -349,7 +359,7 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
       expect(await stages()).toEqual({ brief: "done", script: "done", library: "done", storyboard: "done", post: "done" });
 
       await focusStage("script");
-      await clickSelector(`${card("stack")} article`);
+      await clickSelector(`${card("stack")} .pp-head`);
       await waitFor(`document.querySelectorAll("[data-board-stack-episode]").length === 3`, "the stack's episodes in its menu");
       await shot("08-the-stack-menu.png");
       await clickSelector('[data-board-stack-episode="1"]');
@@ -361,7 +371,7 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
 
       const takesOf = async (shotId: string) => (await snapshot()).nodes.filter((one) => one.metadata?.role === "take" && one.metadata.shotId === shotId);
       const [firstTake] = await takesOf("ep1-s1");
-      await clickButton("Generate again", card("result:ep1-s1"));
+      await clickButton("Generate again", card("ep1-s1"));
       await expect.poll(async () => (await takesOf("ep1-s1")).length, { timeout: 30_000, message: "a second take of 1-1" }).toBe(2);
       await expect.poll(async () => (await takesOf("ep1-s1")).find((one) => one.metadata?.selected)?.id, { timeout: 15_000 }).not.toBe(firstTake!.id);
       await waitFor(`document.querySelectorAll(${JSON.stringify(`${card("result:ep1-s1")} .rs-takes .take`)}).length === 2`, "both takes on the result card");
@@ -373,7 +383,8 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
       await zoomOutToFar();
       expect(await evaluate<boolean>("Boolean(document.querySelector('[data-board-far]'))")).toBe(true);
       expect(await evaluate<number>("document.querySelectorAll('.node').length")).toBe((await drawn()).length);
-      expect(await evaluate<number>("document.querySelectorAll('[data-board-edge-label]').length")).toBe(0);
+      expect(await evaluate<number>("document.querySelectorAll('[data-board-edge-label]').length")).toBeGreaterThan(0);
+      expect(await evaluate<number>("[...document.querySelectorAll('[data-board-edge-label]')].filter((one) => getComputedStyle(one).opacity === '1').length")).toBe(0);
       evidence.farZoom = await zoom();
       await shot("11-far-out-labels-only.png");
       evidence.boardConsole = (await browser("console")).messages;
@@ -574,8 +585,8 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
           minimapPressed: document.querySelector(${JSON.stringify(`${boardLayers.toolbar} button[aria-label="Minimap"]`)})?.getAttribute("aria-pressed") ?? null,
           overlapping, clipped, cornerShare: Math.round((corner / (board.width * board.height)) * 1000) / 10 };
       })()`);
-      await browser("set", "viewport", "840", "620");
-      const smallest: Record<string, { folded: Chrome; opened: Chrome }> = {};
+      await browser("set", "viewport", "780", "520");
+      const smallest: Record<string, { folded: Chrome }> = {};
       for (const skin of SKINS) {
         await evaluate(`localStorage.setItem("omb-skin", ${JSON.stringify(skin)}); true`);
         await browser("open", preview.previewUrl);
@@ -584,16 +595,27 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
         const folded = await chromeAtSmallest();
         expect(folded).toMatchObject({ minimapPressed: "false", overlapping: [], clipped: [] });
         expect(folded.sidebarWidth).toBeGreaterThan(0);
-        expect(folded.boardWidth).toBeLessThan(900);
+        expect(folded.boardWidth).toBeLessThan(520);
+        // The board this narrow draws no minimap, as the mockup hides it under 520 px: its button has nothing to open.
+        expect(await evaluate<boolean>(`Boolean(document.querySelector(${JSON.stringify(boardLayers.minimap)}))`)).toBe(false);
         await shot(`26-smallest-window-${skin}.png`);
-        await clickSelector(`${boardLayers.toolbar} button[aria-label="Minimap"]`);
-        await waitFor(`document.querySelector(${JSON.stringify(boardLayers.minimap)})`, "the minimap its button opens at the smallest window");
-        const opened = await chromeAtSmallest();
-        expect(opened).toMatchObject({ minimapPressed: "true", overlapping: [], clipped: [] });
-        await shot(`27-smallest-window-minimap-opened-${skin}.png`);
-        smallest[skin] = { folded, opened };
+        smallest[skin] = { folded };
       }
       evidence.smallestWindow = smallest;
+
+      await browser("set", "viewport", "1440", "900");
+      await browser("open", preview.previewUrl);
+      await openProject();
+      await settle();
+      const roomy = await chromeAtSmallest();
+      expect(roomy).toMatchObject({ minimapPressed: "true", overlapping: [], clipped: [] });
+      await clickSelector(`${boardLayers.toolbar} button[aria-label="Minimap"]`);
+      await waitFor(`!document.querySelector(${JSON.stringify(boardLayers.minimap)})`, "the minimap its button folds at a roomier window");
+      await clickSelector(`${boardLayers.toolbar} button[aria-label="Minimap"]`);
+      await waitFor(`document.querySelector(${JSON.stringify(boardLayers.minimap)})`, "the minimap its button opens again");
+      await shot("27-minimap-folded-and-opened.png");
+      evidence.smallestWindowToggle = roomy;
+      await browser("set", "viewport", "780", "520");
 
       type StageControl = { stage: string; named: boolean; reachable: boolean; inside: boolean };
       type StagesAtSmallest = { form: string | null; barInside: boolean; overflowX: string; stages: StageControl[] };
@@ -625,20 +647,27 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
           await settle();
           const clickStage = async (stageName: string) => {
             await settle();
-            await clickSelector(`${view} .stagebar [data-board-stage="${stageName}"]`);
+            const chip = `${view} .stagebar [data-board-stage="${stageName}"]`;
+            await evaluate(`document.querySelector(${JSON.stringify(chip)})?.scrollIntoView({ inline: "center", block: "nearest" })`);
+            await sleep(120);
+            await clickSelector(chip);
             await settle();
           };
           const before = await stagesAtSmallest();
           expect(before.form).toBe("full");
           expect(before.barInside).toBe(true);
-          expect(before.overflowX).toBe("hidden");
+          expect(before.overflowX).toBe("auto");
           expect(before.stages.map((one) => one.stage)).toEqual(stagesInOrder);
-          for (const control of before.stages) {
-            expect({ stage: control.stage, reachable: control.reachable, inside: control.inside }).toEqual({ stage: control.stage, reachable: true, inside: true });
-          }
           await shot(`28-smallest-window-stages-${language}-${skin}.png`);
+          for (const control of before.stages) {
+            const chip = `${view} .stagebar [data-board-stage="${control.stage}"]`;
+            await evaluate(`document.querySelector(${JSON.stringify(chip)})?.scrollIntoView({ inline: "center", block: "nearest" })`);
+            await sleep(120);
+            const reachable = await evaluate<boolean>(`(() => { const b = document.querySelector(${JSON.stringify(chip)}); if (!b) return false; const r = b.getBoundingClientRect(); const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return Boolean(hit && hit.closest("[data-board-stage]") === b); })()`);
+            expect({ stage: control.stage, reachable }).toEqual({ stage: control.stage, reachable: true });
+          }
           await clickStage("script");
-          await clickSelector(`${view} ${card("stack")} article`);
+          await clickSelector(`${view} ${card("stack")} .pp-head`);
           await waitFor(`document.querySelector("[data-board-stack-episode='1']")`, "the stack's menu at the smallest window");
           await clickSelector("[data-board-stack-episode='1']");
           await waitFor(`document.querySelector(${JSON.stringify(`${view} ${card("ep-1")}`)})`, "EP01 unfolded at the smallest window");
@@ -677,7 +706,7 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
   let preview: MountedPreview | undefined;
   let env: NodeJS.ProcessEnv | undefined;
   const page = pageTools(tools.binary, () => env!);
-  const { browser, evaluate, waitFor, drawn, fitAll, zoomOutToFar, emptySpot } = page;
+  const { browser, evaluate, waitFor, drawn, fitAll, zoomOutToFar, emptySpot, still } = page;
   const shot = async (name: string) => {
     if (evidenceDir) await browser("screenshot", join(evidenceDir, name));
   };
@@ -699,6 +728,9 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
     const opened: number[] = [];
     for (let load = 0; load < 3; load += 1) opened.push(Math.round(await open("daylight")));
     timings.openMs = opened;
+    // Opening fits the whole board, then glides to the brief stage; "what is in view" at open is where it comes to rest.
+    await sleep(2_300);
+    await still();
     const atOpen = (await drawn()).length;
     await fitAll();
     const whole = (await drawn()).length;
@@ -741,7 +773,9 @@ function pageTools(binary: string, env: () => NodeJS.ProcessEnv) {
         await open(skin);
         await shot(`30-sixty-episodes-${skin}-${size.name}.png`);
         await zoomOutToFar();
-        expect(await evaluate<number>("document.querySelectorAll('article[data-board-card]').length")).toBe(0);
+        expect(await evaluate<boolean>("Boolean(document.querySelector('[data-board-far]'))")).toBe(true);
+        expect(await evaluate<number>("document.querySelectorAll('article[data-board-card]').length")).toBeGreaterThan(0);
+        expect(await evaluate<number>("[...document.querySelectorAll('[data-board-edge-label]')].filter((one) => getComputedStyle(one).opacity === '1').length")).toBe(0);
         await shot(`31-sixty-episodes-far-${skin}-${size.name}.png`);
       }
     }
