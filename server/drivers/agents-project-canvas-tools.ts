@@ -136,7 +136,7 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
         source: {
           type: "object",
           additionalProperties: false,
-          description: "The source the drama is adapted from, shown on your card.",
+          description: "The source the drama is adapted from, shown on your card. Left out when planning again, the source stays as it was.",
           properties: {
             title: cardText,
             author: cardText,

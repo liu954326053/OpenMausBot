@@ -1,7 +1,7 @@
 import {
   DRAMA_JOBS, episodeCode, PRODUCTION_JOBS,
   type DramaJob, type EpisodeJob, type ProductionConcurrency, type ProductionEpisodeStatus, type ProductionEpisodeWire, type ProductionJob,
-  type ProductionPlanInput, type ProductionSource, type ProductionTaskStatus, type ProductionWire,
+  type ProductionPlanInput, type ProductionTaskStatus, type ProductionWire,
 } from "../../shared/production.ts";
 import { botIdOfNode, type CanvasFileRef } from "../../shared/project-canvas.ts";
 import type { ProjectDraftWire } from "../../shared/project-draft.ts";
@@ -190,17 +190,17 @@ export class Productions {
       if (project.archivedAt !== undefined) throw readOnlyRefusal();
       if (botId !== project.leadBotId) throw new CanvasRefusal(403, { error: "Only the project's lead plans its production." });
       const { brief, episodes, assignments, source: told } = this.planInput(project, input);
-      let source: ProductionSource | undefined;
+      const current = this.get(projectId);
+      let source = current?.plan.source;
       if (told) {
         const { cover, ...words } = told;
-        source = { ...words, ...(cover ? { cover: await this.coverOf(project, cover) } : {}) };
+        source = { ...words, ...(cover === undefined ? {} : { cover: await this.coverOf(project, cover) }) };
       }
       const language = this.deps.language();
       this.deps.canvas.setBrief(projectId, botId, brief, {
         brief: serverLine(language, "server.production.briefTitle"),
         plan: serverLine(language, "server.production.planTitle"),
       });
-      const current = this.get(projectId);
       const now = this.deps.now();
       const plan = { assignments, ...(episodes ? { episodes } : {}), ...(source ? { source } : {}), plannedAt: now };
       const production: StoredProduction = current && current.endedAt === undefined
@@ -369,7 +369,7 @@ export class Productions {
       out.tags = given.tags.map((one) => one.trim());
     }
     if (given.cover !== undefined) {
-      if (typeof given.cover !== "string" || given.cover.length > 500) throw invalid("source.cover takes a picture's path in the project folder");
+      if (typeof given.cover !== "string" || given.cover.length === 0 || given.cover.length > 500) throw invalid("source.cover takes a picture's path in the project folder");
       out.cover = given.cover;
     }
     return out;

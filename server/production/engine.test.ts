@@ -292,16 +292,30 @@ describe("the lead's plan", () => {
     expect(await refused("missing.png")).toMatchObject({ status: 404 });
     expect(await refused("notes.txt")).toMatchObject({ status: 400 });
     expect(await refused("../cover.png")).toMatchObject({ status: 400 });
+    expect(await refused(".magic-team/x.png")).toMatchObject({ status: 400 });
     expect(world.state.briefs).toHaveLength(1);
+    expect(world.productions.wire("p1")?.plan.source?.cover).toEqual({ path: "cover.png", mime: "image/png", bytes: 8, name: "cover.png" });
   });
 
-  it("refuses a source without a title, with more than four tags or with a quote past 200 characters", async () => {
+  it("refuses a source without a title, with an empty field, with more than four tags or with a quote past 200 characters", async () => {
     const world = setup();
     const refused = async (source: unknown) => canvasRefusalOf(await world.plan({ brief: BRIEF, source }).catch((error: unknown) => error));
     expect(await refused({})).toMatchObject({ status: 400 });
+    expect(await refused({ title: "Lamps", author: "" })).toMatchObject({ status: 400 });
+    expect(await refused({ title: "Lamps", tags: [""] })).toMatchObject({ status: 400 });
+    expect(await refused({ title: "Lamps", cover: "" })).toMatchObject({ status: 400 });
     expect(await refused({ title: "Lamps", tags: ["a", "b", "c", "d", "e"] })).toMatchObject({ status: 400 });
     expect(await refused({ title: "Lamps", quote: "x".repeat(201) })).toMatchObject({ status: 400 });
     expect(world.state.briefs).toEqual([]);
+  });
+
+  it("made again without a source keeps the one the plan has, and with one replaces it whole", async () => {
+    const world = setup();
+    await world.plan({ brief: BRIEF, source: { title: "Lamps", author: "Nan Du", tags: ["mystery"] } });
+    await world.plan({ brief: [["Episodes", "2"]], assignments: { scene: "faces" } });
+    expect(world.productions.wire("p1")?.plan.source).toEqual({ title: "Lamps", author: "Nan Du", tags: ["mystery"] });
+    await world.plan({ brief: BRIEF, source: { title: "Harbour" } });
+    expect(world.productions.wire("p1")?.plan.source).toEqual({ title: "Harbour" });
   });
 
   it("keeps the source through a restart", async () => {
