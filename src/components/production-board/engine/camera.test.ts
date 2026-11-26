@@ -182,10 +182,20 @@ describe("the camera's store", () => {
     expect(store.cam).toBe(midway);
   });
 
+  it("glides when there is no window to ask about motion", () => {
+    const frames = stubFrames();
+    vi.stubGlobal("document", { documentElement: { dataset: { reducedMotion: "true" } } });
+    const store = new CameraStore();
+    store.glide({ x: 9, y: 9, z: 2 }, 700);
+    expect(store.cam).toEqual({ x: 0, y: 0, z: 1 });
+    expect(frames.pending()).toBe(1);
+  });
+
   it("does not glide when the app or the system asks for less motion", () => {
     const frames = stubFrames();
     const dataset: { reducedMotion?: string } = { reducedMotion: "true" };
     vi.stubGlobal("document", { documentElement: { dataset } });
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
     const store = new CameraStore();
     store.glide({ x: 9, y: 9, z: 2 }, 700);
     expect(store.cam).toEqual({ x: 9, y: 9, z: 2 });

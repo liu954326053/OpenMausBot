@@ -1,5 +1,3 @@
-import { reducedMotion } from "@/lib/onboarding";
-
 export interface Cam {
   x: number;
   y: number;
@@ -119,6 +117,11 @@ export const intersects = (a: Rect, b: Rect): boolean => a.x < b.x + b.w && b.x 
 
 export const toScreen = (r: Rect, cam: Cam): Rect => ({ x: r.x * cam.z + cam.x, y: r.y * cam.z + cam.y, w: r.w * cam.z, h: r.h * cam.z });
 
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.reducedMotion === "true";
+}
+
 export class CameraStore {
   cam: Cam;
   size: Size = { width: 0, height: 0 };
@@ -128,7 +131,7 @@ export class CameraStore {
 
   constructor(cam: Cam = { x: 0, y: 0, z: 1 }, options: { reduced?: () => boolean } = {}) {
     this.cam = cam;
-    this.#reduced = options.reduced ?? reducedMotion;
+    this.#reduced = options.reduced ?? prefersReducedMotion;
   }
 
   get animating(): boolean {
