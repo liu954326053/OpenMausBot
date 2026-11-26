@@ -20,7 +20,7 @@
 .mj-board .bc-note.is-bad { color: var(--danger); }
 .mj-board .pk-filter { display: block; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; border-radius: 8px; outline: 0; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 13px var(--sans); }
 .mj-board .pk-filter:focus { border-color: var(--text-2); }
-.mj-board .dm { inset: 0; z-index: 60; }
+.mj-board .dm { inset: 0; z-index: var(--z-details); }
 .mj-board .dm-takes .take { cursor: pointer; }
 .mj-board .dm-takes .take:disabled { cursor: default; }
 .mj-board .dm-card { position: static; cursor: default; }
@@ -59,18 +59,32 @@
 .mj-board .ot-fail { font-size: 12px; color: var(--danger); }
 .mj-board .k-other audio { width: 100%; }
 
+/* 画布层叠，由低到高：内容 → hint → 阶段条、说明、工具栏、小地图 → 提示条 → 浮层 → 分集菜单。
+   浮层自成一层叠上下文，整层高于画布 chrome；层内对话窗 < 侧栏 < 详情弹窗，所以详情弹窗盖过提示条与侧栏。
+   分集菜单贴着卡片弹出且夹在板宽内，会大半个落在侧栏底下，故排在浮层之上。 */
+.mj-board {
+  --z-hint: 19;
+  --z-chrome: 20;
+  --z-toast: 30;
+  --z-overlay: 35;
+  --z-popover: 45;
+  --z-chat: 1;
+  --z-panel: 2;
+  --z-details: 3;
+}
+
 .mj-board .ep-menu {
-  position: absolute; z-index: 30; width: 288px; max-height: 320px; overflow-y: auto; padding: 0 10px 10px;
+  position: absolute; z-index: var(--z-popover); width: 288px; max-height: 320px; overflow-y: auto; padding: 0 10px 10px;
   border-radius: 14px; background: var(--panel); border: 1px solid var(--line-2); box-shadow: var(--shadow-panel);
   scrollbar-width: thin;
 }
 
-.mj-board .side { position: absolute; top: 12px; right: 12px; bottom: 68px; width: 292px; z-index: 30; display: flex; flex-direction: column; min-height: 0; border-radius: 12px; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow-float); pointer-events: auto; }
+.mj-board .side { position: absolute; top: 12px; right: 12px; bottom: 68px; width: 292px; z-index: var(--z-panel); display: flex; flex-direction: column; min-height: 0; border-radius: 12px; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); box-shadow: var(--shadow-float); pointer-events: auto; }
 .mj-board .side .pane-head { gap: 2px; padding: 0 6px; }
 .mj-board .side .pane-head .schip { height: 28px; padding: 0 10px; }
-.mj-board .side-fold { position: absolute; top: 12px; right: 12px; z-index: 30; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); border-radius: 12px; pointer-events: auto; }
+.mj-board .side-fold { position: absolute; top: 12px; right: 12px; z-index: var(--z-panel); background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); border-radius: 12px; pointer-events: auto; }
 .mj-board [data-board-room] { position: absolute; top: 0; right: 0; height: 0; pointer-events: none; }
-.mj-board [data-board-overlay] { position: absolute; inset: 0; z-index: 25; pointer-events: none; overflow: hidden; }
+.mj-board [data-board-overlay] { position: absolute; inset: 0; z-index: var(--z-overlay); pointer-events: none; overflow: hidden; }
 .mj-board [data-board-overlay] :is(.bchat, .dm) { pointer-events: auto; }
 
 .mj-board .side .pane-tabs { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }

@@ -63,6 +63,39 @@ describe("the mockup's styles in the app", () => {
     expect(read("shell")).not.toMatch(/\.topbar|\.brand|\.top-actions|word-spacing|Noto Sans SC/);
   });
 
+  it("stacks the board's layers from one scale: content, chrome, the toast, then the overlay with chat, panel and details", () => {
+    const tokens = Object.fromEntries([...all().matchAll(/(--z-[\w-]+):\s*(\d+);/g)].map(([, name, at]) => [name, Number(at)]));
+    expect(tokens["--z-hint"]).toBeLessThan(tokens["--z-chrome"]!);
+    expect(tokens["--z-chrome"]).toBeLessThan(tokens["--z-toast"]!);
+    expect(tokens["--z-toast"]).toBeLessThan(tokens["--z-overlay"]!);
+    for (const inside of ["--z-chat", "--z-panel", "--z-details"]) expect(tokens[inside], inside).toBeGreaterThan(0);
+    expect(tokens["--z-chat"]).toBeLessThan(tokens["--z-panel"]!);
+    expect(tokens["--z-panel"]).toBeLessThan(tokens["--z-details"]!);
+    const rules = [
+      ["shell", "stagebar", "--z-chrome"],
+      ["shell", "caption", "--z-chrome"],
+      ["shell", "toolbar", "--z-chrome"],
+      ["shell", "minimap", "--z-chrome"],
+      ["shell", "hint", "--z-hint"],
+      ["shell", "toast", "--z-toast"],
+      ["panels", "bchat", "--z-chat"],
+      ["panels", "dm", "--z-details"],
+      ["additions", "dm", "--z-details"],
+      ["additions", "side", "--z-panel"],
+      ["additions", "side-fold", "--z-panel"],
+      ["additions", "ep-menu", "--z-popover"],
+    ] as const;
+    for (const [file, name, token] of rules) {
+      const css = read(file);
+      const at = css.search(new RegExp(`(^|[\\s,}])\\.${name}\\s*\\{[^}]*z-index:`));
+      expect(at, `${file} .${name}`).toBeGreaterThan(-1);
+      expect(css.slice(at).split("}")[0], `${file} .${name}`).toContain(`z-index: var(${token})`);
+    }
+    expect(read("additions")).toMatch(/\[data-board-overlay\] \{[^}]*z-index: var\(--z-overlay\)/);
+    expect(tokens["--z-overlay"]).toBeGreaterThan(tokens["--z-toast"]!);
+    expect(tokens["--z-popover"]).toBeGreaterThan(tokens["--z-overlay"]!);
+  });
+
   it("stop every animation when the person or the app asks for less motion", () => {
     expect(read("additions")).toMatch(/\[data-reduced-motion="true"\] \.mj-board/);
   });

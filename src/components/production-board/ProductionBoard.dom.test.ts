@@ -16,7 +16,7 @@ class SizedObserver {
   disconnect() {}
 }
 
-function mount(patch: { opened?: BoardOpened | null; readOnly?: boolean } = {}) {
+function mount(patch: { opened?: BoardOpened | null; readOnly?: boolean; overlay?: boolean } = {}) {
   vi.stubGlobal("ResizeObserver", SizedObserver);
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 1440 });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 900 });
@@ -26,7 +26,7 @@ function mount(patch: { opened?: BoardOpened | null; readOnly?: boolean } = {}) 
   const overlay = vi.fn((_props: BoardOverlayProps) => null);
   const root = render(createElement("div", { style: { height: "900px" } }, createElement(ProductionBoard, {
     projectId: snapshot.project.id, snapshot, backend: productionBoardBackend(), looks: PRODUCTION_BOARD_LOOKS, host,
-    opened: patch.opened ?? null, onOpenedChange, overlay,
+    opened: patch.opened ?? null, onOpenedChange, ...(patch.overlay === false ? {} : { overlay }),
   })));
   const board = root.querySelector<HTMLElement>(".mj-board")!;
   return { board, stage: board.querySelector<HTMLElement>("main.stage")!, viewport: board.querySelector<HTMLElement>("[data-production-board]")!, host, onOpenedChange, overlay, snapshot };
@@ -102,6 +102,21 @@ describe("the board", () => {
     expect(board.querySelector<HTMLElement>(".caption")!.hidden).toBe(false);
     act(() => { viewport.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -40, clientX: 700, clientY: 400 })); });
     expect(board.querySelector<HTMLElement>(".caption")!.hidden).toBe(true);
+  });
+
+  it("keeps the stage's note and the toast clear of the side panel, and centres them on the whole board without one", () => {
+    const { board, viewport } = mount();
+    press(viewport, "2");
+    const caption = board.querySelector<HTMLElement>(".caption")!;
+    const toast = board.querySelector<HTMLElement>(".toast")!;
+    expect(caption.hidden).toBe(false);
+    expect(caption.style.left).toBe("calc((100% - 320px) / 2)");
+    expect(caption.style.maxWidth).toBe("min(560px, calc(100% - 32px - 320px))");
+    expect(toast.style.left).toBe("calc((100% - 320px) / 2)");
+    expect(toast.style.maxWidth).toBe("calc(100% - 32px - 320px)");
+    const bare = mount({ overlay: false });
+    expect(bare.board.querySelector<HTMLElement>(".caption")!.style.left).toBe("");
+    expect(bare.board.querySelector<HTMLElement>(".toast")!.style.left).toBe("");
   });
 
   it("offers nothing that changes an archived project", () => {

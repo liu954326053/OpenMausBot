@@ -614,7 +614,7 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
             userActed();
             goToStage(stage);
           }} />
-          <Caption stage={caption} />
+          <Caption stage={caption} insetEnd={insetEnd} />
           <Toolbar
             camera={camera}
             showRefs={showRefs}
@@ -645,11 +645,11 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
               }}
             />
           ) : null}
-          <Toast message={toast} />
+          <Toast message={toast} insetEnd={insetEnd} />
         </div>
         {stackMenu ? <EpisodeMenu episodes={stackEpisodes} at={stackMenu} onChoose={chooseEpisode} onClose={() => setStackMenu(null)} /> : null}
         {Overlay ? (
-          <div ref={layerRef} data-board-overlay="" className="pointer-events-none absolute inset-0 z-[90]">
+          <div ref={layerRef} data-board-overlay="" className="pointer-events-none absolute inset-0">
             <Overlay {...overlayProps} />
           </div>
         ) : null}

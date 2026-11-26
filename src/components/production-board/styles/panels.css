@@ -4,7 +4,7 @@
 
 .mj-board {
   .bchat {
-    position: absolute; left: 0; top: 0; z-index: 24; width: 420px; max-height: calc(100% - 72px);
+    position: absolute; left: 0; top: 0; z-index: var(--z-chat); width: 420px; max-height: calc(100% - 72px);
     display: flex; flex-direction: column; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-2);
     box-shadow: var(--shadow-panel); animation: mj-bc-in .2s ease-out;
   }
@@ -99,7 +99,7 @@
     .bc-thread .chat-log { max-height: 200px; }
   }
 
-  .dm { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; }
+  .dm { position: fixed; inset: 0; z-index: var(--z-details); display: grid; place-items: center; padding: 24px; }
   .dm[hidden] { display: none; }
   .dm-scrim { position: absolute; inset: 0; background: rgba(8, 10, 12, .7); cursor: default; }
   .dm-box {
