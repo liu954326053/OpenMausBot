@@ -37,6 +37,24 @@ describe("the mockup's styles in the app", () => {
     for (const token of ["--bg: var(--color-app)", "--paper: var(--color-menu)", "--amber: var(--color-warning)", "--teal: var(--color-success)", "--on-fill: var(--color-app)"]) expect(skin).toContain(token);
   });
 
+  it("keep a selected monitor's ring, and stop the skin's text colours short of the states that recolour them", () => {
+    const skin = read("skin");
+    expect(skin).toContain(".mj-board :is(.k-result, .k-final).is-sel:not([data-state='gen']) { box-shadow: 0 0 0 2px var(--color-ink), var(--shadow-node-sel); }");
+    expect(skin).toMatch(/\.elabel\.t-dispatch:not\(\.s-wait\)[,)]/);
+    expect(skin).toMatch(/\.rrow\[data-state='working'\] \.ava:not\(\.sm\)[,)]/);
+    expect(skin).toMatch(/\.bc-send:not\(:disabled\)[,)]/);
+  });
+
+  it("follow the board's own size, not the window's", () => {
+    expect(read("skin")).toMatch(/^\.mj-board \{[^}]*container-type: size;[^}]*container-name: board;/m);
+    for (const name of COPIED) expect(read(name), name).not.toMatch(/@media \((max|min)-(width|height)/);
+    for (const name of ["shell", "panels"]) expect(read(name), name).toMatch(/@container board \(max-(width|height): \d+px\)/);
+  });
+
+  it("carry no section banners", () => {
+    for (const name of COPIED) expect(read(name), name).not.toMatch(/\/\* -{3,}/);
+  });
+
   it("drop the mockup's top bar and web font", () => {
     expect(read("shell")).not.toMatch(/\.topbar|\.brand|\.top-actions|word-spacing|Noto Sans SC/);
   });

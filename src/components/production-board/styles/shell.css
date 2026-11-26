@@ -36,7 +36,6 @@
   .meter { height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
   .meter > i { display: block; height: 100%; border-radius: 2px; background: var(--teal); }
 
-  /* ---------- 布局 ---------- */
   .btn {
     display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px;
     border: 1px solid var(--line); color: var(--text-2); font-size: 13px; white-space: nowrap; transition: background .15s, color .15s, border-color .15s;
@@ -49,7 +48,6 @@
 
   .stage { flex: 1; min-width: 0; position: relative; overflow: hidden; }
 
-  /* ---------- 画布 ---------- */
   .viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; outline: none; background: var(--bg); }
   .viewport.is-panning { cursor: grabbing; }
   .viewport:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; border-radius: 0; }
@@ -117,7 +115,6 @@
   .has-sel .elabel:not(.is-on) { opacity: .2; }
   .lod-far .elabel { opacity: 0; }
 
-  /* ---------- 浮动控件 ---------- */
   .stagebar {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; align-items: center; gap: 2px;
     padding: 4px; border-radius: 12px; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); max-width: calc(100% - 24px); overflow-x: auto; scrollbar-width: none;
@@ -168,7 +165,6 @@
   .toast.is-on { opacity: 1; transform: translate(-50%, 0); }
   .toast .ic { color: var(--amber-ink); }
 
-  /* ---------- 左侧团队 ---------- */
   .pane-head { flex: none; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--line); }
   .pane-head h2 { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pane-head .sub { font-size: 12px; color: var(--text-3); white-space: nowrap; }
@@ -188,7 +184,6 @@
   .legend li { display: flex; align-items: center; gap: 10px; }
   .legend svg { width: 44px; height: 8px; flex: none; overflow: visible; }
 
-  /* ---------- 对话消息（对话窗复用） ---------- */
   .chat-log { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
   .msg { max-width: 88%; padding: 9px 12px; border-radius: 12px; font-size: 14px; line-height: 1.55; text-wrap: pretty; }
   .msg.bot { align-self: flex-start; background: var(--card); border: 1px solid var(--line); border-top-left-radius: 4px; }
@@ -211,8 +206,7 @@
   .rel em { font-style: normal; font-size: 12px; color: var(--text-3); white-space: nowrap; }
   .rels { display: flex; flex-direction: column; gap: 6px; }
 
-  /* ---------- 响应式 ---------- */
-  @media (max-width: 719px) {
+  @container board (max-width: 719px) {
     .hint { display: none; }
     .minimap { width: 150px; }
     .tbtn.wide span { display: none; }
@@ -221,7 +215,7 @@
     .tbtn.wide.keep .tkeep { display: inline; }
     .caption { top: 58px; font-size: 13px; }
   }
-  @media (max-width: 519px) {
+  @container board (max-width: 519px) {
     .minimap { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {

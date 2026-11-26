@@ -37,6 +37,8 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+  container-type: size;
+  container-name: board;
   background: var(--bg);
   color: var(--text);
   font: 14px/1.5 var(--sans);
@@ -53,9 +55,9 @@
   }
 }
 
-.mj-board :is(.elabel.t-dispatch, .schip[data-state='done'] .fno) { color: var(--on-teal); }
+.mj-board :is(.elabel.t-dispatch:not(.s-wait), .schip[data-state='done'] .fno) { color: var(--on-teal); }
 .mj-board :is(
-  .schip[data-state='active'] .fno, .rrow[data-state='working'] .ava, .k-bot[data-state='working'] .bot-ava, .bot-talk, .bot-ep,
+  .schip[data-state='active'] .fno, .rrow[data-state='working'] .ava:not(.sm), .k-bot[data-state='working'] .bot-ava, .bot-talk, .bot-ep,
   .k-bot[data-state='working'] .pin, .tag, .tk li[data-s='run'] .tk-ic, .role, .refined, .btn-gen, .rs-play:hover,
   .bchat[data-state='working'] .bc-ava, .rt-x, .bc-send:not(:disabled), .btn-primary
 ) { color: var(--on-fill); }
@@ -79,3 +81,4 @@
   --text: var(--color-ink);
   --text-3: var(--color-ink-tertiary);
 }
+.mj-board :is(.k-result, .k-final).is-sel:not([data-state='gen']) { box-shadow: 0 0 0 2px var(--color-ink), var(--shadow-node-sel); }

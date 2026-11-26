@@ -30,7 +30,6 @@
   .code, .rs-tag { left: 8px; }
   .rs-ver { right: 8px; }
 
-  /* ---------- 智能体 ---------- */
   .k-bot { border-top: 3px solid var(--line-2); }
   .k-bot[data-state='done'] { border-top-color: var(--teal); }
   .k-bot[data-state='working'] { border-top-color: var(--amber); box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent), var(--shadow-node), 0 0 70px color-mix(in srgb, var(--amber) 14%, transparent); }
@@ -83,7 +82,6 @@
   .k-bot[data-state='working'] .pin { background: var(--amber); border-color: var(--amber); color: var(--ink); }
   .k-bot[data-state='working'] .pin .led { background: var(--ink); animation: none; box-shadow: none; }
 
-  /* ---------- 要做的剧：原著并在根节点（负责人）里 ---------- */
   .bot-book { display: flex; gap: 12px; margin: 0 14px 10px; padding: 10px; border-radius: 8px; background: var(--card-2); border: 1px solid var(--line); }
   .bot-book .nv-cover { width: 84px; }
   .bot-book .nv-title { right: 8px; bottom: 10px; font-size: 14px; }
@@ -106,7 +104,6 @@
   .lnk:hover { text-decoration: underline; }
   .lnk .ic { width: 14px; height: 14px; }
 
-  /* ---------- 纸质单据：需求单 / 任务 / 剧本 / 分镜 ---------- */
   .k-brief, .k-tasks, .k-ep, .k-epmore, .k-shot { background: var(--paper); color: var(--ink); border-color: var(--paper-line); }
   .pp-head { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 10px; border-bottom: 1.5px solid var(--ink); }
   .pp-head h3 { flex: 1; }
@@ -156,7 +153,6 @@
   .sc-who { font-size: 12px; font-weight: 700; text-align: center; margin-top: 8px; letter-spacing: .12em; }
   .sc-dlg { font-size: 13px; line-height: 1.55; text-align: center; padding: 0 40px; margin-bottom: 6px; text-wrap: balance; }
 
-  /* ---------- 角色 ---------- */
   .ch { display: flex; }
   .ch-art { position: relative; width: 152px; flex: none; border-radius: 9px 0 0 9px; overflow: hidden; background: var(--bg); }
   .ch-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
@@ -175,7 +171,6 @@
   .pal i:first-child { margin-left: 0; }
   .uses { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  /* ---------- 场景 ---------- */
   .k-scene { overflow: hidden; }
   .sn-art { position: relative; aspect-ratio: 16 / 9; background: var(--bg); }
   .sn-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -191,7 +186,6 @@
   .sn-pal { display: flex; height: 6px; }
   .sn-pal i { flex: 1; }
 
-  /* ---------- 镜头 ---------- */
   .k-shot[data-vstate='gen'] { box-shadow: 0 0 0 2px var(--amber), var(--shadow-node); }
   .sh-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1.5px solid var(--ink); }
   .sh-no { height: 24px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 4px; background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 600; }
@@ -227,7 +221,6 @@
   .btn-gen { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 6px; background: var(--amber); color: var(--ink); font-size: 13px; font-weight: 600; white-space: nowrap; animation: mj-pulse 2s ease-out infinite; }
   .btn-gen:hover { background: color-mix(in srgb, var(--amber) 86%, var(--text)); }
 
-  /* ---------- 分镜结果 ---------- */
   .k-result { background: var(--mon, #0d0f12); border-color: var(--line-2); border-radius: 12px; padding: 6px 6px 0; }
   .rs-screen { position: relative; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 6px; background: #000; }
   .rs-screen img { width: 100%; height: 100%; object-fit: cover; }
@@ -264,7 +257,6 @@
   .rs-run { color: var(--amber); }
   .rs-ok .ic, .rs-run .ic { width: 14px; height: 14px; }
 
-  /* ---------- 成片 ---------- */
   .k-final { background: var(--mon, #0d0f12); border-color: var(--line-2); border-radius: 12px; }
   .fn-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; }
   .fn-st { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }

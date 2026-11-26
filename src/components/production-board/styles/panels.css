@@ -3,7 +3,6 @@
 @keyframes mj-dm-in { from { opacity: 0; transform: translateY(12px) scale(.985); } }
 
 .mj-board {
-  /* ---------- 对话窗 ---------- */
   .bchat {
     position: absolute; left: 0; top: 0; z-index: 24; width: 420px; max-height: calc(100% - 72px);
     display: flex; flex-direction: column; border-radius: 14px; background: var(--panel); border: 1px solid var(--line-2);
@@ -94,13 +93,12 @@
   .is-sheet .bc-thread .chat-log { max-height: 150px; }
   .is-sheet .bc-input { height: 64px; }
   .is-sheet .bc-refs { max-height: 58px; }
-  @media (max-height: 720px) {
+  @container board (max-height: 720px) {
     .bc-input { height: 60px; }
     .bc-refs { max-height: 58px; }
     .bc-thread .chat-log { max-height: 200px; }
   }
 
-  /* ---------- 详情预览弹窗 ---------- */
   .dm { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px; }
   .dm[hidden] { display: none; }
   .dm-scrim { position: absolute; inset: 0; background: rgba(8, 10, 12, .7); cursor: default; }
@@ -156,7 +154,7 @@
   .use .mono { color: var(--text-3); padding: 0 2px; }
   .use span:last-child { padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  @media (max-width: 760px) {
+  @container board (max-width: 760px) {
     .dm { padding: 8px; }
     .dm-body { flex-direction: column; overflow-y: auto; }
     .dm-media, .dm-info, .dm-box[data-kind='char'] .dm-media { flex: none; overflow: visible; }
