@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { drawMinimap, minimapColor, minimapFrame, minimapPoint, type MinimapColors } from "./minimap";
 
-const COLORS: MinimapColors = { bg: "bg", plain: "plain", working: "working", done: "done", idle: "idle", sheet: "sheet", view: "view", viewFill: "fill" };
+const COLORS: MinimapColors = { bg: "bg", plain: "plain", working: "working", done: "done", idle: "idle", failed: "failed", sheet: "sheet", view: "view", viewFill: "fill" };
 
 describe("the minimap", () => {
   it("is as wide as its box and as tall as the world's shape", () => {
@@ -24,6 +24,11 @@ describe("the minimap", () => {
     expect(minimapColor("result", "working", COLORS)).toBe("working");
     expect(minimapColor("result", "waiting", COLORS)).toBe("plain");
     expect(minimapColor("character", undefined, COLORS)).toBe("plain");
+  });
+
+  it("shows a failed bot and a failed video in the failed colour", () => {
+    expect(minimapColor("bot", "failed", COLORS)).toBe("failed");
+    expect(minimapColor("result", "failed", COLORS)).toBe("failed");
   });
 
   it("draws its ground, each card no smaller than two pixels, and what the camera shows as a frame", () => {

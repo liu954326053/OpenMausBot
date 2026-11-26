@@ -23,6 +23,7 @@ export interface MinimapColors {
   working: string;
   done: string;
   idle: string;
+  failed: string;
   sheet: string;
   view: string;
   viewFill: string;
@@ -30,6 +31,7 @@ export interface MinimapColors {
 
 /** A card's colour on the map: a bot by its state, a sheet of paper, a video by its state, else plain. */
 export function minimapColor(kind: BoardCard["kind"], state: "done" | "working" | "waiting" | "failed" | undefined, colors: MinimapColors): string {
+  if ((kind === "bot" || kind === "result") && state === "failed") return colors.failed;
   if (kind === "bot") return state === "working" ? colors.working : state === "done" ? colors.done : colors.idle;
   if (kind === "brief" || kind === "plan" || kind === "episode" || kind === "stack" || kind === "shot") return colors.sheet;
   if (kind === "result") return state === "done" ? colors.done : state === "working" ? colors.working : colors.plain;

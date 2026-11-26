@@ -27,4 +27,11 @@ describe("an episode's script as a script page", () => {
     expect(scriptPage(Array.from({ length: 40 }, (_, at) => `Line ${at}`).join("\n"), 14)).toHaveLength(14);
     expect(scriptPage("")).toEqual([]);
   });
+
+  it("does not end on a name whose line the limit cuts off", () => {
+    expect(scriptPage("A shop.\nThe lamp.\nMEI: Ten years.", 3)).toEqual([
+      { k: "act", t: "A shop." },
+      { k: "act", t: "The lamp." },
+    ]);
+  });
 });
