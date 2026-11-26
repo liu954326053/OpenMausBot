@@ -191,10 +191,14 @@ function placeColumns(p: Placement): { boarders: BoardCard[] } {
   return { boarders };
 }
 
-function placeBlocks(p: Placement, unfolded: readonly number[], firstCentre: number): Map<number, Rect> {
+function placeBlocks(p: Placement, unfolded: readonly number[], boarders: readonly BoardCard[]): Map<number, Rect> {
+  const boarderCentre = (episode: number): number => {
+    const boarder = boarders.find((card) => card.episode === episode) ?? boarders[0];
+    return boarder ? p.centreY(boarder) : 0;
+  };
   const blocks = new Map<number, Rect>();
   let previousBottom: number | undefined;
-  for (const episode of unfolded) {
+  for (const episode of [...unfolded].sort((a, b) => a - b)) {
     const shots = p.take((card) => card.kind === "shot" && card.episode === episode);
     const refined = p.take((card) => card.kind === "scene" && card.episode === episode && isRefined(card));
     const post = p.takeFirst(doing("post", episode));
@@ -202,12 +206,28 @@ function placeBlocks(p: Placement, unfolded: readonly number[], firstCentre: num
     if (!shots.length && !refined.length && !post && !final) continue;
     const results = shots.map((shot) => p.takeFirst((card) => card.kind === "result" && card.shotId === shot.id));
 
-    const rowH = Math.max(...[...shots, ...results].map((card) => (card ? p.height(card) : 0))) + RG;
+    const rowH = shots.length ? Math.max(...[...shots, ...results].map((card) => (card ? p.height(card) : 0))) + RG : 0;
     const rowsH = shots.length ? rowH * shots.length - RG : 0;
-    const blockH = Math.max(rowsH, post ? p.height(post) : 0, final ? p.height(final) : 0);
-    const blockTop = previousBottom === undefined ? firstCentre - blockH / 2 : previousBottom + BLOCK_GAP;
-    const centre = blockTop + blockH / 2;
-    previousBottom = blockTop + blockH;
+    const filmH = Math.max(post ? p.height(post) : 0, final ? p.height(final) : 0);
+    const lowerH = Math.max(rowsH, filmH);
+
+    let centre: number;
+    if (previousBottom === undefined) {
+      centre = boarderCentre(episode);
+      let above = centre - rowsH / 2 - RG;
+      for (const scene of refined) {
+        p.at(scene, XS, above - p.height(scene));
+        above -= p.height(scene) + RG;
+      }
+      previousBottom = centre + lowerH / 2;
+    } else {
+      const blockTop = previousBottom + BLOCK_GAP;
+      const refinedH = p.stackHeight(refined, RG);
+      p.stack(refined, XS, blockTop, RG);
+      const rowsTop = refined.length ? blockTop + refinedH + RG : blockTop;
+      centre = Math.max(rowsTop + rowsH / 2, blockTop + filmH / 2);
+      previousBottom = lowerH ? centre + lowerH / 2 : blockTop + refinedH;
+    }
 
     const top = centre - rowsH / 2;
     shots.forEach((shot, i) => {
@@ -216,15 +236,10 @@ function placeBlocks(p: Placement, unfolded: readonly number[], firstCentre: num
       const result = results[i];
       if (result) p.mid(result, XV, cy);
     });
-    let above = top - RG;
-    for (const scene of refined) {
-      p.at(scene, XS, above - p.height(scene));
-      above -= p.height(scene) + RG;
-    }
     if (post) p.mid(post, XP, centre);
     if (final) p.mid(final, XF, centre);
 
-    const block = bbox([...shots, ...results, post, final].flatMap((card) => (card ? [p.rects.get(card.id)!] : [])));
+    const block = bbox([...refined, ...shots, ...results, post, final].flatMap((card) => (card ? [p.rects.get(card.id)!] : [])));
     if (block) blocks.set(episode, block);
   }
   return blocks;
@@ -243,7 +258,7 @@ function placeOthers(p: Placement): void {
 export function layoutBoard(board: Board, heightOf: (card: BoardCard) => number): BoardLayout {
   const p = new Placement(board.cards, heightOf);
   const { boarders } = placeColumns(p);
-  const blocks = placeBlocks(p, board.unfolded, boarders[0] ? p.centreY(boarders[0]) : 0);
+  const blocks = placeBlocks(p, board.unfolded, boarders);
   placeOthers(p);
 
   const { rects } = p;

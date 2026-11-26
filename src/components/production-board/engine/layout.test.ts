@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Board, BoardCard } from "@/lib/production-board/types";
-import { intersects } from "./camera";
+import { intersects, type Rect } from "./camera";
 import { bbox, cardWidth, layoutBoard, stageAt } from "./layout";
 
 const HEIGHT: Record<string, number> = { bot: 300, brief: 340, plan: 300, episode: 280, stack: 250, character: 210, scene: 264, shot: 270, result: 218, final: 600, other: 220 };
@@ -26,6 +26,7 @@ const at = (cards?: BoardCard[]) => {
   const { rects } = layoutBoard(board(cards), heightOf);
   return (id: string) => { const r = rects.get(id)!; return [r.x, r.y]; };
 };
+const contains = (outer: Rect, inner: Rect) => inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
 
 describe("the board's layout", () => {
   it("gives each card its kind's width, the lead's wider", () => {
@@ -88,9 +89,37 @@ describe("the board's layout", () => {
   });
 
   it("puts a scene a storyboard bot refined above its episode's shots", () => {
-    const xy = at([...CARDS, card("scene", "s1a", { episode: 1, refinedBy: "b1", stage: "storyboard" })]);
-    expect(xy("s1a")).toEqual([2960, -459 - 34 - 264]);
-    expect(xy("s1")).toEqual([2260, 529]);
+    const { rects, blocks } = layoutBoard(board([...CARDS, card("scene", "s1a", { episode: 1, refinedBy: "b1", stage: "storyboard" })]), heightOf);
+    const s1a = rects.get("s1a")!;
+    expect([s1a.x, s1a.y]).toEqual([2960, -459 - 34 - 264]);
+    expect([rects.get("s1")!.x, rects.get("s1")!.y]).toEqual([2260, 529]);
+    expect(contains(blocks.get(1)!, s1a)).toBe(true);
+    expect([rects.get("sh3")!.x, rects.get("sh3")!.y]).toEqual([2960, 248]);
+  });
+
+  it("starts a later block with the scenes its storyboard bot refined, clear of the block above", () => {
+    const { rects, blocks } = layoutBoard(board([...CARDS, card("scene", "s2a", { episode: 2, refinedBy: "b2", stage: "storyboard" })]), heightOf);
+    const s2a = rects.get("s2a")!;
+    for (const id of ["sh1", "v1", "sh2", "v2", "p1", "f1"]) expect(intersects(s2a, rects.get(id)!)).toBe(false);
+    expect(s2a.y + s2a.h).toBeLessThanOrEqual(rects.get("sh3")!.y);
+    expect(contains(blocks.get(2)!, s2a)).toBe(true);
+    expect(contains(blocks.get(2)!, rects.get("sh3")!)).toBe(true);
+  });
+
+  it("centres the first block it places on that episode's own storyboard bot", () => {
+    const xy = at(CARDS.filter((one) => !["sh1", "v1", "sh2", "v2", "p1", "f1"].includes(one.id)));
+    expect(xy("b2")).toEqual([2260, 22]);
+    expect(xy("sh3")).toEqual([2960, 22 + 150 - 135]);
+  });
+
+  it("places an episode with a film and no shots yet about its storyboard bot", () => {
+    const xy = at(CARDS.filter((one) => !["sh1", "v1", "sh2", "v2"].includes(one.id)));
+    expect([xy("p1"), xy("f1")]).toEqual([[4110, -322], [4580, -472]]);
+  });
+
+  it("takes the unfolded episodes in order whatever order they come in", () => {
+    const { rects } = layoutBoard({ ...board(), unfolded: [2, 1] }, heightOf);
+    expect(rects).toEqual(layoutBoard(board(), heightOf).rects);
   });
 
   it("leaves a card the person moved where they put it, and rows what is outside the production under the rest", () => {
