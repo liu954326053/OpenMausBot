@@ -1,0 +1,81 @@
+.mj-board {
+  --bg: var(--color-app);
+  --panel: var(--color-panel);
+  --card: var(--color-card);
+  --card-2: var(--color-control);
+  --mon: #0d0f12;
+  --line: var(--color-edge);
+  --line-2: var(--color-hairline);
+  --text: var(--color-ink);
+  --text-2: var(--color-ink-secondary);
+  --text-3: var(--color-ink-tertiary);
+  --paper: var(--color-menu);
+  --paper-2: var(--color-panel);
+  --paper-line: var(--color-hairline);
+  --ink: var(--color-ink);
+  --ink-2: var(--color-ink-secondary);
+  --ink-3: var(--color-ink-tertiary);
+  --amber: var(--color-warning);
+  --amber-ink: var(--color-warning);
+  --teal: var(--color-success);
+  --teal-ink: var(--color-success);
+  --on-fill: var(--color-app);
+  --on-teal: var(--color-success-ink);
+  --danger: var(--color-danger);
+  --r: 10px;
+  --r-sm: 6px;
+  --sans: var(--font-sans);
+  --mono: var(--font-mono);
+  --ew: 1;
+  --ls: 1;
+  --shadow-node: 0 8px 24px color-mix(in srgb, var(--color-ink) 10%, transparent), 0 1px 3px color-mix(in srgb, var(--color-ink) 8%, transparent);
+  --shadow-node-drag: 0 20px 48px color-mix(in srgb, var(--color-ink) 22%, transparent);
+  --shadow-node-sel: 0 14px 36px color-mix(in srgb, var(--color-ink) 18%, transparent);
+  --shadow-float: 0 10px 30px color-mix(in srgb, var(--color-ink) 16%, transparent);
+  --shadow-panel: 0 24px 70px color-mix(in srgb, var(--color-ink) 22%, transparent);
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+@container style(--code-color-scheme: dark) {
+  .mj-board {
+    --shadow-node: 0 12px 32px rgba(0, 0, 0, .4);
+    --shadow-node-drag: 0 26px 60px rgba(0, 0, 0, .65);
+    --shadow-node-sel: 0 18px 48px rgba(0, 0, 0, .55);
+    --shadow-float: 0 10px 30px rgba(0, 0, 0, .5);
+    --shadow-panel: 0 24px 70px rgba(0, 0, 0, .62);
+  }
+}
+
+.mj-board :is(.elabel.t-dispatch, .schip[data-state='done'] .fno) { color: var(--on-teal); }
+.mj-board :is(
+  .schip[data-state='active'] .fno, .rrow[data-state='working'] .ava, .k-bot[data-state='working'] .bot-ava, .bot-talk, .bot-ep,
+  .k-bot[data-state='working'] .pin, .tag, .tk li[data-s='run'] .tk-ic, .role, .refined, .btn-gen, .rs-play:hover,
+  .bchat[data-state='working'] .bc-ava, .rt-x, .bc-send:not(:disabled), .btn-primary
+) { color: var(--on-fill); }
+.mj-board .k-bot[data-state='working'] .pin .led { background: var(--on-fill); }
+
+.mj-board :is(.k-result, .k-final, .sn-cap, .code, .rs-tag, .rs-ver, .rt-tag) {
+  --text: #e9ebed;
+  --text-2: #b6bdc4;
+  --text-3: #8d969f;
+  --line: #333a42;
+  --line-2: #4d5660;
+  --amber: #f2a53c;
+  --teal: #45bfae;
+  --bg: #13161a;
+  --card: #22272d;
+  --card-2: #2b3138;
+  --on-fill: #1c2125;
+  color: var(--text);
+}
+.mj-board .k-result[data-state='todo'] .rs-foot {
+  --text: var(--color-ink);
+  --text-3: var(--color-ink-tertiary);
+}

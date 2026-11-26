@@ -1,0 +1,8 @@
+.mj-board .dm { position: absolute; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mj-board *, .mj-board *::before, .mj-board *::after { animation: none !important; transition: none !important; }
+}
+:root[data-reduced-motion="true"] .mj-board *,
+:root[data-reduced-motion="true"] .mj-board *::before,
+:root[data-reduced-motion="true"] .mj-board *::after { animation: none !important; transition: none !important; }
