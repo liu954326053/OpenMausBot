@@ -4,14 +4,14 @@ import { dirname, join } from "node:path";
 
 import { CANVAS_OUTPUT_FOLDER, type CanvasReadOnly } from "../../shared/project-canvas.ts";
 import { episodeCode } from "../../shared/production.ts";
-import type { ProjectDraftOpenResult, ProjectDraftWire, ProjectFinalResult, ProjectTimelineWire, TimelineClip } from "../../shared/project-draft.ts";
+import type { DraftTrackWire, ProjectDraftOpenResult, ProjectDraftWire, ProjectFinalResult, ProjectTimelineWire, TimelineClip } from "../../shared/project-draft.ts";
 import type { TeamProjectsApi, TeamProjectWire } from "../../shared/team-projects.ts";
 import { writeFileAtomic } from "../atomic.ts";
 import { isProjectPathError, openProjectFile, type ProjectPathError } from "../project-canvas/paths.ts";
 import type { RequestAuth } from "../request-auth.ts";
 import { userError } from "../user-errors.ts";
 import type { DraftShot, FinishedFilm, ProjectDraftCanvas } from "./canvas.ts";
-import { buildDraft, draftFolderName, draftFormatFor, numberedDraftName } from "./draft-file.ts";
+import { buildDraft, draftFolderName, draftFormatFor, draftTracks, numberedDraftName } from "./draft-file.ts";
 import type { JianyingInstall, JianyingLookup } from "./jianying.ts";
 import { DraftRefusal, refuse } from "./refusal.ts";
 import type { ProjectTimelines, WrittenDraft } from "./store.ts";
@@ -48,6 +48,7 @@ interface ReadTimeline {
 const META_FILE = "draft_meta_info.json";
 const TIMELINE_MAX_BYTES = 64 * 1024 * 1024;
 const NUMBERS_TRIED = 1000;
+const TRACK_LOOK_EVERY_MS = 5000;
 
 const sha256 = (data: string | Uint8Array) => createHash("sha256").update(data).digest("hex");
 
@@ -85,6 +86,10 @@ export class ProjectDrafts {
   private readonly draftListeners = new Set<(projectId: string) => void>();
   /** By project, each file of its output folder as last looked at. */
   private readonly outputs = new Map<string, Map<string, { size: number; mtimeMs: number; settled: boolean }>>();
+  /** By timeline key, the tracks last read from the draft's file and the file's time and size then. */
+  private readonly tracks = new Map<string, { stamp: string; tracks: DraftTrackWire[] }>();
+  /** By project, when its drafts' files were last looked at for the snapshot. */
+  private readonly trackLooks = new Map<string, number>();
   private lookup: JianyingLookup | null = null;
 
   constructor(deps: ProjectDraftsDeps) {
@@ -97,7 +102,8 @@ export class ProjectDrafts {
     return () => void this.timelineListeners.delete(listener);
   }
 
-  /** `listener` runs after what `draftWire` answers for a project changed: a draft was written. Returns the unsubscribe. */
+  /** `listener` runs after what `draftWire` answers for a project changed: a draft was written, or JianYing saved
+   * other voice, subtitles or music into one. Returns the unsubscribe. */
   onDraftChange(listener: (projectId: string) => void): () => void {
     this.draftListeners.add(listener);
     return () => void this.draftListeners.delete(listener);
@@ -159,7 +165,17 @@ export class ProjectDrafts {
   draftWires(projectId: string, auth: RequestAuth, episodes: readonly number[]): Record<number, ProjectDraftWire> {
     const project = this.project(projectId);
     const here = atThisComputer(auth);
+    const now = this.deps.now();
+    if (here && now - (this.trackLooks.get(projectId) ?? 0) >= TRACK_LOOK_EVERY_MS) {
+      this.trackLooks.set(projectId, now);
+      void this.lookAtTracks(project).catch(() => undefined);
+    }
     return Object.fromEntries(episodes.map((episode) => [episode, this.wireOf(project, here, episode)]));
+  }
+
+  /** Reads again what JianYing saved into the project's drafts, and tells who listens when a draft's tracks changed. */
+  async refreshTracks(projectId: string): Promise<void> {
+    await this.lookAtTracks(this.project(projectId));
   }
 
   /** The draft as the person at this computer sees it: what a bot of the project is told. */
@@ -255,7 +271,33 @@ export class ProjectDrafts {
     if (this.lookup?.state !== "ready") return { state: "unavailable", reason: this.lookup?.reason ?? "not-installed", exportFolder };
     const draft = this.storedDraft(timelineKey(project.id, episode));
     if (!draft) return { state: "none", exportFolder };
-    return { state: draft.kept ? "kept" : "written", name: draft.name, writtenAt: draft.writtenAt, exportFolder };
+    const tracks = this.tracks.get(timelineKey(project.id, episode))?.tracks;
+    return { state: draft.kept ? "kept" : "written", name: draft.name, writtenAt: draft.writtenAt, exportFolder, ...(tracks?.length ? { tracks } : {}) };
+  }
+
+  private async lookAtTracks(project: TeamProjectWire): Promise<void> {
+    if (!this.deps.onPersonsComputer || this.lookup?.state !== "ready") return;
+    const { timelineFile } = this.lookup.install;
+    let changed = false;
+    for (const episode of this.episodesOf(project.id)) {
+      const key = timelineKey(project.id, episode);
+      const draft = this.storedDraft(key);
+      if (!draft) continue;
+      const file = join(draft.folder, timelineFile);
+      const info = await lstat(file).catch(() => null);
+      const stamp = info?.isFile() && info.size <= TIMELINE_MAX_BYTES ? `${info.mtimeMs}:${info.size}` : "";
+      if (this.tracks.get(key)?.stamp === stamp) continue;
+      const bytes = stamp ? await readFile(file, "utf8").catch(() => null) : null;
+      let read: DraftTrackWire[] = [];
+      try {
+        if (bytes) read = draftTracks(JSON.parse(bytes));
+      } catch {
+        read = [];
+      }
+      if (JSON.stringify(this.tracks.get(key)?.tracks ?? []) !== JSON.stringify(read)) changed = true;
+      this.tracks.set(key, { stamp, tracks: read });
+    }
+    if (changed) for (const listener of this.draftListeners) listener(project.id);
   }
 
   /** Security: a clip is a file that really is inside the project folder and whose bytes are a video; a take that is
@@ -346,6 +388,7 @@ export class ProjectDrafts {
       firstWrittenAt: stored.draft?.firstWrittenAt ?? now, fileHash: sha256(built.timeline), clipsHash, ...(place.kept ? { kept: place.kept } : {}),
     };
     this.deps.store.write(key, { ...stored, draft });
+    this.tracks.delete(key);
     for (const listener of this.draftListeners) listener(project.id);
   }
 

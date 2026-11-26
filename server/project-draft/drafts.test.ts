@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RequestAuth } from "../request-auth.ts";
 import type { DraftShot } from "./canvas.ts";
@@ -287,6 +287,74 @@ describe("writing a project's draft", () => {
     project.folderState = "missing";
     expect(await drafts.writeDraftIfReady("p1")).toMatchObject({ state: "none" });
     expect(draftFolders()).toEqual([]);
+  });
+});
+
+describe("a written draft's tracks", () => {
+  const SUBTITLE = [{ kind: "subtitle", segments: [{ startMs: 500, durationMs: 2000 }] }];
+  const saveSubtitleInto = (file: string) => {
+    const saved = JSON.parse(readFileSync(file, "utf8"));
+    saved.materials.texts.push({ id: "line-1", type: "subtitle" });
+    saved.tracks.push({ type: "text", segments: [{ material_id: "line-1", target_timerange: { start: 500_000, duration: 2_000_000 } }] });
+    writeFileSync(file, JSON.stringify(saved));
+  };
+
+  it("reach the draft's wire once JianYing saved sound or words into it, and tell who listens", async () => {
+    const { drafts, canvas, shot, draftRoot, draftFolders } = harness();
+    canvas.set("p1", [shot("s1", { seconds: 4, width: 1920, height: 1080 })]);
+    await drafts.writeDraftIfReady("p1");
+    expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined();
+    saveSubtitleInto(join(draftRoot, draftFolders()[0]!, "draft_info.json"));
+    const told: string[] = [];
+    drafts.onDraftChange((projectId) => told.push(projectId));
+    await drafts.refreshTracks("p1");
+    expect(drafts.draftWire("p1", OWNER).tracks).toEqual(SUBTITLE);
+    expect(told).toEqual(["p1"]);
+    await drafts.refreshTracks("p1");
+    expect(told).toEqual(["p1"]);
+  });
+
+  it("are left out when the draft's file cannot be read as a draft", async () => {
+    const { drafts, canvas, shot, draftRoot, draftFolders } = harness();
+    canvas.set("p1", [shot("s1", { seconds: 4, width: 1920, height: 1080 })]);
+    await drafts.writeDraftIfReady("p1");
+    writeFileSync(join(draftRoot, draftFolders()[0]!, "draft_info.json"), "not json");
+    await drafts.refreshTracks("p1");
+    expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined();
+  });
+
+  it("are read again when the canvas's snapshot asks for the drafts, a project at most every five seconds", async () => {
+    const { drafts, canvas, shot, draftRoot, draftFolders } = harness();
+    canvas.set("p1", [shot("s1")]);
+    await drafts.writeDraftIfReady("p1");
+    const file = join(draftRoot, draftFolders()[0]!, "draft_info.json");
+    saveSubtitleInto(file);
+    const looks = vi.spyOn(canvas, "shots");
+    drafts.draftWires("p1", PAIRED, []);
+    expect(looks).toHaveBeenCalledTimes(0);
+    drafts.draftWires("p1", OWNER, []);
+    expect(looks).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(drafts.draftWire("p1", OWNER).tracks).toEqual(SUBTITLE));
+    for (let second = 1; second < 5; second += 1) drafts.draftWires("p1", OWNER, []);
+    expect(looks).toHaveBeenCalledTimes(1);
+    writeFileSync(file, "not json");
+    drafts.draftWires("p1", OWNER, []);
+    expect(looks).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined());
+  });
+
+  it("are not those of an older draft once a new one is written beside it", async () => {
+    const { drafts, canvas, shot, draftRoot, draftFolders } = harness();
+    canvas.set("p1", [shot("s1"), shot("s2")]);
+    await drafts.writeDraftIfReady("p1");
+    saveSubtitleInto(join(draftRoot, draftFolders()[0]!, "draft_info.json"));
+    await drafts.refreshTracks("p1");
+    expect(drafts.draftWire("p1", OWNER).tracks).toEqual(SUBTITLE);
+    await drafts.setOrder("p1", { shotIds: ["s2", "s1"] });
+    expect(drafts.draftWire("p1", OWNER)).toMatchObject({ state: "kept", name: "Stand-in bride 2" });
+    expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined();
+    await drafts.refreshTracks("p1");
+    expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined();
   });
 });
 

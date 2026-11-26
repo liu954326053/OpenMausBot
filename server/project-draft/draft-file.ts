@@ -1,5 +1,6 @@
 // The one place that knows what a JianYing draft looks like. The format is not published: each entry of DRAFT_FORMATS
 // is a shape one JianYing version was seen to list, and a version without an entry is not written for.
+import type { DraftTrackWire } from "../../shared/project-draft.ts";
 import blank118 from "./jianying-11.8/draft_info.json" with { type: "json" };
 import meta118 from "./jianying-11.8/draft_meta_info.json" with { type: "json" };
 
@@ -124,6 +125,33 @@ export function buildDraft(format: DraftFormat, plan: DraftPlan, newId: () => st
     tm_draft_create: plan.createdUs, tm_draft_modified: plan.modifiedUs, tm_duration: at,
   };
   return { timeline: write(timeline, ""), meta: write(meta, "") };
+}
+
+const TRACK_SEGMENTS_MAX = 200;
+const VOICE_MATERIALS = new Set(["text_to_audio", "record"]);
+const TRACK_KINDS = ["voice", "subtitle", "music"] as const;
+
+const list = (value: unknown): Json[] => (Array.isArray(value) ? value.filter((one): one is Json => Boolean(one) && typeof one === "object" && !Array.isArray(one)) : []);
+
+/** The voice, subtitle and music segments of a draft's timeline, as JianYing saved it. */
+export function draftTracks(timeline: unknown): DraftTrackWire[] {
+  if (!timeline || typeof timeline !== "object" || Array.isArray(timeline)) return [];
+  const draft = timeline as Json;
+  const materials = draft.materials && typeof draft.materials === "object" ? draft.materials as Json : {};
+  const audioType = new Map(list(materials.audios).map((one) => [String(one.id), String(one.type)]));
+  const found: Record<DraftTrackWire["kind"], DraftTrackWire["segments"]> = { voice: [], subtitle: [], music: [] };
+  for (const track of list(draft.tracks)) {
+    if (track.type !== "audio" && track.type !== "text") continue;
+    for (const segment of list(track.segments)) {
+      const range = segment.target_timerange as Json | undefined;
+      const start = range?.start;
+      const duration = range?.duration;
+      if (typeof start !== "number" || typeof duration !== "number" || !Number.isFinite(start + duration) || start < 0 || duration <= 0) continue;
+      const kind = track.type === "text" ? "subtitle" : VOICE_MATERIALS.has(audioType.get(String(segment.material_id)) ?? "") ? "voice" : "music";
+      found[kind].push({ startMs: Math.round(start / 1000), durationMs: Math.round(duration / 1000) });
+    }
+  }
+  return TRACK_KINDS.flatMap((kind) => (found[kind].length ? [{ kind, segments: found[kind].sort((a, b) => a.startMs - b.startMs).slice(0, TRACK_SEGMENTS_MAX) }] : []));
 }
 
 const NAME_MAX_CHARS = 80;

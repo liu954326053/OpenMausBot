@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import { buildDraft, draftFolderName, draftFormatFor, numberedDraftName, WRITABLE_JIANYING_VERSIONS, type DraftPlan } from "./draft-file.ts";
+import { buildDraft, draftFolderName, draftFormatFor, draftTracks, numberedDraftName, WRITABLE_JIANYING_VERSIONS, type DraftPlan } from "./draft-file.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 
@@ -99,6 +99,45 @@ describe("the draft JianYing 11.8 reads", () => {
       draft_fold_path: "C:/Users/me/AppData/Local/JianyingPro/User Data/Projects/com.lveditor.draft/Bride",
       draft_root_path: "C:/Users/me/AppData/Local/JianyingPro/User Data/Projects/com.lveditor.draft",
     });
+  });
+});
+
+describe("the tracks a person added in JianYing", () => {
+  const range = (start: number, duration: number) => ({ target_timerange: { start, duration } });
+  const timeline = {
+    materials: {
+      audios: [{ id: "voice-1", type: "text_to_audio" }, { id: "song-1", type: "extract_music" }, { id: "rec-1", type: "record" }],
+      texts: [{ id: "line-1", type: "subtitle" }],
+    },
+    tracks: [
+      { type: "video", segments: [{ material_id: "clip-1", ...range(0, 6_000_000) }] },
+      { type: "audio", segments: [{ material_id: "voice-1", ...range(7_000_000, 4_000_000) }, { material_id: "song-1", ...range(0, 36_000_000) }] },
+      { type: "audio", segments: [{ material_id: "rec-1", ...range(1_000_000, 2_500_000) }] },
+      { type: "text", segments: [{ material_id: "line-1", ...range(7_500_000, 3_500_000) }] },
+    ],
+  };
+
+  it("are its voice, its subtitles and its music, each segment in milliseconds in the order it plays", () => {
+    expect(draftTracks(timeline)).toEqual([
+      { kind: "voice", segments: [{ startMs: 1000, durationMs: 2500 }, { startMs: 7000, durationMs: 4000 }] },
+      { kind: "subtitle", segments: [{ startMs: 7500, durationMs: 3500 }] },
+      { kind: "music", segments: [{ startMs: 0, durationMs: 36000 }] },
+    ]);
+  });
+
+  it("are none for a draft with pictures only, and for anything that is not a draft", () => {
+    expect(draftTracks({ materials: { audios: [], texts: [] }, tracks: [timeline.tracks[0]] })).toEqual([]);
+    for (const not of [null, 7, "draft", [], { tracks: "none" }, { tracks: [{ type: "audio", segments: [{ target_timerange: { start: "0", duration: -1 } }] }] }]) expect(draftTracks(not)).toEqual([]);
+  });
+
+  it("pass over a segment whose start or length is written larger than a number holds", () => {
+    const saved = JSON.parse('{"tracks":[{"type":"text","segments":[{"target_timerange":{"start":1e999,"duration":1000}},{"target_timerange":{"start":0,"duration":1e999}}]}]}');
+    expect(draftTracks(saved)).toEqual([]);
+  });
+
+  it("keep 200 segments of a kind at most", () => {
+    const many = { materials: { audios: [], texts: [] }, tracks: [{ type: "text", segments: Array.from({ length: 300 }, (_, at) => range(at * 1_000_000, 500_000)) }] };
+    expect(draftTracks(many)[0]?.segments).toHaveLength(200);
   });
 });
 

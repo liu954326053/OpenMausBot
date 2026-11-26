@@ -30,6 +30,13 @@ export interface ProjectTimelineInput {
   shotIds: string[];
 }
 
+/** One kind of sound or words laid along an episode's film in JianYing. */
+export interface DraftTrackWire {
+  kind: "voice" | "subtitle" | "music";
+  /** In the order they play. */
+  segments: Array<{ startMs: number; durationMs: number }>;
+}
+
 /**
  * `unavailable`: no JianYing on this computer, or this server is not on the person's computer. `none`: not written
  * yet. `written`: the draft holds what this app wrote. `kept`: JianYing saved over an older draft, which was left as
@@ -44,6 +51,8 @@ export interface ProjectDraftWire {
   writtenAt?: number;
   /** The folder the person exports the film to, absolute: the project's output folder. */
   exportFolder: string;
+  /** What the person or the post bot laid along the film in JianYing: voice, subtitles, music. Absent when there is none. */
+  tracks?: DraftTrackWire[];
 }
 
 /** `POST /api/team-projects/:id/draft/open`: brings JianYing to the front; the answer says whether it opened the
