@@ -51,6 +51,10 @@ describe("the mockup's styles in the app", () => {
     for (const name of ["shell", "panels"]) expect(read(name), name).toMatch(/@container board \(max-(width|height): \d+px\)/);
   });
 
+  it("give the stage the board's whole box", () => {
+    expect(read("additions")).toContain(".mj-board .stage { position: absolute; inset: 0; }");
+  });
+
   it("carry no section banners", () => {
     for (const name of COPIED) expect(read(name), name).not.toMatch(/\/\* -{3,}/);
   });

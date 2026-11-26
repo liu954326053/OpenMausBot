@@ -27,3 +27,4 @@
 .mj-board .bot-foot .btn-ink:hover { background: var(--text); border-color: var(--text); color: var(--bg); }
 .mj-board .k-epmore .pp-head, .mj-board .k-epmore .epm { cursor: pointer; }
 .mj-board .gt[data-ready='false'] { border-color: var(--line-2); color: var(--text-3); }
+.mj-board .stage { position: absolute; inset: 0; }
