@@ -11873,6 +11873,7 @@
   "productionBoard.dismiss": "Dismiss",
   "productionBoard.toolbar.fitLabel": "Fit",
   "productionBoard.toolbar.referencesLabel": "Reference lines",
+  "productionBoard.toolbar.referencesScope": "Character and scene ",
   "productionBoard.hint": "Click a bot to talk · click an asset for its details · drag empty space to pan · scroll to zoom",
   "productionBoard.caption.title": "Stage {number} · {name}",
   "productionBoard.caption.brief": "You talk to the lead alone. The lead agrees the platform, the style and the number of episodes with you, writes the brief and splits the work.",

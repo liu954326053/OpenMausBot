@@ -3,6 +3,20 @@ import { Map as MapIcon, Maximize, Minus, Plus, Waypoints } from "lucide-react";
 import { t } from "@/lib/i18n";
 import type { CameraStore } from "../engine/camera";
 
+/** A scope written with a leading space reads after the short name, as in "Linhas de referência de personagens". */
+function ReferencesLabel() {
+  const scope = t("productionBoard.toolbar.referencesScope");
+  const long = <span className="tlong">{scope}</span>;
+  const after = scope.startsWith(" ");
+  return (
+    <span className="tkeep">
+      {after ? null : long}
+      {t("productionBoard.toolbar.referencesLabel")}
+      {after ? long : null}
+    </span>
+  );
+}
+
 export function Toolbar({ camera, showRefs, minimap, onZoom, onZoomReset, onFit, onRefs, onMinimap }: {
   camera: CameraStore;
   showRefs: boolean;
@@ -32,7 +46,7 @@ export function Toolbar({ camera, showRefs, minimap, onZoom, onZoomReset, onFit,
       </button>
       <button type="button" className="tbtn wide keep" aria-pressed={showRefs} aria-label={t("productionBoard.toolbar.references")} onClick={onRefs}>
         <Waypoints className="ic" aria-hidden="true" />
-        <span className="tkeep">{t("productionBoard.toolbar.referencesLabel")}</span>
+        <ReferencesLabel />
       </button>
       <button type="button" className="tbtn" aria-pressed={minimap} aria-label={t("productionBoard.toolbar.minimap")} onClick={onMinimap}>
         <MapIcon className="ic" aria-hidden="true" />

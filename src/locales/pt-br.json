@@ -11857,6 +11857,7 @@
   "productionBoard.dismiss": "Dispensar",
   "productionBoard.toolbar.fitLabel": "Ajustar",
   "productionBoard.toolbar.referencesLabel": "Linhas de referência",
+  "productionBoard.toolbar.referencesScope": " de personagens e cenários",
   "productionBoard.hint": "Clique em um bot para conversar · clique em um material para ver detalhes · arraste o vazio para mover · role para zoom",
   "productionBoard.caption.title": "Etapa {number} · {name}",
   "productionBoard.caption.brief": "Você conversa só com o líder. O líder combina com você a plataforma, o estilo e o número de episódios, escreve o briefing e divide o trabalho.",

@@ -34,26 +34,39 @@ export function Minimap({ world, items, camera, insetEnd, onJump }: {
   world: Rect;
   items: ReadonlyArray<MinimapItem>;
   camera: CameraStore;
-  /** What the side panel takes of the board's width, so the map keeps clear of it. */
   insetEnd: number;
   onJump(world: { x: number; y: number }): void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<MinimapFrame | null>(null);
   const draggingRef = useRef(false);
+  const itemsRef = useRef(items);
+  const repaintRef = useRef<(() => void) | null>(null);
+  const { x, y, w, h } = world;
+
+  useEffect(() => {
+    itemsRef.current = items;
+    repaintRef.current?.();
+  }, [items]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    let frame = minimapFrame(world, FALLBACK_WIDTH);
+    const bounds = { x, y, w, h };
+    let frame = minimapFrame(bounds, FALLBACK_WIDTH);
     let dpr = 1;
     let colors = boardColors(canvas);
-    const paint = () => items.map((item) => ({ rect: item.rect, color: minimapColor(item.kind, item.state, colors) }));
+    const paint = () => itemsRef.current.map((item) => ({ rect: item.rect, color: minimapColor(item.kind, item.state, colors) }));
     let painted = paint();
     const draw = () => drawMinimap(ctx, frame, dpr, painted, camera.cam, camera.size, colors);
+    const repaint = () => {
+      painted = paint();
+      draw();
+    };
+    repaintRef.current = repaint;
     const setup = () => {
-      frame = minimapFrame(world, canvas.clientWidth || FALLBACK_WIDTH);
+      frame = minimapFrame(bounds, canvas.clientWidth || FALLBACK_WIDTH);
       frameRef.current = frame;
       dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(frame.width * dpr);
@@ -65,25 +78,30 @@ export function Minimap({ world, items, camera, insetEnd, onJump }: {
     const unsubscribe = camera.subscribe(draw);
     const skin = new MutationObserver(() => {
       colors = boardColors(canvas);
-      painted = paint();
-      draw();
+      repaint();
     });
     skin.observe(document.documentElement, { attributes: true, attributeFilter: ["data-skin"] });
     let width = canvas.clientWidth;
     const resize = typeof ResizeObserver === "function"
       ? new ResizeObserver(() => {
-        if (canvas.clientWidth === width) return;
+        if (canvas.clientWidth === width) {
+          draw();
+          return;
+        }
         width = canvas.clientWidth;
         setup();
       })
       : null;
     resize?.observe(canvas);
+    const board = canvas.closest(".mj-board");
+    if (board) resize?.observe(board);
     return () => {
+      repaintRef.current = null;
       unsubscribe();
       skin.disconnect();
       resize?.disconnect();
     };
-  }, [world, items, camera]);
+  }, [x, y, w, h, camera]);
 
   const jump = (event: PointerEvent<HTMLDivElement>) => {
     const canvas = canvasRef.current;
