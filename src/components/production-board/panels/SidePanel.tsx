@@ -6,10 +6,10 @@ import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import type { LocaleKey } from "@/locales";
 import { episodeStatus } from "../cards";
-import { episodeProgress } from "./asset-words";
-import type { EpisodeRow } from "./board-index";
+import { episodeProgress } from "@/lib/production-board/asset-words";
+import type { EpisodeRow } from "@/lib/production-board/board-index";
 import { BotFace, BotStatus, EmptyLine, NO_LOOK, PANEL_ROW, ROW_META, RowGroup } from "./panel-parts";
-import type { AssetFacts, EpisodeShotsFacts, PanelRows, ShotFacts, TeamFacts } from "./panel-rows";
+import type { AssetFacts, EpisodeShotsFacts, PanelRows, ShotFacts, TeamFacts } from "@/lib/production-board/panel-rows";
 
 const TABS = ["team", "assets", "episodes"] as const;
 type Tab = (typeof TABS)[number];

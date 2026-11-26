@@ -1,9 +1,9 @@
-import { episodeCode } from "../../../../shared/production";
-import type { CanvasBotState, CanvasFileRef } from "../../../../shared/project-canvas";
-import type { ProjectDraftWire } from "../../../../shared/project-draft";
+import { episodeCode } from "../../../shared/production";
+import type { CanvasBotState, CanvasFileRef } from "../../../shared/project-canvas";
+import type { ProjectDraftWire } from "../../../shared/project-draft";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
-import { episodeStatus } from "../cards";
+import { episodeStatus } from "./status";
 import { assetCode, episodeProgress } from "./asset-words";
 import type { AssetKind, BoardAsset, BoardIndex } from "./board-index";
 

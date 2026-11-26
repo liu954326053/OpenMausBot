@@ -10,8 +10,8 @@ import { renderOverlay, type OverlayHarness } from "./testing/render-overlay";
 
 const drawn = vi.hoisted(() => ({ episodeRows: 0 }));
 // An episode's row asks for its progress words once each time it is drawn.
-vi.mock("./asset-words", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./asset-words")>();
+vi.mock("@/lib/production-board/asset-words", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/production-board/asset-words")>();
   return { ...original, episodeProgress: (...args: Parameters<typeof original.episodeProgress>) => { drawn.episodeRows++; return original.episodeProgress(...args); } };
 });
 

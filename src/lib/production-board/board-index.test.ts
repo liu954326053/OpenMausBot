@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { CanvasNode, CanvasSnapshot } from "../../../../shared/project-canvas";
+import type { CanvasNode, CanvasSnapshot } from "../../../shared/project-canvas";
 import { boardIndex, type BoardAsset } from "./board-index";
-import { bigBoardSnapshot, boardSnapshot } from "./testing/board-sample";
+import { bigBoardSnapshot, boardSnapshot } from "@/components/production-board/panels/testing/board-sample";
 
 const ids = (assets: readonly BoardAsset[]): string[] => assets.map((asset) => asset.node.id);
 

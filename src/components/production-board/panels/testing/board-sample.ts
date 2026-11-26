@@ -12,7 +12,7 @@ import {
 } from "../../../../../shared/project-canvas";
 import type { CanvasBackend } from "@/lib/project-canvas/backend";
 import type { CanvasBotLook, CanvasExchangeMessage } from "@/lib/project-canvas/types";
-import type { OverlayBackend } from "../overlay-backend";
+import type { OverlayBackend } from "@/lib/production-board/overlay-backend";
 
 export const SAMPLE_PROJECT_ID = "fog-harbor";
 const AT = Date.UTC(2026, 10, 24, 1, 0);

@@ -7,11 +7,11 @@ import type { BoardAnchor } from "@/lib/production-board/overlay";
 import { canvasErrorText } from "@/lib/project-canvas/backend";
 import type { CanvasBotLook, CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import { sendsMessage, useSendKey } from "@/lib/send-key";
-import type { BoardAsset, BoardIndex } from "./board-index";
+import type { BoardAsset, BoardIndex } from "@/lib/production-board/board-index";
 import { CHAT_SHEET_BELOW, placeChat, type PlacementInput } from "./chat-placement";
 import { ChatExchange } from "./ChatExchange";
 import { ChatWaiting } from "./ChatWaiting";
-import type { OverlayBackend } from "./overlay-backend";
+import type { OverlayBackend } from "@/lib/production-board/overlay-backend";
 import { BotFace, BotStatus } from "./panel-parts";
 import { ReferencePicker, ReferenceTray } from "./ReferenceTray";
 

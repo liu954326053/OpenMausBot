@@ -3,8 +3,8 @@ import { FileText, Film, Link2, Plus, X } from "lucide-react";
 import type { CanvasFileRef } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
-import { assetCode, assetKindLabel } from "./asset-words";
-import type { BoardAsset, BoardIndex } from "./board-index";
+import { assetCode, assetKindLabel } from "@/lib/production-board/asset-words";
+import type { BoardAsset, BoardIndex } from "@/lib/production-board/board-index";
 import { EmptyLine, RowGroup } from "./panel-parts";
 
 const BLOCK = "relative size-[52px] shrink-0";

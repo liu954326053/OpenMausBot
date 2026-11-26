@@ -1,5 +1,5 @@
-import { episodeCode } from "../../../../shared/production";
-import type { CanvasBotState, CanvasFileRef } from "../../../../shared/project-canvas";
+import { episodeCode } from "../../../shared/production";
+import type { CanvasBotState, CanvasFileRef } from "../../../shared/project-canvas";
 import { sameFields, sameItems } from "@/state/store-select";
 import type { BoardAsset, BoardIndex, EpisodeRow } from "./board-index";
 

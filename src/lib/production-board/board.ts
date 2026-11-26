@@ -36,6 +36,7 @@ const roleOf = (node: CanvasNode) => node.metadata?.role;
 const isProfileRole = (role: string | undefined): role is "character" | "scene" => role === "character" || role === "scene";
 const jobOfStages = (stages: readonly FlowStage[]): ProductionJob | undefined => PRODUCTION_JOBS.find((job) => stages.includes(job));
 const isSelected = (take: CanvasNode) => Boolean(take.metadata?.selected);
+const versionOf = (node: CanvasNode) => node.metadata?.version ?? 1;
 
 function generationOf(node: CanvasNode | undefined): BoardGeneration | undefined {
   const metadata = node?.metadata;
@@ -163,6 +164,8 @@ function profilesOf(index: BoardIndex): Profile[] {
       ...(newest ? { newest: pictureOf(newest) } : {}),
       appearsIn: [],
       ...(refinedBy ? { refinedBy } : {}),
+      version: versionOf(node),
+      pictures: images.filter((one) => one.metadata?.file).length,
     };
     return { card: kind === "character" ? { ...base, kind } : { ...base, kind }, members: nodeIds };
   });
@@ -248,6 +251,8 @@ function botCard(index: BoardIndex, bot: CanvasBotState, lead: boolean, stage: B
     ...(progress ? { progress } : {}),
     ...(retry ? { retry } : {}),
     ...(gate ? { gate } : {}),
+    ...(lead && production?.plan.source ? { source: production.plan.source } : {}),
+    ...(lead && production?.plan.episodes ? { episodes: production.plan.episodes } : {}),
   };
 }
 
@@ -288,12 +293,12 @@ export function buildBoard(snapshot: CanvasSnapshot, options: BoardOptions = {})
     if (brief) {
       consumed.add(brief.id);
       const by = brief.createdBy?.kind === "bot" ? brief.createdBy.botId : undefined;
-      cards.push({ kind: "brief", id: brief.id, nodeIds: [brief.id], stage: "brief", dragNodeId: brief.id, title: brief.title, rows: brief.metadata?.card?.rows ?? [], text: brief.metadata?.content ?? "", ...(by ? { by } : {}) });
+      cards.push({ kind: "brief", id: brief.id, nodeIds: [brief.id], stage: "brief", dragNodeId: brief.id, title: brief.title, rows: brief.metadata?.card?.rows ?? [], text: brief.metadata?.content ?? "", ...(by ? { by } : {}), version: versionOf(brief), ...(production ? { agreedAt: production.plan.plannedAt } : {}) });
     }
     const plan = snapshot.nodes.find((node) => node.type === "text" && roleOf(node) === "plan");
     if (plan) {
       consumed.add(plan.id);
-      cards.push({ kind: "plan", id: plan.id, nodeIds: [plan.id], stage: "brief", dragNodeId: plan.id, title: plan.title, tasks });
+      cards.push({ kind: "plan", id: plan.id, nodeIds: [plan.id], stage: "brief", dragNodeId: plan.id, title: plan.title, tasks, ...(production ? { plannedAt: production.plan.plannedAt } : {}) });
     }
 
     const shotCards = new Map<string, BoardShotCard>();
@@ -401,6 +406,7 @@ export function buildBoard(snapshot: CanvasSnapshot, options: BoardOptions = {})
           shots: wire?.shots ?? shots.length,
           ready: wire?.ready ?? shots.filter((shot) => (index.takesOf.get(shot.id) ?? []).some(isSelected)).length,
           ...(episodeSeconds.has(episode) ? { seconds: episodeSeconds.get(episode)! } : {}),
+          version: versionOf(node),
         });
       }
       const film = index.finals.get(episode);

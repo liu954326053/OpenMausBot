@@ -1,4 +1,4 @@
-import type { ProductionEpisodeStatus, ProductionJob, ProductionRetryInput, ProductionTaskStatus, ProductionTaskWire } from "../../../shared/production";
+import type { ProductionEpisodeStatus, ProductionJob, ProductionRetryInput, ProductionSource, ProductionTaskStatus, ProductionTaskWire } from "../../../shared/production";
 import type { CanvasBotStatus, CanvasCardFacts, CanvasFileRef, CanvasNode, CanvasNodeMetadata, CanvasPoint, CanvasShotDesign } from "../../../shared/project-canvas";
 import type { ProjectDraftWire } from "../../../shared/project-draft";
 import type { BoardStage } from "./overlay";
@@ -57,6 +57,10 @@ export interface BoardBotCard extends CardBase<"bot"> {
   retry?: RetryTarget;
   /** On an episode's storyboard bot. */
   gate?: BoardGate;
+  /** On the lead: what the drama is adapted from. */
+  source?: ProductionSource;
+  /** On the lead: how many episodes the plan makes of it. */
+  episodes?: number;
 }
 
 export interface BoardBriefCard extends CardBase<"brief"> {
@@ -64,6 +68,10 @@ export interface BoardBriefCard extends CardBase<"brief"> {
   rows: Array<[string, string]>;
   text: string;
   by?: string;
+  /** Its node's `version`; 1 for a node stored without one. */
+  version: number;
+  /** When the plan made from it was agreed. */
+  agreedAt?: number;
 }
 
 export interface BoardPlanTask {
@@ -76,6 +84,7 @@ export interface BoardPlanTask {
 export interface BoardPlanCard extends CardBase<"plan"> {
   title: string;
   tasks: BoardPlanTask[];
+  plannedAt?: number;
 }
 
 export interface BoardEpisodeCard extends CardBase<"episode"> {
@@ -89,6 +98,8 @@ export interface BoardEpisodeCard extends CardBase<"episode"> {
   ready: number;
   /** How long its shots run together; absent while one of them has no length. */
   seconds?: number;
+  /** Its script node's `version`; 1 for a node stored without one. */
+  version: number;
 }
 
 export interface BoardStackCard extends CardBase<"stack"> {
@@ -121,6 +132,10 @@ export interface BoardProfileCard<Kind extends "character" | "scene"> extends Ca
   refinedBy?: string;
   /** The card of the scene it was refined from. */
   refinedFrom?: string;
+  /** Its profile node's `version`; 1 for a node stored without one. */
+  version: number;
+  /** How many of its group's pictures have a file. */
+  pictures: number;
 }
 
 export type BoardCharacterCard = BoardProfileCard<"character">;

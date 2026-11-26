@@ -34,10 +34,10 @@ const CHARACTERS = [
   { id: "lin", name: "林警官", subtitle: "34 岁 · 刑警", tags: ["敏锐"], palette: ["#2d4b73"], rows: [["外形", "深色风衣"]] as Array<[string, string]> },
 ];
 const SCENES = [
-  { id: "rooftop", name: "老城区天台", subtitle: "夜 · 外 · 雨" },
-  { id: "sorting", name: "分拣站", subtitle: "日 · 内" },
-  { id: "clock", name: "钟楼", subtitle: "夜 · 外" },
-  { id: "alley", name: "雨夜街巷", subtitle: "夜 · 外 · 雨" },
+  { id: "rooftop", name: "老城区天台", subtitle: "夜 · 外 · 雨", cameras: 3 },
+  { id: "sorting", name: "分拣站", subtitle: "日 · 内", cameras: 2 },
+  { id: "clock", name: "钟楼", subtitle: "夜 · 外", cameras: 4 },
+  { id: "alley", name: "雨夜街巷", subtitle: "夜 · 外 · 雨", cameras: 2 },
 ];
 const EP1_SHOTS = ["天台全景", "阿岚上天台", "包裹特写", "钟楼熄灯", "黑伞人影", "雨幕对视"];
 const EP2_SHOTS = ["分拣站清晨", "老周递包裹", "欲言又止", "钥匙特写", "林警官来访", "门外的伞"];
@@ -109,7 +109,12 @@ function sampleProduction(count: number): ProductionWire {
     { id: "t-post-1", job: "post", botId: editorOf(1), episode: 1, status: "working", at: at(40) },
   ];
   return {
-    plan: { assignments: { script: WRITER, character: PAINTER, scene: BUILDER, storyboard: BOARDER, post: EDITOR }, episodes: count, plannedAt: at(2) },
+    plan: {
+      assignments: { script: WRITER, character: PAINTER, scene: BUILDER, storyboard: BOARDER, post: EDITOR },
+      episodes: count,
+      source: { title: "雨城", author: "南渡", tags: ["都市悬疑", "46 章", "38.6 万字"], quote: "雨城的灯，十年没亮过了。", from: "你上传的 TXT" },
+      plannedAt: at(2),
+    },
     jobs: [{ job: "script", botId: WRITER, status: "done" }, { job: "character", botId: PAINTER, status: "done" }, { job: "scene", botId: BUILDER, status: "done" }],
     ready: true,
     episodes,
@@ -138,20 +143,20 @@ export function productionBoardSample({ episodes: count = 60, empty = false }: P
   if (empty) return structuredClone(base);
 
   nodes.push(
-    { id: "brief", type: "text", title: "需求单", ...frame, ...by(LEAD), metadata: { role: "brief", card: { rows: [["类型", "悬疑短剧"], ["集数", String(count)], ["每集", "约 1 分钟"], ["画幅", "9:16 竖屏"], ["风格", "雨夜霓虹，冷色调"]] } } },
-    { id: "plan", type: "text", title: "任务拆分", ...frame, ...by(LEAD), metadata: { role: "plan", content: "砚青写分集；墨白、林夕同时做角色和场景；每集一位分镜、一位后期。" } },
+    { id: "brief", type: "text", title: "需求单", ...frame, ...by(LEAD), metadata: { role: "brief", version: 2, card: { rows: [["类型", "悬疑短剧"], ["集数", String(count)], ["每集", "约 1 分钟"], ["画幅", "9:16 竖屏"], ["风格", "雨夜霓虹，冷色调"]] } } },
+    { id: "plan", type: "text", title: "任务拆分", ...frame, ...by(LEAD), metadata: { role: "plan", version: 1, content: "砚青写分集；墨白、林夕同时做角色和场景；每集一位分镜、一位后期。" } },
   );
   for (let episode = 1; episode <= count; episode += 1) {
     nodes.push({ id: `ep${episode}`, type: "text", title: `${episodeCode(episode)} · ${titleOf(episode)}`, ...frame, ...by(WRITER), metadata: { role: "episode", episode, card: { subtitle: episode === 1 ? "雨夜，快递员阿岚收到写着自己名字的包裹。" : `第 ${episode} 集的梗概` }, content: `【${episodeCode(episode)} ${titleOf(episode)}】\n\n雨还在下。` } });
   }
   for (const one of CHARACTERS) {
     nodes.push({ id: `g-${one.id}`, type: "group", title: one.name, ...frame, ...by(PAINTER) });
-    nodes.push({ id: one.id, type: "text", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(PAINTER), metadata: { role: "character", content: `${one.name}的设定。`, card: { ...(one.badge ? { badge: one.badge } : {}), subtitle: one.subtitle, tags: one.tags, palette: one.palette, rows: one.rows } } });
+    nodes.push({ id: one.id, type: "text", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(PAINTER), metadata: { role: "character", version: 1, content: `${one.name}的设定。`, card: { ...(one.badge ? { badge: one.badge } : {}), subtitle: one.subtitle, tags: one.tags, palette: one.palette, rows: one.rows } } });
     nodes.push({ id: `${one.id}-1`, type: "image", title: `${one.name} · 定妆`, ...frame, groupId: `g-${one.id}`, ...by(PAINTER), metadata: { file: png(one.name), naturalWidth: 1024, naturalHeight: 1536, status: "success", selected: true } });
   }
   for (const one of SCENES) {
     nodes.push({ id: `g-${one.id}`, type: "group", title: one.name, ...frame, ...by(BUILDER) });
-    nodes.push({ id: one.id, type: "text", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(BUILDER), metadata: { role: "scene", content: `${one.name}。`, card: { subtitle: one.subtitle } } });
+    nodes.push({ id: one.id, type: "text", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(BUILDER), metadata: { role: "scene", version: 2, content: `${one.name}。`, card: { subtitle: one.subtitle, cameras: one.cameras } } });
     nodes.push({ id: `${one.id}-1`, type: "image", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(BUILDER), metadata: { file: png(one.name), naturalWidth: 1536, naturalHeight: 1024, status: "success" } });
   }
   nodes.push({ id: "sorting-dawn", type: "text", title: "分拣站 · 清晨", ...frame, ...by(boarderOf(2)), metadata: { role: "scene", content: "清晨的分拣站，传送带还没开。", card: { subtitle: "晨 · 内" } } });
@@ -180,7 +185,12 @@ export function productionBoardSample({ episodes: count = 60, empty = false }: P
   nodes.push({ id: "film-1", type: "video", title: `${episodeCode(1)} · ${titleOf(1)}.mp4`, ...frame, createdBy: { kind: "person" }, metadata: { role: "final", episode: 1, ...webm("雨城-EP01", 38) } });
   nodes.push({ id: "note", type: "text", title: "宣传语", ...frame, createdBy: { kind: "person" }, metadata: { content: "这座城，每个雨夜都有一封信。" } });
 
-  const drafts: Record<number, ProjectDraftWire> = { 1: { state: "written", name: `雨城 · ${episodeCode(1)}`, writtenAt: at(44), exportFolder: BOARD_EXPORT_FOLDER } };
+  const drafts: Record<number, ProjectDraftWire> = {
+    1: {
+      state: "written", name: `雨城 · ${episodeCode(1)}`, writtenAt: at(44), exportFolder: BOARD_EXPORT_FOLDER,
+      tracks: [{ kind: "voice", segments: [{ startMs: 1000, durationMs: 3000 }] }, { kind: "music", segments: [{ startMs: 0, durationMs: 20000 }] }],
+    },
+  };
   return structuredClone({ ...base, production: sampleProduction(count), drafts });
 }
 

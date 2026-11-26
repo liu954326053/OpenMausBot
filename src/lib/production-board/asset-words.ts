@@ -1,4 +1,4 @@
-import { episodeCode } from "../../../../shared/production";
+import { episodeCode } from "../../../shared/production";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import type { AssetKind, BoardAsset, EpisodeRow } from "./board-index";

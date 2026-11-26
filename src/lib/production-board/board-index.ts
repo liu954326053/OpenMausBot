@@ -1,6 +1,6 @@
-import { EPISODE_JOBS, shotCode, type EpisodeJob, type ProductionEpisodeWire } from "../../../../shared/production";
-import { botNodeId, type CanvasBotState, type CanvasNode, type CanvasSnapshot } from "../../../../shared/project-canvas";
-import type { FlowStage } from "../../../../shared/team-pipeline";
+import { EPISODE_JOBS, shotCode, type EpisodeJob, type ProductionEpisodeWire } from "../../../shared/production";
+import { botNodeId, type CanvasBotState, type CanvasNode, type CanvasSnapshot } from "../../../shared/project-canvas";
+import type { FlowStage } from "../../../shared/team-pipeline";
 import { splitTeamByEpisode, type EpisodeBotPlace } from "@/lib/team-projects";
 
 export type AssetKind = "character" | "scene" | "episode" | "shot" | "result" | "final" | "brief" | "plan" | "text" | "image" | "video" | "audio" | "file";

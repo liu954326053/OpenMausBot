@@ -7,9 +7,9 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { BoardCardKind } from "../cards";
 import { CardShell } from "../cards/parts";
-import { KIND_KEYS } from "./asset-words";
-import type { AssetKind } from "./board-index";
-import type { DetailsFact, DetailsView } from "./details-view";
+import { KIND_KEYS } from "@/lib/production-board/asset-words";
+import type { AssetKind } from "@/lib/production-board/board-index";
+import type { DetailsFact, DetailsView } from "@/lib/production-board/details-view";
 
 const KIND_ICONS: Record<AssetKind, LucideIcon> = {
   character: UserRound,

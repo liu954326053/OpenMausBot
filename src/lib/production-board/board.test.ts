@@ -5,6 +5,7 @@ import type { FlowStage } from "../../../shared/team-pipeline";
 import { buildBoard } from "./board";
 import type { BoardCard, BoardEdge } from "./types";
 import { visibleEdges } from "./edges";
+import { productionBoardSample } from "@/testing/production-board-sample";
 
 const bot = (botId: string, stages: FlowStage[], extra: Partial<CanvasBotState> = {}): CanvasBotState => ({ botId, name: botId, title: stages[0]!, lead: stages.includes("lead"), stages, status: "idle", placed: true, ...extra });
 const botNode = (botId: string): CanvasNode => ({ id: botNodeId(botId), type: "bot", title: botId, position: { x: 0, y: 0 }, width: 300, height: 180 });
@@ -274,5 +275,31 @@ describe("the board's stages", () => {
     expect(board.episodeOfNode.get("ep4")).toBe(4);
     expect(board.cardOfNode.get("t1b")).toBe("result:sh1");
     expect(board.cardOfNode.get("g-hero")).toBe("hero");
+  });
+});
+
+describe("what the mockup's cards show beyond the old board's", () => {
+  const board = buildBoard(productionBoardSample({ episodes: 4 }));
+  const one = <Kind extends BoardCard["kind"]>(kind: Kind) => board.cards.find((card): card is Extract<BoardCard, { kind: Kind }> => card.kind === kind)!;
+
+  it("gives the lead's card the source and the number of episodes it is adapted into", () => {
+    const lead = board.cards.find((card) => card.kind === "bot" && card.lead);
+    expect(lead).toMatchObject({ source: { title: "雨城", author: "南渡" }, episodes: 4 });
+    expect(board.cards.filter((card) => card.kind === "bot" && !card.lead).every((card) => !("source" in card))).toBe(true);
+  });
+
+  it("gives the brief its version and when it was agreed, and the plan when it was made", () => {
+    expect(one("brief")).toMatchObject({ version: 2, agreedAt: expect.any(Number) });
+    expect(one("plan").plannedAt).toEqual(expect.any(Number));
+  });
+
+  it("gives an episode and a scene their versions, a character the number of its pictures, and counts a node without a version as 1", () => {
+    expect(one("episode").version).toBe(1);
+    expect(one("scene")).toMatchObject({ version: 2, facts: { cameras: 3 } });
+    expect(one("character")).toMatchObject({ version: 1, pictures: 1 });
+  });
+
+  it("carries the draft's tracks to the film's card", () => {
+    expect(one("final").draft?.tracks).toEqual([{ kind: "voice", segments: [{ startMs: 1000, durationMs: 3000 }] }, { kind: "music", segments: [{ startMs: 0, durationMs: 20000 }] }]);
   });
 });

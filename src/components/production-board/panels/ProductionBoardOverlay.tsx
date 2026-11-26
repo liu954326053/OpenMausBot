@@ -4,14 +4,14 @@ import { activeLocale } from "@/lib/i18n";
 import type { BoardOverlayProps } from "@/lib/production-board/overlay";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import { AssetDetails } from "./AssetDetails";
-import { boardIndex, type BoardIndex } from "./board-index";
+import { boardIndex, type BoardIndex } from "@/lib/production-board/board-index";
 import { BotChatWindow, type ChatSession } from "./BotChatWindow";
-import { detailsView } from "./details-view";
-import type { OverlayBackend } from "./overlay-backend";
+import { detailsView } from "@/lib/production-board/details-view";
+import type { OverlayBackend } from "@/lib/production-board/overlay-backend";
 import { NO_LOOK } from "./panel-parts";
-import { panelRows, type PanelRows } from "./panel-rows";
+import { panelRows, type PanelRows } from "@/lib/production-board/panel-rows";
 import { SIDE_PANEL_ROOM, SidePanel } from "./SidePanel";
-import { useViewFollow } from "./view-follow";
+import { useViewFollow } from "@/lib/production-board/view-follow";
 
 /** Narrower than this, the side panel starts folded. */
 const PANEL_UNFOLDS_FROM = 900;
