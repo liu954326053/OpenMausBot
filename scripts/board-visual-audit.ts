@@ -580,22 +580,31 @@ async function auditApp(page: HeadlessPage, appUrl: string, elements: AuditEleme
       }
     }
     if (element.appClick) {
-      const clicked = await page.evaluate(`(() => {
+      const point = await page.evaluate(`(() => {
         const all = [...document.querySelectorAll(${JSON.stringify(element.appClick)})];
         const inView = (r) => r.width > 0 && r.height > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
         const target = all.find((one) => inView(one.getBoundingClientRect())) ?? all[0];
-        target?.click();
-        return Boolean(target);
-      })()`);
-      if (!clicked) {
+        if (!target) return null;
+        const r = target.getBoundingClientRect();
+        const left = Math.max(r.left, 0), top = Math.max(r.top, 0);
+        const right = Math.min(r.right, innerWidth), bottom = Math.min(r.bottom, innerHeight);
+        if (right - left < 8 || bottom - top < 8) return null;
+        return { x: Math.round((left + right) / 2), y: Math.round(top + Math.min(24, (bottom - top) / 2)) };
+      })()`) as { x: number; y: number } | null;
+      if (!point) {
         captured[element.id] = { selector: element.app, found: false, reason: `点不到 ${element.appClick}` };
         continue;
       }
+      // The board activates a card on the pointer, not on a bare click event.
+      await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
+      await page.send("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", buttons: 1, clickCount: 1 });
+      await page.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", buttons: 0, clickCount: 1 });
       await page.until(`Boolean(document.querySelector(${JSON.stringify(element.app)}))`, 8_000).catch(() => {});
       await delay(250);
     }
     const measured = await measureRevealed(page, element);
     if (!measured.found) {
+      if (element.appClick) await shoot(page, `app/missing-${element.id}.png`);
       captured[element.id] = { ...measured, reason: `看板里没有 ${element.app}${element.appCardKind ? `（把 ${element.appCardKind} 卡片移到中央后仍没有）` : ""}` };
       continue;
     }
