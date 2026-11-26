@@ -5,10 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { botNodeId, type CanvasSnapshot } from "../../../shared/project-canvas";
 import { setLocale } from "@/lib/i18n";
 import { buildBoard } from "@/lib/production-board/board";
-import { layoutBoard } from "@/lib/production-board/layout";
+import { ESTIMATED_HEIGHT, layoutBoard } from "@/components/production-board/engine/layout";
 import type { BoardOverlayProps } from "@/lib/production-board/overlay";
 import type { MemoryCanvasBackend } from "@/lib/project-canvas/memory-backend";
-import { cardSize } from "@/components/production-board/board/card-view";
 import { BOARD_BOTS, productionBoardBackend, productionBoardSample, SAMPLE_FAILED_EPISODE } from "@/testing/production-board-sample";
 import { ProjectCanvas, type ProjectCanvasProps } from "./ProjectCanvas";
 
@@ -59,8 +58,8 @@ async function mount(backend: MemoryCanvasBackend, props: Partial<ProjectCanvasP
 
 /** A viewport the whole board fits in at full size, fitted, so every card is drawn. */
 async function mountWhole(backend: MemoryCanvasBackend) {
-  const { bounds } = layoutBoard(buildBoard(backend.current()), cardSize);
-  size = { width: Math.ceil(bounds.width) + 400, height: Math.ceil(bounds.height) + 400 };
+  const { bounds } = layoutBoard(buildBoard(backend.current()), (card) => ESTIMATED_HEIGHT[card.kind]);
+  size = { width: Math.ceil(bounds.w) + 400, height: Math.ceil(bounds.h) + 400 };
   await mount(backend);
   await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "0", bubbles: true, cancelable: true })); });
   await settle();
@@ -78,7 +77,7 @@ function pointer(target: Element, type: string, clientX: number, clientY: number
 
 async function drag(cardId: string, by: { x: number; y: number }) {
   const board = page.querySelector<HTMLElement>("[data-production-board]")!;
-  pointer(cardElement(cardId)!.querySelector("article")!, "pointerdown", 300, 300);
+  pointer(cardElement(cardId)!, "pointerdown", 300, 300);
   pointer(board, "pointermove", 300 + by.x / 2, 300 + by.y / 2);
   pointer(board, "pointerup", 300 + by.x, 300 + by.y);
   await settle();
@@ -172,9 +171,10 @@ describe("the project's canvas", () => {
     backend.applyOps = vi.fn().mockRejectedValue(new Error("The disk is full."));
     await mount(backend);
     await drag("brief", { x: 120, y: 60 });
-    expect(page.querySelector('[role="status"]')?.textContent).toBe("A change wasn't saved: The disk is full.");
-    await click(buttonNamed(page.querySelector('[role="status"]')!, "Dismiss"));
-    expect(page.querySelector('[role="status"]')).toBeNull();
+    const notice = page.querySelector<HTMLElement>("[data-project-notice] [role='status']");
+    expect(notice?.textContent).toBe("A change wasn't saved: The disk is full.");
+    await click(buttonNamed(notice!, "Dismiss"));
+    expect(page.querySelector("[data-project-notice]")).toBeNull();
   });
 
   it("has a failed episode go on, and uses the take the person chose, on the project", async () => {
@@ -187,7 +187,7 @@ describe("the project's canvas", () => {
     expect(buttonNamed(cardElement(`ep${SAMPLE_FAILED_EPISODE}`)!, "Retry")).toBeUndefined();
 
     const result = cardElement("result:ep1-shot-3")!;
-    await click(result.querySelector("[data-result-take]"));
+    await click(result.querySelector(".rs-takes .take"));
     await click(buttonNamed(result, "Use this take"));
     await settle();
     expect(node(backend, "ep1-shot-3-take-1").metadata?.selected).toBe(true);
@@ -198,7 +198,11 @@ describe("the project's canvas", () => {
     const backend = drama();
     await mount(backend);
     expect(overlay).toMatchObject({ projectId: backend.current().projectId, backend, opened: null });
-    await click(cardElement(botNodeId(BOARD_BOTS.lead))!.querySelector("article"));
+    const lead = cardElement(botNodeId(BOARD_BOTS.lead))!;
+    const board = page.querySelector<HTMLElement>("[data-production-board]")!;
+    pointer(lead, "pointerdown", 300, 300);
+    pointer(board, "pointerup", 300, 300);
+    await settle();
     expect(overlay?.opened).toEqual({ kind: "bot", botId: BOARD_BOTS.lead });
   });
 });

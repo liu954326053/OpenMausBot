@@ -36,7 +36,12 @@ const alerts = () => [...dialog()!.querySelectorAll('[role="alert"], [role="aler
 const saved = async () => (await backend.readGenerationSettings(SAMPLE_PROJECT_ID)).settings;
 
 async function openCard(nodeId: string) {
-  await act(async () => host.querySelector<HTMLElement>(`[data-canvas-node="${CSS.escape(nodeId)}"] article`)!.click());
+  const card = host.querySelector<HTMLElement>(`[data-canvas-node="${CSS.escape(nodeId)}"]`)!;
+  const viewport = card.closest<HTMLElement>("[data-production-board]")!;
+  await act(async () => {
+    card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: 10, clientY: 10 }));
+    viewport.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: 10, clientY: 10 }));
+  });
   await settle();
 }
 

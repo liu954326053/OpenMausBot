@@ -20,6 +20,14 @@
 .mj-board .bc-note.is-bad { color: var(--danger); }
 .mj-board .pk-filter { display: block; width: 100%; height: 32px; margin-bottom: 4px; padding: 0 10px; border-radius: 8px; outline: 0; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 13px var(--sans); }
 .mj-board .pk-filter:focus { border-color: var(--text-2); }
+.mj-board .dm { inset: 0; z-index: 60; }
+.mj-board .dm-takes .take { cursor: pointer; }
+.mj-board .dm-takes .take:disabled { cursor: default; }
+.mj-board .dm-card { position: static; cursor: default; }
+.mj-board .dm-card .rs-screen video { width: 100%; height: 100%; object-fit: contain; }
+.mj-board .dm-dl dd[data-danger] { color: var(--danger); }
+.mj-board .dm-sheet { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.mj-board .dm-sheet > p { font-size: 13px; line-height: 1.6; color: var(--ink-2); white-space: pre-wrap; }
 .mj-board .k-bot[data-state='failed'] { border-top-color: var(--danger); }
 .mj-board [data-state='failed'] .led { background: var(--danger); }
 .mj-board .tk li[data-s='failed'] .tk-ic { background: var(--danger); border-color: var(--danger); color: var(--on-fill); }

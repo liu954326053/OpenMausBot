@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import { AlertCircle, Archive, FolderX, LoaderCircle, Settings, X } from "lucide-react";
 import { useCaptionChrome, WindowDragStrip } from "@/components/DesktopCapabilities";
-import { PANEL_ROOM } from "@/components/production-board/board/chrome";
 import { ProductionBoard, type BoardHost } from "@/components/production-board/ProductionBoard";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -148,7 +147,7 @@ function CanvasWorkspace({ controller, state, selectedBotId, topBarSlot, overlay
             focusBotId={selectedBotId}
           />
           {notice ? (
-            <div className={cn("pointer-events-none absolute inset-x-0 top-14 z-[95] flex justify-center px-3", overlay && PANEL_ROOM)}>
+            <div data-project-notice="" className={cn("pointer-events-none absolute inset-x-0 top-14 z-[95] flex justify-center px-3", overlay && "pe-[20rem]")}>
               <div role="status" className="popover-surface pointer-events-auto flex max-w-md items-center gap-2 rounded-xl border border-hairline/50 bg-menu py-1.5 pe-1.5 ps-3 text-[13px] leading-[18px] text-ink">
                 <span className="min-w-0 flex-1">{notice}</span>
                 <button type="button" className="ui-icon-button" aria-label={t("projectCanvas.dismiss")} onClick={() => setNotice(null)}><X size={14} aria-hidden="true" /></button>

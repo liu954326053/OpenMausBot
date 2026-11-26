@@ -1,21 +1,30 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { X } from "lucide-react";
+import "./styles/index.css";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { CircleAlert, Waypoints, type LucideIcon } from "lucide-react";
+import type { ProductionEpisodeStatus } from "../../../shared/production";
 import { botNodeId, type CanvasFileRef, type CanvasPoint, type CanvasSnapshot } from "../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import { buildBoard } from "@/lib/production-board/board";
-import { centreOn, FAR_ZOOM, fitRect, intersects, toScreen, visibleRect, wheelZoomFactor, zoomAt, type BoardView } from "@/lib/production-board/camera";
-import { edgePaths } from "@/lib/production-board/edge-paths";
 import { visibleEdges } from "@/lib/production-board/edges";
-import { layoutBoard, stageNearest, unionRect, type BoardLayout, type BoardRect } from "@/lib/production-board/layout";
 import { BOARD_STAGES, type BoardAnchor, type BoardOpened, type BoardOverlayProps, type BoardStage } from "@/lib/production-board/overlay";
-import type { Board, BoardCard, RetryTarget } from "@/lib/production-board/types";
+import { botStatus, toneState } from "@/lib/production-board/status";
+import type { Board, BoardCard, BoardTake, BoardVideoStatus, RetryTarget } from "@/lib/production-board/types";
 import { canvasErrorText, type CanvasBackend } from "@/lib/project-canvas/backend";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
-import { BoardEdges } from "./board/BoardEdges";
-import { BoardCamera } from "./board/camera";
-import { BoardCardView, cardSize, FarCard, type BoardCardActions } from "./board/card-view";
-import { BoardMinimap, BoardStageBar, BoardToolbar, minimapBoxWidth, PANEL_ROOM_PX, StackMenu, type StackMenuEpisode } from "./board/chrome";
+import { Heights } from "./board/heights";
+import { useBoardInput, type BoardDrag, type BoardInputLatest } from "./board/use-board-input";
+import { World, type DrawnCard, type DrawnEdge } from "./board/World";
+import { Caption } from "./chrome/Caption";
+import { Minimap, type MinimapItem } from "./chrome/Minimap";
+import { StageBar } from "./chrome/StageBar";
+import { Toast, type ToastMessage } from "./chrome/Toast";
+import { Toolbar } from "./chrome/Toolbar";
+import { CameraStore, centreOn, FAR, fitRect, gridStep, intersects, lineScale, toScreen, visibleWorld, zoomAbout, type Cam, type Rect, type Size } from "./engine/camera";
+import { edgePaths } from "./engine/edge-paths";
+import { layoutBoard, stageAt, type BoardLayout } from "./engine/layout";
+import type { NodeActions, NodeContext } from "./nodes/parts";
+import { EpisodeMenu } from "./panels/EpisodeMenu";
 
 /** What the board asks of the project; each may fail with an error the board shows. */
 export interface BoardHost {
@@ -44,40 +53,45 @@ interface Shown {
   cards: ReadonlySet<string>;
   edges: ReadonlySet<string>;
   far: boolean;
-  zoom: number;
   stage?: BoardStage;
 }
 
-type Press =
-  | { kind: "pan"; pointerId: number; start: CanvasPoint; origin: BoardView }
-  | { kind: "card"; pointerId: number; start: CanvasPoint; origin: BoardView; card: BoardCard; dragging: boolean };
+interface StackEpisode {
+  episode: number;
+  title: string;
+  unfolded: boolean;
+  status?: ProductionEpisodeStatus;
+}
 
 type PendingFocus = { nodeId: string } | { episode: number };
 
-const remembered = new Map<string, { view: BoardView; opened: number[] }>();
-const NOTHING_SHOWN: Shown = { cards: new Set(), edges: new Set(), far: false, zoom: 1 };
+const remembered = new Map<string, { cam: Cam; opened: number[] }>();
+const NOTHING_SHOWN: Shown = { cards: new Set(), edges: new Set(), far: false };
+const NO_STAGES: ReadonlySet<BoardStage> = new Set();
 const CULL_MARGIN = 480;
-const DRAG_THRESHOLD = 4;
-const PAN_STEP = 80;
-const KEY_ZOOM = 1.2;
-const GRID = 28;
-const FOCUS_ZOOM = 0.8;
-const MINIMAP_UNFOLDS_FROM = 720;
-const CHROME = "[data-board-chrome], [data-board-overlay]";
+/** The room the overlay's side panel takes from the board's right edge until the board has measured it. */
+const PANEL_ROOM_PX = 320;
+const MINIMAP_FROM_WIDTH = 520;
+const TOAST_MS = 2600;
+const HINT_MS = 9000;
+const FIT_MS = 800;
+const STAGE_MS = 950;
+const FOCUS_MS = 700;
+const ZOOM_MS = 220;
+const OPENING_MS = 1400;
+const REVEAL_FIRST_MS = 200;
+const REVEAL_STEP_MS = 240;
+const OPENING_AFTER_MS = 700;
+const BOT_ZOOM = 0.8;
+const STACK_MENU = { width: 288, height: 320, gap: 8 };
 
-/** The room the overlay takes from the board's right edge: the width it marks on the element it draws beside that edge
- * (`data-board-room`, its panel or its folded button, the gap already counted in), else the panel's width. */
-function markedRoom(layer: HTMLElement): number {
-  let width = 0;
-  for (const room of layer.querySelectorAll<HTMLElement>("[data-board-room]")) width = Math.max(width, room.getBoundingClientRect().width);
-  return width > 0 ? Math.round(width) : PANEL_ROOM_PX;
-}
-
-/** Controls that use a pressed pointer's movement themselves: a field selects text, a player scrubs, a link starts the browser's own drag. */
-const HOLDS_POINTER = "a[href], input, textarea, select, video[controls], audio[controls], [contenteditable]";
-const TYPING = "input, textarea, select, [contenteditable], [role=dialog], [role=menu], [data-canvas-shortcuts-ignore]";
-
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const sameSet = (set: ReadonlySet<string>, ids: readonly string[]) => set.size === ids.length && ids.every((id) => set.has(id));
+const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+
+function reducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.dataset.reducedMotion === "true";
+}
 
 /** The card a click opens: a bot's chat, or the details of what the card shows. */
 function openedBy(card: BoardCard): BoardOpened | null {
@@ -99,89 +113,119 @@ function openedBy(card: BoardCard): BoardOpened | null {
   }
 }
 
-function openingView(board: Board, layout: BoardLayout, size: { width: number; height: number }, focusBotId: string | undefined): BoardView {
-  const bot = focusBotId ? layout.rects.get(botNodeId(focusBotId)) : undefined;
-  if (bot) return centreOn(bot, size, FOCUS_ZOOM);
-  const writer = board.cards.find((card) => card.kind === "bot" && card.stage === "script");
+/** The brief's stage and the writer, left-aligned when they do not fit. */
+function openingView(board: Board, layout: BoardLayout, size: Size): Cam {
+  const first = layout.stages.brief ?? layout.bounds;
+  const writer = board.cards.find((card) => card.kind === "bot" && !card.lead && card.job === "script" && card.episode === undefined);
   const writerRect = writer ? layout.rects.get(writer.id) : undefined;
-  const brief = layout.stages.brief;
-  const rect = unionRect([brief, writerRect].filter((one): one is BoardRect => Boolean(one))) ?? layout.bounds;
-  return fitRect(rect, size, { minZoom: 0.5, maxZoom: 0.95 });
+  const rect = writerRect ? { ...first, w: writerRect.x + writerRect.w - first.x } : first;
+  return fitRect(rect, size, { pad: 20, top: 76, minZ: size.height < 700 ? 0.5 : 0.6, maxZ: 0.95, anchorLeft: true });
 }
 
-function scrollsInside(target: Element, root: Element): boolean {
-  for (let at: Element | null = target; at && at !== root; at = at.parentElement) {
-    if (at.scrollHeight > at.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(at).overflowY)) return true;
-  }
-  return false;
+const RESULT_STATE: Record<BoardVideoStatus, MinimapItem["state"]> = { idle: "waiting", generating: "working", failed: "failed", done: "done" };
+
+function minimapState(card: BoardCard, snapshot: CanvasSnapshot): MinimapItem["state"] {
+  if (card.kind === "bot") return toneState(botStatus(snapshot.bots[card.botId] ?? { status: card.status }, card.jobStatus).tone);
+  if (card.kind === "result") return RESULT_STATE[card.status];
+  return undefined;
 }
 
-/** The project's production on one board: the bots and what each made, in stages from left to right, and the lines of
- * work between them. Its camera pans and zooms; it draws only the cards in view, and labels in their place zoomed out. */
+/** The width the overlay marks on what it draws beside the board's right edge (`data-board-room`), else the panel's. */
+function markedRoom(layer: HTMLElement): number {
+  let width = 0;
+  for (const room of layer.querySelectorAll<HTMLElement>("[data-board-room]")) width = Math.max(width, room.getBoundingClientRect().width);
+  return width > 0 ? Math.round(width) : PANEL_ROOM_PX;
+}
+
+/** The project's production on the mockup's canvas: the bots and what each made, in stages from left to right, and the
+ * lines of work between them. The camera writes to the DOM itself; React draws only the cards near the screen. */
 export function ProductionBoard({ projectId, snapshot, backend, looks, host, opened, onOpenedChange, overlay: Overlay, focusBotId }: ProductionBoardProps) {
   const memory = remembered.get(projectId);
   const readOnly = Boolean(snapshot.readOnly);
-  const [camera] = useState(() => new BoardCamera(memory?.view ?? { x: 0, y: 0, k: 1 }));
+  const [camera] = useState(() => new CameraStore(memory?.cam ?? { x: 0, y: 0, z: 1 }));
+  const [heights] = useState(() => new Heights());
+  const [heightsVersion, setHeightsVersion] = useState(0);
   const [openedEpisodes, setOpenedEpisodes] = useState<ReadonlySet<number>>(() => new Set(memory?.opened ?? []));
-  const [drag, setDrag] = useState<{ cardId: string; dx: number; dy: number } | null>(null);
+  const [drag, setDrag] = useState<BoardDrag | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [showRefs, setShowRefs] = useState(false);
-  const [wide, setWide] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [caption, setCaption] = useState<BoardStage | null>(null);
+  const [stageVisits, setStageVisits] = useState(0);
+  const [entering, setEntering] = useState<ReadonlySet<BoardStage>>(NO_STAGES);
   const [minimapChoice, setMinimapChoice] = useState<boolean | null>(null);
-  const minimap = minimapChoice ?? wide;
   const [boardWidth, setBoardWidth] = useState(0);
-  const [toolbarWidth, setToolbarWidth] = useState(0);
   const [stackMenu, setStackMenu] = useState<CanvasPoint | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   const [reserve, setReserve] = useState(PANEL_ROOM_PX);
   const [shown, setShown] = useState<Shown>(NOTHING_SHOWN);
   const rootRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const press = useRef<Press | null>(null);
-  const pressMovedCard = useRef(false);
   const placed = useRef(Boolean(memory));
+  const userMoved = useRef(false);
   const pendingFocus = useRef<PendingFocus | null>(null);
+  const pendingStage = useRef<BoardStage | null>(null);
   const viewListeners = useRef(new Set<() => void>());
-  const cullFrame = useRef(0);
+  const toastKey = useRef(0);
+  const lastRects = useRef<ReadonlyMap<string, Rect>>(new Map());
 
   const board = useMemo(() => buildBoard(snapshot, { opened: openedEpisodes }), [snapshot, openedEpisodes]);
-  const layout = useMemo(() => layoutBoard(board, cardSize), [board]);
+  const layout = useMemo(() => {
+    void heightsVersion;
+    const next = layoutBoard(board, heights.of);
+    for (const [id, rect] of next.rects) {
+      const before = lastRects.current.get(id);
+      if (before && sameRect(before, rect)) next.rects.set(id, before);
+    }
+    lastRects.current = next.rects;
+    return next;
+  }, [board, heights, heightsVersion]);
   const cards = useMemo(() => new Map(board.cards.map((card) => [card.id, card])), [board]);
   const kinds = useMemo(() => new Map(board.cards.map((card) => [card.id, card.kind])), [board]);
+  const stageOf = useMemo(() => new Map(board.cards.map((card) => [card.id, card.stage])), [board]);
+  const refOrder = useMemo(() => new Map(board.edges.filter((edge) => edge.kind === "ref").map((edge, at) => [edge.id, at])), [board]);
   const rects = useMemo(() => {
     const rect = drag ? layout.rects.get(drag.cardId) : undefined;
     if (!drag || !rect) return layout.rects;
     return new Map(layout.rects).set(drag.cardId, { ...rect, x: rect.x + drag.dx, y: rect.y + drag.dy });
   }, [layout, drag]);
+
   const openedCard = opened ? (opened.kind === "bot" ? botNodeId(opened.botId) : board.cardOfNode.get(opened.nodeId)) : undefined;
-  const focus = hovered ?? openedCard;
-  const edges = useMemo(() => visibleEdges(board.edges, { showRefs, focus: focus ?? null }), [board, showRefs, focus]);
-  const paths = useMemo(() => edgePaths(edges, rects, cards), [edges, rects, cards]);
+  const selected = openedCard && cards.has(openedCard) ? openedCard : undefined;
+  const { related, lit } = useMemo(() => {
+    const near = new Set<string>();
+    const on = new Set<string>();
+    if (selected) {
+      for (const edge of board.edges) {
+        if (edge.from !== selected && edge.to !== selected) continue;
+        on.add(edge.id);
+        near.add(edge.from === selected ? edge.to : edge.from);
+      }
+    }
+    return { related: near, lit: on };
+  }, [board, selected]);
+  const focus = hovered ?? selected ?? null;
+  const edges = useMemo(() => visibleEdges(board.edges, { showRefs, focus }), [board, showRefs, focus]);
+  const paths = useMemo(() => edgePaths(edges, rects, kinds), [edges, rects, kinds]);
 
-  const edgeItems = useMemo(() => edges.flatMap((edge) => {
-    const path = shown.edges.has(edge.id) ? paths.get(edge.id) : undefined;
-    return path ? [{ edge, path }] : [];
-  }), [edges, paths, shown.edges]);
-
-  const latest = useRef({ board, layout, rects, paths, opened, openedEpisodes, onOpenedChange, host, focusBotId });
-  latest.current = { board, layout, rects, paths, opened, openedEpisodes, onOpenedChange, host, focusBotId };
+  const latest = useRef({ board, layout, rects, paths, opened, openedEpisodes, onOpenedChange, host, focusBotId, cards });
+  latest.current = { board, layout, rects, paths, opened, openedEpisodes, onOpenedChange, host, focusBotId, cards };
 
   const cull = useCallback(() => {
-    cullFrame.current = 0;
-    const view = camera.view;
-    const area = visibleRect(view, camera.size, CULL_MARGIN);
-    const { rects: drawn, paths: lines } = latest.current;
+    const { cam, size } = camera;
+    if (!size.width) return;
+    const area = visibleWorld(cam, size, CULL_MARGIN);
+    const { rects: drawn, paths: lines, layout: placedLayout } = latest.current;
     const cardIds: string[] = [];
     for (const [id, rect] of drawn) if (intersects(rect, area)) cardIds.push(id);
     const edgeIds: string[] = [];
     for (const [id, path] of lines) if (intersects(path.bounds, area)) edgeIds.push(id);
-    const far = view.k <= FAR_ZOOM;
-    const zoom = far ? Math.round(view.k * 100) / 100 : 1;
-    const stage = stageNearest(latest.current.layout.stages, { x: -view.x / view.k + camera.size.width / 2 / view.k, y: -view.y / view.k + camera.size.height / 2 / view.k });
-    setShown((last) => (last.far === far && last.zoom === zoom && last.stage === stage && sameSet(last.cards, cardIds) && sameSet(last.edges, edgeIds) ? last : { cards: new Set(cardIds), edges: new Set(edgeIds), far, zoom, stage }));
+    const far = cam.z < FAR;
+    const stage = stageAt(placedLayout.stages, { x: (size.width / 2 - cam.x) / cam.z, y: (size.height / 2 - cam.y) / cam.z }, cam.z);
+    setShown((last) => (last.far === far && last.stage === stage && sameSet(last.cards, cardIds) && sameSet(last.edges, edgeIds) ? last : { cards: new Set(cardIds), edges: new Set(edgeIds), far, ...(stage ? { stage } : {}) }));
   }, [camera]);
 
   const notifyView = useCallback(() => {
@@ -190,20 +234,21 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
 
   useEffect(() => {
     const paint = () => {
-      const { x, y, k } = camera.view;
+      const { x, y, z } = camera.cam;
       const world = worldRef.current;
-      if (world) {
-        world.style.transform = `translate(${x}px, ${y}px) scale(${k})`;
-        world.style.setProperty("--board-zoom", String(k));
+      if (world) world.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
+      const stage = stageRef.current;
+      if (stage) {
+        const step = gridStep(z);
+        const { ew, ls } = lineScale(z);
+        stage.style.setProperty("--gs", `${step}px`);
+        stage.style.setProperty("--gx", `${x % step}px`);
+        stage.style.setProperty("--gy", `${y % step}px`);
+        stage.style.setProperty("--ew", String(ew));
+        stage.style.setProperty("--ls", String(ls));
       }
-      const root = rootRef.current;
-      if (root) {
-        const step = GRID * k * (GRID * k < 10 ? 5 : 1);
-        root.style.backgroundSize = `${step}px ${step}px`;
-        root.style.backgroundPosition = `${x}px ${y}px`;
-      }
-      remembered.set(projectId, { view: camera.view, opened: [...latest.current.openedEpisodes] });
-      if (!cullFrame.current) cullFrame.current = requestAnimationFrame(cull);
+      remembered.set(projectId, { cam: camera.cam, opened: [...latest.current.openedEpisodes] });
+      cull();
       notifyView();
     };
     paint();
@@ -211,25 +256,48 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     return () => {
       stop();
       camera.stop();
-      if (cullFrame.current) cancelAnimationFrame(cullFrame.current);
-      cullFrame.current = 0;
     };
   }, [camera, cull, notifyView, projectId]);
 
   useEffect(() => {
-    remembered.set(projectId, { view: camera.view, opened: [...openedEpisodes] });
+    remembered.set(projectId, { cam: camera.cam, opened: [...openedEpisodes] });
   }, [camera, openedEpisodes, projectId]);
 
-  const focusRect = useCallback((rect: BoardRect, zoom?: number) => {
-    if (!camera.size.width) return;
-    const k = zoom ?? (camera.view.k >= 0.5 && camera.view.k <= 1.25 ? camera.view.k : FOCUS_ZOOM);
-    camera.glide(centreOn(rect, camera.size, k));
+  const say = useCallback((text: string, icon?: LucideIcon) => {
+    toastKey.current += 1;
+    setToast({ text, key: toastKey.current, ...(icon ? { icon } : {}) });
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setTouched(true), HINT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const userActed = useCallback(() => {
+    camera.stop();
+    userMoved.current = true;
+    setTouched(true);
+    setCaption(null);
   }, [camera]);
 
-  const focusLane = useCallback((episode: number) => {
-    const lane = latest.current.layout.lanes.get(episode);
-    if (lane && camera.size.width) camera.glide(fitRect(lane, camera.size, { minZoom: 0.3, maxZoom: 0.9 }));
+  const focusRect = useCallback((rect: Rect) => {
+    if (camera.size.width) camera.glide(centreOn(rect, camera.size, clamp(camera.cam.z, 0.72, 1.05)), FOCUS_MS);
   }, [camera]);
+
+  const focusBlock = useCallback((episode: number) => {
+    const { layout: placedLayout, board: shownBoard, rects: drawn } = latest.current;
+    const block = placedLayout.blocks.get(episode);
+    if (block && camera.size.width) return camera.glide(fitRect(block, camera.size, { minZ: 0.3, maxZ: 0.9 }), FIT_MS);
+    const card = shownBoard.cards.find((one) => one.kind === "episode" && one.episode === episode);
+    const rect = card ? drawn.get(card.id) : undefined;
+    if (rect) focusRect(rect);
+  }, [camera, focusRect]);
 
   const unfold = useCallback((episode: number, then: PendingFocus) => {
     pendingFocus.current = then;
@@ -247,16 +315,26 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
 
   const focusEpisode = useCallback((episode: number) => {
     if (latest.current.board.folded.includes(episode)) unfold(episode, { episode });
-    else focusLane(episode);
-  }, [focusLane, unfold]);
+    else focusBlock(episode);
+  }, [focusBlock, unfold]);
 
-  const focusStage = useCallback((stage: BoardStage) => {
-    const rect = latest.current.layout.stages[stage];
-    if (rect && camera.size.width) camera.glide(fitRect(rect, camera.size, { minZoom: 0.12, maxZoom: 1 }));
-  }, [camera]);
+  const goToStage = useCallback((stage: BoardStage) => {
+    pendingStage.current = stage;
+    setCaption(stage);
+    setStageVisits((count) => count + 1);
+  }, []);
+
+  useLayoutEffect(() => {
+    const stage = pendingStage.current;
+    pendingStage.current = null;
+    const rect = stage ? latest.current.layout.stages[stage] : undefined;
+    if (!rect || !camera.size.width) return;
+    const note = stageRef.current?.querySelector<HTMLElement>(".caption");
+    camera.glide(fitRect(rect, camera.size, { pad: 28, minZ: 0.18, maxZ: 0.9, top: 62 + (note?.offsetHeight ?? 0) + 20 }), STAGE_MS);
+  }, [camera, stageVisits]);
 
   const fitAll = useCallback(() => {
-    if (camera.size.width) camera.glide(fitRect(latest.current.layout.bounds, camera.size, { maxZoom: 1 }));
+    if (camera.size.width) camera.glide(fitRect(latest.current.layout.bounds, camera.size, { pad: 24, maxZ: 0.7 }), FIT_MS);
   }, [camera]);
 
   useLayoutEffect(() => {
@@ -265,44 +343,58 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     const pending = pendingFocus.current;
     if (!pending) return;
     pendingFocus.current = null;
-    if ("episode" in pending) focusLane(pending.episode);
+    if ("episode" in pending) focusBlock(pending.episode);
     else focusNode(pending.nodeId);
-  }, [cull, notifyView, rects, paths, focusLane, focusNode]);
+  }, [cull, notifyView, rects, paths, focusBlock, focusNode]);
+
+  const openingTimers = useRef<number[]>([]);
+  useEffect(() => () => {
+    for (const timer of openingTimers.current) clearTimeout(timer);
+  }, []);
+
+  const open = useCallback(() => {
+    const arrival = (): Cam => {
+      const { board: shownBoard, layout: placedLayout, focusBotId: bot } = latest.current;
+      const rect = bot ? placedLayout.rects.get(botNodeId(bot)) : undefined;
+      return rect ? centreOn(rect, camera.size, BOT_ZOOM) : openingView(shownBoard, placedLayout, camera.size);
+    };
+    if (reducedMotion()) return camera.set(arrival());
+    camera.set(fitRect(latest.current.layout.bounds, camera.size, { pad: 24, maxZ: 0.7 }));
+    setEntering(new Set(BOARD_STAGES));
+    const timers = BOARD_STAGES.map((stage, at) => window.setTimeout(() => {
+      setEntering((current) => new Set([...current].filter((one) => one !== stage)));
+    }, REVEAL_FIRST_MS + at * REVEAL_STEP_MS));
+    timers.push(window.setTimeout(() => {
+      if (!userMoved.current) camera.glide(arrival(), OPENING_MS);
+    }, REVEAL_FIRST_MS + BOARD_STAGES.length * REVEAL_STEP_MS + OPENING_AFTER_MS));
+    openingTimers.current = timers;
+  }, [camera]);
 
   useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
+    const element = viewportRef.current;
+    if (!element) return;
+    let last: Size | null = null;
     const resize = (width: number, height: number) => {
-      if (!width || !height) return;
+      if (!width || !height || (last && last.width === width && last.height === height)) return;
+      const before = last;
+      last = { width, height };
+      camera.size = last;
       setBoardWidth(width);
-      setWide(width >= MINIMAP_UNFOLDS_FROM);
-      camera.size = { width, height };
       if (!placed.current) {
         placed.current = true;
-        const { board: shownBoard, layout: shownLayout, focusBotId: bot } = latest.current;
-        camera.set(openingView(shownBoard, shownLayout, camera.size, bot));
-      } else camera.notify();
+        open();
+      } else if (before && !camera.animating) {
+        camera.set({ ...camera.cam, x: camera.cam.x + (width - before.width) / 2, y: camera.cam.y + (height - before.height) / 2 });
+      } else camera.set(camera.cam);
     };
-    resize(root.clientWidth, root.clientHeight);
-    if (typeof ResizeObserver !== "function") return;
+    resize(element.clientWidth, element.clientHeight);
     const observer = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
       if (box) resize(box.width, box.height);
     });
-    observer.observe(root);
+    observer.observe(element);
     return () => observer.disconnect();
-  }, [camera]);
-
-  useLayoutEffect(() => {
-    const bar = toolbarRef.current;
-    if (!bar) return;
-    const measure = () => setToolbarWidth(Number(bar.offsetWidth) || 0);
-    measure();
-    if (typeof ResizeObserver !== "function") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, []);
+  }, [camera, open]);
 
   const focusedBot = useRef(focusBotId);
   useEffect(() => {
@@ -316,50 +408,51 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
     if (!layer) return;
     let rooms: HTMLElement[] = [];
     const measure = () => setReserve(markedRoom(layer));
-    const sizes = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : undefined;
+    const sizes = new ResizeObserver(measure);
     const watch = () => {
       const marked = [...layer.querySelectorAll<HTMLElement>("[data-board-room]")];
       if (marked.length !== rooms.length || marked.some((room, at) => room !== rooms[at])) {
-        for (const room of rooms) sizes?.unobserve(room);
+        for (const room of rooms) sizes.unobserve(room);
         rooms = marked;
-        for (const room of rooms) sizes?.observe(room);
+        for (const room of rooms) sizes.observe(room);
       }
       measure();
     };
-    const mutations = typeof MutationObserver === "function" ? new MutationObserver(watch) : undefined;
-    mutations?.observe(layer, { childList: true, subtree: true, attributes: true });
+    const mutations = new MutationObserver(watch);
+    mutations.observe(layer, { childList: true, subtree: true, attributes: true });
     watch();
     return () => {
-      mutations?.disconnect();
-      sizes?.disconnect();
+      mutations.disconnect();
+      sizes.disconnect();
     };
   }, []);
 
-  useEffect(() => {
-    if (!notice) return;
-    const timer = setTimeout(() => setNotice(null), 5000);
-    return () => clearTimeout(timer);
-  }, [notice]);
-
   const attempt = useCallback((work: () => Promise<void>) => {
-    work().catch((error: unknown) => setNotice(t("productionBoard.actionFailed", { reason: canvasErrorText(error) })));
-  }, []);
+    work().catch((error: unknown) => say(t("productionBoard.actionFailed", { reason: canvasErrorText(error) }), CircleAlert));
+  }, [say]);
 
   const openStack = useCallback(() => {
-    const stack = latest.current.rects.get("stack");
-    if (!stack) return;
-    const screen = toScreen(stack, camera.view);
-    const x = Math.min(Math.max(8, screen.x + screen.width + 8), Math.max(8, camera.size.width - 296));
-    const y = Math.min(Math.max(8, screen.y), Math.max(8, camera.size.height - 340));
-    setStackMenu({ x, y });
+    const { board: shownBoard, rects: drawn } = latest.current;
+    const stack = shownBoard.cards.find((card) => card.kind === "stack");
+    const rect = stack ? drawn.get(stack.id) : undefined;
+    if (!rect) return;
+    const screen = toScreen(rect, camera.cam);
+    const { width, height } = camera.size;
+    setStackMenu({
+      x: clamp(screen.x + screen.w + STACK_MENU.gap, STACK_MENU.gap, Math.max(STACK_MENU.gap, width - STACK_MENU.width - STACK_MENU.gap)),
+      y: clamp(screen.y, STACK_MENU.gap, Math.max(STACK_MENU.gap, height - STACK_MENU.height - STACK_MENU.gap)),
+    });
   }, [camera]);
 
-  const actions = useMemo<BoardCardActions>(() => ({
-    open: (card) => {
-      const next = openedBy(card);
-      if (next) latest.current.onOpenedChange(next);
+  const actions = useMemo<NodeActions>(() => ({
+    focusCard: (cardId) => {
+      const { cards: byId, rects: drawn, onOpenedChange: openWith } = latest.current;
+      const card = byId.get(cardId);
+      if (card?.kind === "bot") openWith({ kind: "bot", botId: card.botId });
+      const rect = drawn.get(cardId);
+      if (rect) focusRect(rect);
     },
-    fileUrl: (file) => latest.current.host.fileUrl(file),
+    openChat: (botId) => latest.current.onOpenedChange({ kind: "bot", botId }),
     openStack,
     ...(readOnly ? {} : {
       generate: (nodeId: string) => attempt(() => latest.current.host.generate(nodeId)),
@@ -367,113 +460,65 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
       retry: (target: RetryTarget) => attempt(() => latest.current.host.retry(target)),
     }),
     openDraft: () => attempt(() => latest.current.host.openDraft()),
-  }), [attempt, openStack, readOnly]);
+  }), [attempt, focusRect, openStack, readOnly]);
 
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const onWheel = (event: WheelEvent) => {
-      const target = event.target as Element;
-      if (target.closest(CHROME)) return;
-      const pinch = event.ctrlKey || event.metaKey;
-      if (!pinch && target.closest("[data-board-card-id]") && scrollsInside(target, root)) return;
-      event.preventDefault();
-      setTouched(true);
-      const box = root.getBoundingClientRect();
-      camera.set(zoomAt(camera.view, wheelZoomFactor(event.deltaY, pinch), { x: event.clientX - box.left, y: event.clientY - box.top }));
+  const takeOf = useMemo(() => {
+    const takes = new Map<string, BoardTake | undefined>();
+    for (const card of board.cards) if (card.kind === "result") takes.set(card.shotId, card.takes.find((take) => take.selected) ?? card.takes.at(-1));
+    return (shotId: string) => takes.get(shotId);
+  }, [board]);
+
+  const ctx = useMemo<NodeContext>(() => ({
+    snapshot,
+    looks,
+    fileUrl: (file) => latest.current.host.fileUrl(file),
+    takeOf,
+    actions,
+  }), [snapshot, looks, takeOf, actions]);
+
+  const onHeight = useCallback((cardId: string, height: number) => {
+    const card = latest.current.cards.get(cardId);
+    if (card && heights.set(cardId, card.kind, height)) setHeightsVersion((version) => version + 1);
+  }, [heights]);
+
+  const inputNow: BoardInputLatest = {
+    cards,
+    rects: layout.rects,
+    readOnly,
+    onActivate: (card) => {
+      if (card.kind === "stack") return openStack();
+      const next = openedBy(card);
+      if (next) onOpenedChange(next);
+    },
+    onBlank: () => onOpenedChange(null),
+    onMove: (card, position) => {
+      if (card.dragNodeId) host.move(card.dragNodeId, position);
+    },
+    onDrag: setDrag,
+    onUserActed: userActed,
+    onStage: goToStage,
+    onFitAll: fitAll,
+    onEscape: () => {
+      if (opened) onOpenedChange(null);
+    },
+  };
+  const inputLatest = useRef(inputNow);
+  inputLatest.current = inputNow;
+  const input = useBoardInput(camera, viewportRef, rootRef, inputLatest);
+
+  const subscribeView = useCallback((listener: () => void) => {
+    viewListeners.current.add(listener);
+    return () => {
+      viewListeners.current.delete(listener);
     };
-    root.addEventListener("wheel", onWheel, { passive: false });
-    return () => root.removeEventListener("wheel", onWheel);
-  }, [camera]);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const root = rootRef.current;
-      const active = document.activeElement;
-      if (!root || event.defaultPrevented || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
-      if (active && active !== document.body && !root.contains(active)) return;
-      if (active instanceof Element && (active.closest(TYPING) || active.closest("[data-board-overlay]"))) return;
-      const centre = { x: camera.size.width / 2, y: camera.size.height / 2 };
-      const view = camera.view;
-      const pans: Record<string, [number, number]> = { ArrowLeft: [PAN_STEP, 0], ArrowRight: [-PAN_STEP, 0], ArrowUp: [0, PAN_STEP], ArrowDown: [0, -PAN_STEP] };
-      const stage = /^[1-5]$/.test(event.key) ? BOARD_STAGES[Number(event.key) - 1] : undefined;
-      if (pans[event.key]) camera.set({ ...view, x: view.x + pans[event.key]![0], y: view.y + pans[event.key]![1] });
-      else if (event.key === "+" || event.key === "=") camera.glide(zoomAt(view, KEY_ZOOM, centre));
-      else if (event.key === "-") camera.glide(zoomAt(view, 1 / KEY_ZOOM, centre));
-      else if (event.key === "0") fitAll();
-      else if (stage) focusStage(stage);
-      else if (event.key === "Escape" && latest.current.opened) latest.current.onOpenedChange(null);
-      else return;
-      event.preventDefault();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [camera, fitAll, focusStage]);
-
-  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
-    if (press.current || (event.button !== 0 && event.button !== 1)) return;
-    pressMovedCard.current = false;
-    const target = event.target as Element;
-    if (target.closest(CHROME)) return;
-    setTouched(true);
-    const start = { x: event.clientX, y: event.clientY };
-    const cardElement = event.button === 0 ? target.closest<HTMLElement>("[data-board-card-id]") : null;
-    if (cardElement) {
-      const card = cards.get(cardElement.dataset.boardCardId ?? "");
-      if (card && !target.closest(HOLDS_POINTER)) press.current = { kind: "card", pointerId: event.pointerId, start, origin: camera.view, card, dragging: false };
-      return;
-    }
-    event.preventDefault();
-    rootRef.current?.focus({ preventScroll: true });
-    camera.stop();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    press.current = { kind: "pan", pointerId: event.pointerId, start, origin: camera.view };
-  };
-
-  const onPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-    const current = press.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    const dx = event.clientX - current.start.x;
-    const dy = event.clientY - current.start.y;
-    if (current.kind === "card" && !current.dragging) {
-      if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-      pressMovedCard.current = true;
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      if (!current.card.dragNodeId || readOnly) {
-        press.current = { kind: "pan", pointerId: current.pointerId, start: current.start, origin: current.origin };
-      } else current.dragging = true;
-    }
-    const now = press.current!;
-    if (now.kind === "pan") camera.set({ ...now.origin, x: now.origin.x + dx, y: now.origin.y + dy });
-    else setDrag({ cardId: now.card.id, dx: dx / camera.view.k, dy: dy / camera.view.k });
-  };
-
-  const onPointerEnd = (event: ReactPointerEvent<HTMLElement>) => {
-    const current = press.current;
-    if (!current || current.pointerId !== event.pointerId) return;
-    press.current = null;
-    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (current.kind !== "card" || !current.dragging) return;
-    const rect = layout.rects.get(current.card.id);
-    const k = camera.view.k;
-    const dx = (event.clientX - current.start.x) / k;
-    const dy = (event.clientY - current.start.y) / k;
-    if (rect && current.card.dragNodeId && event.type === "pointerup") host.move(current.card.dragNodeId, { x: Math.round(rect.x + dx), y: Math.round(rect.y + dy) });
-    setDrag(null);
-  };
-
-  const onClickCapture = (event: ReactMouseEvent<HTMLElement>) => {
-    if (!pressMovedCard.current) return;
-    pressMovedCard.current = false;
-    event.stopPropagation();
-    event.preventDefault();
-  };
+  }, []);
 
   const overlayProps = useMemo<BoardOverlayProps>(() => ({
     projectId,
     snapshot,
     backend,
     opened,
+    board,
     open: (what) => latest.current.onOpenedChange(what),
     close: () => latest.current.onOpenedChange(null),
     anchorOf: (nodeId): BoardAnchor | null => {
@@ -482,143 +527,133 @@ export function ProductionBoard({ projectId, snapshot, backend, looks, host, ope
       if (episode !== undefined && shownBoard.folded.includes(episode)) return null;
       const cardId = shownBoard.cardOfNode.get(nodeId);
       const rect = cardId ? drawn.get(cardId) : undefined;
-      if (!rect || !camera.size.width) return null;
-      const screen = toScreen(rect, camera.view);
-      return intersects(screen, { x: 0, y: 0, width: camera.size.width, height: camera.size.height }) ? screen : null;
+      const { width, height } = camera.size;
+      if (!rect || !width) return null;
+      const screen = toScreen(rect, camera.cam);
+      return intersects(screen, { x: 0, y: 0, w: width, h: height }) ? { x: screen.x, y: screen.y, width: screen.w, height: screen.h } : null;
     },
-    subscribeView: (listener) => {
-      viewListeners.current.add(listener);
-      return () => {
-        viewListeners.current.delete(listener);
-      };
-    },
+    subscribeView,
     focusNode,
     focusEpisode,
-    focusStage,
-  }), [projectId, snapshot, backend, opened, camera, focusNode, focusEpisode, focusStage]);
+    focusStage: goToStage,
+    zoom: () => camera.cam.z,
+  }), [projectId, snapshot, backend, opened, board, camera, subscribeView, focusNode, focusEpisode, goToStage]);
 
-  const stackEpisodes = useMemo((): StackMenuEpisode[] => {
+  const stackEpisodes = useMemo((): StackEpisode[] => {
     const inWork = new Set(board.unfolded.filter((episode) => !openedEpisodes.has(episode)));
-    const titles = new Map<number, StackMenuEpisode>();
+    const titles = new Map<number, StackEpisode>();
     for (const card of board.cards) {
-      if (card.kind === "stack") for (const one of card.episodes) titles.set(one.episode, { episode: one.episode, title: one.title, ...(one.status ? { status: one.status } : {}), unfolded: false });
-      if (card.kind === "episode" && !inWork.has(card.episode)) titles.set(card.episode, { episode: card.episode, title: card.title, ...(card.status ? { status: card.status } : {}), unfolded: true });
+      if (card.kind === "stack") for (const one of card.episodes) titles.set(one.episode, { episode: one.episode, title: one.title, unfolded: false, ...(one.status ? { status: one.status } : {}) });
+      if (card.kind === "episode" && !inWork.has(card.episode)) titles.set(card.episode, { episode: card.episode, title: card.title, unfolded: true, ...(card.status ? { status: card.status } : {}) });
     }
     return [...titles.values()].sort((a, b) => a.episode - b.episode);
   }, [board, openedEpisodes]);
 
   const chooseEpisode = (episode: number) => {
     setStackMenu(null);
-    if (openedEpisodes.has(episode)) {
-      setOpenedEpisodes((current) => new Set([...current].filter((one) => one !== episode)));
-      return;
-    }
-    unfold(episode, { episode });
+    if (openedEpisodes.has(episode)) setOpenedEpisodes((current) => new Set([...current].filter((one) => one !== episode)));
+    else unfold(episode, { episode });
   };
 
+  const drawnCards = useMemo(() => board.cards.flatMap((card): DrawnCard[] => {
+    const rect = rects.get(card.id);
+    return rect && shown.cards.has(card.id) ? [{ card, rect }] : [];
+  }), [board, rects, shown.cards]);
+  const drawnEdges = useMemo(() => edges.flatMap((edge): DrawnEdge[] => {
+    const path = shown.edges.has(edge.id) ? paths.get(edge.id) : undefined;
+    return path ? [{ edge, path, ...(edge.kind === "ref" ? { refIndex: refOrder.get(edge.id) ?? 0 } : {}) }] : [];
+  }), [edges, paths, refOrder, shown.edges]);
+  const minimapItems = useMemo(() => board.cards.flatMap((card): MinimapItem[] => {
+    const rect = layout.rects.get(card.id);
+    const state = minimapState(card, snapshot);
+    return rect ? [{ id: card.id, rect, kind: card.kind, ...(state ? { state } : {}) }] : [];
+  }), [board, layout, snapshot]);
+
   const lead = board.empty ? rects.get(board.cards.find((card) => card.kind === "bot")?.id ?? "") : undefined;
-  const minimapEnd = 12 + (Overlay ? reserve : 0);
-  const minimapMeetsToolbar = boardWidth > 0 && toolbarWidth > 0
-    && boardWidth - minimapEnd - minimapBoxWidth(!wide) < 12 + toolbarWidth + 8;
-  const minimapBottom = minimapMeetsToolbar ? (wide ? 86 : 62) : undefined;
+  const emptyHintAt = useMemo(() => (lead ? { x: lead.x + lead.w / 2 - 160, y: lead.y + lead.h + 24 } : undefined), [lead]);
+  const insetEnd = Overlay ? reserve : 0;
+  const minimap = minimapChoice ?? boardWidth >= MINIMAP_FROM_WIDTH;
+  const zoomBy = (factor: number) => {
+    userActed();
+    camera.glide(zoomAbout(camera.cam, camera.size, factor), ZOOM_MS);
+  };
 
   return (
-    <section
-      ref={rootRef}
-      tabIndex={0}
-      aria-label={t("productionBoard.label")}
-      data-production-board=""
-      data-project-canvas-stage=""
-      className="relative h-full w-full touch-none select-none overflow-hidden bg-app outline-none"
-      style={{ backgroundImage: "radial-gradient(circle, color-mix(in srgb, var(--color-ink) 10%, transparent) 1px, transparent 1.5px)" }}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerEnd}
-      onPointerCancel={onPointerEnd}
-      onClickCapture={onClickCapture}
-    >
-      <div ref={worldRef} dir="ltr" data-board-world="" className="absolute top-0 origin-top-left" style={{ left: 0 }}>
-        <BoardEdges items={edgeItems} far={shown.far} />
-        {board.cards.map((card) => {
-          const rect = rects.get(card.id);
-          if (!rect || !shown.cards.has(card.id)) return null;
-          const isOpened = card.id === openedCard;
-          return (
-            <div
-              key={card.id}
-              data-board-card-id={card.id}
-              data-canvas-node={card.nodeIds[0] ?? card.id}
-              data-opened={isOpened ? "" : undefined}
-              className={cn("absolute rounded-xl", isOpened && "ring-2 ring-accent", drag?.cardId === card.id && "z-10")}
-              style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}
-              onPointerEnter={() => {
-                if (!press.current) setHovered(card.id);
-              }}
-              onPointerLeave={() => setHovered((current) => (current === card.id ? null : current))}
-            >
-              {shown.far ? <FarCard card={card} snapshot={snapshot} zoom={shown.zoom} /> : <BoardCardView card={card} snapshot={snapshot} looks={looks} actions={actions} />}
-            </div>
-          );
-        })}
-        {lead ? (
-          <p data-board-empty-hint="" className="absolute w-80 text-center text-[13px] leading-[18px] text-ink-secondary" style={{ left: lead.x + lead.width / 2 - 160, top: lead.y + lead.height + 24 }}>
-            {t("productionBoard.emptyHint")}
-          </p>
-        ) : null}
-      </div>
-      <BoardStageBar stages={board.stages} viewStage={shown.stage} insetEnd={Overlay ? reserve : 0} onFocus={focusStage} />
-      <div data-board-chrome="" className="pointer-events-none absolute bottom-3 start-3 z-[80] flex flex-col items-start gap-2">
-        {wide ? (
-          <p
-            data-board-hint=""
-            data-board-hint-gone={touched ? "" : undefined}
-            className={cn(
-              "pointer-events-none text-[12px] leading-4 text-ink-tertiary transition-opacity duration-300 motion-reduce:transition-none",
-              touched && "opacity-0",
-            )}
-          >
-            {t("productionBoard.hint")}
-          </p>
-        ) : null}
-        <BoardToolbar
-          camera={camera}
-          showRefs={showRefs}
-          minimap={minimap}
-          compact={!wide}
-          domRef={toolbarRef}
-          onRefs={() => setShowRefs((on) => !on)}
-          onMinimap={() => setMinimapChoice(!minimap)}
-          onZoom={(factor) => camera.glide(zoomAt(camera.view, factor, { x: camera.size.width / 2, y: camera.size.height / 2 }))}
-          onFit={fitAll}
-        />
-      </div>
-      {minimap ? (
-        <BoardMinimap
-          layout={layout}
-          kinds={kinds}
-          camera={camera}
-          insetEnd={Overlay ? reserve : 0}
-          compact={!wide}
-          {...(minimapBottom === undefined ? {} : { bottom: minimapBottom })}
-          onCentre={(point) => camera.set({ ...camera.view, x: camera.size.width / 2 - point.x * camera.view.k, y: camera.size.height / 2 - point.y * camera.view.k })}
-        />
-      ) : null}
-      {stackMenu ? <StackMenu episodes={stackEpisodes} at={stackMenu} onChoose={chooseEpisode} onClose={() => setStackMenu(null)} /> : null}
-      {notice ? (
-        <div data-board-chrome="" className="pointer-events-none absolute inset-x-0 top-14 z-[95] flex justify-center px-3" style={Overlay ? { paddingInlineEnd: 12 + reserve } : undefined}>
-          <div role="status" className="popover-surface pointer-events-auto flex max-w-md items-center gap-2 rounded-xl border border-hairline/50 bg-menu py-1.5 pe-1.5 ps-3 text-[13px] leading-[18px] text-ink">
-            <span className="min-w-0 flex-1">{notice}</span>
-            <button type="button" className="ui-icon-button" aria-label={t("productionBoard.dismiss")} onClick={() => setNotice(null)}>
-              <X size={14} aria-hidden="true" />
-            </button>
+    <section ref={rootRef} className="mj-board" aria-label={t("productionBoard.label")}>
+      <main ref={stageRef} className={cn("stage", shown.far && "lod-far", selected && "has-sel", showRefs && "show-refs")}>
+        <div
+          ref={viewportRef}
+          className={cn("viewport", input.panning && "is-panning")}
+          data-production-board=""
+          tabIndex={0}
+          role="application"
+          aria-label={t("productionBoard.canvas.label")}
+          {...input.handlers}
+        >
+          <div className="grid" aria-hidden="true" />
+          <div ref={worldRef} className="world" data-board-world="" dir="ltr">
+            <World
+              cards={drawnCards}
+              edges={drawnEdges}
+              selectedId={selected}
+              related={related}
+              lit={lit}
+              hoveredId={hovered ?? undefined}
+              draggingId={drag?.cardId}
+              entering={entering}
+              stageOf={stageOf}
+              ctx={ctx}
+              emptyHintAt={emptyHintAt}
+              onHeight={onHeight}
+              onHover={setHovered}
+            />
           </div>
         </div>
-      ) : null}
-      {Overlay ? (
-        <div ref={layerRef} data-board-overlay="" className="pointer-events-none absolute inset-0 z-[90]">
-          <Overlay {...overlayProps} />
+        <div data-board-chrome="">
+          <StageBar stages={board.stages} current={shown.stage} insetEnd={insetEnd} onStage={(stage) => {
+            userActed();
+            goToStage(stage);
+          }} />
+          <Caption stage={caption} />
+          <Toolbar
+            camera={camera}
+            showRefs={showRefs}
+            minimap={minimap}
+            onZoom={zoomBy}
+            onZoomReset={() => zoomBy(1 / camera.cam.z)}
+            onFit={() => {
+              userActed();
+              fitAll();
+            }}
+            onRefs={() => {
+              say(t(showRefs ? "productionBoard.toast.refsOff" : "productionBoard.toast.refsOn"), Waypoints);
+              setShowRefs(!showRefs);
+            }}
+            onMinimap={() => setMinimapChoice(!minimap)}
+          />
+          <p className={cn("hint", touched && "is-gone")}>{t("productionBoard.hint")}</p>
+          {minimap ? (
+            <Minimap
+              world={layout.bounds}
+              items={minimapItems}
+              camera={camera}
+              insetEnd={insetEnd}
+              onJump={(point) => {
+                camera.stop();
+                const { cam, size } = camera;
+                camera.set({ ...cam, x: size.width / 2 - point.x * cam.z, y: size.height / 2 - point.y * cam.z });
+              }}
+            />
+          ) : null}
+          <Toast message={toast} />
         </div>
-      ) : null}
+        {stackMenu ? <EpisodeMenu episodes={stackEpisodes} at={stackMenu} onChoose={chooseEpisode} onClose={() => setStackMenu(null)} /> : null}
+        {Overlay ? (
+          <div ref={layerRef} data-board-overlay="" className="pointer-events-none absolute inset-0 z-[90]">
+            <Overlay {...overlayProps} />
+          </div>
+        ) : null}
+      </main>
     </section>
   );
 }

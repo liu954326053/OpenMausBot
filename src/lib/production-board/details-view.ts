@@ -6,6 +6,7 @@ import type { LocaleKey } from "@/locales";
 import { episodeStatus } from "./status";
 import { assetCode, episodeProgress } from "./asset-words";
 import type { AssetKind, BoardAsset, BoardIndex } from "./board-index";
+import type { Board, BoardCardKind, BoardEdgeKind } from "./types";
 
 const CONTENT_HEADINGS: Partial<Record<AssetKind, LocaleKey>> = {
   character: "boardPanels.details.profile",
@@ -189,6 +190,28 @@ function draftWords(draft: ProjectDraftWire | undefined): string {
   if (draft.state === "written") return t("boardPanels.draft.written", { name: draft.name! });
   if (draft.state === "kept") return t("boardPanels.draft.kept");
   return t(DRAFT_UNAVAILABLE_KEYS[draft.reason!]);
+}
+
+/** A card at the other end of a line; `kind` is the line's. */
+export interface DetailsLink {
+  cardId: string;
+  cardKind: BoardCardKind | undefined;
+  nodeId: string | undefined;
+  botId: string | undefined;
+  title: string;
+  kind: BoardEdgeKind;
+}
+
+/** The cards whose lines lead into a card and out of it, references apart. */
+export function detailsLinks(cardId: string, board: Board, titleOf: (cardId: string) => string): { upstream: DetailsLink[]; downstream: DetailsLink[] } {
+  const link = (otherId: string, kind: BoardEdgeKind): DetailsLink => {
+    const other = board.cards.find((card) => card.id === otherId);
+    return { cardId: otherId, cardKind: other?.kind, nodeId: other?.nodeIds[0], botId: other?.kind === "bot" ? other.botId : undefined, title: titleOf(otherId), kind };
+  };
+  return {
+    upstream: board.edges.filter((edge) => edge.to === cardId).map((edge) => link(edge.from, edge.kind)),
+    downstream: board.edges.filter((edge) => edge.from === cardId && edge.kind !== "ref").map((edge) => link(edge.to, edge.kind)),
+  };
 }
 
 function promptOf(asset: BoardAsset, index: BoardIndex): string | undefined {

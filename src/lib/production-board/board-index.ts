@@ -166,6 +166,12 @@ export function boardIndex(snapshot: CanvasSnapshot): BoardIndex {
 
   const shotOf = new Map<string, BoardAsset>();
   for (const group of shotsByEpisode) for (const shot of group.shots) shotOf.set(shot.node.id, shot);
+  for (const group of shotsByEpisode) {
+    for (const shot of group.shots) {
+      const creation = creationByShot.get(shot.node.id);
+      if (creation) shotOf.set(creation.id, shot);
+    }
+  }
   const sourcesByShot = new Map<BoardAsset, Set<BoardAsset>>();
   const connected = new Map<string, BoardAsset[]>();
   for (const line of snapshot.connections) {

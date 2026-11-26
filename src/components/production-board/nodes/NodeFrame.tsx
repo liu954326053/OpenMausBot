@@ -43,6 +43,7 @@ export function NodeFrame({ card, rect, kind, label, state, vstate, selected, re
       className={cn("node", kind, selected && "is-sel", related && "is-rel", dragging && "is-drag", entering && "pre")}
       data-id={card.id}
       data-board-card-id={card.id}
+      data-canvas-node={card.nodeIds[0] ?? card.id}
       data-board-card={card.kind}
       data-state={state}
       data-vstate={vstate}
