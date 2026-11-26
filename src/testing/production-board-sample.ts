@@ -34,10 +34,10 @@ const CHARACTERS = [
   { id: "lin", name: "林警官", subtitle: "34 岁 · 刑警", tags: ["敏锐"], palette: ["#2d4b73"], rows: [["外形", "深色风衣"]] as Array<[string, string]> },
 ];
 const SCENES = [
-  { id: "rooftop", name: "老城区天台", subtitle: "夜 · 外 · 雨", cameras: 3 },
-  { id: "sorting", name: "分拣站", subtitle: "日 · 内", cameras: 2 },
-  { id: "clock", name: "钟楼", subtitle: "夜 · 外", cameras: 4 },
-  { id: "alley", name: "雨夜街巷", subtitle: "夜 · 外 · 雨", cameras: 2 },
+  { id: "rooftop", name: "老城区天台", subtitle: "夜 · 外 · 雨", cameras: 3, palette: ["#1b2a3a", "#3f5a73", "#e0a64b"] },
+  { id: "sorting", name: "分拣站", subtitle: "日 · 内", cameras: 2, palette: ["#8a8f94", "#d8cfbf"] },
+  { id: "clock", name: "钟楼", subtitle: "夜 · 外", cameras: 4, palette: ["#14181f", "#c9a24a"] },
+  { id: "alley", name: "雨夜街巷", subtitle: "夜 · 外 · 雨", cameras: 2, palette: ["#0f1a24", "#d6336c"] },
 ];
 const EP1_SHOTS = ["天台全景", "阿岚上天台", "包裹特写", "钟楼熄灯", "黑伞人影", "雨幕对视"];
 const EP2_SHOTS = ["分拣站清晨", "老周递包裹", "欲言又止", "钥匙特写", "林警官来访", "门外的伞"];
@@ -156,7 +156,7 @@ export function productionBoardSample({ episodes: count = 60, empty = false }: P
   }
   for (const one of SCENES) {
     nodes.push({ id: `g-${one.id}`, type: "group", title: one.name, ...frame, ...by(BUILDER) });
-    nodes.push({ id: one.id, type: "text", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(BUILDER), metadata: { role: "scene", version: 2, content: `${one.name}。`, card: { subtitle: one.subtitle, cameras: one.cameras } } });
+    nodes.push({ id: one.id, type: "text", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(BUILDER), metadata: { role: "scene", version: 2, content: `${one.name}。`, card: { subtitle: one.subtitle, cameras: one.cameras, palette: one.palette } } });
     nodes.push({ id: `${one.id}-1`, type: "image", title: one.name, ...frame, groupId: `g-${one.id}`, ...by(BUILDER), metadata: { file: png(one.name), naturalWidth: 1536, naturalHeight: 1024, status: "success" } });
   }
   nodes.push({ id: "sorting-dawn", type: "text", title: "分拣站 · 清晨", ...frame, ...by(boarderOf(2)), metadata: { role: "scene", content: "清晨的分拣站，传送带还没开。", card: { subtitle: "晨 · 内" } } });

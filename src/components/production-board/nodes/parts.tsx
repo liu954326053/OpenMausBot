@@ -1,11 +1,13 @@
 import { Bot, Clapperboard, Drama, Megaphone, Mountain, PenLine, Scissors, type LucideIcon } from "lucide-react";
-import { PRODUCTION_JOBS, type ProductionJob } from "../../../../shared/production";
+import { episodeCode, PRODUCTION_JOBS, shotCode, type ProductionJob } from "../../../../shared/production";
 import { botNodeId, type CanvasBotState, type CanvasFileRef, type CanvasSnapshot } from "../../../../shared/project-canvas";
 import { BotAvatar } from "@/components/Avatar";
 import { formatTime } from "@/lib/clock-time";
 import { cn } from "@/lib/cn";
-import type { BoardBotCard, BoardTake, RetryTarget } from "@/lib/production-board/types";
+import { t } from "@/lib/i18n";
+import type { BoardBotCard, BoardGeneration, BoardShotUse, BoardTake, RetryTarget } from "@/lib/production-board/types";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
+import { serverErrorText } from "@/lib/server-error";
 
 export interface NodeActions {
   /** Brings a card into view; a bot's also opens its chat. */
@@ -106,3 +108,18 @@ export function clock(ms: number): string {
 }
 
 export const timeOfDay = (at: number): string => formatTime(at);
+
+export const failureText = (generation: BoardGeneration | undefined): string =>
+  serverErrorText(generation, generation?.errorDetails || t("boardCards.generationFailed"));
+
+/** "C01", "S03": a character's or a scene's place among the project's profiles of its kind. */
+export function profileCode(snapshot: CanvasSnapshot, cardId: string, kind: "character" | "scene"): string {
+  const place = snapshot.nodes.filter((node) => node.type === "text" && node.metadata?.role === kind).findIndex((node) => node.id === cardId) + 1;
+  return `${kind === "character" ? "C" : "S"}${String(place).padStart(2, "0")}`;
+}
+
+/** Shot numbers alone within one episode, each with its episode across several. */
+export function shotList(uses: readonly BoardShotUse[]): string {
+  const across = new Set(uses.map((use) => use.episode)).size > 1;
+  return uses.map((use) => (across ? `${episodeCode(use.episode)} ${shotCode(use.number)}` : shotCode(use.number))).join(" · ");
+}

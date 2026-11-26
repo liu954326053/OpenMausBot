@@ -28,3 +28,25 @@
 .mj-board .k-epmore .pp-head, .mj-board .k-epmore .epm { cursor: pointer; }
 .mj-board .gt[data-ready='false'] { border-color: var(--line-2); color: var(--text-3); }
 .mj-board .stage { position: absolute; inset: 0; }
+.mj-board .k-other { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.mj-board .k-other img, .mj-board .k-other video { border-radius: 6px; }
+.mj-board .sh-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mj-board .rs-screen video, .mj-board .fn-mon video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.mj-board .k-result[data-state='failed'] { border-color: var(--danger); }
+.mj-board .k-result[data-state='failed'] .rs-over > span { color: var(--danger); }
+.mj-board .k-shot[data-vstate='failed'] .st { color: var(--danger); font-weight: 600; }
+.mj-board .rs-takes { display: flex; align-items: center; gap: 6px; padding: 0 6px 8px; }
+.mj-board .rs-takes .take { cursor: pointer; }
+.mj-board .clip[data-s='failed'] { border: 1px dashed var(--danger); background: transparent; }
+.mj-board .rs { display: contents; }
+.mj-board .is-playing .rs-scrub i { animation: none; }
+.mj-board .rs-takes .btn-ghost { margin-left: auto; height: 24px; padding: 0 8px; font-size: 12px; }
+.mj-board .clip[data-s='done'] { background-color: color-mix(in srgb, var(--teal) 25%, transparent); }
+.mj-board .fn-title { pointer-events: none; }
+.mj-board .sh-acts { display: inline-flex; align-items: center; gap: 6px; }
+.mj-board :is(.ch-foot, .sn-meta, .k-other) .btn-ink { border-color: var(--line-2); color: var(--text); }
+.mj-board :is(.ch-foot, .sn-meta, .k-other) .btn-ink:hover { background: var(--text); border-color: var(--text); color: var(--bg); }
+.mj-board .ot-head { display: flex; align-items: center; gap: 6px; font-size: 15px; }
+.mj-board .ot-text { font-size: 13px; line-height: 1.5; color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; }
+.mj-board .ot-fail { font-size: 12px; color: var(--danger); }
+.mj-board .k-other audio { width: 100%; }
