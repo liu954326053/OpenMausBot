@@ -92,7 +92,6 @@ export function ProductionBoardOverlay(props: BoardOverlayProps) {
           zoom={props.zoom}
           focusNode={calls.onLocate}
           onClose={calls.close}
-          locale=""
         />
       ) : null}
       {details && ctx ? (

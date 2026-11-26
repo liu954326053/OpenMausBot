@@ -18,7 +18,7 @@ async function open(botId: string, patch: { readOnly?: boolean; references?: str
   const root = render(createElement("div", { className: "mj-board" }, createElement(ChatWindow, {
     projectId: snapshot.project.id, bot: snapshot.bots[botId]!, look: PRODUCTION_BOARD_LOOKS[botId] ?? { color: "silver" }, index: boardIndex(snapshot), backend,
     readOnly: Boolean(patch.readOnly), references: patch.references, sessions, pictureUrl: (file) => `/files/${file.path}`,
-    layer: { width: patch.stageWidth ?? 1200, height: 800 }, reserved: 0, anchorOf: () => ({ x: 100, y: 100, width: 320, height: 400 }), subscribeView: () => () => {}, zoom: () => 1, onClose, locale: "en",
+    layer: { width: patch.stageWidth ?? 1200, height: 800 }, reserved: 0, anchorOf: () => ({ x: 100, y: 100, width: 320, height: 400 }), subscribeView: () => () => {}, zoom: () => 1, onClose,
   })));
   await act(async () => { await Promise.resolve(); });
   return { box: root.querySelector<HTMLElement>(".bchat")!, sendTask, stopBot, onClose, snapshot, sessions };

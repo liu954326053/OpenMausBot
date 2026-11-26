@@ -57,7 +57,6 @@ export interface ChatWindowProps {
   /** Brings a reference's card into view. */
   focusNode?(cardId: string): void;
   onClose(): void;
-  locale: string;
 }
 
 const QUICK_JOBS = ["lead", "script", "character", "scene", "storyboard", "post"] as const;
