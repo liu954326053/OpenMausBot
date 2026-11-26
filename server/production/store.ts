@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { PRODUCTION_JOBS, type ProductionJob } from "../../shared/production.ts";
+import { PRODUCTION_JOBS, type ProductionJob, type ProductionSource } from "../../shared/production.ts";
 import { writeFileAtomic } from "../atomic.ts";
 
 /** A task the production gave a bot. */
@@ -40,7 +40,7 @@ export interface StoredEpisode {
 export interface StoredProduction {
   startedAt: number;
   endedAt?: number;
-  plan: { assignments: Partial<Record<ProductionJob, string>>; episodes?: number; plannedAt: number };
+  plan: { assignments: Partial<Record<ProductionJob, string>>; episodes?: number; source?: ProductionSource; plannedAt: number };
   tasks: ProductionTask[];
   /** By episode number. */
   episodes: Record<string, StoredEpisode>;
@@ -58,7 +58,14 @@ const taskSchema = z.object({
 });
 const productionSchema = z.object({
   startedAt: z.number(), endedAt: z.number().optional(),
-  plan: z.object({ assignments: z.partialRecord(job, z.string().min(1)), episodes: z.number().int().min(1).optional(), plannedAt: z.number() }),
+  plan: z.object({
+    assignments: z.partialRecord(job, z.string().min(1)), episodes: z.number().int().min(1).optional(),
+    source: z.object({
+      title: z.string().min(1), author: z.string().optional(), tags: z.array(z.string()).optional(), quote: z.string().optional(), from: z.string().optional(),
+      cover: z.object({ path: z.string(), mime: z.string(), bytes: z.number(), name: z.string() }).optional(),
+    }).optional(),
+    plannedAt: z.number(),
+  }),
   tasks: z.array(taskSchema),
   episodes: z.record(z.string().regex(/^\d{1,5}$/), z.object({
     opened: z.literal(true).optional(), storyboardBotId: z.string().min(1).optional(), postBotId: z.string().min(1).optional(), done: z.literal(true).optional(),

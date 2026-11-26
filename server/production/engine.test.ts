@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -270,6 +270,44 @@ describe("the lead's plan", () => {
     expect(world.state.briefs).toHaveLength(2);
     expect(world.sent).toHaveLength(1);
     expect(world.productions.wire("p1")?.plan).toMatchObject({ episodes: 2, assignments: { scene: "faces" } });
+  });
+
+  it("keeps the source the lead names and sends it with the plan", async () => {
+    const world = setup();
+    const source = { title: "Lamps of the Fog Harbour", author: "Nan Du", tags: ["mystery", "46 chapters"], quote: "The lamps had been dark for ten years.", from: "the TXT you uploaded" };
+    await world.plan({ brief: BRIEF, episodes: 3, source });
+    expect(world.productions.wire("p1")?.plan.source).toEqual(source);
+  });
+
+  it("takes the source's cover as a picture in the project folder", async () => {
+    const world = setup();
+    const folder = mkdtempSync(join(tmpdir(), "omb-plan-cover-"));
+    dirs.push(folder);
+    world.project.folder = folder;
+    writeFileSync(join(folder, "cover.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    writeFileSync(join(folder, "notes.txt"), "not a picture");
+    await world.plan({ brief: BRIEF, source: { title: "Lamps", cover: "cover.png" } });
+    expect(world.productions.wire("p1")?.plan.source?.cover).toEqual({ path: "cover.png", mime: "image/png", bytes: 8, name: "cover.png" });
+    const refused = async (cover: string) => canvasRefusalOf(await world.plan({ brief: BRIEF, source: { title: "Lamps", cover } }).catch((error: unknown) => error));
+    expect(await refused("missing.png")).toMatchObject({ status: 404 });
+    expect(await refused("notes.txt")).toMatchObject({ status: 400 });
+    expect(await refused("../cover.png")).toMatchObject({ status: 400 });
+    expect(world.state.briefs).toHaveLength(1);
+  });
+
+  it("refuses a source without a title, with more than four tags or with a quote past 200 characters", async () => {
+    const world = setup();
+    const refused = async (source: unknown) => canvasRefusalOf(await world.plan({ brief: BRIEF, source }).catch((error: unknown) => error));
+    expect(await refused({})).toMatchObject({ status: 400 });
+    expect(await refused({ title: "Lamps", tags: ["a", "b", "c", "d", "e"] })).toMatchObject({ status: 400 });
+    expect(await refused({ title: "Lamps", quote: "x".repeat(201) })).toMatchObject({ status: 400 });
+    expect(world.state.briefs).toEqual([]);
+  });
+
+  it("keeps the source through a restart", async () => {
+    const world = setup();
+    await world.plan({ brief: BRIEF, source: { title: "Lamps" } });
+    expect(setup({ dataDir: world.dataDir }).productions.wire("p1")?.plan.source).toEqual({ title: "Lamps" });
   });
 });
 

@@ -133,6 +133,20 @@ export const PROJECT_CANVAS_TOOL_DEFINITIONS = [
           description: "What you agreed with the person, a label and its value each: the project, the number of episodes and their length, the source, the format, the style.",
         },
         episodes: { type: "integer", minimum: 1, maximum: 500, description: "How many episodes the script bot adapts the source into." },
+        source: {
+          type: "object",
+          additionalProperties: false,
+          description: "The source the drama is adapted from, shown on your card.",
+          properties: {
+            title: cardText,
+            author: cardText,
+            tags: { type: "array", maxItems: 4, items: { type: "string", maxLength: 40 }, description: "Such as the genre, how many chapters, how long it is." },
+            quote: { ...cardText, description: "One line from the source that carries its mood." },
+            from: { ...cardText, description: "Where it came from, such as the TXT the person uploaded." },
+            cover: { type: "string", maxLength: 500, description: "A cover picture's path in the project folder, if there is one." },
+          },
+          required: ["title"],
+        },
         assignments: {
           type: "object",
           additionalProperties: false,

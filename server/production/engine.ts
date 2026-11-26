@@ -1,17 +1,18 @@
 import {
   DRAMA_JOBS, episodeCode, PRODUCTION_JOBS,
   type DramaJob, type EpisodeJob, type ProductionConcurrency, type ProductionEpisodeStatus, type ProductionEpisodeWire, type ProductionJob,
-  type ProductionTaskStatus, type ProductionWire,
+  type ProductionPlanInput, type ProductionSource, type ProductionTaskStatus, type ProductionWire,
 } from "../../shared/production.ts";
-import { botIdOfNode } from "../../shared/project-canvas.ts";
+import { botIdOfNode, type CanvasFileRef } from "../../shared/project-canvas.ts";
 import type { ProjectDraftWire } from "../../shared/project-draft.ts";
 import type { FlowLineWire, FlowStage } from "../../shared/team-pipeline.ts";
 import type { TeamProjectsApi, TeamProjectWire } from "../../shared/team-projects.ts";
 import type { DirectSendReceipt } from "../direct-send.ts";
 import { intlLocale } from "../language.ts";
 import type { ProjectPipeline } from "../project-canvas/flow.ts";
+import { isProjectPathError, openProjectFile } from "../project-canvas/paths.ts";
 import type { CanvasEpisode, CanvasProfile, PipelineShot, PipelineView } from "../project-canvas/pipeline-api.ts";
-import { CanvasRefusal, readOnlyRefusal } from "../project-canvas/service.ts";
+import { CanvasRefusal, pathRefusal, readOnlyRefusal } from "../project-canvas/service.ts";
 import { replyText, roomTurnClosedBy } from "../project-canvas/task-targets.ts";
 import { serverLine, type ServerLineKey } from "../server-lines.ts";
 import type { Message, Store } from "../store.ts";
@@ -110,6 +111,8 @@ const sentWith = (receipt: DirectSendReceipt, now: number): Pick<ProductionTask,
 
 const sameTask = (task: ProductionTask, job: ProductionJob, episode?: number) => task.job === job && task.episode === episode;
 
+type SourceInput = NonNullable<ProductionPlanInput["source"]>;
+
 /**
  * Each project's production. The lead plans it once; from there it runs by itself: the script bot adapts the source
  * into episodes, the character and scene bots design what every episode shares side by side, and then, as many
@@ -139,7 +142,10 @@ export class Productions {
       return botId ? [{ job, botId, status: this.jobStatus(projectId, production, job, profiles) }] : [];
     });
     return {
-      plan: { assignments: { ...production.plan.assignments }, ...(production.plan.episodes ? { episodes: production.plan.episodes } : {}), plannedAt: production.plan.plannedAt },
+      plan: {
+        assignments: { ...production.plan.assignments }, ...(production.plan.episodes ? { episodes: production.plan.episodes } : {}),
+        ...(production.plan.source ? { source: production.plan.source } : {}), plannedAt: production.plan.plannedAt,
+      },
       jobs,
       ready: this.ready(projectId, production, profiles),
       episodes: episodes.map((episode) => this.episodeWire(production, episode, shots)),
@@ -183,7 +189,12 @@ export class Productions {
       if (!project) throw new CanvasRefusal(404, userError("serverError.teamProject.notFound"));
       if (project.archivedAt !== undefined) throw readOnlyRefusal();
       if (botId !== project.leadBotId) throw new CanvasRefusal(403, { error: "Only the project's lead plans its production." });
-      const { brief, episodes, assignments } = this.planInput(project, input);
+      const { brief, episodes, assignments, source: told } = this.planInput(project, input);
+      let source: ProductionSource | undefined;
+      if (told) {
+        const { cover, ...words } = told;
+        source = { ...words, ...(cover ? { cover: await this.coverOf(project, cover) } : {}) };
+      }
       const language = this.deps.language();
       this.deps.canvas.setBrief(projectId, botId, brief, {
         brief: serverLine(language, "server.production.briefTitle"),
@@ -191,7 +202,7 @@ export class Productions {
       });
       const current = this.get(projectId);
       const now = this.deps.now();
-      const plan = { assignments, ...(episodes ? { episodes } : {}), plannedAt: now };
+      const plan = { assignments, ...(episodes ? { episodes } : {}), ...(source ? { source } : {}), plannedAt: now };
       const production: StoredProduction = current && current.endedAt === undefined
         ? { ...current, plan }
         : { startedAt: now, plan, tasks: [], episodes: {} };
@@ -316,7 +327,7 @@ export class Productions {
     });
   }
 
-  private planInput(project: TeamProjectWire, input: unknown): { brief: Array<[string, string]>; episodes?: number; assignments: Partial<Record<ProductionJob, string>> } {
+  private planInput(project: TeamProjectWire, input: unknown): { brief: Array<[string, string]>; episodes?: number; assignments: Partial<Record<ProductionJob, string>>; source?: SourceInput } {
     const asked = input && typeof input === "object" && !Array.isArray(input) ? input as Record<string, unknown> : {};
     const invalid = (error: string) => new CanvasRefusal(400, { error });
     const rows = Array.isArray(asked.brief) ? asked.brief : null;
@@ -324,6 +335,7 @@ export class Productions {
     if (!rows?.length || rows.length > 12 || !rows.every(row)) throw invalid("brief takes 1 to 12 rows, each [label, value] of at most 200 characters");
     const { episodes } = asked;
     if (episodes !== undefined && !(typeof episodes === "number" && Number.isInteger(episodes) && episodes >= 1 && episodes <= 500)) throw invalid("episodes is a whole number from 1 to 500");
+    const source = this.sourceInput(asked.source, invalid);
     const members = this.members(project);
     const assignments = defaultAssignments(members);
     const named = asked.assignments && typeof asked.assignments === "object" && !Array.isArray(asked.assignments) ? asked.assignments as Record<string, unknown> : {};
@@ -335,7 +347,45 @@ export class Productions {
       assignments[known] = botId;
     }
     if (!assignments.script) throw invalid("Nobody in this project writes scripts. Name the bot that adapts the source in assignments.script.");
-    return { brief: rows.map(([label, value]) => [label.trim(), value.trim()]), ...(episodes === undefined ? {} : { episodes }), assignments };
+    return { brief: rows.map(([label, value]) => [label.trim(), value.trim()]), ...(episodes === undefined ? {} : { episodes }), assignments, ...(source ? { source } : {}) };
+  }
+
+  private sourceInput(asked: unknown, invalid: (error: string) => CanvasRefusal): SourceInput | undefined {
+    if (asked === undefined) return undefined;
+    const given = asked && typeof asked === "object" && !Array.isArray(asked) ? asked as Record<string, unknown> : null;
+    const text = (value: unknown, max: number) => (typeof value === "string" && value.trim().length > 0 && value.length <= max ? value.trim() : undefined);
+    const title = text(given?.title, 200);
+    if (!given || !title) throw invalid("source takes a title of at most 200 characters");
+    const out: SourceInput = { title };
+    for (const key of ["author", "quote", "from"] as const) {
+      if (given[key] === undefined) continue;
+      const value = text(given[key], 200);
+      if (!value) throw invalid(`source.${key} takes at most 200 characters`);
+      out[key] = value;
+    }
+    if (given.tags !== undefined) {
+      const tag = (one: unknown): one is string => text(one, 40) !== undefined;
+      if (!Array.isArray(given.tags) || given.tags.length > 4 || !given.tags.every(tag)) throw invalid("source.tags takes at most 4 tags of at most 40 characters each");
+      out.tags = given.tags.map((one) => one.trim());
+    }
+    if (given.cover !== undefined) {
+      if (typeof given.cover !== "string" || given.cover.length > 500) throw invalid("source.cover takes a picture's path in the project folder");
+      out.cover = given.cover;
+    }
+    return out;
+  }
+
+  private async coverOf(project: TeamProjectWire, path: string): Promise<CanvasFileRef> {
+    let file: CanvasFileRef;
+    try {
+      const opened = await openProjectFile(project.folder, path, Number.POSITIVE_INFINITY);
+      await opened.handle.close();
+      file = { path: opened.path, mime: opened.mime, bytes: opened.bytes, name: opened.name };
+    } catch (error) {
+      throw isProjectPathError(error) ? pathRefusal(error, project.folder) : error;
+    }
+    if (!file.mime.startsWith("image/")) throw new CanvasRefusal(400, { error: "source.cover takes a picture" });
+    return file;
   }
 
   private shots(projectId: string): PipelineShot[] {

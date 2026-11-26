@@ -118,6 +118,7 @@ describe("what a lead and its members are told", () => {
     const { rules } = chiefOfStaffPrompt(lead.id, place, true);
     expect(rules).toContain("first agree the brief with the person in the project's group chat");
     expect(rules).toContain("then call production_plan once");
+    expect(rules).toContain("and the source's title");
     expect(rules).toContain("tells you when a task fails");
     expect(chiefOfStaffPrompt(chief.id, place, true).rules).not.toContain("production_plan");
     expect(chiefOfStaffPrompt(main.id, place, true).rules).not.toContain("production_plan");

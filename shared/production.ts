@@ -4,6 +4,8 @@
  * then each episode gets a storyboard bot of its own, its shots' videos, and a post bot of its own that cuts its film.
  */
 
+import type { CanvasFileRef } from "./project-canvas.ts";
+
 /** The jobs of a production, in the order work passes through them. */
 export const PRODUCTION_JOBS = ["script", "character", "scene", "storyboard", "post"] as const;
 
@@ -38,6 +40,19 @@ export interface ProductionTaskWire {
   endedAt?: number;
 }
 
+/** The source the drama is adapted from, as the lead told it when planning. */
+export interface ProductionSource {
+  title: string;
+  author?: string;
+  /** Such as the genre, how many chapters and how long it is; four at most. */
+  tags?: string[];
+  quote?: string;
+  /** Where it came from, such as "the TXT you uploaded". */
+  from?: string;
+  /** Its cover, a picture in the project folder. */
+  cover?: CanvasFileRef;
+}
+
 /**
  * What the lead planned: who does each job. For `script`, `character` and `scene` the bot does it for the whole drama;
  * for `storyboard` and `post` it is the bot every episode's own bot is a copy of. A job absent here has nobody, and
@@ -47,6 +62,7 @@ export interface ProductionPlanWire {
   assignments: Partial<Record<ProductionJob, string>>;
   /** How many episodes the lead agreed on with the person; the script bot is asked for that many. */
   episodes?: number;
+  source?: ProductionSource;
   plannedAt: number;
 }
 
@@ -114,6 +130,8 @@ export interface ProductionPlanInput {
   episodes?: number;
   /** Bot node ids (`bot:<id>`) or bot ids; a job left out goes to the member whose title names it. */
   assignments?: Partial<Record<ProductionJob, string>>;
+  /** The source the drama is adapted from; `cover` is a picture's path in the project folder. */
+  source?: Omit<ProductionSource, "cover"> & { cover?: string };
 }
 
 /** `EP01` for episode 1. */
