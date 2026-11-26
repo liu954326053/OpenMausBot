@@ -6,3 +6,4 @@
 :root[data-reduced-motion="true"] .mj-board *,
 :root[data-reduced-motion="true"] .mj-board *::before,
 :root[data-reduced-motion="true"] .mj-board *::after { animation: none !important; transition: none !important; }
+.mj-board .schip[data-state='failed'] .fno { background: var(--danger); color: var(--on-fill); }
