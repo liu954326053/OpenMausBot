@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject, type SyntheticEvent } from "react";
 import { botNodeId, type CanvasFileRef, type CanvasSnapshot } from "../../../../shared/project-canvas";
-import { activeLocale } from "@/lib/i18n";
-import type { BoardOverlayProps } from "@/lib/production-board/overlay";
-import type { CanvasBotLook } from "@/lib/project-canvas/types";
-import { AssetDetails } from "./AssetDetails";
 import { boardIndex, type BoardIndex } from "@/lib/production-board/board-index";
-import { BotChatWindow, type ChatSession } from "./BotChatWindow";
-import { detailsView } from "@/lib/production-board/details-view";
+import { detailsLinks, detailsView, type DetailsLink, type DetailsView } from "@/lib/production-board/details-view";
+import type { BoardOverlayProps } from "@/lib/production-board/overlay";
+import type { BoardCard } from "@/lib/production-board/types";
 import type { OverlayBackend } from "@/lib/production-board/overlay-backend";
-import { NO_LOOK } from "./panel-parts";
 import { panelRows, type PanelRows } from "@/lib/production-board/panel-rows";
-import { SIDE_PANEL_ROOM, SidePanel } from "./SidePanel";
 import { useViewFollow } from "@/lib/production-board/view-follow";
+import type { CanvasBotLook } from "@/lib/project-canvas/types";
+import type { NodeActions, NodeContext } from "../nodes/parts";
+import { ChatWindow, type ChatSession } from "./ChatWindow";
+import { DetailModal } from "./DetailModal";
+import { SIDE_PANEL_ROOM, SidePanel } from "./SidePanel";
 
 /** Narrower than this, the side panel starts folded. */
 const PANEL_UNFOLDS_FROM = 900;
@@ -21,10 +21,22 @@ export interface LayerSize {
   height: number;
 }
 
-/** The side panel, a bot's chat window beside its card and an asset's details, drawn over the production board. */
+/** A card's name as the details modal writes it in a link. */
+export function cardTitle(card: BoardCard | undefined, nameOf: (botId: string) => string): string {
+  if (!card) return "";
+  switch (card.kind) {
+    case "bot": return nameOf(card.botId);
+    case "character":
+    case "scene": return card.name;
+    case "stack": return card.id;
+    case "other": return card.node.title;
+    default: return card.title;
+  }
+}
+
+/** The side panel, a bot's chat window beside its card and a card's details, drawn over the production board. */
 export function ProductionBoardOverlay(props: BoardOverlayProps) {
-  const { projectId, snapshot, backend, opened } = props;
-  const locale = activeLocale();
+  const { projectId, snapshot, backend, opened, board } = props;
   const index = useMemo(() => boardIndex(snapshot), [snapshot]);
   const pictureUrl = useCallback((file: CanvasFileRef) => backend.fileUrl(projectId, file), [backend, projectId]);
   const rows = usePanelRows(index, pictureUrl);
@@ -33,61 +45,73 @@ export function ProductionBoardOverlay(props: BoardOverlayProps) {
   const layer = useLayerSize(layerRef);
   const [panelChoice, setPanelChoice] = useState<boolean | null>(null);
   const panelOpen = panelChoice ?? layer.width >= PANEL_UNFOLDS_FROM;
-  const board = useBoardCalls(props);
+  const readOnly = snapshot.readOnly !== undefined;
+  const calls = useBoardCalls(props);
   const followView = useViewFollow(props.subscribeView);
   const [sessions] = useState(() => new Map<string, ChatSession>());
   const chatOpened = opened?.kind === "bot" ? opened : null;
   const chatBot = chatOpened ? snapshot.bots[chatOpened.botId] : undefined;
   const assetOpened = opened?.kind === "asset" ? opened : null;
+  const card = assetOpened ? board.cards.find((one) => one.nodeIds.includes(assetOpened.nodeId)) : undefined;
   const detailed = assetOpened ? index.assetOf(assetOpened.nodeId) : null;
   const details = useKeptValue(detailed ? detailsView(detailed, index, snapshot.bots[index.ownerOf(detailed)], snapshot.drafts, pictureUrl) : null);
+  const links = useMemo(() => (card ? detailsLinks(card.id, board, (cardId) => cardTitle(board.cards.find((one) => one.id === cardId), (botId) => snapshot.bots[botId]?.name ?? botId) || cardId) : { upstream: [] as DetailsLink[], downstream: [] as DetailsLink[] }), [card, board]);
+  const detailActions = useDetailActions(props, details);
+  const ctx = useMemo<NodeContext | null>(() => (details && detailActions ? {
+    snapshot,
+    looks,
+    fileUrl: pictureUrl,
+    takeOf: (shotId) => {
+      const result = board.cards.find((one) => one.kind === "result" && one.shotId === shotId);
+      return result?.kind === "result" ? result.takes.find((take) => take.selected) ?? result.takes.at(-1) : undefined;
+    },
+    actions: detailActions,
+  } : null), [details, detailActions, snapshot, looks, pictureUrl, board]);
   useEffect(() => {
-    if ((chatOpened && !chatBot) || (assetOpened && !detailed)) board.close();
-  }, [board, chatOpened, chatBot, assetOpened, detailed]);
-  useStopsWheel(layerRef);
+    if ((chatOpened && !chatBot) || (assetOpened && !detailed)) calls.close();
+  }, [calls, chatOpened, chatBot, assetOpened, detailed]);
   return (
-    <div
-      ref={layerRef}
-      data-board-overlay=""
-      data-canvas-no-zoom=""
-      data-canvas-shortcuts-ignore=""
-      className="pointer-events-none absolute inset-0 overflow-hidden"
-      onPointerDown={stop}
-      onDoubleClick={stop}
-      onContextMenu={stop}
-    >
-      <SidePanel
-        rows={rows}
-        looks={looks}
-        open={panelOpen}
-        onOpenChange={setPanelChoice}
-        chatBotId={chatOpened?.botId}
-        onBot={board.onBot}
-        onAsset={board.onAsset}
-        onEpisode={board.onEpisode}
-        locale={locale}
-      />
+    <div ref={layerRef} data-board-overlay="" className="pointer-events-none absolute inset-0 overflow-hidden" onPointerDown={stop} onDoubleClick={stop} onContextMenu={stop}>
+      <SidePanel rows={rows} looks={looks} open={panelOpen} onOpenChange={setPanelChoice} chatBotId={chatOpened?.botId} onBot={calls.onBot} onAsset={calls.onAsset} onEpisode={calls.onEpisode} />
       {chatOpened && chatBot ? (
-        <BotChatWindow
+        <ChatWindow
           key={chatBot.botId}
           projectId={projectId}
           bot={chatBot}
-          look={looks[chatBot.botId] ?? NO_LOOK}
+          look={looks[chatBot.botId] ?? { color: "silver" }}
           index={index}
           backend={backend}
-          readOnly={snapshot.readOnly !== undefined}
+          readOnly={readOnly}
           references={chatOpened.references}
           sessions={sessions}
           pictureUrl={pictureUrl}
           layer={layer}
           reserved={panelOpen ? SIDE_PANEL_ROOM.open : SIDE_PANEL_ROOM.folded}
-          anchorOf={board.anchorOf}
+          anchorOf={calls.anchorOf}
           subscribeView={followView}
-          onClose={board.close}
-          locale={locale}
+          zoom={props.zoom}
+          focusNode={calls.onLocate}
+          onClose={calls.close}
+          locale=""
         />
       ) : null}
-      {details ? <AssetDetails view={details} onAsk={board.onAsk} onLocate={board.onLocate} onAsset={board.openAsset} onClose={board.close} locale={locale} /> : null}
+      {details && ctx ? (
+        <DetailModal
+          view={details}
+          links={links}
+          card={card}
+          ctx={ctx}
+          readOnly={readOnly}
+          onClose={calls.close}
+          onLocate={() => {
+            calls.onLocate(details.nodeId);
+            calls.close();
+          }}
+          onAsk={calls.onAskOwner(details)}
+          onOpenCard={calls.onOpenCard}
+          onSelectTake={readOnly ? undefined : calls.onSelectTake}
+        />
+      ) : null}
     </div>
   );
 }
@@ -110,16 +134,39 @@ function useBoardCalls(props: BoardOverlayProps) {
     },
     onAsset: (cardId: string) => latest.current.focusNode(cardId),
     onEpisode: (episode: number) => latest.current.focusEpisode(episode),
-    onAsk: (botId: string, nodeId: string) => {
-      latest.current.focusNode(botNodeId(botId));
-      latest.current.open({ kind: "bot", botId, references: [nodeId] });
+    onLocate: (cardId: string) => latest.current.focusNode(cardId),
+    onAskOwner: (view: DetailsView) => () => {
+      if (!view.owner) return;
+      latest.current.focusNode(botNodeId(view.owner.botId));
+      latest.current.open({ kind: "bot", botId: view.owner.botId, references: [view.nodeId] });
     },
-    onLocate: (cardId: string) => {
-      latest.current.focusNode(cardId);
-      latest.current.close();
+    onOpenCard: (link: DetailsLink) => {
+      if (link.botId) latest.current.open({ kind: "bot", botId: link.botId });
+      else if (link.nodeId) latest.current.open({ kind: "asset", nodeId: link.nodeId });
     },
-    openAsset: (nodeId: string) => latest.current.open({ kind: "asset", nodeId }),
+    onSelectTake: (nodeId: string) => {
+      void latest.current.backend.selectTake(latest.current.projectId, nodeId);
+    },
   }), []);
+}
+
+/** What a details modal's buttons call: it can close, locate its card and ask its bot, as the chat window and the panel do. */
+function useDetailActions(props: BoardOverlayProps, view: DetailsView | null): NodeActions | null {
+  const latest = useRef(props);
+  useLayoutEffect(() => {
+    latest.current = props;
+  });
+  return useMemo(() => (view ? {
+    focusCard: (cardId: string) => latest.current.focusNode(cardId),
+    openChat: (botId: string) => latest.current.open({ kind: "bot", botId }),
+    openStack: () => undefined,
+    generate: () => undefined,
+    selectTake: (nodeId: string) => {
+      void latest.current.backend.selectTake(latest.current.projectId, nodeId);
+    },
+    retry: () => undefined,
+    openDraft: () => undefined,
+  } : null), [view]);
 }
 
 function usePanelRows(index: BoardIndex, pictureUrl: (file: CanvasFileRef) => string): PanelRows {
@@ -137,20 +184,11 @@ function useKeptValue<Value>(value: Value): Value {
   return kept.current;
 }
 
-/** The board zooms on a wheel with a listener of its own on an element around this one. */
-function useStopsWheel(ref: RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const element = ref.current!;
-    const onWheel = (event: WheelEvent) => event.stopPropagation();
-    element.addEventListener("wheel", onWheel, { passive: true });
-    return () => element.removeEventListener("wheel", onWheel);
-  }, [ref]);
-}
-
 function useLayerSize(ref: RefObject<HTMLElement | null>): LayerSize {
   const [size, setSize] = useState<LayerSize>({ width: 0, height: 0 });
   useLayoutEffect(() => {
-    const element = ref.current!;
+    const element = ref.current;
+    if (!element) return;
     const take = (width: number, height: number) => setSize((current) => (current.width === width && current.height === height ? current : { width, height }));
     const rect = element.getBoundingClientRect();
     take(rect.width, rect.height);
@@ -164,9 +202,7 @@ function useLayerSize(ref: RefObject<HTMLElement | null>): LayerSize {
   return size;
 }
 
-/** Read again with every snapshot, as the board's own canvas does: a look carries whether the bot has unread replies.
- * The workspace answers for all its bots; the project's are kept, and those that did not change keep their objects, so
- * rows drawn from them stay as they are. */
+/** Read again with every snapshot, as the board's own canvas does: a look carries whether the bot has unread replies. */
 function useBotLooks(backend: OverlayBackend, projectId: string, snapshot: CanvasSnapshot): Record<string, CanvasBotLook> {
   const [looks, setLooks] = useState<Record<string, CanvasBotLook>>({});
   useEffect(() => {

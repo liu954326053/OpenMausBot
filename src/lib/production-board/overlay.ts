@@ -1,5 +1,6 @@
 import type { CanvasSnapshot } from "../../../shared/project-canvas";
 import type { CanvasBackend } from "../project-canvas/backend";
+import type { Board } from "./types";
 
 /** A card's box on the screen, in CSS pixels from the top-left corner of the board's viewport. */
 export interface BoardAnchor {
@@ -35,4 +36,8 @@ export interface BoardOverlayProps {
   /** Unfolds the episode when it is folded, and brings it into view. */
   focusEpisode(episode: number): void;
   focusStage(stage: BoardStage): void;
+  /** The board as the canvas draws it now: its cards, its lines and which episodes are folded. */
+  board: Board;
+  /** The camera's zoom now. */
+  zoom(): number;
 }

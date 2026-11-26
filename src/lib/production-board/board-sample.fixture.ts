@@ -1,4 +1,4 @@
-import type { ProductionEpisodeWire, ProductionWire } from "../../../../../shared/production";
+import type { ProductionEpisodeWire, ProductionWire } from "../../../shared/production";
 import {
   botNodeId,
   type CanvasBotState,
@@ -9,7 +9,7 @@ import {
   type CanvasSnapshot,
   type CanvasTaskRequest,
   type CanvasTaskResponse,
-} from "../../../../../shared/project-canvas";
+} from "../../../shared/project-canvas";
 import type { CanvasBackend } from "@/lib/project-canvas/backend";
 import type { CanvasBotLook, CanvasExchangeMessage } from "@/lib/project-canvas/types";
 import type { OverlayBackend } from "@/lib/production-board/overlay-backend";

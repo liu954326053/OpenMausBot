@@ -1,33 +1,28 @@
-import { memo, useCallback, useId, useRef, useState, type KeyboardEvent } from "react";
-import { AlertCircle, CheckCircle2, ChevronRight, Crown, Film, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { memo, useCallback, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { ChevronsDownUp, Film, PanelRight, PanelRightClose, Clapperboard, Mountain, Drama } from "lucide-react";
 import { episodeCode } from "../../../../shared/production";
+import type { CanvasBotState } from "../../../../shared/project-canvas";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { CanvasBotLook } from "@/lib/project-canvas/types";
 import type { LocaleKey } from "@/locales";
-import { episodeStatus } from "../cards";
 import { episodeProgress } from "@/lib/production-board/asset-words";
 import type { EpisodeRow } from "@/lib/production-board/board-index";
-import { BotFace, BotStatus, EmptyLine, NO_LOOK, PANEL_ROW, ROW_META, RowGroup } from "./panel-parts";
+import { botStatus } from "@/lib/production-board/status";
 import type { AssetFacts, EpisodeShotsFacts, PanelRows, ShotFacts, TeamFacts } from "@/lib/production-board/panel-rows";
+import { BotAvatar } from "@/components/Avatar";
 
 const TABS = ["team", "assets", "episodes"] as const;
 type Tab = (typeof TABS)[number];
 const TAB_KEYS: Record<Tab, LocaleKey> = { team: "boardPanels.tab.team", assets: "boardPanels.tab.assets", episodes: "boardPanels.tab.episodes" };
 
-/** What a chat window keeps clear of at the layer's right edge: the gap to the edge, the open panel or its folded
- * button, and a gap beside it. */
-export const SIDE_PANEL_ROOM = { open: 16 + 288 + 16, folded: 16 + 36 + 16 } as const;
-
-/** The room the side panel keeps at the board's right edge, its inset included: the open panel, or the folded button
- * and the gap beside it. The board reads it off whichever of the two is showing. */
-export const BOARD_ROOM = { open: 16 + 288, folded: 16 + 36 + 16 } as const;
-
-const SURFACE = "popover-surface pointer-events-auto rounded-xl border border-hairline/50 bg-menu";
+/** The room the folded panel keeps at the board's right edge, and the open one beside it: the board reads the width off
+ * the element carrying `data-board-room`, and the stage bar and the minimap stay clear of it. */
+export const SIDE_PANEL_ROOM = { open: 304, folded: 56 } as const;
 
 export interface SidePanelProps {
   rows: PanelRows;
-  looks: Record<string, CanvasBotLook>;
+  looks: Readonly<Record<string, CanvasBotLook>>;
   open: boolean;
   onOpenChange(open: boolean): void;
   /** The bot whose chat window is open. */
@@ -36,14 +31,12 @@ export interface SidePanelProps {
   /** With the card id of the asset. */
   onAsset(cardId: string): void;
   onEpisode(episode: number): void;
-  locale: string;
 }
 
-export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChange, chatBotId, onBot, onAsset, onEpisode, locale }: SidePanelProps) {
+export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChange, chatBotId, onBot, onAsset, onEpisode }: SidePanelProps) {
   const id = useId();
   const [tab, setTab] = useState<Tab>("team");
   const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
-  const panelId = `${id}-panel`;
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const forward = getComputedStyle(event.currentTarget).direction === "rtl" ? "ArrowLeft" : "ArrowRight";
     const backward = forward === "ArrowRight" ? "ArrowLeft" : "ArrowRight";
@@ -57,33 +50,11 @@ export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChan
   };
   return (
     <>
-      {open ? null : (
-        <div data-board-room="" style={{ width: BOARD_ROOM.folded }} className="pointer-events-none absolute end-0 top-4 flex justify-end pe-4">
-          <button
-            type="button"
-            className={cn(SURFACE, "ui-icon-button size-9")}
-            aria-label={t("boardPanels.panel.show")}
-            title={t("boardPanels.panel.show")}
-            aria-expanded={false}
-            aria-controls={panelId}
-            onClick={() => onOpenChange(true)}
-          >
-            <PanelRightOpen size={16} aria-hidden="true" className="rtl:-scale-x-100" />
-          </button>
-        </div>
-      )}
-      <aside
-        id={panelId}
-        data-board-side-panel=""
-        data-board-room={open ? "" : undefined}
-        hidden={!open}
-        aria-label={t("boardPanels.panel.label")}
-        style={{ width: BOARD_ROOM.open }}
-        className="pointer-events-none absolute end-0 top-4 flex max-h-[calc(100%-2rem)] justify-end pe-4 animate-pop-in motion-reduce:animate-none"
-      >
-        <div className={cn(SURFACE, "flex min-h-0 w-72 flex-col gap-1 p-1.5")}>
-          <div className="flex items-center gap-1">
-            <div role="tablist" aria-label={t("boardPanels.panel.label")} className="flex min-w-0 flex-1 gap-0.5 rounded-full bg-ink/[0.05] p-[3px]" onKeyDown={onTabKey}>
+      <div data-board-room="" aria-hidden="true" style={{ width: open ? SIDE_PANEL_ROOM.open : SIDE_PANEL_ROOM.folded }} />
+      {open ? (
+        <aside data-board-side-panel="" aria-label={t("boardPanels.panel.label")} className="side">
+          <div className="pane-head">
+            <div role="tablist" aria-label={t("boardPanels.panel.label")} className="flex min-w-0 flex-1 items-center" onKeyDown={onTabKey}>
               {TABS.map((each) => (
                 <button
                   key={each}
@@ -93,91 +64,130 @@ export const SidePanel = memo(function SidePanel({ rows, looks, open, onOpenChan
                   }}
                   type="button"
                   role="tab"
+                  className="schip"
                   id={`${id}-tab-${each}`}
                   aria-selected={each === tab}
-                  aria-controls={`${id}-tabpanel`}
+                  aria-controls={`${id}-pane`}
+                  aria-current={each === tab ? "true" : undefined}
                   tabIndex={each === tab ? 0 : -1}
-                  className={cn(
-                    "h-[26px] min-w-0 flex-1 truncate rounded-full px-2 text-[13px] leading-[18px] transition-colors duration-[120ms] motion-reduce:transition-none",
-                    each === tab ? "bg-ink/[0.1] font-medium text-ink" : "text-ink-secondary hover:text-ink",
-                  )}
                   onClick={() => setTab(each)}
                 >
                   {t(TAB_KEYS[each])}
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              className="ui-icon-button size-8 shrink-0"
-              aria-label={t("boardPanels.panel.hide")}
-              title={t("boardPanels.panel.hide")}
-              aria-expanded={true}
-              aria-controls={panelId}
-              onClick={() => onOpenChange(false)}
-            >
+            <button type="button" className="tbtn" aria-label={t("boardPanels.panel.hide")} title={t("boardPanels.panel.hide")} aria-expanded={true} onClick={() => onOpenChange(false)}>
               <PanelRightClose size={16} aria-hidden="true" className="rtl:-scale-x-100" />
             </button>
           </div>
-          {open ? (
-            <div role="tabpanel" id={`${id}-tabpanel`} aria-labelledby={`${id}-tab-${tab}`} className="-mx-1.5 min-h-0 flex-1 overflow-y-auto px-1.5">
-              {tab === "team" ? <TeamTab team={rows.team} looks={looks} chatBotId={chatBotId} onBot={onBot} locale={locale} /> : null}
-              {tab === "assets" ? <AssetsTab characters={rows.characters} scenes={rows.scenes} shots={rows.shots} finals={rows.finals} onAsset={onAsset} locale={locale} /> : null}
-              {tab === "episodes" ? <EpisodesTab episodes={rows.episodes} onEpisode={onEpisode} locale={locale} /> : null}
-            </div>
-          ) : null}
+          <div role="tabpanel" id={`${id}-pane`} aria-labelledby={`${id}-tab-${tab}`} className="pane-scroll">
+            {tab === "team" ? <TeamTab team={rows.team} looks={looks} chatBotId={chatBotId} onBot={onBot} /> : null}
+            {tab === "assets" ? <AssetsTab characters={rows.characters} scenes={rows.scenes} shots={rows.shots} finals={rows.finals} onAsset={onAsset} /> : null}
+            {tab === "episodes" ? <EpisodesTab episodes={rows.episodes} onEpisode={onEpisode} /> : null}
+          </div>
+        </aside>
+      ) : (
+        <div className="side-fold">
+          <button type="button" className="tbtn" aria-label={t("boardPanels.panel.show")} title={t("boardPanels.panel.show")} aria-expanded={false} onClick={() => onOpenChange(true)}>
+            <PanelRight size={16} aria-hidden="true" className="rtl:-scale-x-100" />
+          </button>
         </div>
-      </aside>
+      )}
     </>
   );
 });
+
+function SectionLabel({ text, count }: { text: string; count?: number }) {
+  return (
+    <p className="sec-lbl">
+      {text}
+      {count === undefined ? null : <span className="cnt ms-1.5">{count}</span>}
+    </p>
+  );
+}
+
+/** The lines' four states, drawn as the board draws them. */
+const LEGEND: ReadonlyArray<{ line: string; text: LocaleKey }> = [
+  { line: "lg-done", text: "productionBoard.legend.done" },
+  { line: "lg-active", text: "productionBoard.legend.active" },
+  { line: "lg-wait", text: "productionBoard.legend.wait" },
+  { line: "lg-ref", text: "productionBoard.legend.ref" },
+];
+
+function Legend() {
+  return (
+    <>
+      <SectionLabel text={t("productionBoard.legend.title")} />
+      <ul className="legend">
+        {LEGEND.map(({ line, text }) => (
+          <li key={line}>
+            <svg viewBox="0 0 44 8" aria-hidden="true"><path d="M1 4H43" className={line} /></svg>
+            <span>{t(text)}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 interface TeamTabProps {
   team: PanelRows["team"];
-  looks: Record<string, CanvasBotLook>;
+  looks: Readonly<Record<string, CanvasBotLook>>;
   chatBotId?: string;
   onBot(botId: string): void;
-  locale: string;
 }
 
-const TeamTab = memo(function TeamTab({ team, looks, chatBotId, onBot, locale }: TeamTabProps) {
-  const row = (bot: TeamFacts) => (
-    <TeamRow key={bot.botId} bot={bot} look={looks[bot.botId] ?? NO_LOOK} active={bot.botId === chatBotId} onBot={onBot} locale={locale} />
-  );
-  if (!team.episodes.length) return <RowGroup>{team.drama.map(row)}</RowGroup>;
+const TeamTab = memo(function TeamTab({ team, looks, chatBotId, onBot }: TeamTabProps) {
+  const row = (bot: TeamFacts) => <TeamRow key={bot.botId} bot={bot} look={looks[bot.botId]} current={bot.botId === chatBotId} onBot={onBot} />;
   return (
     <>
-      <RowGroup label={t("boardPanels.team.drama")}>{team.drama.map(row)}</RowGroup>
-      <RowGroup label={t("boardPanels.team.eachEpisode")}>{team.episodes.map(row)}</RowGroup>
+      {team.episodes.length ? (
+        <>
+          <SectionLabel text={t("boardPanels.team.drama")} />
+          <RowList>{team.drama.map(row)}</RowList>
+          <SectionLabel text={t("boardPanels.team.eachEpisode")} />
+          <RowList>{team.episodes.map(row)}</RowList>
+        </>
+      ) : (
+        <>
+          <SectionLabel text={t("boardPanels.team.drama")} />
+          <RowList>{team.drama.map(row)}</RowList>
+        </>
+      )}
+      <Legend />
     </>
   );
 });
 
-interface TeamRowProps {
-  bot: TeamFacts;
-  look: CanvasBotLook;
-  active: boolean;
-  onBot(botId: string): void;
-  locale: string;
+function RowList({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col">{children}</div>;
 }
 
-const TeamRow = memo(function TeamRow({ bot: { botId, name, title, status, lead }, look, active, onBot }: TeamRowProps) {
+const TeamRow = memo(function TeamRow({ bot, look, current, onBot }: { bot: TeamFacts; look: CanvasBotLook | undefined; current: boolean; onBot(botId: string): void }) {
+  const status = botStatus({ status: bot.status });
   return (
-    <li>
-      <button type="button" data-team-row={botId} aria-current={active ? "true" : undefined} className={cn(PANEL_ROW, active && "bg-ink/[0.08]")} onClick={() => onBot(botId)}>
-        <BotFace name={name} look={look} size={28} />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1">
-            <span title={name} className="truncate text-[13px] font-medium leading-[18px] text-ink">{name}</span>
-            {lead ? <Crown size={14} role="img" aria-label={t("boardPanels.team.lead")} className="shrink-0 text-ink-tertiary" /> : null}
-          </span>
-          {title ? <span title={title} className={ROW_META}>{title}</span> : null}
-        </span>
-        <BotStatus status={status} />
-      </button>
-    </li>
+    <button type="button" className={cn("rrow", current && "is-cur")} data-bot={bot.botId} data-state={toneOf(bot.status)} onClick={() => onBot(bot.botId)}>
+      <span className="ava">
+        <span aria-hidden="true" className="flex"><BotAvatar bot={{ name: bot.name, ...(look ?? { color: "silver" }) }} size={28} /></span>
+      </span>
+      <span className="who">
+        <b>{bot.name}</b>
+        <span>{bot.lead ? t("boardPanels.team.lead") : bot.title}</span>
+      </span>
+      <span className="st" data-state={toneOf(bot.status)}><i className="led" />{status.label}</span>
+    </button>
   );
 });
+
+/** The tone the board gives a bot's work, as the stylesheet colours a row's avatar and light by. */
+function toneOf(status: CanvasBotState["status"]): string {
+  switch (status) {
+    case "working": return "working";
+    case "queued": return "active";
+    case "error": return "failed";
+    default: return "idle";
+  }
+}
 
 interface AssetsTabProps {
   characters: readonly AssetFacts[];
@@ -185,60 +195,64 @@ interface AssetsTabProps {
   shots: readonly EpisodeShotsFacts[];
   finals: readonly AssetFacts[];
   onAsset(cardId: string): void;
-  locale: string;
 }
 
-const AssetsTab = memo(function AssetsTab({ characters, scenes, shots, finals, onAsset, locale }: AssetsTabProps) {
+const KIND_ICON = { character: Drama, scene: Mountain, shot: Clapperboard, final: Film } as const;
+
+const AssetsTab = memo(function AssetsTab({ characters, scenes, shots, finals, onAsset }: AssetsTabProps) {
   const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set());
   const toggle = useCallback((episode: number) => setUnfolded((current) => {
     const next = new Set(current);
     if (!next.delete(episode)) next.add(episode);
     return next;
   }), []);
-  if (!characters.length && !scenes.length && !shots.length && !finals.length) return <EmptyLine text={t("boardPanels.assets.empty")} />;
+  if (!characters.length && !scenes.length && !shots.length && !finals.length) return <p className="sec-lbl">{t("boardPanels.assets.empty")}</p>;
   return (
     <>
-      {characters.length ? <RowGroup label={t("boardPanels.assets.characters")} count={characters.length}>{characters.map((asset) => <AssetRow key={asset.cardId} asset={asset} onAsset={onAsset} />)}</RowGroup> : null}
-      {scenes.length ? <RowGroup label={t("boardPanels.assets.scenes")} count={scenes.length}>{scenes.map((asset) => <AssetRow key={asset.cardId} asset={asset} onAsset={onAsset} />)}</RowGroup> : null}
+      {characters.length ? (
+        <>
+          <SectionLabel text={t("boardPanels.assets.characters")} count={characters.length} />
+          <RowList>{characters.map((asset) => <AssetRow key={asset.cardId} asset={asset} icon={KIND_ICON.character} onAsset={onAsset} />)}</RowList>
+        </>
+      ) : null}
+      {scenes.length ? (
+        <>
+          <SectionLabel text={t("boardPanels.assets.scenes")} count={scenes.length} />
+          <RowList>{scenes.map((asset) => <AssetRow key={asset.cardId} asset={asset} icon={KIND_ICON.scene} onAsset={onAsset} />)}</RowList>
+        </>
+      ) : null}
       {shots.length ? (
-        <RowGroup label={t("boardPanels.assets.shots")} count={shots.reduce((total, group) => total + group.shots.length, 0)}>
-          {shots.map((group) => (
-            <EpisodeShots
-              key={group.episode}
-              episode={group.episode}
-              title={group.title}
-              count={group.shots.length}
-              shots={unfolded.has(group.episode) ? group.shots : undefined}
-              onToggle={toggle}
-              onAsset={onAsset}
-              locale={locale}
-            />
-          ))}
-        </RowGroup>
+        <>
+          <SectionLabel text={t("boardPanels.assets.shots")} count={shots.reduce((total, group) => total + group.shots.length, 0)} />
+          <RowList>
+            {shots.map((group) => (
+              <EpisodeShots key={group.episode} episode={group.episode} title={group.title} count={group.shots.length}
+                shots={unfolded.has(group.episode) ? group.shots : undefined} onToggle={toggle} onAsset={onAsset} />
+            ))}
+          </RowList>
+        </>
       ) : null}
       {finals.length ? (
-        <RowGroup label={t("boardPanels.assets.finals")} count={finals.length}>
-          {finals.map((asset) => <AssetRow key={asset.cardId} asset={asset} film onAsset={onAsset} />)}
-        </RowGroup>
+        <>
+          <SectionLabel text={t("boardPanels.assets.finals")} count={finals.length} />
+          <RowList>{finals.map((asset) => <AssetRow key={asset.cardId} asset={asset} icon={KIND_ICON.final} onAsset={onAsset} />)}</RowList>
+        </>
       ) : null}
     </>
   );
 });
 
-const AssetRow = memo(function AssetRow({ asset, film = false, onAsset }: { asset: AssetFacts; film?: boolean; onAsset(cardId: string): void }) {
-  const picture = asset.picture
-    ? <img src={asset.picture} alt="" loading="lazy" className="size-7 shrink-0 rounded-md bg-inset object-cover" />
-    : <span aria-hidden="true" className="size-7 shrink-0 rounded-md bg-ink/[0.06]" />;
+const AssetRow = memo(function AssetRow({ asset, icon: Icon, onAsset }: { asset: AssetFacts; icon: typeof Film; onAsset(cardId: string): void }) {
   return (
-    <li>
-      <button type="button" className={PANEL_ROW} onClick={() => onAsset(asset.cardId)}>
-        {film ? <Film size={16} aria-hidden="true" className="shrink-0 text-ink-secondary" /> : picture}
-        <span className="min-w-0 flex-1">
-          <span title={asset.title} className="block truncate text-[13px] leading-[18px] text-ink">{asset.title}</span>
-          {asset.meta ? <span title={asset.meta} className={ROW_META}>{asset.meta}</span> : null}
-        </span>
-      </button>
-    </li>
+    <button type="button" className="rrow" data-card={asset.cardId} onClick={() => onAsset(asset.cardId)}>
+      <span className="ava sm">
+        {asset.picture ? <img src={asset.picture} alt="" loading="lazy" className="size-full rounded-[7px] object-cover" /> : <Icon size={14} aria-hidden="true" />}
+      </span>
+      <span className="who">
+        <b>{asset.title}</b>
+        {asset.meta ? <span>{asset.meta}</span> : null}
+      </span>
+    </button>
   );
 });
 
@@ -250,59 +264,44 @@ interface EpisodeShotsProps {
   shots: readonly ShotFacts[] | undefined;
   onToggle(episode: number): void;
   onAsset(cardId: string): void;
-  locale: string;
 }
 
-const EpisodeShots = memo(function EpisodeShots({ episode, title, count, shots, onToggle, onAsset, locale }: EpisodeShotsProps) {
-  const listId = useId();
+const EpisodeShots = memo(function EpisodeShots({ episode, title, count, shots, onToggle, onAsset }: EpisodeShotsProps) {
   const open = shots !== undefined;
   return (
-    <li>
-      <button type="button" className={PANEL_ROW} aria-expanded={open} aria-controls={listId} onClick={() => onToggle(episode)}>
-        <ChevronRight size={16} aria-hidden="true" className={cn("shrink-0 text-ink-tertiary transition-transform duration-[120ms] motion-reduce:transition-none rtl:-scale-x-100", open && "rotate-90 rtl:-rotate-90")} />
-        <span className="shrink-0 text-[12px] font-medium leading-4 tabular-nums text-ink-secondary">{episodeCode(episode)}</span>
-        <span title={title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink">{title}</span>
-        <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{count}</span>
-      </button>
-      <ul id={listId} hidden={!open} className="flex flex-col">
-        {shots?.map((shot) => <ShotRow key={shot.cardId} shot={shot} onAsset={onAsset} locale={locale} />)}
-      </ul>
-    </li>
-  );
-});
-
-const ShotRow = memo(function ShotRow({ shot, onAsset }: { shot: ShotFacts; onAsset(cardId: string): void; locale: string }) {
-  return (
-    <li>
-      <button type="button" className={cn(PANEL_ROW, "ps-8")} onClick={() => onAsset(shot.cardId)}>
-        <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{shot.code}</span>
-        <span title={shot.title} className="min-w-0 flex-1 truncate text-[13px] leading-[18px] text-ink">{shot.title}</span>
-        {shot.seconds ? <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{t("boardPanels.fact.seconds", { count: shot.seconds })}</span> : null}
-      </button>
-    </li>
-  );
-});
-
-const EpisodesTab = memo(function EpisodesTab({ episodes, onEpisode, locale }: { episodes: readonly EpisodeRow[]; onEpisode(episode: number): void; locale: string }) {
-  if (!episodes.length) return <EmptyLine text={t("boardPanels.episodes.empty")} />;
-  return <RowGroup>{episodes.map((row) => <EpisodeLine key={row.episode} row={row} onEpisode={onEpisode} locale={locale} />)}</RowGroup>;
-});
-
-const EpisodeLine = memo(function EpisodeLine({ row, onEpisode }: { row: EpisodeRow; onEpisode(episode: number): void; locale: string }) {
-  const progress = episodeProgress(row);
-  const status = episodeStatus(row.status);
-  const meta = status ? `${status.label} · ${progress}` : progress;
-  return (
-    <li>
-      <button type="button" className={PANEL_ROW} onClick={() => onEpisode(row.episode)}>
-        <span className="w-9 shrink-0 text-[12px] font-medium leading-4 tabular-nums text-ink-secondary">{episodeCode(row.episode)}</span>
-        <span className="min-w-0 flex-1">
-          {row.title ? <span title={row.title} className="block truncate text-[13px] leading-[18px] text-ink">{row.title}</span> : null}
-          <span title={meta} className={ROW_META}>{meta}</span>
+    <>
+      <button type="button" className="rrow" aria-expanded={open} onClick={() => onToggle(episode)}>
+        <span className="ava sm"><ChevronsDownUp size={14} aria-hidden="true" className={cn("transition-transform duration-[120ms] motion-reduce:transition-none", open && "rotate-180")} /></span>
+        <span className="who">
+          <b>{title}</b>
+          <span className="mono">{episodeCode(episode)}</span>
         </span>
-        {row.status === "done" ? <CheckCircle2 size={16} aria-hidden="true" className="shrink-0 text-success" /> : null}
-        {row.status === "failed" ? <AlertCircle size={16} aria-hidden="true" className="shrink-0 text-danger" /> : null}
+        <span className="cnt">{count}</span>
       </button>
-    </li>
+      {shots?.map((shot) => (
+        <button key={shot.cardId} type="button" className="rrow ps-10" onClick={() => onAsset(shot.cardId)} data-card={shot.cardId}>
+          <span className="mono text-ink-tertiary">{shot.code}</span>
+          <span className="who"><b>{shot.title}</b>{shot.seconds ? <span>{t("boardPanels.fact.seconds", { count: shot.seconds })}</span> : null}</span>
+        </button>
+      ))}
+    </>
+  );
+});
+
+const EpisodesTab = memo(function EpisodesTab({ episodes, onEpisode }: { episodes: readonly EpisodeRow[]; onEpisode(episode: number): void }) {
+  if (!episodes.length) return <p className="sec-lbl">{t("boardPanels.episodes.empty")}</p>;
+  return (
+    <RowList>
+      {episodes.map((row) => (
+        <button key={row.episode} type="button" className="rrow" data-episode={row.episode} onClick={() => onEpisode(row.episode)}>
+          <span className="mono w-9 shrink-0">{episodeCode(row.episode)}</span>
+          <span className="who">
+            <b>{row.title}</b>
+            <span>{episodeProgress(row)}</span>
+          </span>
+          {row.status ? <span className="st" data-state={row.status === "done" ? "done" : row.status === "failed" ? "failed" : "idle"}><i className="led" />{row.status === "done" ? t("productionBoard.stageState.done") : row.status === "failed" ? t("productionBoard.stageState.failed") : t("productionBoard.stageState.active")}</span> : null}
+        </button>
+      ))}
+    </RowList>
   );
 });

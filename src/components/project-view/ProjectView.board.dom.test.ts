@@ -61,6 +61,17 @@ async function click(element: Element | null | undefined) {
   await settle();
 }
 
+/** A press on a card: the pointer down on it, the pointer up on the board, as a person's click arrives. */
+async function press(card: Element | null | undefined) {
+  if (!card) throw new Error("nothing to press");
+  const viewport = card.closest<HTMLElement>("[data-production-board]")!;
+  await act(async () => {
+    card.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: 10, clientY: 10 }));
+    viewport.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, button: 0, pointerId: 1, clientX: 10, clientY: 10 }));
+  });
+  await settle();
+}
+
 /** Where a card is on the screen: its place on the board, moved and scaled as the board's world is. */
 function onScreen(card: HTMLElement) {
   const [, x, y, k] = /translate\(([\d.e+-]+)px, ([\d.e+-]+)px\) scale\(([\d.e+-]+)\)/.exec(page.querySelector<HTMLElement>("[data-board-world]")!.style.transform)!.map(Number);
@@ -90,32 +101,30 @@ afterEach(async () => {
 });
 
 describe("a project's board in the app", () => {
-  it("draws the team and assets panel in a layer the size of the board, and keeps the board's stage bar clear of it", () => {
-    const board = q("[data-production-board]")!;
-    expect(board.classList).toContain("relative");
-    const layer = board.querySelector<HTMLElement>(":scope > [data-board-overlay]")!;
+  it("draws the team and assets panel in a layer over the board, and keeps the board's stage bar clear of it", () => {
+    const stage = q("main.stage")!;
+    const layer = stage.querySelector<HTMLElement>(":scope > [data-board-overlay]")!;
     expect([...layer.classList]).toEqual(expect.arrayContaining(["absolute", "inset-0"]));
     expect(layer.querySelector("aside[data-board-side-panel]")?.getAttribute("aria-label")).toBe("Team and assets");
     const rooms = layer.querySelectorAll<HTMLElement>("[data-board-room]");
     expect([...rooms].map((room) => room.style.width)).toEqual(["304px"]);
-    const stages = board.querySelector<HTMLElement>("nav[aria-label='Stages']")!;
-    expect(stages.dataset.boardStageReserve).toBe("320");
-    expect(stages.style.paddingInlineEnd).toBe("332px");
+    const stages = stage.querySelector<HTMLElement>("nav[aria-label='Stages']")!;
+    expect(stages.style.maxWidth).toBe("calc(100% - 24px - 320px)");
   });
 
   it("opens a bot's chat window beside its card when the card is clicked", async () => {
     const card = cardElement(botNodeId(BOARD_BOTS.lead))!;
-    await click(card.querySelector("article"));
+    await press(card);
     const chat = q("[data-board-chat]")!;
     expect(chat.getAttribute("aria-label")).toBe("Chat with 云舟");
-    expect(chat.dataset.placement).toBe("beside");
+    expect(chat.dataset.side).toBe("r");
     const box = onScreen(card);
     expect(chat.style.transform).toBe(`translate(${Math.round(box.x + box.width + 16)}px, ${Math.round(Math.max(12, box.y))}px)`);
   });
 
   it("opens an asset's details when its card is clicked, in place of a chat", async () => {
-    await click(cardElement(botNodeId(BOARD_BOTS.lead))!.querySelector("article"));
-    await click(cardElement("brief")!.querySelector("article"));
+    await press(cardElement(botNodeId(BOARD_BOTS.lead))!);
+    await press(cardElement("brief")!);
     const details = q("[role='dialog'][aria-modal='true']")!;
     expect(details.dataset.boardAsset).toBe("brief");
     expect(details.querySelector("h2")?.textContent).toBe(fixture.backend!.current().nodes.find((node) => node.id === "brief")!.title);
