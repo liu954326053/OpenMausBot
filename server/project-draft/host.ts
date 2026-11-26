@@ -47,7 +47,8 @@ export interface ProjectDraftHost {
   writeDraftIfReady(projectId: string, episode?: number): Promise<void>;
   /** `listener` runs after a project's order of shots was set. Returns the unsubscribe. */
   onTimelineChange(listener: (projectId: string) => void): () => void;
-  /** `listener` runs after a draft was written, so what `draftWire` answers changed. Returns the unsubscribe. */
+  /** `listener` runs after a draft was written, or JianYing saved other voice, subtitles or music into one, so what
+   * `draftWire` answers changed. Returns the unsubscribe. */
   onDraftChange(listener: (projectId: string) => void): () => void;
   stop(): void;
 }

@@ -356,6 +356,36 @@ describe("a written draft's tracks", () => {
     await drafts.refreshTracks("p1");
     expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined();
   });
+
+  it("read from an older draft are not served for a new one written while they were being read", async () => {
+    const { drafts, canvas, shot, base, draftRoot, draftFolders } = harness();
+    const timelineFile = join(base, "data", "project-timelines", "p1.json");
+    canvas.set("p1", [shot("s1"), shot("s2")]);
+    await drafts.writeDraftIfReady("p1");
+    saveSubtitleInto(join(draftRoot, draftFolders()[0]!, "draft_info.json"));
+    const older = readFileSync(timelineFile, "utf8");
+    await drafts.setOrder("p1", { shotIds: ["s2", "s1"] });
+    const newer = readFileSync(timelineFile, "utf8");
+    writeFileSync(timelineFile, older);
+    const look = drafts.refreshTracks("p1");
+    writeFileSync(timelineFile, newer);
+    await look;
+    expect(drafts.draftWire("p1", OWNER)).toMatchObject({ state: "kept", name: "Stand-in bride 2" });
+    expect(drafts.draftWire("p1", OWNER).tracks).toBeUndefined();
+  });
+
+  it("leave a line with the error's name only in the log when a look at them for the snapshot fails", async () => {
+    const { drafts, canvas, shot, draftRoot, draftFolders, lines } = harness();
+    canvas.set("p1", [shot("s1")]);
+    await drafts.writeDraftIfReady("p1");
+    saveSubtitleInto(join(draftRoot, draftFolders()[0]!, "draft_info.json"));
+    drafts.onDraftChange(() => {
+      throw new RangeError("a listener's own words");
+    });
+    drafts.draftWires("p1", OWNER, []);
+    await vi.waitFor(() => expect(lines).toContain("[project-draft] a look at the drafts' tracks of project p1 failed (RangeError)"));
+    expect(lines.join("\n")).not.toContain("a listener's own words");
+  });
 });
 
 describe("where there is no JianYing to write for", () => {

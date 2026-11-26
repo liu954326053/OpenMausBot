@@ -86,8 +86,8 @@ export class ProjectDrafts {
   private readonly draftListeners = new Set<(projectId: string) => void>();
   /** By project, each file of its output folder as last looked at. */
   private readonly outputs = new Map<string, Map<string, { size: number; mtimeMs: number; settled: boolean }>>();
-  /** By timeline key, the tracks last read from the draft's file and the file's time and size then. */
-  private readonly tracks = new Map<string, { stamp: string; tracks: DraftTrackWire[] }>();
+  /** By timeline key, the tracks last read from a draft's file, the draft's folder, and the file's time and size then. */
+  private readonly tracks = new Map<string, { folder: string; stamp: string; tracks: DraftTrackWire[] }>();
   /** By project, when its drafts' files were last looked at for the snapshot. */
   private readonly trackLooks = new Map<string, number>();
   private lookup: JianyingLookup | null = null;
@@ -168,7 +168,9 @@ export class ProjectDrafts {
     const now = this.deps.now();
     if (here && now - (this.trackLooks.get(projectId) ?? 0) >= TRACK_LOOK_EVERY_MS) {
       this.trackLooks.set(projectId, now);
-      void this.lookAtTracks(project).catch(() => undefined);
+      void this.lookAtTracks(project).catch((error: unknown) => {
+        this.deps.log(`[project-draft] a look at the drafts' tracks of project ${projectId} failed (${error instanceof Error ? error.name : "unknown"})`);
+      });
     }
     return Object.fromEntries(episodes.map((episode) => [episode, this.wireOf(project, here, episode)]));
   }
@@ -271,8 +273,8 @@ export class ProjectDrafts {
     if (this.lookup?.state !== "ready") return { state: "unavailable", reason: this.lookup?.reason ?? "not-installed", exportFolder };
     const draft = this.storedDraft(timelineKey(project.id, episode));
     if (!draft) return { state: "none", exportFolder };
-    const tracks = this.tracks.get(timelineKey(project.id, episode))?.tracks;
-    return { state: draft.kept ? "kept" : "written", name: draft.name, writtenAt: draft.writtenAt, exportFolder, ...(tracks?.length ? { tracks } : {}) };
+    const tracks = this.tracksOf(timelineKey(project.id, episode), draft);
+    return { state: draft.kept ? "kept" : "written", name: draft.name, writtenAt: draft.writtenAt, exportFolder, ...(tracks.length ? { tracks } : {}) };
   }
 
   private async lookAtTracks(project: TeamProjectWire): Promise<void> {
@@ -286,7 +288,8 @@ export class ProjectDrafts {
       const file = join(draft.folder, timelineFile);
       const info = await lstat(file).catch(() => null);
       const stamp = info?.isFile() && info.size <= TIMELINE_MAX_BYTES ? `${info.mtimeMs}:${info.size}` : "";
-      if (this.tracks.get(key)?.stamp === stamp) continue;
+      const known = this.tracks.get(key);
+      if (known?.folder === draft.folder && known.stamp === stamp) continue;
       const bytes = stamp ? await readFile(file, "utf8").catch(() => null) : null;
       let read: DraftTrackWire[] = [];
       try {
@@ -294,10 +297,15 @@ export class ProjectDrafts {
       } catch {
         read = [];
       }
-      if (JSON.stringify(this.tracks.get(key)?.tracks ?? []) !== JSON.stringify(read)) changed = true;
-      this.tracks.set(key, { stamp, tracks: read });
+      if (JSON.stringify(this.tracksOf(key, draft)) !== JSON.stringify(read)) changed = true;
+      this.tracks.set(key, { folder: draft.folder, stamp, tracks: read });
     }
     if (changed) for (const listener of this.draftListeners) listener(project.id);
+  }
+
+  private tracksOf(key: string, draft: WrittenDraft): DraftTrackWire[] {
+    const known = this.tracks.get(key);
+    return known?.folder === draft.folder ? known.tracks : [];
   }
 
   /** Security: a clip is a file that really is inside the project folder and whose bytes are a video; a take that is

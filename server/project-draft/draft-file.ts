@@ -132,13 +132,18 @@ const VOICE_MATERIALS = new Set(["text_to_audio", "record"]);
 const TRACK_KINDS = ["voice", "subtitle", "music"] as const;
 
 const list = (value: unknown): Json[] => (Array.isArray(value) ? value.filter((one): one is Json => Boolean(one) && typeof one === "object" && !Array.isArray(one)) : []);
+const idOf = (value: unknown): string | undefined => (typeof value === "string" || typeof value === "number" ? String(value) : undefined);
 
 /** The voice, subtitle and music segments of a draft's timeline, as JianYing saved it. */
 export function draftTracks(timeline: unknown): DraftTrackWire[] {
   if (!timeline || typeof timeline !== "object" || Array.isArray(timeline)) return [];
   const draft = timeline as Json;
   const materials = draft.materials && typeof draft.materials === "object" ? draft.materials as Json : {};
-  const audioType = new Map(list(materials.audios).map((one) => [String(one.id), String(one.type)]));
+  const audioType = new Map<string, unknown>();
+  for (const one of list(materials.audios)) {
+    const id = idOf(one.id);
+    if (id !== undefined) audioType.set(id, one.type);
+  }
   const found: Record<DraftTrackWire["kind"], DraftTrackWire["segments"]> = { voice: [], subtitle: [], music: [] };
   for (const track of list(draft.tracks)) {
     if (track.type !== "audio" && track.type !== "text") continue;
@@ -146,8 +151,10 @@ export function draftTracks(timeline: unknown): DraftTrackWire[] {
       const range = segment.target_timerange as Json | undefined;
       const start = range?.start;
       const duration = range?.duration;
-      if (typeof start !== "number" || typeof duration !== "number" || !Number.isFinite(start + duration) || start < 0 || duration <= 0) continue;
-      const kind = track.type === "text" ? "subtitle" : VOICE_MATERIALS.has(audioType.get(String(segment.material_id)) ?? "") ? "voice" : "music";
+      if (typeof start !== "number" || typeof duration !== "number" || !Number.isFinite(start) || !Number.isFinite(duration) || start < 0 || duration <= 0) continue;
+      const materialId = idOf(segment.material_id);
+      const materialType = materialId === undefined ? undefined : audioType.get(materialId);
+      const kind = track.type === "text" ? "subtitle" : typeof materialType === "string" && VOICE_MATERIALS.has(materialType) ? "voice" : "music";
       found[kind].push({ startMs: Math.round(start / 1000), durationMs: Math.round(duration / 1000) });
     }
   }

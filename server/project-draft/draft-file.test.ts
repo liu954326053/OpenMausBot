@@ -135,6 +135,18 @@ describe("the tracks a person added in JianYing", () => {
     expect(draftTracks(saved)).toEqual([]);
   });
 
+  it("are read past a material or a segment whose id or type is not text", () => {
+    const odd = { toString: 0 };
+    const saved = {
+      materials: { audios: [{ id: odd, type: "record" }, { id: 7, type: "text_to_audio" }, { id: "song-1", type: odd }] },
+      tracks: [{ type: "audio", segments: [{ material_id: odd, ...range(0, 1_000_000) }, { material_id: 7, ...range(2_000_000, 1_000_000) }, { material_id: "song-1", ...range(4_000_000, 1_000_000) }] }],
+    };
+    expect(draftTracks(saved)).toEqual([
+      { kind: "voice", segments: [{ startMs: 2000, durationMs: 1000 }] },
+      { kind: "music", segments: [{ startMs: 0, durationMs: 1000 }, { startMs: 4000, durationMs: 1000 }] },
+    ]);
+  });
+
   it("keep 200 segments of a kind at most", () => {
     const many = { materials: { audios: [], texts: [] }, tracks: [{ type: "text", segments: Array.from({ length: 300 }, (_, at) => range(at * 1_000_000, 500_000)) }] };
     expect(draftTracks(many)[0]?.segments).toHaveLength(200);
