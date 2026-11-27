@@ -3,13 +3,13 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ArtifactService } from '@/service/artifacts';
+import { ArtifactService } from '../../src/service/artifacts';
 import type {
   ArtifactId,
   ArtifactVersionId,
   ProjectId,
   GraphVersionId,
-} from '@/shared/types';
+} from '../../src/shared/types';
 
 describe('ArtifactService', () => {
   let mockDb: any;

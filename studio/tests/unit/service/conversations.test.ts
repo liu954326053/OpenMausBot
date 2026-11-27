@@ -3,12 +3,12 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ConversationService } from '@/service/conversations';
+import { ConversationService } from '../../src/service/conversations';
 import type {
   ConversationId,
   MessageId,
   ProjectId,
-} from '@/shared/types';
+} from '../../src/shared/types';
 
 describe('ConversationService', () => {
   let mockDb: any;

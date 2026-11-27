@@ -11,7 +11,7 @@ import type {
   ProjectAgentId,
   Iso,
   ArtifactId,
-} from '../../shared/types';
+} from '../../../shared/types';
 
 export class ProjectRepository {
   constructor(private db: Database.Database) {}

@@ -5,8 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ServiceContainer } from '@/service';
-import type { DatabaseManager } from '@/service/db';
+import { ServiceContainer } from '../../src/service';
+import type { DatabaseManager } from '../../src/service/db';
 import type {
   ProjectId,
   TeamSnapshotId,
@@ -15,7 +15,7 @@ import type {
   TaskId,
   NodeId,
   ProjectAgentId,
-} from '@/shared/types';
+} from '../../src/shared/types';
 
 describe('ServiceContainer Integration', () => {
   let mockDb: any;

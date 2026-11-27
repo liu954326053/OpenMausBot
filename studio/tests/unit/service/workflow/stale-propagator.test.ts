@@ -3,10 +3,10 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { WorkflowGraph } from '@/service/workflow/graph';
-import { TaskStateMachine } from '@/service/workflow/state-machine';
-import { StalePropagator } from '@/service/workflow/stale-propagator';
-import type { WorkflowTask, TaskId, ProjectAgentId } from '@/service/workflow/types';
+import { WorkflowGraph } from '../../src/service/workflow/graph';
+import { TaskStateMachine } from '../../src/service/workflow/state-machine';
+import { StalePropagator } from '../../src/service/workflow/stale-propagator';
+import type { WorkflowTask, TaskId, ProjectAgentId } from '../../src/service/workflow/types';
 
 describe('StalePropagator', () => {
   let graph: WorkflowGraph;

@@ -6,7 +6,7 @@
  */
 
 import { createApp } from './app';
-import { DatabaseManager } from '@service/db';
+import { DatabaseManager } from '../service/db';
 import path from 'path';
 import { fileURLToPath } from 'url';
 

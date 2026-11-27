@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { EventService } from '@/service/events';
-import type { ProjectId, StudioEventType } from '@/shared/types';
+import { EventService } from '../src/service/events';
+import type { ProjectId, StudioEventType } from '../src/shared/types';
 
 describe('EventService', () => {
   let mockDb: any;

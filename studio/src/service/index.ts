@@ -4,7 +4,7 @@
  * 统一管理所有业务服务的初始化与依赖注入
  */
 
-import type { DatabaseManager } from '../db';
+import type { DatabaseManager } from './db';
 import { ProjectService } from './projects';
 import { ArtifactService } from './artifacts';
 import { TaskService } from './tasks';

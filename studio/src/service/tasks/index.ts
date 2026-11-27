@@ -20,8 +20,8 @@ import type {
   TaskStatus,
   TaskErrorKind,
   Iso,
-} from '../shared/types';
-import type { EventService } from './event-service';
+} from '../../shared/types';
+import type { EventService } from '../events';
 
 export interface CreateTaskInput {
   id: TaskId;

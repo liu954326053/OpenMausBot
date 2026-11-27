@@ -19,8 +19,8 @@ import type {
   MessageRole,
   MessagePart,
   Iso,
-} from '../shared/types';
-import type { EventService } from './event-service';
+} from '../../shared/types';
+import type { EventService } from '../events';
 
 export interface CreateConversationInput {
   id: ConversationId;

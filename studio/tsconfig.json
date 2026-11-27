@@ -15,5 +15,7 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client", "node", "vitest/globals"],
     "noEmit": true
-  }
+  },
+  "include": ["src", "tests"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -4,7 +4,7 @@
  */
 
 // Tool registry and core types
-export { ToolRegistry, type ToolDefinition, type ToolSchema, type ToolExecutionContext } from './registry';
+export { ToolRegistry, type ToolDefinition, type ToolSchema, type ToolExecutionContext } from './registry.ts';
 
 // Tool execution middleware
 export {
@@ -13,7 +13,7 @@ export {
   buildExecutionPlan,
   type ExecutorOptions,
   type ExecutionResult,
-} from './executor';
+} from './executor.ts';
 
 // Tool discovery and introspection
 export {
@@ -22,7 +22,7 @@ export {
   type ToolMetadata,
   type ToolCapability,
   type ToolInfo,
-} from './discovery';
+} from './discovery.ts';
 
 // Sandbox isolation system
 export {
@@ -35,7 +35,7 @@ export {
   type IsolationPolicy,
   type SandboxConfig,
   type ResourceUsage,
-} from './sandbox';
+} from './sandbox.ts';
 
 // Permission system
 export {

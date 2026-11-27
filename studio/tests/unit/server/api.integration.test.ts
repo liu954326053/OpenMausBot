@@ -6,8 +6,8 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
-import { createApp, AppContext } from '../app';
-import { DatabaseManager } from '@service/db';
+import { createApp, AppContext } from '../src/server/app';
+import { DatabaseManager } from '../src/service/db';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';

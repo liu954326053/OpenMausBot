@@ -17,10 +17,8 @@ import type {
   GraphVersionId,
   NodeId,
   ProjectAgentId,
-  Scope,
-  Iso,
-} from '../shared/types';
-import type { EventService } from './event-service';
+} from '../../shared/types';
+import type { EventService } from '../events';
 
 export interface CreateArtifactInput {
   id: ArtifactId;

@@ -8,7 +8,7 @@
  */
 
 import type { DatabaseManager } from '../db';
-import type { StudioEvent, StudioEventType, ProjectId, Json } from '../shared/types';
+import type { StudioEvent, StudioEventType, ProjectId, Json } from '../../shared/types';
 
 export interface EventSubscription {
   id: string;

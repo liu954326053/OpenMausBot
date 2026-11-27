@@ -17,7 +17,7 @@ import type {
   ArtifactId,
   ArtifactVersionId,
   Iso,
-} from '../../shared/types';
+} from '../../../shared/types';
 
 export class TaskRepository {
   constructor(private db: Database.Database) {}

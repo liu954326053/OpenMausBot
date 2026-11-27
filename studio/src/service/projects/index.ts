@@ -15,8 +15,8 @@ import type {
   ProjectAgentId,
   ArtifactId,
   Iso,
-} from '../shared/types';
-import type { EventService } from './event-service';
+} from '../../shared/types';
+import type { EventService } from '../events';
 
 export interface CreateProjectInput {
   id: ProjectId;

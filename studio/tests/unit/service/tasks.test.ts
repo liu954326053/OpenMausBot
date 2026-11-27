@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TaskService } from '@/service/tasks';
+import { TaskService } from '../../src/service/tasks';
 import type {
   TaskId,
   ProjectId,
@@ -11,7 +11,7 @@ import type {
   NodeId,
   ProjectAgentId,
   Scope,
-} from '@/shared/types';
+} from '../../src/shared/types';
 
 describe('TaskService', () => {
   let mockDb: any;

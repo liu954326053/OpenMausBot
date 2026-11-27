@@ -9,7 +9,7 @@
  */
 
 import express, { Express, Request, Response, NextFunction } from 'express';
-import { DatabaseManager } from '@service/db';
+import { DatabaseManager } from '../service/db';
 import { projectRouter } from './routes/projects';
 import { workflowRouter } from './routes/workflow';
 import { artifactsRouter } from './routes/artifacts';

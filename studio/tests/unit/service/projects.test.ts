@@ -5,15 +5,15 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { ProjectService } from '@/service/projects';
-import type { DatabaseManager } from '@/service/db';
-import type { EventService } from '@/service/events';
+import { ProjectService } from '../../src/service/projects';
+import type { DatabaseManager } from '../../src/service/db';
+import type { EventService } from '../../src/service/events';
 import type {
   ProjectId,
   TeamSnapshotId,
   ProjectAgentId,
   ArtifactId,
-} from '@/shared/types';
+} from '../../src/shared/types';
 
 describe('ProjectService', () => {
   let mockDb: any;

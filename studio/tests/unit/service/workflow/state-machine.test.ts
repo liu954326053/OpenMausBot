@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TaskStateMachine } from '@/service/workflow/state-machine';
-import type { TaskId } from '@/service/workflow/types';
+import { TaskStateMachine } from '../src/service/workflow/state-machine';
+import type { TaskId } from '../src/service/workflow/types';
 
 describe('TaskStateMachine', () => {
   let sm: TaskStateMachine;

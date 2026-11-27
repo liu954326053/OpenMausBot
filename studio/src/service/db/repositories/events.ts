@@ -17,7 +17,7 @@ import type {
   ConversationId,
   MessageId,
   Json,
-} from '../../shared/types';
+} from '../../../shared/types';
 
 export class EventRepository {
   constructor(private db: Database.Database) {}
