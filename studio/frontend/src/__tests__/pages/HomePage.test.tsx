@@ -2,16 +2,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import { HomePage } from '../../pages/HomePage';
-import * as apiClient from '../../api/client';
 
 // Mock the API client
-vi.mock('../../api/client', () => ({
-  apiClient: {
-    get: vi.fn(),
-    post: vi.fn(),
-    delete: vi.fn(),
-  },
-}));
+vi.mock('../../api/client', () => {
+  const mockGet = vi.fn();
+  const mockPost = vi.fn();
+  const mockDelete = vi.fn();
+
+  return {
+    apiClient: {
+      get: mockGet,
+      post: mockPost,
+      delete: mockDelete,
+    },
+  };
+});
+
+// Import after mocking
+import { apiClient } from '../../api/client';
 
 describe('HomePage', () => {
   beforeEach(() => {
@@ -19,7 +27,7 @@ describe('HomePage', () => {
   });
 
   it('renders empty state when no projects exist', async () => {
-    vi.spyOn(apiClient.apiClient, 'get').mockResolvedValue({
+    (apiClient.get as any).mockResolvedValue({
       ok: true,
       data: { items: [] },
     });
@@ -58,7 +66,7 @@ describe('HomePage', () => {
       },
     ];
 
-    vi.spyOn(apiClient.apiClient, 'get').mockResolvedValue({
+    (apiClient.get as any).mockResolvedValue({
       ok: true,
       data: { items: mockProjects },
     });
@@ -76,7 +84,7 @@ describe('HomePage', () => {
   });
 
   it('handles project list fetch error', async () => {
-    vi.spyOn(apiClient.apiClient, 'get').mockResolvedValue({
+    (apiClient.get as any).mockResolvedValue({
       ok: false,
       error: { message: '加载项目列表失败' },
     });
