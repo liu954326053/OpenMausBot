@@ -39,7 +39,7 @@ describe("colour utilities", () => {
     expect(defined.size).toBeGreaterThan(15);
     expect(defined).toContain("hairline");
     expect(defined).toContain("inset");
-    expect(shadows).toContain("board");
+    expect(shadows).toContain("2xl");
   });
 
   it("only names colour tokens the theme defines", () => {
