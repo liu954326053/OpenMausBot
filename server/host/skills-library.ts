@@ -16,7 +16,7 @@ import { nativeSkillListing, nativeSkills, projectSkillListing, projectSkills, r
 import { isMainBot } from "../peer-roster.ts";
 import { redactSecretsInText } from "../redact.ts";
 import { readSectionContext } from "../section-context.ts";
-import { librarySkillFilePath, librarySkillsOnOffer, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, skillsLibraryEnabled } from "../skill-library.ts";
+import { librarySkillDirectory, librarySkillFilePath, librarySkillsOnOffer, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, skillsLibraryEnabled, skillsLibraryRoot } from "../skill-library.ts";
 import { offeredSkillViews, listedOffers } from "../skill-library-offer.ts";
 import { librarySkillFiles, ownSkillFiles, type StoredSkillFiles } from "../skill-side-files.ts";
 import {
@@ -96,12 +96,17 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
       ...project.map(projectSkillListing),
     ];
   };
+  /** True when readBotSkillFile reads the library's copy: no private skill of that name shadows it, and the library's is on. */
+  const readsLibraryCopy = (bot: BotRecord, name: string): boolean =>
+    skillsLibraryEnabled(cfg) &&
+    !listSkills(bot.id).some((skill) => skill.name === name) &&
+    listLibrarySkills().some((skill) => skill.name === name && skill.enabled);
   const readBotSkillFile = (bot: BotRecord, name: string): string | null => {
     const own = readSkillFile(bot.id, name);
     if (own !== null) return own;
     // Private wins collisions: a private skill that no longer verifies must not fall through to a same-named library one.
     if (listSkills(bot.id).some((skill) => skill.name === name)) return null;
-    if (skillsLibraryEnabled(cfg) && listLibrarySkills().some((skill) => skill.name === name && skill.enabled)) return readLibrarySkillFile(name);
+    if (readsLibraryCopy(bot, name)) return readLibrarySkillFile(name);
     if (readImportedSkills()[name]) return readImportedSkillFile(name);
     const native = nativesFor(bot).find((skill) => skill.name === name) ?? projectFor(bot, bot.threadId).find((skill) => skill.name === name);
     return native ? readNativeSkillFile(native) : null;
@@ -304,10 +309,16 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
       return listBotSkills(bot).filter((skill) => skill.enabled).map((skill) => ({ name: skill.name, description: skill.description }));
     },
 
-    /** The full SKILL.md of one skill the bot may read, or null for a name it has no switched-on skill under. */
+    /** The full SKILL.md of one skill the bot may read, or null for a name it has no switched-on skill under. A library
+     * copy's folder is named after it, since that folder sits outside the bot's workspace. */
     readSkill(bot: BotRecord, name: string): string | null {
       if (!isSkillName(name)) return null;
-      return listBotSkills(bot).some((skill) => skill.name === name && skill.enabled) ? readBotSkillFile(bot, name) : null;
+      if (!listBotSkills(bot).some((skill) => skill.name === name && skill.enabled)) return null;
+      const text = readBotSkillFile(bot, name);
+      if (text === null) return null;
+      return readsLibraryCopy(bot, name)
+        ? `${text}\n\nSkill folder: ${librarySkillDirectory(skillsLibraryRoot(), name)} — its scripts and reference files are there beside SKILL.md.`
+        : text;
     },
 
     /** The imported skills a turn links into its task folder: the same ones its index lists, so an engine that loads

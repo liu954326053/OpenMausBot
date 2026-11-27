@@ -95,7 +95,10 @@ describe("a bot's turn with library skills", () => {
     const record = { id: bot, threadId: "main", name: "Picker", modelSelection: { instanceId: "none" } } as unknown as BotRecord;
     const host = hostFor(record);
     expect(host.skillsIndex(record, "main")).toContain(`- ${name} (the skills library): Picks comics that suit a short drama.`);
-    expect(host.readSkill(record, name)).toBe(SKILL(name));
+    const read = host.readSkill(record, name)!;
+    expect(read).toContain(SKILL(name));
+    expect(read).toContain(`Skill folder: ${library.librarySkillDirectory(library.skillsLibraryRoot(), name)}`);
+    expect(read).toContain("scripts and reference files are there beside SKILL.md");
     expect(host.expandSkillCommand(record, "main", `/${name}`, undefined, [], true)).toContain(`ran your ${name} skill`);
     const row = host.harnessSkills(record).find((skill) => skill.name === name);
     expect(row).toMatchObject({ enabled: true, editable: false, file: library.librarySkillFilePath(name) });
