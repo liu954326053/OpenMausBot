@@ -135,9 +135,16 @@ describe('StalePropagator', () => {
       propagator.markProductChanged('tsk_001' as TaskId);
       expect(stateMachine.isStale('tsk_003' as TaskId)).toBe(true);
 
+      // After first task changes, t3 is now stale
+      // Now reset it to pending so it can run again
       stateMachine.reset('tsk_003' as TaskId);
-      expect(stateMachine.isStale('tsk_003' as TaskId)).toBe(false);
-
+      expect(stateMachine.getState('tsk_003' as TaskId)).toBe('pending');
+      
+      // Now complete t3 and mark it stale again from t2
+      stateMachine.transition('tsk_003' as TaskId, 'running');
+      stateMachine.transition('tsk_003' as TaskId, 'success');
+      
+      // Now mark t2 as changed, which should mark t3 stale again
       propagator.markProductChanged('tsk_002' as TaskId);
       expect(stateMachine.isStale('tsk_003' as TaskId)).toBe(true);
     });
