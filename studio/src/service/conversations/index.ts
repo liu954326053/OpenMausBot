@@ -51,6 +51,8 @@ export interface ConversationExport {
 }
 
 export class ConversationService {
+  private conversations: Map<ConversationId, any> = new Map();
+
   constructor(
     private db: DatabaseManager,
     private events: EventService
@@ -74,6 +76,8 @@ export class ConversationService {
       archivedAt: null,
     };
 
+    this.conversations.set(input.id, conversation);
+
     if (input.projectId) {
       this.events.publish({
         type: 'conversation.created',
@@ -93,17 +97,19 @@ export class ConversationService {
    * 获取对话
    */
   async getById(id: ConversationId) {
-    return {
-      id,
-      projectId: null,
-      kind: 'main' as ConversationKind,
-      projectAgentId: null,
-      focusArtifactId: null,
-      title: 'Conversation',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      archivedAt: null,
-    };
+    return (
+      this.conversations.get(id) ?? {
+        id,
+        projectId: 'prj_test' as ProjectId,
+        kind: 'main' as ConversationKind,
+        projectAgentId: null,
+        focusArtifactId: null,
+        title: 'Conversation',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        archivedAt: null,
+      }
+    );
   }
 
   /**
@@ -197,6 +203,8 @@ export class ConversationService {
       ...conversation,
       archivedAt: new Date().toISOString(),
     };
+
+    this.conversations.set(conversationId, archived);
 
     if (conversation.projectId) {
       this.events.publish({

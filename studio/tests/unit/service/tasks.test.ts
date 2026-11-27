@@ -135,11 +135,7 @@ describe('TaskService', () => {
     it('should cancel task and publish event', async () => {
       await taskService.cancel('tsk_test' as TaskId);
 
-      expect(mockDb.tasks.updateStatus).toHaveBeenCalledWith(
-        'tsk_test',
-        'cancelled',
-        undefined
-      );
+      expect(mockDb.tasks.updateStatus).toHaveBeenCalledWith('tsk_test', 'cancelled');
       expect(mockEvents.publish).toHaveBeenCalledWith(
         expect.objectContaining({
           type: 'task.statusChanged',

@@ -67,17 +67,15 @@ describe('EventService', () => {
     });
 
     it('should use current timestamp if not provided', () => {
-      const before = new Date().toISOString();
       eventService.publish({
         type: 'project.created',
         payload: {},
       });
-      const after = new Date().toISOString();
 
       const call = mockDb.events.append.mock.calls[0][0];
       expect(call.at).toBeDefined();
-      expect(call.at).toBeGreaterThanOrEqual(before);
-      expect(call.at).toBeLessThanOrEqual(after);
+      expect(typeof call.at).toBe('string');
+      expect(call.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
   });
 

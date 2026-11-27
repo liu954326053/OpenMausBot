@@ -63,11 +63,16 @@ describe('ConversationService', () => {
 
       expect(result.id).toBe('cnv_test');
       expect(result.kind).toBe('main');
+      expect(result.projectId).toBe('prj_test');
     });
   });
 
   describe('appendMessage', () => {
     it('should append message and publish event', async () => {
+      mockDb = {
+        ...mockDb,
+      };
+
       await conversationService.appendMessage({
         id: 'msg_test' as MessageId,
         conversationId: 'cnv_test' as ConversationId,
