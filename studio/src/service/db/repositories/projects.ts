@@ -194,6 +194,32 @@ export class ProjectRepository {
   }
 
   /**
+   * 列出项目（带分页）
+   */
+  list(options: {
+    limit?: number;
+    offset?: number;
+    includeDeleted?: boolean;
+  } = {}): Project[] {
+    const { limit = 50, offset = 0, includeDeleted = false } = options;
+
+    const whereClause = includeDeleted ? '' : 'WHERE deleted_at IS NULL';
+
+    const rows = this.db
+      .prepare(
+        `
+        SELECT * FROM projects
+        ${whereClause}
+        ORDER BY last_activity_at DESC
+        LIMIT ? OFFSET ?
+      `
+      )
+      .all(limit, offset) as any[];
+
+    return rows.map((row) => this.rowToProject(row));
+  }
+
+  /**
    * 转换行数据为项目对象
    */
   private rowToProject(row: any): Project {

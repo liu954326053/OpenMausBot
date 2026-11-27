@@ -310,6 +310,127 @@ export class ArtifactRepository {
   }
 
   /**
+   * 创建版本（API 版本）
+   */
+  createVersion(data: {
+    id: string;
+    artifactId: string;
+    content: string | Buffer;
+    format?: string;
+    message?: string;
+    inputPinVersionIds?: string[];
+  }): any {
+    const now = new Date().toISOString();
+    const versions = this.db
+      .prepare('SELECT COUNT(*) as count FROM artifact_versions WHERE artifact_id = ?')
+      .get(data.artifactId) as { count: number };
+
+    const version = versions.count + 1;
+
+    this.db
+      .prepare(
+        `
+        INSERT INTO artifact_versions (
+          id, artifact_id, version, path, bytes, sha256, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `
+      )
+      .run(
+        data.id,
+        data.artifactId,
+        version,
+        '',
+        Buffer.byteLength(data.content),
+        'placeholder_sha256',
+        now
+      );
+
+    return {
+      id: data.id,
+      artifactId: data.artifactId,
+      version,
+      format: data.format || 'text',
+      createdAt: now,
+    };
+  }
+
+  /**
+   * 获取版本（API 版本）
+   */
+  getVersion(versionId: string): any {
+    const row = this.db
+      .prepare('SELECT * FROM artifact_versions WHERE id = ?')
+      .get(versionId) as any;
+
+    return row
+      ? {
+          id: row.id,
+          artifactId: row.artifact_id,
+          version: row.version,
+          createdAt: row.created_at,
+        }
+      : null;
+  }
+
+  /**
+   * 列出版本（API 版本）
+   */
+  listVersions(artifactId: string): any[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT id, artifact_id, version, created_at
+        FROM artifact_versions
+        WHERE artifact_id = ?
+        ORDER BY version DESC
+      `
+      )
+      .all(artifactId) as any[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      artifactId: row.artifact_id,
+      version: row.version,
+      createdAt: row.created_at,
+    }));
+  }
+
+  /**
+   * 更新产物（API 版本）
+   */
+  update(
+    id: string,
+    data: { title?: string; description?: string; metadata?: Record<string, any> }
+  ): any {
+    const now = new Date().toISOString();
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if (data.title) {
+      fields.push('title = ?');
+      values.push(data.title);
+    }
+
+    if (data.description) {
+      fields.push('description = ?');
+      values.push(data.description);
+    }
+
+    if (fields.length > 0) {
+      fields.push('updated_at = ?');
+      values.push(now);
+      values.push(id);
+
+      this.db
+        .prepare(`UPDATE artifacts SET ${fields.join(', ')} WHERE id = ?`)
+        .run(...values);
+    }
+
+    const row = this.db.prepare('SELECT * FROM artifacts WHERE id = ?').get(id) as any;
+    return this.rowToArtifact(row);
+  }
+
+  /**
    * 转换行数据为产物对象
    */
   private rowToArtifact(row: any): Artifact {

@@ -408,6 +408,59 @@ export class TaskRepository {
   }
 
   /**
+   * 列出任务（带过滤）
+   */
+  list(options: {
+    projectId?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): any[] {
+    let query = 'SELECT * FROM tasks WHERE 1=1';
+    const params: any[] = [];
+
+    if (options.projectId) {
+      query += ' AND project_id = ?';
+      params.push(options.projectId);
+    }
+
+    if (options.status) {
+      query += ' AND status = ?';
+      params.push(options.status);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(options.limit || 50);
+    params.push(options.offset || 0);
+
+    return this.db.prepare(query).all(...params) as any[];
+  }
+
+  /**
+   * 更新任务状态（API 版本）
+   */
+  updateStatus(
+    id: TaskId,
+    data: { status: string; message?: string | null; metadata?: Record<string, any> }
+  ): any {
+    const now = new Date().toISOString();
+    this.db
+      .prepare('UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?')
+      .run(data.status, now, id);
+
+    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
+    return row
+      ? {
+          id: row.id,
+          projectId: row.project_id,
+          name: row.name,
+          status: row.status,
+          updatedAt: now,
+        }
+      : null;
+  }
+
+  /**
    * 转换行数据为任务对象
    */
   private rowToTask(

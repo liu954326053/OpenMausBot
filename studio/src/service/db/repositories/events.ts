@@ -14,6 +14,8 @@ import type {
   StudioEvent,
   StudioEventType,
   ProjectId,
+  ConversationId,
+  MessageId,
   Json,
 } from '../../shared/types';
 
@@ -21,278 +23,167 @@ export class EventRepository {
   constructor(private db: Database.Database) {}
 
   /**
-   * 追加事件到日志
-   *
-   * 返回分配的 seq 号
+   * 创建事件
    */
-  append(data: {
-    type: StudioEventType;
-    projectId?: ProjectId;
-    payload: Json;
-    at?: string;
-  }): number {
-    const at = data.at ?? new Date().toISOString();
-
-    const result = this.db
+  create(data: {
+    type: string;
+    projectId: ProjectId;
+    timestamp: string;
+    data: Record<string, any>;
+  }): void {
+    this.db
       .prepare(
         `
-        INSERT INTO events (at, type, project_id, payload)
+        INSERT INTO events (type, project_id, payload, created_at)
         VALUES (?, ?, ?, ?)
-        RETURNING seq
       `
       )
-      .get(at, data.type, data.projectId ?? null, JSON.stringify(data.payload)) as {
-      seq: number;
-    };
-
-    return result.seq;
+      .run(data.type, data.projectId, JSON.stringify(data.data), data.timestamp);
   }
 
   /**
-   * 按 seq 号查询单个事件
+   * 列出项目事件（带过滤）
    */
-  getBySeq(seq: number): StudioEvent | null {
-    const row = this.db
-      .prepare('SELECT seq, at, type, project_id, payload FROM events WHERE seq = ?')
-      .get(seq) as any;
-
-    return row ? this.rowToEvent(row) : null;
-  }
-
-  /**
-   * 查询给定范围内的所有事件
-   *
-   * 支持检测事件丢失（通过检查 seq 的连续性）
-   */
-  getRange(fromSeq: number, toSeq: number): StudioEvent[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT seq, at, type, project_id, payload FROM events
-        WHERE seq >= ? AND seq <= ?
-        ORDER BY seq ASC
-      `
-      )
-      .all(fromSeq, toSeq) as any[];
-
-    return rows.map((row) => this.rowToEvent(row));
-  }
-
-  /**
-   * 查询特定项目的事件
-   */
-  getByProject(projectId: ProjectId, limit = 1000, offset = 0): StudioEvent[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT seq, at, type, project_id, payload FROM events
-        WHERE project_id = ?
-        ORDER BY seq DESC
-        LIMIT ? OFFSET ?
-      `
-      )
-      .all(projectId, limit, offset) as any[];
-
-    return rows.map((row) => this.rowToEvent(row));
-  }
-
-  /**
-   * 查询特定类型的事件
-   */
-  getByType(type: StudioEventType, limit = 1000, offset = 0): StudioEvent[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT seq, at, type, project_id, payload FROM events
-        WHERE type = ?
-        ORDER BY seq DESC
-        LIMIT ? OFFSET ?
-      `
-      )
-      .all(type, limit, offset) as any[];
-
-    return rows.map((row) => this.rowToEvent(row));
-  }
-
-  /**
-   * 查询特定项目和类型的事件
-   */
-  getByProjectAndType(
+  listByProject(
     projectId: ProjectId,
-    type: StudioEventType,
-    limit = 1000,
-    offset = 0
-  ): StudioEvent[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT seq, at, type, project_id, payload FROM events
-        WHERE project_id = ? AND type = ?
-        ORDER BY seq DESC
-        LIMIT ? OFFSET ?
-      `
-      )
-      .all(projectId, type, limit, offset) as any[];
+    options?: { limit?: number; offset?: number; type?: string }
+  ): any[] {
+    let query = 'SELECT * FROM events WHERE project_id = ?';
+    const params: any[] = [projectId];
 
-    return rows.map((row) => this.rowToEvent(row));
-  }
-
-  /**
-   * 查询给定时间戳之后的所有事件
-   */
-  getAfter(after: string, limit = 1000): StudioEvent[] {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT seq, at, type, project_id, payload FROM events
-        WHERE at > ?
-        ORDER BY seq ASC
-        LIMIT ?
-      `
-      )
-      .all(after, limit) as any[];
-
-    return rows.map((row) => this.rowToEvent(row));
-  }
-
-  /**
-   * 获取最新的 seq 号
-   */
-  getLatestSeq(): number {
-    const result = this.db
-      .prepare('SELECT MAX(seq) as seq FROM events')
-      .get() as { seq: number | null };
-
-    return result.seq ?? 0;
-  }
-
-  /**
-   * 获取事件总数
-   */
-  count(): number {
-    const result = this.db
-      .prepare('SELECT COUNT(*) as count FROM events')
-      .get() as { count: number };
-
-    return result.count;
-  }
-
-  /**
-   * 获取特定项目的事件总数
-   */
-  countByProject(projectId: ProjectId): number {
-    const result = this.db
-      .prepare('SELECT COUNT(*) as count FROM events WHERE project_id = ?')
-      .get(projectId) as { count: number };
-
-    return result.count;
-  }
-
-  /**
-   * 验证事件日志的连续性
-   *
-   * 返回第一个间隙的位置（如果没有间隙则返回 -1）
-   */
-  validateContinuity(fromSeq = 1): number {
-    const rows = this.db
-      .prepare(
-        `
-        SELECT seq FROM events WHERE seq >= ? ORDER BY seq ASC
-      `
-      )
-      .all(fromSeq) as Array<{ seq: number }>;
-
-    if (rows.length === 0) return -1;
-
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i].seq !== fromSeq + i) {
-        return fromSeq + i;
-      }
+    if (options?.type) {
+      query += ' AND type = ?';
+      params.push(options.type);
     }
 
-    return -1;
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(options?.limit || 100);
+    params.push(options?.offset || 0);
+
+    return this.db.prepare(query).all(...params) as any[];
   }
 
   /**
-   * 流式读取事件（适合大数据集）
-   *
-   * 使用迭代器模式避免将所有事件加载到内存
+   * 创建对话
    */
-  *streamEvents(
-    fromSeq = 1,
-    batchSize = 1000
-  ): Generator<StudioEvent, void, undefined> {
-    let currentSeq = fromSeq;
-
-    while (true) {
-      const batch = this.getRange(currentSeq, currentSeq + batchSize - 1);
-
-      if (batch.length === 0) break;
-
-      for (const event of batch) {
-        yield event;
-      }
-
-      if (batch.length < batchSize) break;
-
-      currentSeq = batch[batch.length - 1].seq + 1;
-    }
-  }
-
-  /**
-   * 获取事件统计信息
-   */
-  getStats(): {
-    totalEvents: number;
-    latestSeq: number;
-    eventsByType: Record<StudioEventType, number>;
-    eventsByProject: Record<string, number>;
-  } {
-    const total = this.count();
-    const latest = this.getLatestSeq();
-
-    const byTypeRows = this.db
-      .prepare('SELECT type, COUNT(*) as count FROM events GROUP BY type')
-      .all() as Array<{ type: StudioEventType; count: number }>;
-
-    const byType: Record<StudioEventType, number> = {} as any;
-    for (const row of byTypeRows) {
-      byType[row.type] = row.count;
-    }
-
-    const byProjectRows = this.db
+  createConversation(data: {
+    id: ConversationId;
+    projectId: ProjectId;
+    title: string;
+    description: string | null;
+    scope: string;
+    episodeNumber: number | null;
+    metadata: Record<string, any>;
+  }): any {
+    const now = new Date().toISOString();
+    this.db
       .prepare(
         `
-        SELECT project_id, COUNT(*) as count FROM events
-        WHERE project_id IS NOT NULL
-        GROUP BY project_id
+        INSERT INTO conversations (
+          id, project_id, title, description, scope,
+          episode_number, metadata, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `
       )
-      .all() as Array<{ project_id: string; count: number }>;
-
-    const byProject: Record<string, number> = {};
-    for (const row of byProjectRows) {
-      byProject[row.project_id] = row.count;
-    }
+      .run(
+        data.id,
+        data.projectId,
+        data.title,
+        data.description,
+        data.scope,
+        data.episodeNumber,
+        JSON.stringify(data.metadata),
+        now,
+        now
+      );
 
     return {
-      totalEvents: total,
-      latestSeq: latest,
-      eventsByType: byType,
-      eventsByProject: byProject,
+      id: data.id,
+      projectId: data.projectId,
+      title: data.title,
+      description: data.description,
+      scope: data.scope,
+      episodeNumber: data.episodeNumber,
+      metadata: data.metadata,
+      createdAt: now,
+      updatedAt: now,
     };
   }
 
   /**
-   * 转换行数据为事件对象
+   * 获取对话
    */
-  private rowToEvent(row: any): StudioEvent {
+  getConversation(id: ConversationId): any {
+    const row = this.db
+      .prepare('SELECT * FROM conversations WHERE id = ?')
+      .get(id) as any;
+
+    if (!row) return null;
+
     return {
-      seq: row.seq,
-      at: row.at,
-      type: row.type,
+      id: row.id,
       projectId: row.project_id,
-      payload: JSON.parse(row.payload),
+      title: row.title,
+      description: row.description,
+      scope: row.scope,
+      episodeNumber: row.episode_number,
+      metadata: JSON.parse(row.metadata || '{}'),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
+  }
+
+  /**
+   * 获取对话消息
+   */
+  getConversationMessages(conversationId: ConversationId): any[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT * FROM messages
+        WHERE conversation_id = ?
+        ORDER BY created_at ASC
+      `
+      )
+      .all(conversationId) as any[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      conversationId: row.conversation_id,
+      content: row.content,
+      role: row.role,
+      author: row.author,
+      metadata: JSON.parse(row.metadata || '{}'),
+      createdAt: row.created_at,
+    }));
+  }
+
+  /**
+   * 删除对话
+   */
+  deleteConversation(id: ConversationId): void {
+    this.db
+      .prepare('DELETE FROM conversations WHERE id = ?')
+      .run(id);
+  }
+
+  /**
+   * 获取工作流图
+   */
+  getWorkflowGraph(projectId: ProjectId): any {
+    const row = this.db
+      .prepare(
+        `
+        SELECT payload FROM events
+        WHERE project_id = ? AND type = 'workflow:graph-updated'
+        ORDER BY created_at DESC LIMIT 1
+      `
+      )
+      .get(projectId) as any;
+
+    if (!row) return null;
+
+    const data = JSON.parse(row.payload);
+    return data.graph || null;
   }
 }
