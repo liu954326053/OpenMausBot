@@ -129,6 +129,10 @@ describe("a bot's turn with library skills", () => {
     const on = hostFor(record);
     expect(on.skillsIndex(record, "main")).toContain("- " + name + " (your own): The bot's own copy.");
     expect(on.readSkill(record, name)).toContain("The bot's own copy.");
+    expect(on.readSkill(record, name)).not.toContain("Skill folder:");
+    const ownRow = on.harnessSkills(record).find((skill) => skill.name === name);
+    expect(ownRow?.file).toBe(skills.enabledSkillFile(bot, name));
+    expect(ownRow?.file).not.toBe(library.librarySkillFilePath(name));
   });
 
   it("answers an unknown name with the list a bot can read", () => {

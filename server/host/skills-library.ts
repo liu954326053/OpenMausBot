@@ -16,7 +16,7 @@ import { nativeSkillListing, nativeSkills, projectSkillListing, projectSkills, r
 import { isMainBot } from "../peer-roster.ts";
 import { redactSecretsInText } from "../redact.ts";
 import { readSectionContext } from "../section-context.ts";
-import { librarySkillDirectory, librarySkillFilePath, librarySkillsOnOffer, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, skillsLibraryEnabled, skillsLibraryRoot } from "../skill-library.ts";
+import { librarySkillDirectory, librarySkillsOnOffer, listLibrarySkills, readLibrarySkillFile, readSkillLibraryIndex, skillsLibraryEnabled, skillsLibraryRoot } from "../skill-library.ts";
 import { offeredSkillViews, listedOffers } from "../skill-library-offer.ts";
 import { librarySkillFiles, ownSkillFiles, type StoredSkillFiles } from "../skill-side-files.ts";
 import {
@@ -399,12 +399,15 @@ export function createSkillsLibraryHost(deps: SkillsLibraryHostDeps) {
       return [201, { state: "applied", name: updated.name, action: "update", summary: updated.summary, shared: updated.shared }];
     },
 
-    /** What skills_list reads: every switched-on skill the bot has, each naming its SKILL.md. */
+    /** What skills_list reads: every switched-on skill the bot has, each naming its SKILL.md where one is known. */
     harnessSkills(bot: BotRecord): Array<{ name: string; enabled: boolean; editable: boolean; description?: string; listed?: boolean; file?: string; revision?: string }> {
-      return harnessListing(listBotSkills(bot)).map((skill) => ({
-        ...skill,
-        ...(skill.enabled && !skill.editable ? { file: librarySkillFilePath(skill.name) } : {}),
-      }));
+      const skills = listBotSkills(bot);
+      const files = enabledSkillFiles(bot.id, skills.filter((skill) => skill.enabled).map((skill) => skill.name), libraryOn());
+      return harnessListing(skills).map((skill) => {
+        const stored = "file" in skill && typeof skill.file === "string" ? skill.file : undefined;
+        const file = skill.enabled ? files.get(skill.name) ?? stored : undefined;
+        return { ...skill, ...(file ? { file } : {}) };
+      });
     },
 
     harnessListing,

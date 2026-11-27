@@ -892,7 +892,8 @@ export async function callTool(called: string, input: Json, context: ToolCallCon
         // Unreviewed imports: a hostile description is still prompt content, so only names and status.
         const revision = typeof row.revision === "string" ? `, shared with your team, revision ${row.revision}` : "";
         const unlisted = row.enabled && row.listed === false ? ", not in your prompt: search to read it" : "";
-        return `- ${row.name} (${row.enabled ? "enabled" : "disabled"}, ${row.editable === true ? "learned/editable" : "imported"}${revision}${unlisted})`;
+        const file = typeof row.file === "string" ? `, SKILL.md: ${row.file}` : "";
+        return `- ${row.name} (${row.enabled ? "enabled" : "disabled"}, ${row.editable === true ? "learned/editable" : "imported"}${revision}${unlisted}${file})`;
       }).join("\n")
       : "(none)";
     const pending = staged.length
