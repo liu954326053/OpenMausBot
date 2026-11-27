@@ -10,9 +10,7 @@ export function decodeRoutedCodexConfig(raw: object, label = "Company"): CodexEn
     throw new Error(`Invalid ${label} Codex configuration.`);
   }
   const url = new URL(value.url);
-  // Plain HTTP leaks the API key; allow it only on loopback.
-  const loopback = url.hostname === "localhost" || url.hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
-  if (url.username || url.password || url.search || url.hash || (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))) throw new Error(`Invalid ${label} Codex endpoint.`);
+  if (url.username || url.password || url.search || url.hash || (url.protocol !== "https:" && url.protocol !== "http:")) throw new Error(`Invalid ${label} Codex endpoint.`);
   return { url: url.href.replace(/\/$/, ""), models: value.models as string[] };
 }
 

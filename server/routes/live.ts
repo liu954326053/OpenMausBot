@@ -50,7 +50,7 @@ const settingsBody = z.object({
   // "" clears the field. Anything else must be an https Azure OpenAI host, since the key is sent there.
   azureEndpoint: z.string().trim().max(300).refine((url) => url === "" || azureOpenAiRoot(url) !== null).optional(),
   azureDeployment: z.string().trim().max(64).refine((name) => name === "" || azureLiveDeployment(name) === name).optional(),
-  // The same for a custom endpoint: https, or http only on this computer's loopback.
+  // The same for a custom endpoint: an http or https address without credentials.
   customEndpoint: z.string().trim().max(300).refine((url) => url === "" || customLiveApiBase(url) !== null).optional(),
   customModel: z.string().trim().max(64).refine((name) => name === "" || customLiveModel(name) === name).optional(),
   voice: z.string().trim().max(40).regex(/^[a-z]*$/).optional(),
@@ -131,7 +131,7 @@ export function createLiveRoutes(deps: LiveRouteDeps): RouteHandler {
         const field = parsed.error.issues[0]?.path[0];
         if (field === "azureEndpoint") return json(res, 400, { error: "The Azure endpoint must be the https address of an Azure OpenAI resource, like https://my-resource.openai.azure.com." });
         if (field === "azureDeployment") return json(res, 400, { error: "The Azure deployment name may use letters, digits, '-', '_' and '.', up to 64 characters." });
-        if (field === "customEndpoint") return json(res, 400, { error: "The custom endpoint must be an https address, like https://gateway.example.com/v1, or http only on this computer (127.0.0.1 or localhost)." });
+        if (field === "customEndpoint") return json(res, 400, { error: "The custom endpoint must be an http or https address, like https://gateway.example.com/v1, without a user name, password, query or fragment." });
         if (field === "customModel") return json(res, 400, { error: "The model may use letters, digits, '-', '_', '.', ':' and '/', up to 64 characters." });
         return json(res, 400, { error: "Those Live settings are not valid." });
       }

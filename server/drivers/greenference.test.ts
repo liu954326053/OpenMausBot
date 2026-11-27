@@ -60,7 +60,12 @@ describe("Greenference provider", () => {
 
   it("presets Greenference's endpoint, rejects unsafe configuration and never sends an unkeyed turn", async () => {
     expect(GreenferenceDriver.defaultConfig().url).toBe("https://llm.eu.greenference.com/v1");
-    expect(() => GreenferenceDriver.decodeConfig({ url: "http://provider.example.test/v1" })).toThrow("HTTPS");
+    for (const url of ["http://192.168.1.9:11434", "http://8.8.8.8:8080", "http://llm.example.com"]) {
+      expect(GreenferenceDriver.decodeConfig({ url }).url).toBe(url);
+    }
+    for (const url of ["ftp://192.168.1.9/v1", "file:///etc/passwd", "javascript:alert(1)"]) {
+      expect(() => GreenferenceDriver.decodeConfig({ url })).toThrow("http or https");
+    }
     const instance = await create({ url: base }, { GREENFERENCE_API_KEY: "" });
     const recorder = recordEvents(instance.adapter);
     try {

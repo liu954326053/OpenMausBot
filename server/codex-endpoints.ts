@@ -10,12 +10,7 @@ import type { InstanceConfig, InstanceConfigMap } from "./contracts.ts";
 import { endpointBaseUrl } from "./openai-compat-endpoints.ts";
 
 export const codexEndpointSchema = claudeEndpointSchema.pick({ displayName: true, baseUrl: true, token: true, model: true })
-  .extend({ model: z.string().trim().min(1).max(160).regex(/^[\w][\w./+-]*$/, "Use the model id the Responses endpoint serves.").optional(), baseUrl: claudeEndpointSchema.shape.baseUrl.refine(value => {
-    const address = endpointBaseUrl(value);
-    if (!address) return false;
-    const url = new URL(address);
-    return url.protocol === "https:" || url.hostname === "localhost" || url.hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
-  }, "Use HTTPS, or HTTP on localhost through a secure tunnel.") });
+  .extend({ model: z.string().trim().min(1).max(160).regex(/^[\w][\w./+-]*$/, "Use the model id the Responses endpoint serves.").optional() });
 export const codexEndpointUpdateSchema = codexEndpointSchema.partial().refine(value => Object.keys(value).length > 0, "No settings supplied");
 
 type Fields = Partial<z.infer<typeof codexEndpointSchema>>;

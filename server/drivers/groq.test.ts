@@ -60,7 +60,12 @@ describe("Groq provider", () => {
 
   it("presets Groq's endpoint, rejects unsafe configuration and never sends an unkeyed turn", async () => {
     expect(GroqDriver.defaultConfig().url).toBe("https://api.groq.com/openai/v1");
-    expect(() => GroqDriver.decodeConfig({ url: "http://provider.example.test/v1" })).toThrow("HTTPS");
+    for (const url of ["http://192.168.1.9:11434", "http://8.8.8.8:8080", "http://llm.example.com"]) {
+      expect(GroqDriver.decodeConfig({ url }).url).toBe(url);
+    }
+    for (const url of ["ftp://192.168.1.9/v1", "file:///etc/passwd", "javascript:alert(1)"]) {
+      expect(() => GroqDriver.decodeConfig({ url })).toThrow("http or https");
+    }
     expect(() => GroqDriver.decodeConfig({ tools: "false" })).toThrow();
     const instance = await create({ url: base }, { GROQ_API_KEY: "" });
     const recorder = recordEvents(instance.adapter);

@@ -67,7 +67,12 @@ describe("ModelGo provider", () => {
   it("presets ModelGo's endpoint and its tracked docs link, rejects unsafe configuration and never sends an unkeyed turn", async () => {
     expect(ModelgoDriver.defaultConfig().url).toBe("https://api.modelgo.ai/v1");
     expect(ModelgoDriver.install?.docsUrl).toBe(MODELGO_URL);
-    expect(() => ModelgoDriver.decodeConfig({ url: "http://provider.example.test/v1" })).toThrow("HTTPS");
+    for (const url of ["http://192.168.1.9:11434", "http://8.8.8.8:8080", "http://llm.example.com"]) {
+      expect(ModelgoDriver.decodeConfig({ url }).url).toBe(url);
+    }
+    for (const url of ["ftp://192.168.1.9/v1", "file:///etc/passwd", "javascript:alert(1)"]) {
+      expect(() => ModelgoDriver.decodeConfig({ url })).toThrow("http or https");
+    }
     const instance = await create({ url: base }, { MODELGO_API_KEY: "" });
     const recorder = recordEvents(instance.adapter);
     try {

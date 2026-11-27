@@ -73,7 +73,9 @@ describe("CodexDriver.decodeConfig", () => {
   it("keeps direct API configuration and refuses mixed authentication modes", () => {
     expect(CodexDriver.decodeConfig({ endpoint: { url: "https://gateway.example/v1", models: ["gateway-model"] } }))
       .toMatchObject({ endpoint: { url: "https://gateway.example/v1", models: ["gateway-model"] } });
-    expect(() => CodexDriver.decodeConfig({ endpoint: { url: "http://gateway.example/v1", models: ["m"] } })).toThrow();
+    expect(CodexDriver.decodeConfig({ endpoint: { url: "http://192.168.1.9:11434/v1", models: ["m"] } }))
+      .toMatchObject({ endpoint: { url: "http://192.168.1.9:11434/v1" } });
+    expect(() => CodexDriver.decodeConfig({ endpoint: { url: "ftp://gateway.example/v1", models: ["m"] } })).toThrow();
     expect(() => CodexDriver.decodeConfig({ authMode: "chatgpt-plan", endpoint: { url: "https://gateway.example", models: ["m"] } })).toThrow();
     expect(() => CodexDriver.decodeConfig({ managed: {}, endpoint: {} })).toThrow();
   });
@@ -84,15 +86,15 @@ describe("CodexDriver.decodeConfig", () => {
     expect(CodexDriver.decodeConfig({ fullAuto: "yes" }).fullAuto).toBe(false);
   });
 
-  it("allows Company endpoints over HTTPS, and over HTTP only on loopback", () => {
-    expect(CodexDriver.decodeConfig({ managed: { url: "https://company.example/v1", models: ["m"] } }))
-      .toMatchObject({ managed: { url: "https://company.example/v1", models: ["m"] } });
-    expect(CodexDriver.decodeConfig({ managed: { url: "http://127.0.0.1:1/v1", models: ["m"] } }))
-      .toMatchObject({ managed: { url: "http://127.0.0.1:1/v1" } });
-    expect(CodexDriver.decodeConfig({ managed: { url: "http://localhost:1/v1", models: ["m"] } }))
-      .toMatchObject({ managed: { url: "http://localhost:1/v1" } });
-    expect(() => CodexDriver.decodeConfig({ managed: { url: "http://company.example/v1", models: ["m"] } }))
-      .toThrow("Invalid Company Codex endpoint.");
+  it("allows Company endpoints over HTTP or HTTPS without credentials, query or fragment", () => {
+    for (const url of ["https://company.example/v1", "http://127.0.0.1:1/v1", "http://localhost:1/v1",
+      "http://192.168.1.9:11434/v1", "http://8.8.8.8:8080/v1", "http://company.example/v1"]) {
+      expect(CodexDriver.decodeConfig({ managed: { url, models: ["m"] } })).toMatchObject({ managed: { url } });
+    }
+    for (const url of ["ftp://company.example/v1", "file:///etc/passwd", "javascript:alert(1)",
+      "http://user:pw@company.example/v1", "http://company.example/v1?x=1"]) {
+      expect(() => CodexDriver.decodeConfig({ managed: { url, models: ["m"] } })).toThrow("Invalid Company Codex endpoint.");
+    }
   });
 });
 

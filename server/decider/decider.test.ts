@@ -98,13 +98,16 @@ describe("the request on the wire", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it("uses a Jev-compatible base URL: https anywhere, http only on this machine", async () => {
+  it("uses a Jev-compatible base URL over https or plain http, and refuses one a key must not go to", async () => {
     expect(String(jevEndpoint("https://jev.example.com/"))).toBe("https://jev.example.com/v1/systemone");
     expect(String(jevEndpoint("http://127.0.0.1:9911"))).toBe("http://127.0.0.1:9911/v1/systemone");
-    expect(jevEndpoint("http://jev.example.com")).toBeNull();
+    expect(String(jevEndpoint("http://8.8.8.8:8080"))).toBe("http://8.8.8.8:8080/v1/systemone");
+    expect(String(jevEndpoint("http://llm.example.com"))).toBe("http://llm.example.com/v1/systemone");
+    expect(jevEndpoint("jev.example.com")).toBeNull();
+    expect(jevEndpoint("ftp://jev.example.com")).toBeNull();
     expect(jevEndpoint("https://user:pw@jev.example.com")).toBeNull();
     const fetchImpl = vi.fn<typeof fetch>();
-    const remote = { decider: { ...ON.decider, baseUrl: "http://jev.example.com" } };
+    const remote = { decider: { ...ON.decider, baseUrl: "ftp://jev.example.com" } };
     await expect(decider(remote, fetchImpl).choose("roomRouting", STATE, QUESTION)).resolves.toMatchObject({ ok: false, reason: "misconfigured" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });

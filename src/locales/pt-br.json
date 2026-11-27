@@ -1940,6 +1940,7 @@
   "settings.notificationSounds.subtitle": "Tocar o som de alerta deste computador quando um agente terminar ou precisar de você. Desligue para manter os avisos sem o som, o que ajuda durante chamadas, quando o agente já está falando com você.",
   "settings.notificationSounds.play": "Sons de notificação",
   "settings.deviceNotifications.title": "Notificações neste dispositivo",
+  "settings.cleartext.endpoint": "HTTP sem criptografia: qualquer pessoa nesta rede pode ver a chave de API e as imagens enviadas para este endereço.",
   "settings.deviceNotifications.subtitle": "Mostra uma notificação aqui quando um bot termina, enquanto este app está aberto. Aprovações, perguntas e avisos sempre aparecem.",
   "settings.deviceNotifications.blocked": "As notificações estão bloqueadas para este site. Permita notificações nas configurações do site no navegador.",
   "settings.deviceNotifications.show": "Avisar quando um bot terminar",

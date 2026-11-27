@@ -8,6 +8,7 @@ import { LearnMore, SETTINGS_INPUT, SettingRow, SettingsField, SettingsFormFoot,
 import { Select } from "./Select";
 import { WorkersAiKeyCard } from "./WorkersAiKeyCard";
 import { openKeySettings } from "./keys/key-focus";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
 
 type CustomApi = "systemone" | "decisions" | "chat";
 const customApiOf = (api: string | undefined): CustomApi => (api === "decisions" || api === "chat" ? api : "systemone");
@@ -315,7 +316,8 @@ export function DecisionModelSettings() {
           </SettingRow>
           {custom && (
             <>
-              <SettingRow title={t("decider.custom.baseUrl")} subtitle={t("decider.custom.baseUrlDetail")}>
+              <SettingRow title={t("decider.custom.baseUrl")} subtitle={t("decider.custom.baseUrlDetail")}
+                message={isCleartextRemote(decider?.baseUrl) ? <span role="note" className="text-warning">{t("settings.cleartext.endpoint")}</span> : undefined}>
                 <SavedText testId="decider-custom-base-url" saved={decider?.baseUrl ?? ""} disabled={switching}
                   label={t("decider.custom.baseUrl")} placeholder={t("decider.custom.baseUrlPlaceholder")}
                   onSave={(customBaseUrl) => void patch({ customBaseUrl })} />

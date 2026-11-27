@@ -98,8 +98,8 @@ export function azureLiveEndpoint(endpoint: string | undefined, deployment: stri
 }
 
 /** The versioned API root of a custom OpenAI-compatible endpoint as people paste it (`https://gateway.example.com/v1`, bare, or
- * with `/live/sessions`): https on any host, or http only on this computer's loopback, since the key is sent there; null for
- * anything else, or for an address with a user name, password, query or fragment. */
+ * with `/live/sessions`): http or https on any host, since a self-hosted gateway often has no TLS; null for anything else, or
+ * for an address with a user name, password, query or fragment. */
 export function customLiveApiBase(raw: string | undefined): string | null {
   let url: URL;
   try {
@@ -108,8 +108,7 @@ export function customLiveApiBase(raw: string | undefined): string | null {
     return null;
   }
   if (url.username || url.password || url.search || url.hash) return null;
-  const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) return null;
+  if (url.protocol !== "https:" && url.protocol !== "http:") return null;
   const path = url.pathname.replace(/\/+$/, "").replace(/\/live\/sessions$/i, "");
   return `${url.origin}${/\/v1$/i.test(path) ? path : `${path}/v1`}`;
 }

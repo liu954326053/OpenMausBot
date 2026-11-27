@@ -28,9 +28,8 @@ function decodeConfig(raw: unknown): GreenferenceConfig {
   const config = configSchema.parse(raw ?? {});
   config.url = config.url.replace(/\/+$/, "");
   const url = new URL(config.url);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" &&
-    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) {
-    throw new Error("Greenference requires HTTPS, except for a local test endpoint.");
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Greenference needs an http or https address.");
   }
   return config;
 }

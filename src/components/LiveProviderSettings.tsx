@@ -5,6 +5,7 @@ import { api, useStore } from "@/state/store";
 import type { LiveProvider, LiveSettings } from "../../shared/wire";
 import { Select } from "./Select";
 import { KEY_FIELD } from "./keys/KeyRow";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
 
 type ProviderPatch = Partial<Pick<LiveSettings, "provider" | "azureEndpoint" | "azureDeployment" | "customEndpoint" | "customModel">>;
 
@@ -104,6 +105,7 @@ function EndpointForm({ custom, live, disabled, save }: { custom: boolean; live:
           className={FIELD}
         />
       </label>
+      {custom && isCleartextRemote(endpoint) && <div role="note" className="text-[12px] leading-4 text-warning">{t("settings.cleartext.endpoint")}</div>}
       <div className="text-[12px] leading-4 text-ink-secondary">{t(custom ? "call.live.customHint" : "call.live.azureHint")}</div>
       {changed && (
         <button

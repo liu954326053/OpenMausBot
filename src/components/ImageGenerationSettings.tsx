@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
 import type { LocaleKey } from "@/locales";
 import { IMAGE_COMPLEXITIES, IMAGE_DEFAULT_MODELS, IMAGE_MAX_PER_TURN_DEFAULT, IMAGE_MODEL_CHOICES, IMAGE_PROVIDERS, normalizeImageGenerationUrl, supportsImageComplexity, type ImageComplexity, type ImageProvider, type ImageProviderTest } from "../../shared/image-generation";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
 import { saveCredential } from "./keys/key-save";
 import { LearnMore, SETTINGS_INLINE_INPUT, SETTINGS_INPUT, SettingRow, SettingsField, SettingsGroup, SettingsRows, StatusDot } from "./SettingsPrimitives";
 import { Select } from "./Select";
@@ -343,7 +344,10 @@ function ProviderKeyCard({ provider, status }: { provider: ImageProvider; status
       <SettingsRows>
         <div className="flex flex-col gap-2 px-4 pb-4 pt-3" data-image-key-form="">
           {provider === "custom" && (
-            <SettingsField label={t("imageGen.custom.url")}>
+            <SettingsField
+              label={t("imageGen.custom.url")}
+              hint={isCleartextRemote(customUrl) ? <span role="note" className="text-warning">{t("settings.cleartext.endpoint")}</span> : undefined}
+            >
               <input
                 type="url"
                 value={customUrl}

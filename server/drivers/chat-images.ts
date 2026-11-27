@@ -21,9 +21,8 @@ export function chatImageBudget() {
 
 export function assertImageTransport(url: string) {
   const endpoint = new URL(url);
-  const loopback = endpoint.hostname === "localhost" || endpoint.hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(endpoint.hostname);
-  if (endpoint.protocol !== "https:" && !(endpoint.protocol === "http:" && loopback)) {
-    throw new Error("Images and computer tools require HTTPS for remote API endpoints; HTTP is supported only on loopback.");
+  if (endpoint.protocol !== "https:" && endpoint.protocol !== "http:") {
+    throw new Error("Images and computer tools need an http or https API endpoint.");
   }
 }
 

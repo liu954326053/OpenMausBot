@@ -7,6 +7,7 @@ import { addedServers } from "@/lib/openai-compat-endpoints";
 import { cn } from "@/lib/cn";
 import { KEY_FIELD } from "./keys/KeyRow";
 import { Select } from "./Select";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
 
 export function modelIds(text: string): string[] {
   return [...new Set(text.split(/[,，、\s]+/).map((id) => id.trim()).filter(Boolean))];
@@ -199,6 +200,7 @@ function AddedServers({ servers }: { servers: ReturnType<typeof addedServers> })
                 <input type="url" value={editUrl} onChange={(e) => setEditUrl(e.target.value)} placeholder="https://api.example.com/v1"
                   aria-label={t("apiInstances.urlFor", { name: server.displayName })} spellCheck={false} disabled={busy !== null} className={INPUT} />
               </label>
+              {isCleartextRemote(editUrl) && <p role="note" className="text-[12px] leading-4 text-warning">{t("settings.cleartext.endpoint")}</p>}
               <label className={EDIT_LABEL}>
                 {t("apiInstances.key")}
                 <input type="password" value={editKey} onChange={(e) => setEditKey(e.target.value)} placeholder={t("apiInstances.keepKey")}
@@ -253,6 +255,7 @@ function AddedServers({ servers }: { servers: ReturnType<typeof addedServers> })
           spellCheck={false} disabled={busy !== null} className={INPUT} />
         <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://api.example.com/v1" aria-label={t("apiInstances.url")}
           spellCheck={false} disabled={busy !== null} className={INPUT} />
+        {isCleartextRemote(url) && <p role="note" className="text-[12px] leading-4 text-warning">{t("settings.cleartext.endpoint")}</p>}
         <input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={t("apiInstances.key")} aria-label={t("apiInstances.key")}
           autoComplete="off" disabled={busy !== null} className={INPUT} />
         <input value={models} onChange={(e) => setModels(e.target.value)} placeholder={t("apiInstances.models")} aria-label={t("apiInstances.models")}

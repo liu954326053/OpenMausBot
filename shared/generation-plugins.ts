@@ -72,18 +72,14 @@ export interface SaveGenerationPluginInput {
   values?: Record<string, GenerationPluginValue>;
 }
 
-const LOOPBACK = new Set(["localhost", "127.0.0.1", "[::1]", "::1", "host.docker.internal", "host.containers.internal"]);
-
-/** A plugin's address: any https one, or a loopback http one, without credentials, query or fragment. */
+/** A plugin's address: http or https, without credentials, query or fragment. */
 export function normalizePluginUrl(value: string): string {
-  const problem = "Use an https address, or http for a plugin on this computer, without a password, query or fragment";
+  const problem = "Use an http or https address without a password, query or fragment";
   const text = value.trim();
   if (!text || text.length > 2048) throw new Error(problem);
   let url: URL;
   try { url = new URL(text); } catch { throw new Error(problem); }
   if (url.username || url.password || url.search || url.hash) throw new Error(problem);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && (LOOPBACK.has(url.hostname.toLowerCase()) || url.hostname.toLowerCase().endsWith(".local")))) {
-    throw new Error(problem);
-  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new Error(problem);
   return url.toString().replace(/\/+$/, "");
 }

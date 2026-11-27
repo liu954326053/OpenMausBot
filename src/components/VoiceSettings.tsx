@@ -19,6 +19,7 @@ import {
 } from "@/lib/local-voice";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
 import { voiceKeyDraftValue, type VoiceKeyDraft } from "@/lib/voice-key-draft";
 import { VoicePicker, type PickerVoice } from "./VoicePicker";
 import { Select } from "./Select";
@@ -471,6 +472,7 @@ export function VoiceSettings({
             {savingServer ? <Loader2 size={13} className="animate-spin" /> : <><Check size={13} />{t("common.save")}</>}
           </button>
         </div>
+        {isCleartextRemote(serverUrl) && <p role="note" className="mt-1 text-[12px] leading-4 text-warning">{t("settings.cleartext.endpoint")}</p>}
         <input
           type="text"
           value={model}

@@ -24,9 +24,8 @@ function decodeConfig(raw: unknown): CerebrasConfig {
   const config = configSchema.parse(raw ?? {});
   config.url = config.url.replace(/\/+$/, "");
   const url = new URL(config.url);
-  if (url.protocol !== "https:" && !(url.protocol === "http:" &&
-    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) {
-    throw new Error("Cerebras requires HTTPS, except for a local test endpoint.");
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Cerebras needs an http or https address.");
   }
   return config;
 }

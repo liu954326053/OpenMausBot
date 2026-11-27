@@ -11,7 +11,7 @@ describe("loopback hosts for HTTP key checks", () => {
     expect(isLoopback(host)).toBe(false);
   });
 
-  it.each(["http://127.example.test/v1", "http://127.0.0.1.example.test/v1"])("never sends a key to %s", async url => {
+  it.each(["ftp://127.example.test/v1", "file:///etc/passwd"])("never sends a key to %s", async url => {
     let calls = 0;
     const provider: typeof fetch = async () => { calls++; return Response.json({ data: [] }); };
     expect(await checkProviderKey({ provider: "openaiCompat", key: "fixture-key", url }, provider))
@@ -246,11 +246,15 @@ describe("provider key check", () => {
     expect(seen.filter((request) => request.path.startsWith("/moved"))).toHaveLength(1);
   });
 
-  it("refuses to send a key in clear to anything but a loopback test double", async () => {
-    let called = false;
-    const spy: typeof fetch = async () => { called = true; return new Response("{}"); };
-    expect(await checkProviderKey({ provider: "openaiCompat", key: "good-key", url: "http://models.example.test/v1" }, spy)).toEqual({ ok: false, reason: "unexpected" });
+  it("checks the key against an http provider the person configured, and still refuses a non-web address", async () => {
+    const asked: string[] = [];
+    const spy: typeof fetch = async (input) => { asked.push(String(input)); return Response.json({ data: [{ id: "fixture-model" }] }); };
+    expect(await checkProviderKey({ provider: "openaiCompat", key: "good-key", url: "http://192.168.1.9:11434/v1" }, spy))
+      .toEqual({ ok: true, check: "models", models: ["fixture-model"] });
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toMatch(/^http:\/\/192\.168\.1\.9:11434\/v1\/models$/u);
     expect(await checkProviderKey({ provider: "openaiCompat", key: "good-key", url: "not a url" }, spy)).toEqual({ ok: false, reason: "unexpected" });
-    expect(called).toBe(false);
+    expect(await checkProviderKey({ provider: "openaiCompat", key: "good-key", url: "ftp://models.example.test/v1" }, spy)).toEqual({ ok: false, reason: "unexpected" });
+    expect(asked).toHaveLength(1);
   });
 });

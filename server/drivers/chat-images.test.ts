@@ -17,10 +17,18 @@ describe("chat image transport and retained budget", () => {
     expect(() => retain([{ type: "image_url", image_url: { url: "x" } }])).toThrow("cannot be retained");
     expect(() => chatImageBudget()([part])).not.toThrow();
   });
-  it.each(["https://api.example.com/v1", "http://localhost:8000/v1", "http://127.0.0.1:8000/v1", "http://[::1]:8000/v1"])("allows encrypted or loopback transport: %s", url => {
+  it.each([
+    "https://api.example.com/v1",
+    "http://localhost:8000/v1",
+    "http://127.0.0.1:8000/v1",
+    "http://[::1]:8000/v1",
+    "http://192.168.1.9:11434",
+    "http://8.8.8.8:8080",
+    "http://llm.example.com",
+  ])("allows http and https transport: %s", url => {
     expect(() => assertImageTransport(url)).not.toThrow();
   });
-  it.each(["http://api.example.com/v1", "http://localhost.example.com/v1", "http://192.168.1.4/v1", "ftp://localhost/v1"])("refuses remote cleartext or unsupported transport: %s", url => {
-    expect(() => assertImageTransport(url)).toThrow("require HTTPS");
+  it.each(["ftp://localhost/v1", "file:///etc/passwd", "javascript:alert(1)", "ws://127.0.0.1:8000/v1"])("refuses an unsupported scheme: %s", url => {
+    expect(() => assertImageTransport(url)).toThrow("http or https");
   });
 });

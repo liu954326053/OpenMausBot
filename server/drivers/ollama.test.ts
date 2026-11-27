@@ -395,9 +395,9 @@ describe("the chat engine on Ollama", () => {
   });
 
   it.each([
-    ["text-only", ["completion"], true],
-    ["vision-capable", ["completion", "vision"], false],
-  ])("checks image transport after discovering a %s model on the network", async (_name, capabilities, canSend) => {
+    ["text-only", ["completion"], false],
+    ["vision-capable", ["completion", "vision"], true],
+  ])("sends pictures to a %s model on a plain-http server on this network", async (_name, capabilities, sendsImages) => {
     const replies: Record<string, unknown> = {
       "/api/tags": { models: [GEMMA] }, "/api/version": { version: "0.12.6" }, "/api/show": { capabilities }, "/api/ps": { models: [] }, "/api/create": { status: "success" },
     };
@@ -417,16 +417,16 @@ describe("the chat engine on Ollama", () => {
     const recorder = recordEvents(instance.adapter);
     try {
       const threadId = randomUUID();
-      const started = instance.adapter.sendTurn({ threadId, text: "what is this?", model: "gemma2:2b", images: [{ path: "/not-read.png", mime: "image/png", bytes: 1 }] });
+      const image = { path: sendsImages ? resolve("server/testing/fixtures/banner-metadata.png") : "/not-read.png", mime: "image/png" as const, bytes: 1 };
+      const started = instance.adapter.sendTurn({ threadId, text: "what is this?", model: "gemma2:2b", images: [image] });
       release();
       await started;
-      expect(await recorder.until((event) => event.type === "turn.completed" && event.threadId === threadId)).toMatchObject({ ok: canSend });
-      if (canSend) {
+      expect(await recorder.until((event) => event.type === "turn.completed" && event.threadId === threadId)).toMatchObject({ ok: true });
+      if (sendsImages) {
+        expect(bodies[0]).toContain("image_url");
+      } else {
         expect(bodies[0]).toContain("this model cannot see images");
         expect(bodies[0]).not.toContain("image_url");
-      } else {
-        expect(bodies).toHaveLength(0);
-        expect(recorder.events).toContainEqual(expect.objectContaining({ type: "runtime.error", message: expect.stringContaining("require HTTPS") }));
       }
     } finally {
       release();

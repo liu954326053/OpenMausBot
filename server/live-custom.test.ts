@@ -43,20 +43,23 @@ describe("customLiveApiBase", () => {
     expect(customLiveApiBase("https://gw.example.com/team-a/openai/v1")).toBe("https://gw.example.com/team-a/openai/v1");
     expect(customLiveApiBase("https://gw.example.com:8443/proxy")).toBe("https://gw.example.com:8443/proxy/v1");
   });
-  it("allows plain http only on this computer's loopback", () => {
+  it("allows plain http, since a self-hosted gateway may have no TLS", () => {
     expect(customLiveApiBase("http://127.0.0.1:4555")).toBe("http://127.0.0.1:4555/v1");
     expect(customLiveApiBase("http://localhost:4555/v1")).toBe("http://localhost:4555/v1");
     expect(customLiveApiBase("http://[::1]:4555/v1")).toBe("http://[::1]:4555/v1");
+    expect(customLiveApiBase("http://192.168.1.9:4555/v1")).toBe("http://192.168.1.9:4555/v1");
+    expect(customLiveApiBase("http://8.8.8.8:8080")).toBe("http://8.8.8.8:8080/v1");
+    expect(customLiveApiBase("http://llm.example.com/v1")).toBe("http://llm.example.com/v1");
   });
   it("refuses anything the key must not be sent to", () => {
     for (const url of [
       undefined,
       "",
       "gateway.example.com",
-      "http://gateway.example.com/v1",
-      "http://10.0.0.5:8080/v1",
       "ws://127.0.0.1:4555/v1",
       "ftp://gateway.example.com",
+      "file:///etc/passwd",
+      "javascript:alert(1)",
       "https://user:pw@gateway.example.com/v1",
       "https://gateway.example.com/v1?key=x",
       "https://gateway.example.com/v1#x",
@@ -70,7 +73,8 @@ describe("customLiveApiBase", () => {
     expect(customLiveEndpoint(GATEWAY, "")?.model).toBe(LIVE_MODEL);
     expect(customLiveEndpoint(GATEWAY, "openai/gpt-live-1")?.model).toBe("openai/gpt-live-1");
     expect(customLiveEndpoint(GATEWAY, "bad name")).toBeNull();
-    expect(customLiveEndpoint("http://gateway.example.com", "m")).toBeNull();
+    expect(customLiveEndpoint("http://gateway.example.com", "m")).toEqual({ provider: "custom", apiBase: "http://gateway.example.com/v1", model: "m" });
+    expect(customLiveEndpoint("http://192.168.1.9:11434/v1", "m")?.apiBase).toBe("http://192.168.1.9:11434/v1");
   });
 });
 

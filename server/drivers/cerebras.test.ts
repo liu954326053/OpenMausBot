@@ -19,11 +19,15 @@ describe("Cerebras provider", () => {
       expect(shouldCompact({ contextTokens: 60000, estimatedBytes: 0, budget: compactBudget(window), window })).toBe(true);
     }
   });
-  it("rejects invalid tools flags and non-TLS remote endpoints", () => {
+  it("rejects invalid tools flags and non-web endpoints, and keeps plain HTTP", () => {
     expect(() => CerebrasDriver.decodeConfig({ tools: "false" })).toThrow();
-    expect(() => CerebrasDriver.decodeConfig({ url: "http://example.com/v1" })).toThrow("HTTPS");
-    expect(CerebrasDriver.defaultConfig().url).toBe("https://api.cerebras.ai/v1");
     expect(CerebrasDriver.decodeConfig({ url: "http://127.0.0.1:1234/v1/" }).url).toBe("http://127.0.0.1:1234/v1");
+    for (const url of ["http://192.168.1.9:11434", "http://8.8.8.8:8080", "http://llm.example.com"]) {
+      expect(CerebrasDriver.decodeConfig({ url }).url).toBe(url);
+    }
+    for (const url of ["ftp://192.168.1.9/v1", "file:///etc/passwd", "javascript:alert(1)"]) {
+      expect(() => CerebrasDriver.decodeConfig({ url })).toThrow("http or https");
+    }
   });
 
   it("keeps the desktop store's workspace key away from an instance with its own URL", async () => {

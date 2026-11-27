@@ -1,4 +1,4 @@
-// OpenRouter's catalog is public, so /key proves the key there; elsewhere /models proves only catalog access. Keys go only over TLS (or loopback).
+// OpenRouter's catalog is public, so /key proves the key there; elsewhere /models proves only catalog access.
 import { isIP } from "node:net";
 
 export type ProviderKeyKind = "anthropic" | "openai" | "openrouter" | "openaiCompat" | "xai" | "mistral" | "cerebras" | "groq" | "greenference" | "modelgo" | "meta";
@@ -26,13 +26,13 @@ const DEFAULT_URLS: Record<ProviderKeyKind, string> = {
 
 const MAX_MODELS = 5;
 
-/** A URL hostname on this machine: the only place a key may go over plain http. */
+/** A URL hostname on this machine. */
 export function isLoopback(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, "");
   return host === "localhost" || host === "::1" || (isIP(host) === 4 && host.startsWith("127."));
 }
 
-/** `{root}/{path}`, or null when a key must not be sent there: https anywhere, plain http only to this machine. */
+/** `{root}/{path}`, or null when a key must not be sent there: an http(s) address without credentials. */
 export function keySafeUrl(root: string, path: string): URL | null {
   let url: URL;
   try {
@@ -41,8 +41,7 @@ export function keySafeUrl(root: string, path: string): URL | null {
     return null;
   }
   if (url.username || url.password) return null;
-  if (url.protocol === "https:") return url;
-  return url.protocol === "http:" && isLoopback(url.hostname) ? url : null;
+  return url.protocol === "https:" || url.protocol === "http:" ? url : null;
 }
 
 export function providerBaseUrl(provider: ProviderKeyKind, base?: string | null): string {
@@ -81,7 +80,7 @@ export async function checkProviderKey(
   } catch {
     return { ok: false, reason: "unexpected" };
   }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback(url.hostname))) {
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
     return { ok: false, reason: "unexpected" };
   }
   const authenticate = (input.provider === "openaiCompat" || input.provider === "openrouter")

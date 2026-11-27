@@ -60,7 +60,12 @@ describe("Meta provider", () => {
 
   it("presets Meta's endpoint, rejects unsafe configuration and never sends an unkeyed turn", async () => {
     expect(MetaDriver.defaultConfig().url).toBe("https://api.meta.ai/v1");
-    expect(() => MetaDriver.decodeConfig({ url: "http://provider.example.test/v1" })).toThrow("HTTPS");
+    for (const url of ["http://192.168.1.9:11434", "http://8.8.8.8:8080", "http://llm.example.com"]) {
+      expect(MetaDriver.decodeConfig({ url }).url).toBe(url);
+    }
+    for (const url of ["ftp://192.168.1.9/v1", "file:///etc/passwd", "javascript:alert(1)"]) {
+      expect(() => MetaDriver.decodeConfig({ url })).toThrow("http or https");
+    }
     expect(() => MetaDriver.decodeConfig({ tools: "false" })).toThrow();
     const instance = await create({ url: base }, { META_API_KEY: "" });
     const recorder = recordEvents(instance.adapter);

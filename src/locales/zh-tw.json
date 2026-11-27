@@ -1893,6 +1893,7 @@
   "settings.notificationSounds.subtitle": "當機器人完成工作或需要你時，播放這台電腦的提示音。關閉後仍會保留橫幅通知，但不會發出提示音 — 在通話中很實用，因為機器人已經在對你說話了。",
   "settings.notificationSounds.play": "通知音效",
   "settings.deviceNotifications.title": "這台裝置上的通知",
+  "settings.cleartext.endpoint": "明文 HTTP：同一網路中的其他人可以看到傳送到這個位址的 API key 和圖片。",
   "settings.deviceNotifications.subtitle": "開啟這個應用程式時，機器人完成工作後在這裡顯示通知。核准、問題和警告一律會顯示。",
   "settings.deviceNotifications.blocked": "這個網站的通知已被封鎖。請在瀏覽器的網站設定中允許通知。",
   "settings.deviceNotifications.show": "機器人完成時通知我",

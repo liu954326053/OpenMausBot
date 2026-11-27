@@ -21,10 +21,8 @@ function addressOf(raw: string, label: string): URL {
   try { url = new URL(raw); } catch {
     throw refused("unreachable", "unreachable", { server: label, detail: "its address is not a web address" });
   }
-  const local = ["localhost", "127.0.0.1", "[::1]", "::1", "host.docker.internal", "host.containers.internal"].includes(url.hostname.toLowerCase())
-    || url.hostname.toLowerCase().endsWith(".local");
-  if (url.username || url.password || (url.protocol !== "https:" && !(url.protocol === "http:" && local))) {
-    throw refused("unreachable", "unreachable", { server: label, detail: "its address is not https, or http on this computer" });
+  if (url.username || url.password || (url.protocol !== "https:" && url.protocol !== "http:")) {
+    throw refused("unreachable", "unreachable", { server: label, detail: "its address is not http or https, or holds a password" });
   }
   return url;
 }

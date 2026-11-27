@@ -22,11 +22,15 @@ describe("Mistral provider", () => {
     } finally { await instance.dispose(); }
   });
 
-  it("rejects invalid tools flags and non-TLS remote endpoints", () => {
+  it("rejects invalid tools flags and non-web endpoints, and keeps plain HTTP", () => {
     expect(() => MistralDriver.decodeConfig({ tools: "false" })).toThrow();
-    expect(() => MistralDriver.decodeConfig({ url: "http://example.com/v1" })).toThrow("HTTPS");
-    expect(MistralDriver.decodeConfig({ tools: false })).toMatchObject({ tools: false });
     expect(MistralDriver.decodeConfig({ url: "http://127.0.0.1:1234/v1/" }).url).toBe("http://127.0.0.1:1234/v1");
+    for (const url of ["http://192.168.1.9:11434", "http://8.8.8.8:8080", "http://llm.example.com"]) {
+      expect(MistralDriver.decodeConfig({ url }).url).toBe(url);
+    }
+    for (const url of ["ftp://192.168.1.9/v1", "file:///etc/passwd", "javascript:alert(1)"]) {
+      expect(() => MistralDriver.decodeConfig({ url })).toThrow("http or https");
+    }
   });
 
   it("does not contact the provider without a key", async () => {

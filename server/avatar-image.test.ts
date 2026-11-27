@@ -105,6 +105,15 @@ describe("avatar image generation", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty("authorization");
   });
 
+  it("calls a configured plain-http gateway, since a self-hosted server may have no TLS", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => imageResponse());
+    const cfg = { imageGen: { provider: "custom" as const, customUrl: "http://8.8.8.8:8080/v1", customModel: "model", customApiKey: "custom-secret" } };
+
+    await generateAvatarImage(cfg, BOT, "", fetchMock);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("http://8.8.8.8:8080/v1/images/generations");
+    expect(avatarImageStatus(cfg)).toMatchObject({ provider: "custom", configured: true, customUrl: "http://8.8.8.8:8080/v1" });
+  });
+
   it("keeps OpenAI credentials on OpenAI when other providers are configured", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => imageResponse());
 
@@ -142,8 +151,9 @@ describe("avatar image generation", () => {
   });
 
   it.each([
-    "http://public.example.com/v1", "http://169.254.169.254/latest", "https://169.254.169.254/latest",
-    "file:///tmp/image", "https://secret@example.com/v1", "https://example.com/v1?key=secret",
+    "http://169.254.169.254/latest", "https://169.254.169.254/latest",
+    "file:///tmp/image", "ftp://example.com/v1", "javascript:alert(1)",
+    "https://secret@example.com/v1", "https://example.com/v1?key=secret",
     "https://example.com/v1#secret",
   ])("rejects an invalid custom URL before any network call: %s", async (customUrl) => {
     const fetchMock = vi.fn<typeof fetch>();

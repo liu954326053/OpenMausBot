@@ -6,6 +6,7 @@ import { t } from "@/lib/i18n";
 import { cn } from "@/lib/cn";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { KEY_FIELD } from "./keys/KeyRow";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
 
 type Engine = "claude" | "codex";
 // Placeholders only: an Anthropic key already has its own engine in Settings → Keys. An empty Codex URL means OpenAI.
@@ -77,6 +78,7 @@ function EndpointForm({ instance, engine, onDone }: { instance?: InstanceInfo; e
         {t("claudeEndpoints.baseUrl")}
         <input {...field("url")} type="url" maxLength={2048} placeholder={official.url} aria-label={t("claudeEndpoints.baseUrl")} className={cn(INPUT, "font-mono")} />
       </label>
+      {isCleartextRemote(draft.url) && <p role="note" className="text-[12px] leading-4 text-warning">{t("settings.cleartext.endpoint")}</p>}
       <label className="flex flex-col gap-1 text-[12px] font-medium text-ink">
         {t("claudeEndpoints.token")}
         <input {...field("token")} type="password" maxLength={4096} autoComplete="off" aria-label={t("claudeEndpoints.token")} className={cn(INPUT, "font-mono")}

@@ -58,10 +58,10 @@ export async function discoverAgentEndpointModels(entry: InstanceConfig, fetchIm
   const headers = codex ? { authorization: `Bearer ${token}` } : { authorization: `Bearer ${token}`, "x-api-key": token!, "anthropic-version": "2023-06-01" };
   const modelsUrl = providerModelsUrl(codex ? "openai" : "anthropic", agentEndpointAddress(entry));
   const failure = (detail: string) => Object.assign(new Error(`Could not discover gateway models: ${detail}`), { status: 400 });
-  // Same rule as checkProviderKey: the key goes out only over HTTPS, or over plain HTTP to this computer.
+  // A redirect must never replay the credential to another address.
   const target = new URL(modelsUrl);
-  if (target.protocol !== "https:" && !(target.protocol === "http:" && isLoopback(target.hostname))) {
-    throw failure(`MagicBot reads a model list only over HTTPS or from this computer, so your key is not sent in the clear.${TYPE_MODEL}`);
+  if (target.protocol !== "https:" && target.protocol !== "http:") {
+    throw failure(`MagicBot reads a model list only over http or https.${TYPE_MODEL}`);
   }
   let response: Response;
   try {

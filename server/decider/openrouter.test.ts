@@ -134,14 +134,17 @@ describe("the OpenRouter request on the wire", () => {
       .resolves.toMatchObject({ ok: true, answers: { type: "score", score: 1.2, level: 1 } });
   });
 
-  it("uses a configured base URL: https anywhere, http only on this machine", async () => {
+  it("uses a configured base URL over https or plain http, and refuses one a key must not go to", async () => {
     expect(String(openrouterEndpoint("https://gateway.example.com/api/v1/"))).toBe("https://gateway.example.com/api/v1/chat/completions");
     expect(String(openrouterEndpoint("http://127.0.0.1:9911/v1"))).toBe("http://127.0.0.1:9911/v1/chat/completions");
+    expect(String(openrouterEndpoint("http://8.8.8.8:8080/v1"))).toBe("http://8.8.8.8:8080/v1/chat/completions");
+    expect(String(openrouterEndpoint("http://llm.example.com/v1"))).toBe("http://llm.example.com/v1/chat/completions");
     expect(String(openrouterEndpoint(undefined, "models"))).toBe("https://openrouter.ai/api/v1/models");
-    expect(openrouterEndpoint("http://gateway.example.com")).toBeNull();
+    expect(openrouterEndpoint("gateway.example.com")).toBeNull();
+    expect(openrouterEndpoint("ftp://gateway.example.com")).toBeNull();
     expect(openrouterEndpoint("https://user:pw@gateway.example.com")).toBeNull();
     const fetchImpl = vi.fn<typeof fetch>();
-    const remote = { decider: { ...ON.decider, openrouterBaseUrl: "http://gateway.example.com" } };
+    const remote = { decider: { ...ON.decider, openrouterBaseUrl: "ftp://gateway.example.com" } };
     await expect(decider(remote, fetchImpl).choose("roomRouting", STATE, QUESTION)).resolves.toMatchObject({ ok: false, reason: "misconfigured" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });

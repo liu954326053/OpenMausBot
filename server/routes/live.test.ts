@@ -155,16 +155,22 @@ describe("live routes", () => {
     expect((await request(d, "PATCH", "/api/live/settings", { azureEndpoint: "", azureDeployment: "" })).status).toBe(200);
     expect(d.saved).toEqual([azure, { azureEndpoint: "", azureDeployment: "" }]);
   });
-  it("saves a custom endpoint and model, refusing an address the key must not reach", async () => {
+  it("saves a custom endpoint over http or https, refusing an address the key must not reach", async () => {
     const d = deps();
     const custom = { provider: "custom", customEndpoint: "https://gateway.example.com/v1", customModel: "gpt-live-1" };
     expect(await request(d, "PATCH", "/api/live/settings", custom)).toMatchObject({ status: 200, body: { live: custom } });
-    for (const customEndpoint of ["http://gateway.example.com/v1", "https://u:p@gateway.example.com", "gateway.example.com"]) {
-      expect(await request(d, "PATCH", "/api/live/settings", { customEndpoint }), customEndpoint).toMatchObject({ status: 400, body: { error: expect.stringContaining("https address") } });
+    for (const customEndpoint of ["http://gateway.example.com/v1", "http://192.168.1.9:11434/v1", "http://8.8.8.8:8080"]) {
+      expect(await request(d, "PATCH", "/api/live/settings", { customEndpoint }), customEndpoint).toMatchObject({ status: 200, body: { live: { customEndpoint } } });
+    }
+    for (const customEndpoint of ["https://u:p@gateway.example.com", "gateway.example.com", "ftp://gateway.example.com/v1", "javascript:alert(1)"]) {
+      expect(await request(d, "PATCH", "/api/live/settings", { customEndpoint }), customEndpoint).toMatchObject({ status: 400, body: { error: expect.stringContaining("http or https address") } });
     }
     expect(await request(d, "PATCH", "/api/live/settings", { customModel: "a b" })).toMatchObject({ status: 400, body: { error: expect.stringContaining("model") } });
     expect((await request(d, "PATCH", "/api/live/settings", { customEndpoint: "http://127.0.0.1:4555/v1", customModel: "" })).status).toBe(200);
-    expect(d.saved).toEqual([custom, { customEndpoint: "http://127.0.0.1:4555/v1", customModel: "" }]);
+    expect(d.saved).toEqual([custom,
+      { customEndpoint: "http://gateway.example.com/v1" }, { customEndpoint: "http://192.168.1.9:11434/v1" },
+      { customEndpoint: "http://8.8.8.8:8080" },
+      { customEndpoint: "http://127.0.0.1:4555/v1", customModel: "" }]);
   });
   it("saves Fish Audio as the provider, and takes no agent from a request", async () => {
     const d = deps();
