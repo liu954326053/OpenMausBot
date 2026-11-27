@@ -92,9 +92,9 @@ describe("run_command", () => {
     };
     expect(refusal("..")).toBe(`cwd .. leads outside your own folder (${root}), so it was refused. Commands run only there.`);
     expect(refusal("scripts/../../elsewhere")).toContain("leads outside your own folder");
-    expect(refusal(join(scratch, "elsewhere"))).toContain("not an absolute path");
-    expect(refusal("/etc")).toContain("not an absolute path");
-    expect(refusal("C:\\Windows")).toContain("not an absolute path");
+    expect(refusal(join(scratch, "elsewhere"))).toBe(`cwd must be a folder inside your own folder (${root}), relative to it, not an absolute path: ${join(scratch, "elsewhere")}`);
+    expect(refusal("/etc")).toBe(`cwd must be a folder inside your own folder (${root}), relative to it, not an absolute path: /etc`);
+    expect(refusal("C:\\Windows")).toContain(`inside your own folder (${root})`);
     expect(refusal("missing")).toBe(`cwd missing is not a folder that exists inside your own folder (${root}).`);
     writeFileSync(join(project, "notes.txt"), "x");
     expect(refusal("notes.txt")).toContain("is not a folder that exists");

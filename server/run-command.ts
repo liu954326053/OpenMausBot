@@ -87,7 +87,7 @@ export function commandDirectory(root: string, cwd: string | undefined): string 
   const wanted = (cwd ?? "").trim();
   if (!wanted) return root;
   if (isAbsolute(wanted) || /^[a-zA-Z]:/.test(wanted)) {
-    throw new RunCommandRefusal(`cwd must be a folder inside your own folder, relative to it, not an absolute path: ${wanted}`);
+    throw new RunCommandRefusal(`cwd must be a folder inside your own folder (${root}), relative to it, not an absolute path: ${wanted}`);
   }
   const joined = resolve(root, wanted);
   const outside = `cwd ${wanted} leads outside your own folder (${root}), so it was refused. Commands run only there.`;
