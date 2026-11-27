@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { DatabaseManager } from '../../service/db';
-import type { ProjectId, ArtifactId } from '../../../shared/types';
+import { DatabaseManager } from '../../../../src/service/db';
+import type { ProjectId, ArtifactId } from '../../../../src/shared/types';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
