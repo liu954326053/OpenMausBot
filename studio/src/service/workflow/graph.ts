@@ -9,7 +9,7 @@ import type {
   TaskId,
   GraphValidationResult,
   TopologicalSortResult,
-} from './types.js';
+} from './types';
 
 export class WorkflowGraph {
   private dag: WorkflowDAG;

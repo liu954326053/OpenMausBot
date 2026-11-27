@@ -3,7 +3,7 @@
  * Manages access control, capabilities, and policy enforcement.
  */
 
-import type { ToolExecutionContext } from './registry.js';
+import type { ToolExecutionContext } from './registry';
 
 export interface Permission {
   tool: string;

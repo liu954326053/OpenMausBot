@@ -5,8 +5,8 @@
 
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import type { SkillDefinition, SkillManifest, SkillId, SkillSource } from './types.js';
-import { SkillStatus } from './types.js';
+import type { SkillDefinition, SkillManifest, SkillId, SkillSource } from './types';
+import { SkillStatus } from './types';
 
 interface ParsedFrontMatter {
   metadata: Partial<SkillManifest>;

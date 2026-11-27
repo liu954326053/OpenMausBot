@@ -4,7 +4,7 @@
  */
 
 // Tool registry and core types
-export { ToolRegistry, type ToolDefinition, type ToolSchema, type ToolExecutionContext } from './registry.js';
+export { ToolRegistry, type ToolDefinition, type ToolSchema, type ToolExecutionContext } from './registry';
 
 // Tool execution middleware
 export {
@@ -13,7 +13,7 @@ export {
   buildExecutionPlan,
   type ExecutorOptions,
   type ExecutionResult,
-} from './executor.js';
+} from './executor';
 
 // Tool discovery and introspection
 export {
@@ -22,7 +22,7 @@ export {
   type ToolMetadata,
   type ToolCapability,
   type ToolInfo,
-} from './discovery.js';
+} from './discovery';
 
 // Sandbox isolation system
 export {
@@ -35,7 +35,7 @@ export {
   type IsolationPolicy,
   type SandboxConfig,
   type ResourceUsage,
-} from './sandbox.js';
+} from './sandbox';
 
 // Permission system
 export {
@@ -48,7 +48,7 @@ export {
   DEFAULT_POLICIES,
   type Permission,
   type PermissionPolicy,
-} from './permissions.js';
+} from './permissions';
 
 // Audit logging system
 export {
@@ -59,7 +59,7 @@ export {
   logPermissionDenied,
   resetAuditLogger,
   type AuditLogEntry,
-} from './audit.js';
+} from './audit';
 
 // MCP client and server management
 export {
@@ -69,4 +69,4 @@ export {
   type McpTool,
   type McpResource,
   type McpServerInfo,
-} from './mcp-client.js';
+} from './mcp-client';

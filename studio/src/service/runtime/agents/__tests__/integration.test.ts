@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { AgentCoordinator } from '../coordinator.js';
-import type { AgentFactoryConfig, ProjectAgentId, TaskId } from '../../shared/types.js';
+import { AgentCoordinator } from '../coordinator';
+import type { AgentFactoryConfig, ProjectAgentId, TaskId } from '../../shared/types';
 
 describe('Agent Coordination System', () => {
   let coordinator: AgentCoordinator;

@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { WorkflowGraph } from '@/service/workflow/graph.js';
-import type { WorkflowTask, TaskId } from '@/service/workflow/types.js';
+import { WorkflowGraph } from '@/service/workflow/graph';
+import type { WorkflowTask, TaskId } from '@/service/workflow/types';
 
 describe('WorkflowGraph', () => {
   let graph: WorkflowGraph;

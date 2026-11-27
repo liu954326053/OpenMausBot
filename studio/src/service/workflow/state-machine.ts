@@ -3,7 +3,7 @@
  * Manages valid state transitions and state change events.
  */
 
-import type { TaskId, TaskState, TaskStateChange, TaskExecutionState } from './types.js';
+import type { TaskId, TaskState, TaskStateChange, TaskExecutionState } from './types';
 
 export class TaskStateMachine {
   private states: Map<TaskId, TaskExecutionState> = new Map();

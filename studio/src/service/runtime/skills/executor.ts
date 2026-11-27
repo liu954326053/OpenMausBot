@@ -8,8 +8,8 @@ import type {
   SkillExecutionInput,
   SkillExecutionResult,
   SkillExecutionContext,
-} from './types.js';
-import { SkillValidator } from './validator.js';
+} from './types';
+import { SkillValidator } from './validator';
 
 export interface ExecutionOptions {
   timeout?: number;

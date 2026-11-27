@@ -236,17 +236,21 @@ describe('WorkflowScheduler', () => {
     it('should track total retries in metrics', () => {
       scheduler.start();
 
-      // First run - fail and queue retry
+      // First run - fail and queue retry (increment 1)
       let taskId = scheduler.dequeueAndRun()!;
       scheduler.completeTask(taskId, false);
       
-      // Second run - fail and queue retry  
+      // Second run - fail and queue retry (increment 2)
+      taskId = scheduler.dequeueAndRun()!;
+      scheduler.completeTask(taskId, false);
+      
+      // Third run - no more retries
       taskId = scheduler.dequeueAndRun()!;
       scheduler.completeTask(taskId, false);
 
       const metrics = scheduler.getMetrics();
-      // Should have tracked 2 retry attempts (each failure that could retry)
-      expect(metrics.totalRetries).toBeGreaterThanOrEqual(2);
+      // Should have tracked 2 retry attempts before failure
+      expect(metrics.totalRetries).toBe(2);
     });
   });
 

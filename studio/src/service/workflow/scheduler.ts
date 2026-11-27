@@ -12,10 +12,10 @@ import type {
   SchedulingDecision,
   TaskState,
   ProjectAgentId,
-} from './types.js';
-import { WorkflowGraph } from './graph.js';
-import { TaskStateMachine } from './state-machine.js';
-import { StalePropagator } from './stale-propagator.js';
+} from './types';
+import { WorkflowGraph } from './graph';
+import { TaskStateMachine } from './state-machine';
+import { StalePropagator } from './stale-propagator';
 
 interface QueuedTask {
   task: WorkflowTask;
@@ -262,19 +262,24 @@ export class WorkflowScheduler {
       queued.attempts++;
 
       if (queued.attempts < maxRetries) {
-        queued.enqueuedAt = Date.now();
-        this.readyQueue.push(queued);
-
-        const transitioned = this.stateMachine.transition(
+        // For retries: running -> failed -> pending
+        const failedTransition = this.stateMachine.transition(
           taskId,
-          'pending',
-          `Will retry (${queued.attempts}/${maxRetries})`
+          'failed',
+          `Retry attempt ${queued.attempts}/${maxRetries}`
         );
 
-        if (!transitioned) {
+        if (!failedTransition) {
           return false;
         }
 
+        const pendingTransition = this.stateMachine.transition(taskId, 'pending');
+        if (!pendingTransition) {
+          return false;
+        }
+
+        queued.enqueuedAt = Date.now();
+        this.readyQueue.push(queued);
         this.metrics.totalRetries++;
       } else {
         const transitioned = this.stateMachine.transition(

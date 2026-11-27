@@ -4,9 +4,9 @@
  * Does NOT automatically re-run tasks, only marks them as stale.
  */
 
-import type { TaskId } from './types.js';
-import { WorkflowGraph } from './graph.js';
-import { TaskStateMachine } from './state-machine.js';
+import type { TaskId } from './types';
+import { WorkflowGraph } from './graph';
+import { TaskStateMachine } from './state-machine';
 
 export interface StalePropagationEvent {
   sourceTaskId: TaskId;
@@ -33,7 +33,7 @@ export class StalePropagator {
 
   /**
    * Marks a task's output as changed and propagates stale state downstream.
-   * This triggers stale marking for all dependent tasks.
+   * This triggers stale marking for all dependent tasks that have completed.
    */
   markProductChanged(sourceTaskId: TaskId): StalePropagationEvent {
     const affectedTasks: TaskId[] = [];
@@ -42,9 +42,13 @@ export class StalePropagator {
     const transitiveDependents = this.graph.getTransitiveDependents(sourceTaskId);
 
     for (const dependentId of transitiveDependents) {
-      const success = this.stateMachine.markStale(dependentId);
-      if (success) {
-        affectedTasks.push(dependentId);
+      // Only mark as stale if the task has already completed (not pending/running)
+      const state = this.stateMachine.getState(dependentId);
+      if (state && (state === 'success' || state === 'failed')) {
+        const success = this.stateMachine.markStale(dependentId);
+        if (success) {
+          affectedTasks.push(dependentId);
+        }
       }
     }
 

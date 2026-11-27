@@ -13,10 +13,10 @@ import type {
   AgentMetrics,
   AgentFactoryConfig,
   AgentMessage,
-} from './types.js';
-import type { ProjectAgentId, TaskId } from '../../shared/types.js';
-import { AgentFactory } from './registry.js';
-import { MessageBus } from './messenger.js';
+} from './types';
+import type { ProjectAgentId, TaskId } from '../../shared/types';
+import { AgentFactory } from './registry';
+import { MessageBus } from './messenger';
 
 /**
  * Central coordinator for multi-agent systems.

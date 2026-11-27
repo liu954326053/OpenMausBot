@@ -4,9 +4,9 @@
  */
 
 import { EventEmitter } from 'events';
-import type { ToolDefinition, ToolExecutionContext } from './registry.js';
-import type { ToolRegistry } from './registry.js';
-import { getAuditLogger } from './audit.js';
+import type { ToolDefinition, ToolExecutionContext } from './registry';
+import type { ToolRegistry } from './registry';
+import { getAuditLogger } from './audit';
 
 export interface McpServerConfig {
   id: string;

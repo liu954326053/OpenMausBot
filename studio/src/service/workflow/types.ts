@@ -3,7 +3,7 @@
  * Defines DAG structures, task states, and scheduling contracts.
  */
 
-import type { TaskId, ProjectAgentId } from '../../shared/types.js';
+import type { TaskId, ProjectAgentId } from '../../shared/types';
 
 /**
  * Task state machine: pending → running → (success/failed/stale)

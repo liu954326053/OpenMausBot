@@ -9,7 +9,7 @@ import type {
   SkillExecutionInput,
   SkillPreCheckResult,
   SkillValidationError,
-} from './types.js';
+} from './types';
 
 /**
  * Validates skill parameters against schema.

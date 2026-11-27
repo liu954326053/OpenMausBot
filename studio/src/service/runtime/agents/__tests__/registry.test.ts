@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { AgentRegistry, AgentFactory } from '../registry.js';
-import type { ProjectAgentId, AgentFactoryConfig } from '../../shared/types.js';
+import { AgentRegistry, AgentFactory } from '../registry';
+import type { ProjectAgentId, AgentFactoryConfig } from '../../shared/types';
 
 describe('AgentRegistry', () => {
   let registry: AgentRegistry;

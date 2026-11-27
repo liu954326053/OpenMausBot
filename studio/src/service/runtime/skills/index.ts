@@ -11,11 +11,11 @@ import type {
   SkillExecutionContext,
   SkillExecutionResult,
   SkillSource,
-} from './types.js';
-import { SkillStatus } from './types.js';
-import { SkillDiscovery } from './discovery.js';
-import { SkillValidator } from './validator.js';
-import { SkillExecutor } from './executor.js';
+} from './types';
+import { SkillStatus } from './types';
+import { SkillDiscovery } from './discovery';
+import { SkillValidator } from './validator';
+import { SkillExecutor } from './executor';
 
 export interface SkillSystemConfig {
   discoveryPaths?: string[];
