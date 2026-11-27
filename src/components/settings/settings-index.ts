@@ -1,5 +1,5 @@
 import {
-  Archive, ArrowLeftRight, Bot, Coins, CreditCard, LockKeyhole, Monitor, Palette, Server, SlidersHorizontal, Smartphone, Sparkles, Users,
+  Archive, ArrowLeftRight, Bot, Coins, CreditCard, LockKeyhole, Monitor, Palette, Puzzle, Server, SlidersHorizontal, Smartphone, Sparkles, Users,
   type LucideIcon,
 } from "lucide-react";
 import type { LocaleKey } from "@/locales";
@@ -51,9 +51,9 @@ const notClient = (ctx: SettingsContext) => !ctx.client;
 const adminPage = (ctx: SettingsContext) => !ctx.client && !(ctx.team && !ctx.admin);
 /** A page Simple mode leaves out: its everyday rows show elsewhere in Simple (Overview, This app, Plan & billing). */
 const advancedOnly = (when: (ctx: SettingsContext) => boolean) => (ctx: SettingsContext) => ctx.advanced && when(ctx);
-/** Simple mode's ten entries: the place (Overview, Phone & devices, AI, Vault, Spending, Import & export), Your account
- * (Plan & billing) and This app (Appearance), and Data where the place has projects, with only their rows. Advanced
- * adds You and your bots, Desktops & browser and General, and Data's other rows. */
+/** Simple mode's entries: the place (Overview, Phone & devices, AI, Pictures and videos, Vault, Spending, Import &
+ * export), Your account (Plan & billing) and This app (Appearance), and Data where the place has projects, with only
+ * their rows. Advanced adds You and your bots, Desktops & browser and General, and Data's other rows. */
 export const ADVANCED_PAGES: readonly SettingsPageId[] = ["bots", "desktops", "general"];
 
 export const SETTINGS_PAGES: readonly SettingsPage[] = [
@@ -62,6 +62,8 @@ export const SETTINGS_PAGES: readonly SettingsPage[] = [
     synonyms: ["phone", "pair", "pairing", "qr", "code", "iphone", "android", "mobile", "tablet", "device", "devices", "wifi", "wi-fi", "anywhere", "relay", "remote", "companion", "tailscale", "connect your phone", "get the phone app", "pair a device", "this server", "remote access"] },
   { id: "ai", owner: "place", labelKey: "settings.group.ai", icon: Sparkles, when: adminPage,
     synonyms: ["ai", "models", "model providers", "providers", "engines", "api keys", "keys", "key", "claude", "codex", "openai", "anthropic", "ollama", "lm studio", "local model"] },
+  { id: "plugins", owner: "place", labelKey: "settings.page.plugins", icon: Puzzle, when: adminPage,
+    synonyms: ["plugins", "image plugins", "video plugins", "generation", "image generation", "video generation", "picture", "pictures", "upload plugin", "models for pictures"] },
   { id: "bots", owner: "place", labelKey: "settings.page.bots", icon: Bot, when: advancedOnly(notClient),
     synonyms: ["all bots", "bots", "about you", "about me", "profile", "new bots", "defaults", "effort", "limits", "rules"] },
   { id: "desktops", owner: "place", labelKey: "settings.page.desktops", icon: Monitor, when: advancedOnly(adminPage),

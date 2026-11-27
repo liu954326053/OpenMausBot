@@ -7127,6 +7127,7 @@
   "call.live.keyFromApiKeys": "Usa a chave de API da OpenAI salva em Configurações → IA → Outros serviços.",
   "settings.group.you": "Você",
   "settings.group.ai": "IA",
+  "settings.page.plugins": "Plugins de imagem e vídeo",
   "settings.group.computers": "Dispositivos",
   "settings.group.account": "Conta",
   "settings.simple.group.typing": "Idioma e digitação",
@@ -11880,8 +11881,8 @@
   "productionBoard.skills.post.1": "Edição",
   "productionBoard.skills.post.2": "Voz e música",
   "productionBoard.skills.post.3": "Legendas e cor",
-  "apps.filter.plugins": "Plugins",
   "generationPlugins.title": "Plugins de imagem e vídeo",
+  "generationPlugins.section": "Plugins",
   "generationPlugins.subtitle": "Um plugin faz as imagens e os vídeos do projeto. Envie um para adicionar um serviço.",
   "generationPlugins.upload": "Enviar plugin",
   "generationPlugins.uploading": "Enviando…",
@@ -11909,7 +11910,7 @@
   "projectCanvas.settings.noPlugin": "Sem plugin (um servidor MCP)",
   "projectCanvas.settings.pluginNote": "Um plugin faz as imagens e os vídeos deste projeto. Escolha um plugin ou um servidor MCP.",
   "serverError.projectGeneration.pluginGone": "O plugin {plugin} não está mais instalado. Escolha outro nas configurações deste projeto.",
-  "serverError.projectGeneration.pluginOff": "O plugin {plugin} está desligado. Ligue-o em Apps → Plugins ou escolha outro nas configurações deste projeto.",
-  "serverError.projectGeneration.pluginUnconfigured": "O plugin {plugin} precisa das configurações preenchidas. Abra Apps → Plugins e tente de novo.",
+  "serverError.projectGeneration.pluginOff": "O plugin {plugin} está desligado. Ligue-o em Configurações → Plugins de imagem e vídeo ou escolha outro nas configurações deste projeto.",
+  "serverError.projectGeneration.pluginUnconfigured": "O plugin {plugin} precisa das configurações preenchidas. Abra Configurações → Plugins de imagem e vídeo e tente de novo.",
   "serverError.projectGeneration.pluginBadAnswer": "O plugin {plugin} respondeu de um jeito que o MagicBot não entende: {detail}"
 }

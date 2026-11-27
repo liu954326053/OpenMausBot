@@ -11,7 +11,7 @@ so the two can be read together.
 
 ## Installing a plugin
 
-**Apps → Plugins** (the puzzle button next to MCP). Upload a zip of up to 8 MB holding
+**Settings → Pictures and videos**. Upload a zip of up to 8 MB holding
 at most 200 files and 32 MB unpacked. `plugin.json` sits at the top of the zip, or in a
 single folder at its top.
 

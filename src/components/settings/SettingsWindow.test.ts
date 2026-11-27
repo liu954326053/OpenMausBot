@@ -57,7 +57,7 @@ describe("the Settings window", () => {
   it("opens with the place, Your account and This app, each headed by an identity row", () => {
     fixture.advanced = true;
     const html = render();
-    expect(navPages(html)).toEqual(["overview", "phone", "ai", "bots", "desktops", "vault", "usage", "transfer", "data", "account", "app", "general", "appearance"]);
+    expect(navPages(html)).toEqual(["overview", "phone", "ai", "plugins", "bots", "desktops", "vault", "usage", "transfer", "data", "account", "app", "general", "appearance"]);
     expect(html).toContain("This computer");
     expect(html).toContain("Your account");
     expect(html).toContain("This app");
@@ -79,14 +79,14 @@ describe("the Settings window", () => {
     expect(render("appearance")).toContain("MagicBot on this device");
   });
 
-  const SIMPLE_NAV = ["overview", "phone", "ai", "vault", "usage", "transfer", "account", "plan", "app", "appearance"];
+  const SIMPLE_NAV = ["overview", "phone", "ai", "plugins", "vault", "usage", "transfer", "account", "plan", "app", "appearance"];
   const SIMPLE_PEOPLE: Array<[string, () => void]> = [
     ["a person with only this computer", () => vi.stubGlobal("window", desktopHere({ cloudAccount: { state: () => new Promise(() => {}), onState: () => () => {} } }))],
     ["This computer's rail, with My Cloud", () => vi.stubGlobal("window", desktopHere({ cloudAccount: { state: () => new Promise(() => {}), onState: () => () => {} }, workspaces: { state: () => new Promise(() => {}), places: () => new Promise(() => {}) } }))],
     ["My Cloud's rail in the desktop window", () => { vi.stubGlobal("window", { ogb: { platform: "darwin", cloudPlan: { state: () => new Promise(() => {}) }, workspaces: { state: () => new Promise(() => {}), places: () => new Promise(() => {}) } } }); fixture.config = { cloudHome: true }; }],
     ["My Cloud in a browser", () => { vi.stubGlobal("window", {}); fixture.config = { cloudHome: true }; }],
   ];
-  it.each(SIMPLE_PEOPLE)("shows Simple's ten entries for %s", (_who, set) => {
+  it.each(SIMPLE_PEOPLE)("shows Simple's entries for %s", (_who, set) => {
     set();
     fixture.advanced = false;
     expect(navPages(render("overview"))).toEqual(SIMPLE_NAV);
@@ -102,6 +102,17 @@ describe("the Settings window", () => {
     expect(app).toContain("Updates, language, notifications and help.");
     fixture.advanced = true;
     expect(render("app")).not.toContain('data-settings-block="typing"');
+  });
+
+  it("puts the picture and video plugins on their own page, beside AI, in Simple too", () => {
+    for (const advanced of [false, true]) {
+      fixture.advanced = advanced;
+      expect(navPages(render("plugins")), String(advanced)).toContain("plugins");
+      const html = render("plugins");
+      expect(html).toContain("Pictures and videos");
+      expect(html).toContain('data-generation-plugin-upload=""');
+      expect(html).not.toContain("Apps → Plugins");
+    }
   });
 
   it("turns Advanced on for a link to a page Simple doesn't show, and lands there", () => {

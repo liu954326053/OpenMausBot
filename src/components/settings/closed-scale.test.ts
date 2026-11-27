@@ -30,6 +30,7 @@ const FILES = [
   "src/components/DiagnosticsRow.tsx",
   "src/components/EnginesSettings.tsx",
   "src/components/EveryBotRules.tsx",
+  "src/components/GenerationPluginsPanel.tsx",
   "src/components/HiddenProviders.tsx",
   "src/components/HomeLine.tsx",
   "src/components/ImageGenerationSettings.tsx",

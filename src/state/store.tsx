@@ -467,7 +467,7 @@ export type AppSettingsSection = SettingsPageId
   | "desktopWorkspaces" | "organization" | "cloudAccount" | "experimental" | "connections" | "decisionModel" | "imageGeneration"
   | "engines" | "companion" | "remote" | "computer" | "logins" | "botAccess" | "activity" | "backups" | "workspaces"
   | "skills" | "import" | "updates";
-export type SettingsPageId = "overview" | "phone" | "ai" | "bots" | "desktops" | "vault" | "usage" | "transfer" | "data" | "people"
+export type SettingsPageId = "overview" | "phone" | "ai" | "plugins" | "bots" | "desktops" | "vault" | "usage" | "transfer" | "data" | "people"
   | "installations" | "account" | "plan" | "app" | "general" | "appearance";
 
 export type BotSettingsSection =
@@ -519,7 +519,7 @@ export interface AppState {
   webhookIngress: WebhookIngressStatus | null;
   settingsOpen: boolean;
   pluginsOpen: boolean;
-  pluginsSurface: "apps" | "mcp" | "plugins";
+  pluginsSurface: "apps" | "mcp";
   botCreationPending: boolean;
   computerOpen: boolean;
   inspectorOpen: boolean;
@@ -728,7 +728,7 @@ export type Action =
   | { type: "notice"; notice: AppState["notice"] }
   | { type: "revealThread"; threadId: string }
   | { type: "toggleSettings"; open?: boolean; section?: BotSettingsSection; botId?: string }
-  | { type: "togglePlugins"; open?: boolean; surface?: "apps" | "mcp" | "plugins" }
+  | { type: "togglePlugins"; open?: boolean; surface?: "apps" | "mcp" }
   | { type: "toggleComputer"; open?: boolean; botId?: string }
   | { type: "openDataResult"; botId: string; cardId: string }
   | { type: "dataResultFocusConsumed"; requestId: number }

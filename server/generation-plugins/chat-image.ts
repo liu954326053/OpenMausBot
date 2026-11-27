@@ -1,3 +1,4 @@
+import type { GenerationModel } from "../../shared/project-generation.ts";
 import type { ImageAspect, GeneratedImage } from "../image-generation.ts";
 import { resultBytes } from "../project-generation/project-files.ts";
 import { pluginEndpoint } from "./endpoint.ts";
@@ -12,6 +13,30 @@ export interface PluginImageRequest {
   prompt: string;
   aspect?: ImageAspect;
   signal?: AbortSignal;
+}
+
+/** The model's own word for the chat's aspect: an OpenAI-style plugin names sizes (`1536x1024`) where the chat says `16:9`,
+ * and offers no 16:9 at all (its widest is 3:2), so the nearest ratio wins. */
+function modelAspect(model: GenerationModel, wanted: ImageAspect): string {
+  const aspects = model.aspects ?? [];
+  if (!aspects.length) return wanted;
+  const ratio = (value: string): number | null => {
+    const match = /^(\d+(?:\.\d+)?)\s*[x:]\s*(\d+(?:\.\d+)?)$/i.exec(value.trim());
+    const width = match ? Number(match[1]) : 0;
+    const height = match ? Number(match[2]) : 0;
+    return width > 0 && height > 0 ? width / height : null;
+  };
+  const target = ratio(wanted);
+  if (target === null) return aspects[0]!;
+  let best = aspects[0]!;
+  let distance = Infinity;
+  for (const aspect of aspects) {
+    const found = ratio(aspect);
+    if (found === null) continue;
+    const gap = Math.abs(found - target);
+    if (gap < distance) { best = aspect; distance = gap; }
+  }
+  return best;
 }
 
 /** The chat's picture channel through an installed plugin: the first image model of the first ready plugin. */
@@ -42,14 +67,14 @@ export function createPluginImages(plugins: GenerationPlugins): PluginImages {
     },
     async generate(request: PluginImageRequest): Promise<GeneratedImage> {
       const plugin = pick(plugins);
-      if (!plugin) throw Object.assign(new Error("Connect an image plugin in Apps → Plugins first"), { status: 409, neverStarted: true });
+      if (!plugin) throw Object.assign(new Error("Connect an image plugin in Settings → Pictures and videos first"), { status: 409, neverStarted: true });
       const model = plugin.models.find((candidate) => candidate.kind === "image")!;
       const endpoint = pluginEndpoint(plugins, plugin.id);
       const deadline = Date.now() + DEADLINE_MS;
       const signal = request.signal;
       const submitted = await endpoint.generate(
         "image",
-        { model: model.id, aspect: request.aspect ?? "1:1", quality: "auto", count: 1 },
+        { model: model.id, aspect: modelAspect(model, request.aspect ?? "1:1"), quality: "auto", count: 1 },
         { prompt: request.prompt, references: { images: [], audio: [] } },
         signal ?? AbortSignal.timeout(DEADLINE_MS),
       );

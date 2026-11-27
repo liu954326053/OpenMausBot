@@ -20,6 +20,7 @@ import { DisplayNameSetting } from "../../DisplayNameSetting";
 import { DefaultBotSidebarRow } from "../../DefaultBotControls";
 import { EnginesSettings } from "../../EnginesSettings";
 import { ImageGenerationSettings } from "../../ImageGenerationSettings";
+import { GenerationPluginsPanel } from "../../GenerationPluginsPanel";
 import { LocalComputerSection } from "../../LocalComputerSection";
 import { McpCallTimeoutSettings } from "../../McpCallTimeoutSettings";
 import { DefaultBotSettings } from "../../NewBotDialog";
@@ -145,6 +146,14 @@ export function AiPage() {
       <AdvancedSection anchor="backup-model"><SettingsGroup label={t("settings.ai.backupModel")} block="backup-model"><AutomaticRecoverySettings /></SettingsGroup></AdvancedSection>
       <AdvancedSection anchor="routing"><DecisionModelSettings /></AdvancedSection>
       <AdvancedSection anchor="images"><ImageGenerationSettings /></AdvancedSection>
+    </AdminOnly>
+  </>;
+}
+
+export function PluginsPage() {
+  return <>
+    <AdminOnly>
+      <div data-settings-block="generation-plugins"><GenerationPluginsPanel /></div>
     </AdminOnly>
   </>;
 }

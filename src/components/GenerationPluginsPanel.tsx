@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, Puzzle, Trash2, Upload } from "lucide-react";
 
 import { PLUGIN_ZIP_MAX_BYTES, type GenerationPluginField, type GenerationPluginSummary, type GenerationPluginValue } from "../../shared/generation-plugins.ts";
-import { Switch } from "./SettingsPrimitives";
+import { isCleartextRemote } from "../../shared/cleartext-endpoint";
+import { SETTINGS_INPUT, SettingsField, SettingsGroup, SettingsMark, SettingsRows, Switch, StatusDot } from "./SettingsPrimitives";
 import { Select } from "./Select";
 import { cn } from "@/lib/cn";
 import { t } from "@/lib/i18n";
@@ -11,7 +12,6 @@ import {
 } from "@/lib/generation-plugins";
 
 const NOTE = "text-[12px] leading-4 text-ink-tertiary";
-const FIELD = "h-8 w-full rounded-lg border border-hairline/40 bg-inset px-3 text-[13px] leading-[18px] text-ink focus:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:opacity-50";
 
 /** What a field starts with: a saved value, or the plugin's default, never a secret. */
 function initialDraft(plugin: GenerationPluginSummary): Record<string, string> {
@@ -46,15 +46,15 @@ function kindLabel(kind: "image" | "video"): string {
 
 function FieldInput({ field, value, saved, disabled, onChange }: { field: GenerationPluginField; value: string; saved: boolean; disabled: boolean; onChange(value: string): void }) {
   const label = (
-    <span className="text-[13px] font-medium leading-[18px] text-ink">
+    <>
       {field.label}
       {field.required ? <span aria-hidden="true" className="ms-0.5 text-ink-tertiary">*</span> : null}
-    </span>
+    </>
   );
   if (field.type === "boolean") {
     return (
       <div className="flex items-center justify-between gap-3">
-        {label}
+        <span className="text-[13px] font-medium leading-[18px] text-ink">{label}</span>
         <Switch checked={value === "true"} disabled={disabled} aria-label={field.label} onClick={() => onChange(value === "true" ? "false" : "true")} />
       </div>
     );
@@ -66,7 +66,7 @@ function FieldInput({ field, value, saved, disabled, onChange }: { field: Genera
     </Select>
   ) : (
     <input
-      className={FIELD}
+      className={SETTINGS_INPUT}
       type={field.type === "secret" ? "password" : field.type === "number" ? "number" : "text"}
       inputMode={field.type === "number" ? "decimal" : undefined}
       autoComplete={field.type === "secret" ? "new-password" : "off"}
@@ -79,12 +79,14 @@ function FieldInput({ field, value, saved, disabled, onChange }: { field: Genera
       onChange={(event) => onChange(event.target.value)}
     />
   );
+  const clear = field.type === "url" && isCleartextRemote(value);
   return (
-    <div className="flex flex-col gap-1">
-      {label}
+    <SettingsField label={label} hint={field.help || clear ? <>
+      {field.help && <span className={NOTE}>{field.help}</span>}
+      {clear && <span role="note" className="text-warning">{t("settings.cleartext.endpoint")}</span>}
+    </> : undefined}>
       {input}
-      {field.help ? <span className={NOTE}>{field.help}</span> : null}
-    </div>
+    </SettingsField>
   );
 }
 
@@ -197,97 +199,100 @@ export function GenerationPluginsPanel({ initialOpenId }: { initialOpenId?: stri
   };
 
   return (
-    <section data-generation-plugins="" className="flex flex-col gap-4 pt-1" aria-label={t("generationPlugins.title")}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-[17px] font-semibold leading-6 text-ink">{t("generationPlugins.title")}</h3>
-          <p className="mt-0.5 max-w-[52ch] text-[13px] leading-[18px] text-ink-secondary">{t("generationPlugins.subtitle")}</p>
-        </div>
-        <button type="button" data-generation-plugin-upload="" className="ui-button ui-button-sm" disabled={busy === "upload"} onClick={() => input.current?.click()}>
-          {busy === "upload" ? <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <Upload size={14} aria-hidden="true" />}
-          {t(busy === "upload" ? "generationPlugins.uploading" : "generationPlugins.upload")}
-        </button>
-        <input ref={input} type="file" accept=".zip,application/zip" className="hidden" aria-label={t("generationPlugins.upload")}
-          onChange={(event) => void upload(event.target.files?.[0])} />
-      </div>
+    <section data-generation-plugins="" className="flex flex-col gap-4" aria-label={t("generationPlugins.title")}>
+      <SettingsGroup label={t("generationPlugins.section")}
+        actions={<>
+          <button type="button" data-generation-plugin-upload="" className="ui-button ui-button-sm" disabled={busy === "upload"} onClick={() => input.current?.click()}>
+            {busy === "upload" ? <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : <Upload size={14} aria-hidden="true" />}
+            {t(busy === "upload" ? "generationPlugins.uploading" : "generationPlugins.upload")}
+          </button>
+          <input ref={input} type="file" accept=".zip,application/zip" className="hidden" aria-label={t("generationPlugins.upload")}
+            onChange={(event) => void upload(event.target.files?.[0])} />
+        </>}
+        description={t("generationPlugins.subtitle")}>
 
-      {error ? <p role="alert" className="rounded-xl bg-danger/10 px-3 py-2 text-[13px] leading-[18px] text-danger">{error}</p> : null}
+        {error ? <p role="alert" className="rounded-xl bg-danger/10 px-4 py-2 text-[13px] leading-[18px] text-danger">{error}</p> : null}
 
-      {plugins === null && !error ? (
-        <div className="flex items-center gap-2 py-8 text-[13px] text-ink-secondary">
-          <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> {t("generationPlugins.loading")}
-        </div>
-      ) : null}
+        <SettingsRows icons>
+          {plugins === null && !error ? (
+            <div className="flex min-h-11 items-center gap-2 px-4 text-[13px] leading-[18px] text-ink-secondary">
+              <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> {t("generationPlugins.loading")}
+            </div>
+          ) : null}
 
-      {plugins !== null && plugins.length === 0 ? (
-        <div className="flex min-h-32 flex-col items-center justify-center gap-1 rounded-xl border border-hairline/40 px-6 py-8 text-center">
-          <Puzzle size={18} aria-hidden="true" className="text-ink-tertiary" />
-          <p className="text-[14px] font-medium text-ink">{t("generationPlugins.emptyTitle")}</p>
-          <p className="text-[13px] leading-[18px] text-ink-secondary">{t("generationPlugins.emptyBody")}</p>
-        </div>
-      ) : null}
+          {plugins !== null && plugins.length === 0 && !error ? (
+            <div className="flex min-h-16 items-center gap-3 px-4 py-3">
+              <SettingsMark><Puzzle /></SettingsMark>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-[14px] leading-5 text-ink">{t("generationPlugins.emptyTitle")}</span>
+                <span className="truncate text-[13px] leading-[18px] text-ink-secondary">{t("generationPlugins.emptyBody")}</span>
+              </span>
+            </div>
+          ) : null}
 
-      <ul className="flex flex-col gap-2">
-        {(plugins ?? []).map((plugin) => {
-          const draft = drafts[plugin.id] ?? initialDraft(plugin);
-          const open = openId === plugin.id;
-          const working = busy === plugin.id;
-          const deleteArmed = confirmId === plugin.id;
-          return (
-            <li key={plugin.id} data-generation-plugin={plugin.id} className="rounded-xl border border-hairline/40">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-baseline gap-2">
-                    <span className="truncate text-[13px] font-medium leading-[18px] text-ink">{plugin.name}</span>
-                    {plugin.version ? <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{plugin.version}</span> : null}
-                  </div>
-                  <p className="mt-0.5 truncate text-[12px] leading-4 text-ink-secondary">
-                    {plugin.problem
-                      ? t("generationPlugins.problem", { detail: plugin.problem })
-                      : plugin.kinds.length
-                        ? plugin.kinds.map(kindLabel).join(" · ")
-                        : t("generationPlugins.noModels")}
-                    {plugin.problem ? "" : ` · ${t(plugin.configured ? "generationPlugins.ready" : "generationPlugins.needsSetup")}`}
-                  </p>
-                </div>
-                <Switch checked={plugin.enabled} disabled={working || Boolean(plugin.problem)} aria-label={t("generationPlugins.enabledAria", { name: plugin.name })}
-                  onClick={() => void toggle(plugin, !plugin.enabled)} />
-                <button type="button" className="ui-button ui-button-sm" aria-expanded={open} aria-controls={`generation-plugin-${plugin.id}`}
-                  disabled={!plugin.fields.length}
-                  onClick={() => setOpenId(open ? null : plugin.id)}>
-                  {t("generationPlugins.configure")}
-                  <ChevronDown size={14} aria-hidden="true" className={cn("transition-transform motion-reduce:transition-none", open && "rotate-180")} />
-                </button>
-                <button type="button" data-generation-plugin-delete="" disabled={working}
-                  className={cn("inline-flex size-8 items-center justify-center rounded-full text-ink-secondary hover:bg-ink/[0.06] hover:text-ink disabled:opacity-50",
-                    deleteArmed && "bg-danger/10 text-danger hover:bg-danger/15 hover:text-danger")}
-                  aria-label={deleteArmed ? t("generationPlugins.deleteConfirm", { name: plugin.name }) : t("generationPlugins.delete", { name: plugin.name })}
-                  title={deleteArmed ? t("generationPlugins.deleteAgain") : t("generationPlugins.delete", { name: plugin.name })}
-                  onClick={() => askDelete(plugin.id)}>
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              </div>
-              <div id={`generation-plugin-${plugin.id}`} hidden={!open} className="flex flex-col gap-3 border-t border-hairline/40 px-4 py-3">
-                {plugin.fields.map((field) => (
-                  <FieldInput key={field.key} field={field} disabled={working} saved={plugin.secrets.includes(field.key)}
-                    value={draft[field.key] ?? ""}
-                    onChange={(value) => setDrafts((current) => ({ ...current, [plugin.id]: { ...current[plugin.id], [field.key]: value } }))} />
-                ))}
-                {plugin.fields.some((field) => field.type === "secret") ? (
-                  <p className={NOTE}>{t("generationPlugins.secretNote")}</p>
-                ) : null}
-                <div className="flex items-center justify-end gap-3">
-                  <span role="status" aria-live="polite" className="text-[12px] leading-4 text-success">{savedId === plugin.id ? t("generationPlugins.saved") : ""}</span>
-                  <button type="button" className="ui-button ui-button-sm ui-button-primary" disabled={working} onClick={() => void save(plugin)}>
-                    {working ? <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : null}
-                    {t("generationPlugins.save")}
+          {(plugins ?? []).map((plugin) => {
+            const draft = drafts[plugin.id] ?? initialDraft(plugin);
+            const open = openId === plugin.id;
+            const working = busy === plugin.id;
+            const deleteArmed = confirmId === plugin.id;
+            const state = plugin.problem
+              ? { tone: "warning" as const, text: t("generationPlugins.problem", { detail: plugin.problem }) }
+              : plugin.configured
+                ? { tone: "success" as const, text: t("generationPlugins.ready") }
+                : { tone: null, text: t("generationPlugins.needsSetup") };
+            const kinds = plugin.kinds.length ? plugin.kinds.map(kindLabel).join(" · ") : t("generationPlugins.noModels");
+            return (
+              <div key={plugin.id} data-generation-plugin={plugin.id}>
+                <div className="flex items-center gap-3 px-4 py-3">
+                  <SettingsMark><Puzzle /></SettingsMark>
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <span className="truncate text-[14px] leading-5 text-ink">{plugin.name}</span>
+                      {plugin.version ? <span className="shrink-0 text-[12px] leading-4 tabular-nums text-ink-tertiary">{plugin.version}</span> : null}
+                    </span>
+                    <span className="truncate text-[13px] leading-[18px] text-ink-secondary">
+                      <StatusDot tone={state.tone} />{state.text}{plugin.problem ? "" : ` · ${kinds}`}
+                    </span>
+                  </span>
+                  <Switch checked={plugin.enabled} disabled={working || Boolean(plugin.problem)} aria-label={t("generationPlugins.enabledAria", { name: plugin.name })}
+                    onClick={() => void toggle(plugin, !plugin.enabled)} />
+                  <button type="button" className="ui-button ml-3 shrink-0" aria-expanded={open} aria-controls={`generation-plugin-${plugin.id}`}
+                    disabled={!plugin.fields.length}
+                    onClick={() => setOpenId(open ? null : plugin.id)}>
+                    {t("generationPlugins.configure")}
+                    <ChevronDown size={14} aria-hidden="true" className={cn("transition-transform motion-reduce:transition-none", open && "rotate-180")} />
+                  </button>
+                  <button type="button" data-generation-plugin-delete="" disabled={working}
+                    className={cn("inline-flex size-8 shrink-0 items-center justify-center rounded-full text-ink-secondary hover:bg-ink/[0.06] hover:text-ink disabled:opacity-50",
+                      deleteArmed && "bg-danger/10 text-danger hover:bg-danger/15 hover:text-danger")}
+                    aria-label={deleteArmed ? t("generationPlugins.deleteConfirm", { name: plugin.name }) : t("generationPlugins.delete", { name: plugin.name })}
+                    title={deleteArmed ? t("generationPlugins.deleteAgain") : t("generationPlugins.delete", { name: plugin.name })}
+                    onClick={() => askDelete(plugin.id)}>
+                    <Trash2 size={16} aria-hidden="true" />
                   </button>
                 </div>
+                <div id={`generation-plugin-${plugin.id}`} hidden={!open} className="flex flex-col gap-3 pb-4 pl-[60px] pr-4 pt-1">
+                  {plugin.fields.map((field) => (
+                    <FieldInput key={field.key} field={field} disabled={working} saved={plugin.secrets.includes(field.key)}
+                      value={draft[field.key] ?? ""}
+                      onChange={(value) => setDrafts((current) => ({ ...current, [plugin.id]: { ...current[plugin.id], [field.key]: value } }))} />
+                  ))}
+                  {plugin.fields.some((field) => field.type === "secret") ? (
+                    <p className={NOTE}>{t("generationPlugins.secretNote")}</p>
+                  ) : null}
+                  <div className="flex items-center justify-end gap-3">
+                    <span role="status" aria-live="polite" className="text-[12px] leading-4 text-success">{savedId === plugin.id ? t("generationPlugins.saved") : ""}</span>
+                    <button type="button" className="ui-button ui-button-primary" disabled={working} onClick={() => void save(plugin)}>
+                      {working ? <Loader2 size={14} aria-hidden="true" className="animate-spin motion-reduce:animate-none" /> : null}
+                      {t("generationPlugins.save")}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </li>
-          );
-        })}
-      </ul>
+            );
+          })}
+        </SettingsRows>
+      </SettingsGroup>
     </section>
   );
 }

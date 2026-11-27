@@ -6973,6 +6973,7 @@
   "call.live.keyFromApiKeys": "使用「設定 → AI → 其他服務」中的 OpenAI API 金鑰。",
   "settings.group.you": "你",
   "settings.group.ai": "AI",
+  "settings.page.plugins": "圖片與影片外掛",
   "settings.group.computers": "裝置",
   "settings.group.account": "帳戶",
   "settings.simple.advanced": "進階",
@@ -11880,8 +11881,8 @@
   "productionBoard.skills.post.1": "剪輯合成",
   "productionBoard.skills.post.2": "配音配樂",
   "productionBoard.skills.post.3": "字幕調色",
-  "apps.filter.plugins": "外掛",
   "generationPlugins.title": "圖片與影片外掛",
+  "generationPlugins.section": "外掛",
   "generationPlugins.subtitle": "外掛負責製作專案的圖片和影片。上傳一個外掛即可接入服務。",
   "generationPlugins.upload": "上傳外掛",
   "generationPlugins.uploading": "正在上傳…",
@@ -11909,7 +11910,7 @@
   "projectCanvas.settings.noPlugin": "不使用外掛（MCP 伺服器）",
   "projectCanvas.settings.pluginNote": "外掛負責這個專案的圖片和影片。外掛與 MCP 伺服器只能選一個。",
   "serverError.projectGeneration.pluginGone": "外掛 {plugin} 已經不在了。請在這個專案的設定裡另選一個。",
-  "serverError.projectGeneration.pluginOff": "外掛 {plugin} 已關閉。請在應用程式 → 外掛裡開啟它，或在這個專案的設定裡另選一個。",
-  "serverError.projectGeneration.pluginUnconfigured": "外掛 {plugin} 還需要填寫設定。請開啟應用程式 → 外掛，然後重試。",
+  "serverError.projectGeneration.pluginOff": "外掛 {plugin} 已關閉。請在設定 → 圖片與影片外掛裡開啟它，或在這個專案的設定裡另選一個。",
+  "serverError.projectGeneration.pluginUnconfigured": "外掛 {plugin} 還需要填寫設定。請開啟設定 → 圖片與影片外掛，然後重試。",
   "serverError.projectGeneration.pluginBadAnswer": "外掛 {plugin} 的回答 MagicBot 讀不懂：{detail}"
 }

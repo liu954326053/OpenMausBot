@@ -50,6 +50,22 @@ describe("the chat's picture channel", () => {
     expect(image.bytes.length).toBeGreaterThan(0);
   });
 
+  it("asks an OpenAI-style plugin for the size that has the chat's ratio", async () => {
+    const fake = await startFakeGenerationPlugin();
+    fakes.push(fake);
+    const dataDir = mkdtempSync(join(tmpdir(), "omb-plugin-size-"));
+    dirs.push(dataDir);
+    const plugins = new GenerationPlugins({ dataDir, log: () => {} });
+    const manifest = pluginManifest(fake.url);
+    manifest.models[0] = { ...manifest.models[0]!, aspects: ["1024x1024", "1536x1024", "1024x1536"] };
+    plugins.install("acme.zip", buildZip([{ name: "plugin.json", data: JSON.stringify(manifest) }]));
+    plugins.save("acme-images", { values: { apiKey: PLUGIN_KEY } });
+    configurePluginImages(createPluginImages(plugins));
+    await generateImage({}, { prompt: "a lighthouse", aspect: "16:9" });
+    const generate = fake.calls.find((call) => call.path === "/v1/images")!;
+    expect((generate.body as { aspect_ratio?: string }).aspect_ratio).toBe("1536x1024");
+  });
+
   it("never takes an avatar draft to the plugin", async () => {
     const { plugins } = await ready();
     configurePluginImages(createPluginImages(plugins));

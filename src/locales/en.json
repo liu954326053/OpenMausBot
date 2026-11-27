@@ -7130,6 +7130,7 @@
   "call.live.keyFromApiKeys": "Uses your OpenAI API key from Settings → AI → Other services.",
   "settings.group.you": "You",
   "settings.group.ai": "AI",
+  "settings.page.plugins": "Pictures and videos",
   "settings.group.computers": "Devices",
   "settings.group.account": "Account",
   "settings.simple.group.typing": "Language and typing",
@@ -11896,8 +11897,8 @@
   "productionBoard.skills.post.1": "Editing",
   "productionBoard.skills.post.2": "Voice and music",
   "productionBoard.skills.post.3": "Subtitles and grade",
-  "apps.filter.plugins": "Plugins",
   "generationPlugins.title": "Image and video plugins",
+  "generationPlugins.section": "Plugins",
   "generationPlugins.subtitle": "A plugin makes a project's pictures and videos. Upload one to add a service.",
   "generationPlugins.upload": "Upload plugin",
   "generationPlugins.uploading": "Uploading…",
@@ -11925,7 +11926,7 @@
   "projectCanvas.settings.noPlugin": "No plugin (an MCP server)",
   "projectCanvas.settings.pluginNote": "A plugin makes this project's pictures and videos. Choose either a plugin or an MCP server.",
   "serverError.projectGeneration.pluginGone": "The plugin {plugin} is no longer installed. Choose another one in this project's settings.",
-  "serverError.projectGeneration.pluginOff": "The plugin {plugin} is turned off. Turn it on in Apps → Plugins, or choose another one in this project's settings.",
-  "serverError.projectGeneration.pluginUnconfigured": "The plugin {plugin} needs its settings filled in. Open Apps → Plugins, then try again.",
+  "serverError.projectGeneration.pluginOff": "The plugin {plugin} is turned off. Turn it on in Settings → Pictures and videos, or choose another one in this project's settings.",
+  "serverError.projectGeneration.pluginUnconfigured": "The plugin {plugin} needs its settings filled in. Open Settings → Pictures and videos, then try again.",
   "serverError.projectGeneration.pluginBadAnswer": "The plugin {plugin} answered in a way MagicBot can't read: {detail}"
 }

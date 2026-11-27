@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "openai-images",
+  "name": "OpenAI Images",
+  "version": "1.0.1",
+  "author": "MagicBot",
+  "description": "Pictures from any service that speaks OpenAI's images/generations API.",
+  "models": [
+    {
+      "id": "gpt-image-2.6",
+      "name": "GPT Image 2.6",
+      "kind": "image",
+      "aspects": ["1024x1024", "1536x1024", "1024x1536"],
+      "qualities": ["auto", "low", "medium", "high"],
+      "maxCount": 4
+    }
+  ],
+  "config": [
+    {
+      "key": "baseUrl",
+      "label": "API address",
+      "type": "url",
+      "required": true,
+      "default": "https://api.openai.com/v1",
+      "placeholder": "https://api.openai.com/v1",
+      "help": "The address before /images/generations, usually ending in /v1."
+    },
+    {
+      "key": "apiKey",
+      "label": "API key",
+      "type": "secret",
+      "required": true,
+      "placeholder": "sk-…"
+    },
+    {
+      "key": "responseFormat",
+      "label": "Answer with",
+      "type": "select",
+      "choices": ["b64_json", "url"],
+      "default": "b64_json",
+      "help": "Which form the service returns its pictures in. Leave it as b64_json unless it refuses that."
+    }
+  ],
+  "requests": {
+    "generate": {
+      "method": "POST",
+      "url": "{{config.baseUrl}}/images/generations",
+      "headers": {
+        "authorization": "Bearer {{config.apiKey}}",
+        "content-type": "application/json"
+      },
+      "body": {
+        "model": "{{model}}",
+        "prompt": "{{prompt}}",
+        "n": "{{count}}",
+        "size": "{{aspect}}",
+        "quality": "{{quality}}",
+        "response_format": "{{config.responseFormat}}"
+      },
+      "answer": {
+        "files": { "items": "data", "url": "url", "data": "b64_json" },
+        "error": "error.message"
+      }
+    }
+  }
+}

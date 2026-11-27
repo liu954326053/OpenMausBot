@@ -7130,6 +7130,7 @@
   "call.live.keyFromApiKeys": "使用设置 → AI → 其他服务中的 OpenAI API 密钥。",
   "settings.group.you": "你",
   "settings.group.ai": "AI",
+  "settings.page.plugins": "图片与视频插件",
   "settings.group.computers": "设备",
   "settings.group.account": "账户",
   "settings.simple.group.typing": "语言和输入",
@@ -11896,8 +11897,8 @@
   "productionBoard.skills.post.1": "剪辑合成",
   "productionBoard.skills.post.2": "配音配乐",
   "productionBoard.skills.post.3": "字幕调色",
-  "apps.filter.plugins": "插件",
   "generationPlugins.title": "图片与视频插件",
+  "generationPlugins.section": "插件",
   "generationPlugins.subtitle": "插件负责制作项目的图片和视频。上传一个插件即可接入服务。",
   "generationPlugins.upload": "上传插件",
   "generationPlugins.uploading": "正在上传…",
@@ -11925,7 +11926,7 @@
   "projectCanvas.settings.noPlugin": "不使用插件（MCP 服务器）",
   "projectCanvas.settings.pluginNote": "插件负责这个项目的图片和视频。插件与 MCP 服务器只能选一个。",
   "serverError.projectGeneration.pluginGone": "插件 {plugin} 已经不在了。请在这个项目的设置里另选一个。",
-  "serverError.projectGeneration.pluginOff": "插件 {plugin} 已关闭。请在应用 → 插件里打开它，或在这个项目的设置里另选一个。",
-  "serverError.projectGeneration.pluginUnconfigured": "插件 {plugin} 还需要填写设置。请打开应用 → 插件，然后重试。",
+  "serverError.projectGeneration.pluginOff": "插件 {plugin} 已关闭。请在设置 → 图片与视频插件里打开它，或在这个项目的设置里另选一个。",
+  "serverError.projectGeneration.pluginUnconfigured": "插件 {plugin} 还需要填写设置。请打开设置 → 图片与视频插件，然后重试。",
   "serverError.projectGeneration.pluginBadAnswer": "插件 {plugin} 的回答 MagicBot 读不懂：{detail}"
 }
