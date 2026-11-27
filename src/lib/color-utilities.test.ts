@@ -20,6 +20,7 @@ const families = new Set([...[...defined].map((name) => name.split("-")[0]), "li
 const inkCarriedByFill: Record<string, RegExp> = {
   "accent-ink": /\.bg-accent\s*\{\s*color:\s*var\(--color-accent-ink\)/,
   "danger-ink": /\.bg-danger\s*\{\s*color:\s*var\(--color-danger-ink\)/,
+  "success-ink": /\.bg-success\s*\{\s*color:\s*var\(--color-success-ink\)/,
 };
 
 const PREFIX = "bg|text|border(?:-[xytblrse])?|ring-offset|ring|divide|outline|fill|stroke|placeholder|decoration|caret|shadow|from|via|to";
