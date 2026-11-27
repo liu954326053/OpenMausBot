@@ -54,9 +54,20 @@ test("the guide is one draggable chip with motion, and nothing else", () => {
   assert.ok(!page.includes("<Bad & Co>"));
   assert.ok(page.includes('id="app" draggable="true"'));
   assert.ok(page.includes("window.permissionDrag.start()"));
+  assert.ok(page.includes("@keyframes enter"));
   assert.ok(page.includes("@keyframes halo"));
   assert.ok(page.includes("@keyframes sheen"));
+  assert.ok(page.includes("@keyframes icon-float"));
+  assert.ok(page.includes("@keyframes lift-conveyor"));
+  assert.ok(page.includes("@keyframes lift-ring"));
   assert.ok(page.includes("prefers-reduced-motion"));
+  assert.ok(page.includes("prefers-reduced-transparency"));
   assert.ok(!page.includes("button"));
   assert.ok(!page.includes("permissionDrag.close"));
+});
+
+test("falls back cleanly when the bundle icon is missing", () => {
+  const page = permissionDragPage({ appName: "MagicBot", icon: "", dragLabel: "Drag" });
+  assert.ok(!page.includes('<img src=""'));
+  assert.ok(page.includes('class="fallback"'));
 });
